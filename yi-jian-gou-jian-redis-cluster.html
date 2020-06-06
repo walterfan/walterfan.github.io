@@ -1,0 +1,388 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css?family=Source+Code+Pro|Source+Sans+Pro:300,400,400i,700" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="./theme/stylesheet/style.min.css">
+
+  <link rel="stylesheet" type="text/css" href="./theme/pygments/github.min.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/solid.css">
+
+
+
+
+    <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+    <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="Daily minute" />
+<meta name="keywords" content="journal, blog">
+
+
+<meta property="og:site_name" content="Walter Fan's Blog"/>
+<meta property="og:title" content="一键构建 Redis Cluster"/>
+<meta property="og:description" content="Daily minute"/>
+<meta property="og:locale" content="en_US"/>
+<meta property="og:url" content="./yi-jian-gou-jian-redis-cluster.html"/>
+<meta property="og:type" content="article"/>
+<meta property="article:published_time" content="2020-05-25 10:20:00+08:00"/>
+<meta property="article:modified_time" content="2020-05-25 19:30:00+08:00"/>
+<meta property="article:author" content="./author/walter-fan.html">
+<meta property="article:section" content="Journal"/>
+<meta property="article:tag" content="journal"/>
+<meta property="article:tag" content="blog"/>
+<meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 一键构建 Redis Cluster</title>
+
+</head>
+<body>
+  <aside>
+    <div>
+      <a href=".">
+        <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+      </a>
+      <h1><a href=".">Walter Fan</a></h1>
+
+<p>手握灵珠常奋笔, 心开天籁不吹箫</p>
+      <nav>
+        <ul class="list">
+
+
+            <li><a target="_blank" href="/" >Blog</a></li>
+            <li><a target="_blank" href="/wiki" >Wiki</a></li>
+            <li><a target="_blank" href="/public/" >Agile</a></li>
+            <li><a target="_blank" href="/min" >范谈</a></li>
+            <li><a target="_blank" href="https://www.jianshu.com/u/e0b365801f48" >简书</a></li>
+        </ul>
+      </nav>
+
+      <ul class="social">
+          <li>
+            <a  class="sc-weibo" href="http://weibo.com/fanyamin" target="_blank">
+            <i class="fab fa-weibo">
+            </i>
+          </a></li>
+          <li>
+            <a  class="sc-douban" href="https://douban.com" target="_blank">
+            <i class="fab fa-douban">
+            </i>
+          </a></li>
+          <li>
+            <a  class="sc-github" href="http://github.com/walterfan" target="_blank">
+            <i class="fab fa-github">
+            </i>
+          </a></li>
+      </ul>
+    </div>
+
+
+  </aside>
+  <main>
+
+
+<article class="single">
+  <header>
+      
+    <h1 id="yi-jian-gou-jian-redis-cluster">一键构建 Redis Cluster</h1>
+    <p>
+          Posted on Mon 25 May 2020 in <a href="./category/journal.html">Journal</a>
+
+
+    </p>
+  </header>
+
+
+  <div>
+    <h1>闲言碎语</h1>
+<p>学我者生，似我者死，这句话可以用在 Spring Cloud 的诸多子项目上，换个说法， “参考我者生，使用我者死”，
+有很多实验性的东西，想法不错，实现很矬，有些压根不实用，产品级的服务应用需要更精细的雕琢和打磨。</p>
+<h1>Redis cluster 快速构建</h1>
+<p>Redis 5.0 自身就提供了构建 redis 的命令， 简单用 Fabric 写一个脚本，一键构建 Redis Cluster</p>
+<p>说是一键构建，实际是三步</p>
+<ol>
+<li>fab generate_config</li>
+<li>fab start_redis</li>
+<li>fab create_redis_cluster</li>
+</ol>
+<p>源代码如下</p>
+<div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">fabric.api</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">fabric.api</span> <span class="kn">import</span> <span class="n">settings</span>
+<span class="kn">from</span> <span class="nn">fabric.context_managers</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">fabric.contrib.console</span> <span class="kn">import</span> <span class="n">confirm</span>
+<span class="kn">import</span> <span class="nn">os</span><span class="o">,</span> <span class="nn">subprocess</span>
+
+<span class="n">redis_path</span> <span class="o">=</span> <span class="s1">&#39;../src&#39;</span>
+<span class="n">redis_config</span> <span class="o">=</span> <span class="s1">&#39;&#39;&#39;daemonize yes</span>
+<span class="s1">bind 0.0.0.0</span>
+<span class="s1">port 9001</span>
+<span class="s1">cluster-enabled yes</span>
+<span class="s1">cluster-config-file nodes.conf</span>
+<span class="s1">cluster-node-timeout 5000</span>
+<span class="s1">appendonly yes</span>
+
+<span class="s1">&#39;&#39;&#39;</span>
+<span class="nd">@task</span>
+<span class="k">def</span> <span class="nf">clean_config</span><span class="p">():</span>
+    <span class="k">for</span> <span class="n">port</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">9001</span><span class="p">,</span><span class="mi">9007</span><span class="p">):</span>
+        <span class="n">local</span><span class="p">(</span><span class="s2">&quot;rm -rf {}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">port</span><span class="p">))</span>
+
+<span class="nd">@task</span>
+<span class="k">def</span> <span class="nf">write_config</span><span class="p">(</span><span class="n">file_path</span><span class="p">,</span> <span class="n">port</span><span class="p">):</span>
+    <span class="n">config_content</span> <span class="o">=</span> <span class="n">redis_config</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;9001&#39;</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">port</span><span class="p">))</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">file_path</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">fp</span><span class="p">:</span>
+        <span class="n">fp</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">config_content</span><span class="p">)</span>
+<span class="nd">@task</span>
+<span class="k">def</span> <span class="nf">generate_config</span><span class="p">():</span>
+    <span class="k">for</span> <span class="n">port</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">9001</span><span class="p">,</span><span class="mi">9007</span><span class="p">):</span>
+        <span class="n">local</span><span class="p">(</span><span class="s2">&quot;mkdir -p {}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">port</span><span class="p">))</span>
+        <span class="n">config_file</span> <span class="o">=</span> <span class="s1">&#39;{}/redis.conf&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">port</span><span class="p">)</span>
+        <span class="k">print</span><span class="p">(</span><span class="s2">&quot;write {}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">config_file</span><span class="p">))</span>
+        <span class="n">write_config</span><span class="p">(</span><span class="n">config_file</span><span class="p">,</span> <span class="n">port</span><span class="p">)</span>
+<span class="nd">@task</span>
+<span class="k">def</span> <span class="nf">start_redis</span><span class="p">():</span>
+    <span class="k">for</span> <span class="n">folder</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">9001</span><span class="p">,</span><span class="mi">9007</span><span class="p">):</span>
+        <span class="k">with</span> <span class="n">lcd</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">folder</span><span class="p">)):</span>
+            <span class="n">local</span><span class="p">(</span><span class="s2">&quot;../{}/redis-server ./redis.conf&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">redis_path</span><span class="p">))</span>
+
+<span class="nd">@task</span>
+<span class="k">def</span> <span class="nf">stop_redis</span><span class="p">():</span>
+    <span class="n">cmd</span> <span class="o">=</span> <span class="n">redis_path</span> <span class="o">+</span> <span class="s2">&quot;/redis-cli -p {} shutdown nosave&quot;</span>
+    <span class="k">for</span> <span class="n">port</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">9001</span><span class="p">,</span><span class="mi">9007</span><span class="p">):</span>
+        <span class="n">local</span><span class="p">(</span><span class="n">cmd</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">port</span><span class="p">))</span>
+<span class="nd">@task</span>
+<span class="k">def</span> <span class="nf">kill_redis</span><span class="p">():</span>
+    <span class="n">cmd</span> <span class="o">=</span> <span class="s2">&quot;ps -efw --width 1024|grep redis-server |grep -v grep|awk &#39;{print $2}&quot;</span>
+    <span class="n">pids</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">check_output</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="n">shell</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">pids</span><span class="p">)</span>
+    <span class="k">with</span> <span class="n">settings</span><span class="p">(</span><span class="n">warn_only</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">pid</span> <span class="ow">in</span> <span class="n">pids</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">):</span>
+            <span class="n">local</span><span class="p">(</span><span class="s2">&quot;kill -9 {}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">pid</span><span class="p">))</span>
+<span class="nd">@task</span>
+<span class="k">def</span> <span class="nf">check_ports_mac</span><span class="p">():</span>
+    <span class="k">with</span> <span class="n">settings</span><span class="p">(</span><span class="n">warn_only</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">port</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">9001</span><span class="p">,</span><span class="mi">9007</span><span class="p">):</span>
+            <span class="n">local</span><span class="p">(</span><span class="s2">&quot;lsof -nP -iTCP:{} | grep LISTEN&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">port</span><span class="p">))</span>
+<span class="nd">@task</span>
+<span class="k">def</span> <span class="nf">check_redis</span><span class="p">():</span>
+    <span class="n">cmd</span> <span class="o">=</span> <span class="s2">&quot;ps -ef|grep redis-server |grep -v grep&quot;</span>
+    <span class="k">with</span> <span class="n">settings</span><span class="p">(</span><span class="n">warn_only</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="n">local</span><span class="p">(</span><span class="n">cmd</span><span class="p">)</span>
+
+<span class="nd">@task</span>
+<span class="k">def</span> <span class="nf">create_redis_cluster</span><span class="p">():</span>
+    <span class="n">cmd</span> <span class="o">=</span> <span class="n">redis_path</span> <span class="o">+</span> <span class="s2">&quot;/redis-cli --cluster create {} {}&quot;</span>
+    <span class="n">host_and_ports</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+    <span class="k">for</span> <span class="n">port</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">9001</span><span class="p">,</span><span class="mi">9007</span><span class="p">):</span>
+            <span class="n">host_and_ports</span> <span class="o">=</span> <span class="n">host_and_ports</span> <span class="o">+</span> <span class="s2">&quot;0.0.0.0:{} &quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">port</span><span class="p">)</span>
+    <span class="n">option</span> <span class="o">=</span> <span class="s2">&quot;--cluster-replicas 1&quot;</span>
+    <span class="n">local</span><span class="p">(</span><span class="n">cmd</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">host_and_ports</span><span class="p">,</span> <span class="n">option</span><span class="p">))</span>
+
+<span class="nd">@task</span>
+<span class="k">def</span> <span class="nf">redis_cli</span><span class="p">():</span>
+    <span class="n">local</span><span class="p">(</span><span class="n">redis_path</span> <span class="o">+</span> <span class="s2">&quot;/redis-cli -c -p 9001&quot;</span><span class="p">)</span>
+</pre></div>
+
+
+<p>最后可以用 redis info 命令查看一下</p>
+<div class="highlight"><pre><span></span><span class="err">fab redis_cli:info</span>
+</pre></div>
+
+
+<p>结果如下：</p>
+<div class="highlight"><pre><span></span><span class="s s-Atom">#</span> <span class="nv">Server</span> <span class="s s-Atom">服务器信息</span>
+<span class="s s-Atom">redis_version:</span><span class="mf">5.0.8</span>
+<span class="s s-Atom">redis_git_sha1:</span><span class="mi">00000000</span>
+<span class="s s-Atom">redis_git_dirty:</span><span class="mi">0</span>
+<span class="s s-Atom">redis_build_id:</span><span class="mi">391103</span><span class="s s-Atom">cbae5277b6</span>
+<span class="s s-Atom">redis_mode:cluster</span>
+<span class="nn">os</span><span class="p">:</span><span class="nv">Linux</span> <span class="mf">4.4.0</span><span class="o">-</span><span class="mi">135</span><span class="o">-</span><span class="s s-Atom">generic</span> <span class="s s-Atom">x86_64</span>
+<span class="s s-Atom">arch_bits:</span><span class="mi">64</span>
+<span class="s s-Atom">multiplexing_api:epoll</span>
+<span class="s s-Atom">atomicvar_api:atomic</span><span class="o">-</span><span class="s s-Atom">builtin</span>
+<span class="s s-Atom">gcc_version:</span><span class="mf">5.4.0</span>
+<span class="s s-Atom">process_id:</span><span class="mi">19702</span>
+<span class="s s-Atom">run_id:</span><span class="mi">0</span><span class="s s-Atom">c3d2c132eefbf68a23dab136cdc79999b6c8ca3</span>
+<span class="s s-Atom">tcp_port:</span><span class="mi">9001</span>
+<span class="s s-Atom">uptime_in_seconds:</span><span class="mi">1444</span>
+<span class="s s-Atom">uptime_in_days:</span><span class="mi">0</span>
+<span class="nn">hz</span><span class="p">:</span><span class="mi">10</span>
+<span class="s s-Atom">configured_hz:</span><span class="mi">10</span>
+<span class="s s-Atom">lru_clock:</span><span class="mi">14386466</span>
+<span class="nn">executable</span><span class="p">:</span><span class="o">/</span><span class="s s-Atom">home</span><span class="o">/</span><span class="s s-Atom">walter</span><span class="o">/</span><span class="s s-Atom">package</span><span class="o">/</span><span class="s s-Atom">redis</span><span class="o">-</span><span class="mf">5.0.8</span><span class="o">/</span><span class="s s-Atom">src</span><span class="o">/</span><span class="s s-Atom">redis</span><span class="o">-</span><span class="s s-Atom">server</span>
+<span class="s s-Atom">config_file:/home</span><span class="o">/</span><span class="s s-Atom">walter</span><span class="o">/</span><span class="s s-Atom">mdd</span><span class="o">/</span><span class="s s-Atom">oss</span><span class="o">/</span><span class="s s-Atom">redis</span><span class="o">/</span><span class="mi">9001</span><span class="s s-Atom">/./redis</span><span class="p">.</span><span class="s s-Atom">conf</span>
+
+<span class="s s-Atom">#</span> <span class="nv">Clients</span> <span class="s s-Atom">客户端信息</span>
+<span class="s s-Atom">connected_clients:</span><span class="mi">1</span>
+<span class="s s-Atom">client_recent_max_input_buffer:</span><span class="mi">2</span>
+<span class="s s-Atom">client_recent_max_output_buffer:</span><span class="mi">0</span>
+<span class="s s-Atom">blocked_clients:</span><span class="mi">0</span>
+
+<span class="s s-Atom">#</span> <span class="nv">Memory</span> <span class="s s-Atom">内存信息</span>
+<span class="s s-Atom">used_memory:</span><span class="mi">2652664</span>
+<span class="s s-Atom">used_memory_human:</span><span class="mf">2.53</span><span class="nv">M</span>
+<span class="s s-Atom">used_memory_rss:</span><span class="mi">5267456</span>
+<span class="s s-Atom">used_memory_rss_human:</span><span class="mf">5.02</span><span class="nv">M</span>
+<span class="s s-Atom">used_memory_peak:</span><span class="mi">2693616</span>
+<span class="s s-Atom">used_memory_peak_human:</span><span class="mf">2.57</span><span class="nv">M</span>
+<span class="s s-Atom">used_memory_peak_perc:</span><span class="mf">98.48</span><span class="c1">%</span>
+<span class="s s-Atom">used_memory_overhead:</span><span class="mi">2578384</span>
+<span class="s s-Atom">used_memory_startup:</span><span class="mi">1463192</span>
+<span class="s s-Atom">used_memory_dataset:</span><span class="mi">74280</span>
+<span class="s s-Atom">used_memory_dataset_perc:</span><span class="mf">6.24</span><span class="c1">%</span>
+<span class="s s-Atom">allocator_allocated:</span><span class="mi">2638792</span>
+<span class="s s-Atom">allocator_active:</span><span class="mi">2822144</span>
+<span class="s s-Atom">allocator_resident:</span><span class="mi">5382144</span>
+<span class="s s-Atom">total_system_memory:</span><span class="mi">8370958336</span>
+<span class="s s-Atom">total_system_memory_human:</span><span class="mf">7.80</span><span class="nv">G</span>
+<span class="s s-Atom">used_memory_lua:</span><span class="mi">37888</span>
+<span class="s s-Atom">used_memory_lua_human:</span><span class="mf">37.00</span><span class="nv">K</span>
+<span class="s s-Atom">used_memory_scripts:</span><span class="mi">0</span>
+<span class="s s-Atom">used_memory_scripts_human:</span><span class="mi">0</span><span class="nv">B</span>
+<span class="s s-Atom">number_of_cached_scripts:</span><span class="mi">0</span>
+<span class="nn">maxmemory</span><span class="p">:</span><span class="mi">0</span>
+<span class="s s-Atom">maxmemory_human:</span><span class="mi">0</span><span class="nv">B</span>
+<span class="s s-Atom">maxmemory_policy:noeviction</span>
+<span class="s s-Atom">allocator_frag_ratio:</span><span class="mf">1.07</span>
+
+<span class="s s-Atom">allocator_frag_bytes:</span><span class="mi">183352</span>
+<span class="s s-Atom">allocator_rss_ratio:</span><span class="mf">1.91</span>
+<span class="s s-Atom">allocator_rss_bytes:</span><span class="mi">2560000</span>
+<span class="s s-Atom">rss_overhead_ratio:</span><span class="mf">0.98</span>
+<span class="nf">rss_overhead_bytes</span><span class="o">:-</span><span class="mi">114688</span>
+<span class="s s-Atom">mem_fragmentation_ratio:</span><span class="mf">2.03</span>
+<span class="s s-Atom">mem_fragmentation_bytes:</span><span class="mi">2677952</span>
+<span class="s s-Atom">mem_not_counted_for_evict:</span><span class="mi">0</span>
+<span class="s s-Atom">mem_replication_backlog:</span><span class="mi">1048576</span>
+<span class="s s-Atom">mem_clients_slaves:</span><span class="mi">16922</span>
+<span class="s s-Atom">mem_clients_normal:</span><span class="mi">49694</span>
+<span class="s s-Atom">mem_aof_buffer:</span><span class="mi">0</span>
+<span class="s s-Atom">mem_allocator:jemalloc</span><span class="o">-</span><span class="mf">5.1.0</span>
+<span class="s s-Atom">active_defrag_running:</span><span class="mi">0</span>
+<span class="s s-Atom">lazyfree_pending_objects:</span><span class="mi">0</span>
+
+<span class="s s-Atom">#</span> <span class="nv">Persistence</span> <span class="s s-Atom">持久化信息</span>
+<span class="nn">loading</span><span class="p">:</span><span class="mi">0</span>
+<span class="s s-Atom">rdb_changes_since_last_save:</span><span class="mi">0</span>
+<span class="s s-Atom">rdb_bgsave_in_progress:</span><span class="mi">0</span>
+<span class="s s-Atom">rdb_last_save_time:</span><span class="mi">1591443327</span>
+<span class="s s-Atom">rdb_last_bgsave_status:ok</span>
+<span class="s s-Atom">rdb_last_bgsave_time_sec:</span><span class="mi">0</span>
+<span class="nf">rdb_current_bgsave_time_sec</span><span class="o">:-</span><span class="mi">1</span>
+<span class="s s-Atom">rdb_last_cow_size:</span><span class="mi">274432</span>
+<span class="s s-Atom">aof_enabled:</span><span class="mi">1</span>
+<span class="s s-Atom">aof_rewrite_in_progress:</span><span class="mi">0</span>
+
+
+<span class="s s-Atom">aof_rewrite_scheduled:</span><span class="mi">0</span>
+<span class="nf">aof_last_rewrite_time_sec</span><span class="o">:-</span><span class="mi">1</span>
+<span class="nf">aof_current_rewrite_time_sec</span><span class="o">:-</span><span class="mi">1</span>
+<span class="s s-Atom">aof_last_bgrewrite_status:ok</span>
+<span class="s s-Atom">aof_last_write_status:ok</span>
+<span class="s s-Atom">aof_last_cow_size:</span><span class="mi">0</span>
+<span class="s s-Atom">aof_current_size:</span><span class="mi">0</span>
+<span class="s s-Atom">aof_base_size:</span><span class="mi">0</span>
+<span class="s s-Atom">aof_pending_rewrite:</span><span class="mi">0</span>
+<span class="s s-Atom">aof_buffer_length:</span><span class="mi">0</span>
+<span class="s s-Atom">aof_rewrite_buffer_length:</span><span class="mi">0</span>
+<span class="s s-Atom">aof_pending_bio_fsync:</span><span class="mi">0</span>
+<span class="s s-Atom">aof_delayed_fsync:</span><span class="mi">0</span>
+
+<span class="s s-Atom">#</span> <span class="nv">Stats</span> <span class="s s-Atom">统计信息</span>
+<span class="s s-Atom">total_connections_received:</span><span class="mi">4</span>
+<span class="s s-Atom">total_commands_processed:</span><span class="mi">1448</span>
+<span class="s s-Atom">instantaneous_ops_per_sec:</span><span class="mi">0</span>
+<span class="s s-Atom">total_net_input_bytes:</span><span class="mi">52741</span>
+<span class="s s-Atom">total_net_output_bytes:</span><span class="mi">14030</span>
+<span class="s s-Atom">instantaneous_input_kbps:</span><span class="mf">0.02</span>
+<span class="s s-Atom">instantaneous_output_kbps:</span><span class="mf">0.01</span>
+<span class="s s-Atom">rejected_connections:</span><span class="mi">0</span>
+<span class="s s-Atom">sync_full:</span><span class="mi">1</span>
+<span class="s s-Atom">sync_partial_ok:</span><span class="mi">0</span>
+<span class="s s-Atom">sync_partial_err:</span><span class="mi">1</span>
+<span class="s s-Atom">expired_keys:</span><span class="mi">0</span>
+
+<span class="s s-Atom">expired_stale_perc:</span><span class="mf">0.00</span>
+<span class="s s-Atom">expired_time_cap_reached_count:</span><span class="mi">0</span>
+<span class="s s-Atom">evicted_keys:</span><span class="mi">0</span>
+<span class="s s-Atom">keyspace_hits:</span><span class="mi">0</span>
+<span class="s s-Atom">keyspace_misses:</span><span class="mi">0</span>
+<span class="s s-Atom">pubsub_channels:</span><span class="mi">0</span>
+<span class="s s-Atom">pubsub_patterns:</span><span class="mi">0</span>
+<span class="s s-Atom">latest_fork_usec:</span><span class="mi">178</span>
+<span class="s s-Atom">migrate_cached_sockets:</span><span class="mi">0</span>
+<span class="s s-Atom">slave_expires_tracked_keys:</span><span class="mi">0</span>
+<span class="s s-Atom">active_defrag_hits:</span><span class="mi">0</span>
+<span class="s s-Atom">active_defrag_misses:</span><span class="mi">0</span>
+<span class="s s-Atom">active_defrag_key_hits:</span><span class="mi">0</span>
+<span class="s s-Atom">active_defrag_key_misses:</span><span class="mi">0</span>
+
+<span class="s s-Atom">#</span> <span class="nv">Replication</span> <span class="s s-Atom">复制信息</span>
+<span class="nn">role</span><span class="p">:</span><span class="s s-Atom">master</span>
+<span class="s s-Atom">connected_slaves:</span><span class="mi">1</span>
+<span class="s s-Atom">slave0:ip</span><span class="o">=</span><span class="mf">127.0.0.1</span><span class="p">,</span><span class="s s-Atom">port</span><span class="o">=</span><span class="mi">9005</span><span class="p">,</span><span class="s s-Atom">state</span><span class="o">=</span><span class="s s-Atom">online</span><span class="p">,</span><span class="s s-Atom">offset</span><span class="o">=</span><span class="mi">2016</span><span class="p">,</span><span class="s s-Atom">lag</span><span class="o">=</span><span class="mi">1</span>
+<span class="s s-Atom">master_replid:d633853458a2973c12ab79442bc807d35e387f5d</span>
+<span class="s s-Atom">master_replid2:</span><span class="mi">0000000000000000000000000000000000000000</span>
+<span class="s s-Atom">master_repl_offset:</span><span class="mi">2016</span>
+<span class="nf">second_repl_offset</span><span class="o">:-</span><span class="mi">1</span>
+<span class="s s-Atom">repl_backlog_active:</span><span class="mi">1</span>
+<span class="s s-Atom">repl_backlog_size:</span><span class="mi">1048576</span>
+<span class="s s-Atom">repl_backlog_first_byte_offset:</span><span class="mi">1</span>
+<span class="s s-Atom">repl_backlog_histlen:</span><span class="mi">2016</span>
+
+<span class="s s-Atom">#</span> <span class="nv">CPU</span> <span class="s s-Atom">中央处理器信息</span>
+<span class="s s-Atom">used_cpu_sys:</span><span class="mf">0.912000</span>
+<span class="s s-Atom">used_cpu_user:</span><span class="mf">0.844000</span>
+<span class="s s-Atom">used_cpu_sys_children:</span><span class="mf">0.000000</span>
+<span class="s s-Atom">used_cpu_user_children:</span><span class="mf">0.000000</span>
+
+<span class="s s-Atom">#</span> <span class="nv">Cluster</span> <span class="s s-Atom">集群信息</span>
+<span class="s s-Atom">cluster_enabled:</span><span class="mi">1</span>
+</pre></div>
+  </div>
+  <div class="tag-cloud">
+    <p>
+      <a href="./tag/journal.html">journal</a>
+      <a href="./tag/blog.html">blog</a>
+    </p>
+  </div>
+
+
+
+
+
+</article>
+
+    <footer>
+<p>&copy;  </p>
+<p>    Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+</p>    </footer>
+  </main>
+
+
+
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : ".",
+  "image": "./images/walterfan.jpg",
+  "description": "an old programmer never die, he just branch to a new address."
+}
+</script>
+
+</body>
+</html>

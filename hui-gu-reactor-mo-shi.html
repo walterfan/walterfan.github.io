@@ -1,0 +1,511 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css?family=Source+Code+Pro|Source+Sans+Pro:300,400,400i,700" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="./theme/stylesheet/style.min.css">
+
+  <link rel="stylesheet" type="text/css" href="./theme/pygments/github.min.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/solid.css">
+
+
+
+
+    <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+    <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="Reactor Pattern" />
+<meta name="keywords" content="program, blog">
+
+
+<meta property="og:site_name" content="Walter Fan's Blog"/>
+<meta property="og:title" content="回顾 Reactor 模式"/>
+<meta property="og:description" content="Reactor Pattern"/>
+<meta property="og:locale" content="en_US"/>
+<meta property="og:url" content="./hui-gu-reactor-mo-shi.html"/>
+<meta property="og:type" content="article"/>
+<meta property="article:published_time" content="2020-08-30 10:20:00+08:00"/>
+<meta property="article:modified_time" content="2020-08-30 19:30:00+08:00"/>
+<meta property="article:author" content="./author/walter-fan.html">
+<meta property="article:section" content="Journal"/>
+<meta property="article:tag" content="program"/>
+<meta property="article:tag" content="blog"/>
+<meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 回顾 Reactor 模式</title>
+
+</head>
+<body>
+  <aside>
+    <div>
+      <a href=".">
+        <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+      </a>
+      <h1><a href=".">Walter Fan</a></h1>
+
+<p>手握灵珠常奋笔, 心开天籁不吹箫</p>
+      <nav>
+        <ul class="list">
+
+
+            <li><a target="_blank" href="/min" >Think</a></li>
+            <li><a target="_blank" href="/tao" >Tao</a></li>
+            <li><a target="_blank" href="/wiki" >Wiki</a></li>
+            <li><a target="_blank" href="/public/" >Agile</a></li>
+            <li><a target="_blank" href="https://www.jianshu.com/u/e0b365801f48" >简书</a></li>
+        </ul>
+      </nav>
+
+      <ul class="social">
+          <li>
+            <a  class="sc-weibo" href="http://weibo.com/fanyamin" target="_blank">
+            <i class="fab fa-weibo">
+            </i>
+          </a></li>
+          <li>
+            <a  class="sc-douban" href="https://douban.com" target="_blank">
+            <i class="fab fa-douban">
+            </i>
+          </a></li>
+          <li>
+            <a  class="sc-github" href="http://github.com/walterfan" target="_blank">
+            <i class="fab fa-github">
+            </i>
+          </a></li>
+      </ul>
+    </div>
+
+
+  </aside>
+  <main>
+
+
+<article class="single">
+  <header>
+      
+    <h1 id="hui-gu-reactor-mo-shi">回顾 Reactor 模式</h1>
+    <p>
+          Posted on Sun 30 August 2020 in <a href="./category/journal.html">Journal</a>
+
+
+    </p>
+  </header>
+
+
+  <div>
+    <h1>Reactor</h1>
+<p>作为网络编程库的核心模式的 Reactor 模式是网络编程中的最常用的模式，反应器 Reactor 又名分派器 Dispatcher, 或通知器 Notifier, 重温一下 POSA2 是对这个模式的描述</p>
+<h2>语境</h2>
+<blockquote>
+<p>An event-driven application that receives multiple service requests simultaneously, but processes them synchronously and serially.</p>
+</blockquote>
+<p>事件驱动的应用程序同时接收到多个服务请求， 但是对这些事件处理是同步和顺序的</p>
+<h2>问题</h2>
+<blockquote>
+<p>Event-driven applications in a distributed system, particularly servers, must be prepared to handle multiple service requests simultaneously, even if those requests are ultimately processed serially within the application. </p>
+<p>The arrival of each request is identified by a specific indication event, such as the CONNECT and READ events in our logging example. </p>
+<p>Before executing specific services serially, therefore, an event-driven application must demultiplex and dispatch the concurrently-arriving indication events to the corresponding service implementations.
+Resolving this problem effectively requires the resolution of four forces:</p>
+</blockquote>
+<p>分布式系统中的事件驱动应用程序，尤其是服务器，必须准备好同时处理多个服务请求，即使这些请求最终在应用程序中进行了串行处理。</p>
+<p>每个请求的到达都由特定的指示事件标识，因此，在串行执行特定服务之前，事件驱动的应用程序必须解复用并将并发到达的指示事件分派到相应的服务实现。</p>
+<p>有效地解决此问题需要四方面的力量：</p>
+<ul>
+<li>
+<p>1) 不要阻塞和等待</p>
+<blockquote>
+<p>To improve scalability and latency, an application should not block on any single source of indication events and exclude other event sources, because blocking on one event source can degrade the server's responsiveness to clients.</p>
+</blockquote>
+</li>
+<li>
+<p>2) 减少上下文的切换</p>
+<blockquote>
+<p>To maximize throughput, any unnecessary context switching, synchronization, and data movement among CPUs should be avoided, as outlined in the Example section.</p>
+</blockquote>
+</li>
+<li>
+<p>3) 要很容易地与已有的多路分解和分派机制集成</p>
+<blockquote>
+<p>Integrating new or improved services with existing indication event demultiplexing and dispatching mechanisms should require minimal effort. </p>
+</blockquote>
+</li>
+<li>
+<p>4) 应用程序代码可以隔离这些多线程和同步机制的复杂性</p>
+<blockquote>
+<p>Application code should largely be shielded from the complexity of multi-threading and synchronization mechanisms. </p>
+</blockquote>
+</li>
+</ul>
+<h2>解决方案</h2>
+<p>Doug Lea 画过一张图，可以形象地解释这个模式</p>
+<p><img alt="" src="images/reactor-thread-pool.png"></p>
+<ul>
+<li>
+<p>同步等待多个事件源的指示事件的到达，</p>
+<blockquote>
+<p>Synchronously wait for the arrival of indication events on one or more event sources, such as connected socket handles.  </p>
+</blockquote>
+</li>
+<li>
+<p>将对事件多路分解以及分配的机制与处理它们的服务进行集成 </p>
+<blockquote>
+<p>Integrate the mechanisms that demultiplex and dispatch the events to services that process them. </p>
+</blockquote>
+</li>
+<li>
+<p>将这些事件多路分解以及分配的机制与处理事件的应用逻辑在服务中分开</p>
+<blockquote>
+<p>Decouple these event demultiplexing and dispatching mechanisms from the application-specific processing of indication events within the services. </p>
+</blockquote>
+</li>
+</ul>
+<p><img alt="" src="images/reactor-class.png"></p>
+<p>最后总结一下思维导图</p>
+<p><img alt="" src="images/reactor-mindmap.png"></p>
+<p>用 Java NIO 库写一个简单的例子:</p>
+<ul>
+<li>Reactor.java</li>
+</ul>
+<div class="highlight"><pre><span></span><code>    <span class="n">package</span> <span class="n">com</span><span class="o">.</span><span class="n">github</span><span class="o">.</span><span class="n">walterfan</span><span class="o">.</span><span class="n">hellonetty</span><span class="o">.</span><span class="n">reactor</span><span class="p">;</span>
+
+    <span class="kn">import</span> <span class="nn">lombok.extern.slf4j.Slf4j</span><span class="p">;</span>
+
+    <span class="kn">import</span> <span class="nn">java.io.IOException</span><span class="p">;</span>
+    <span class="kn">import</span> <span class="nn">java.net.InetSocketAddress</span><span class="p">;</span>
+    <span class="kn">import</span> <span class="nn">java.nio.channels.SelectionKey</span><span class="p">;</span>
+    <span class="kn">import</span> <span class="nn">java.nio.channels.Selector</span><span class="p">;</span>
+    <span class="kn">import</span> <span class="nn">java.nio.channels.ServerSocketChannel</span><span class="p">;</span>
+    <span class="kn">import</span> <span class="nn">java.nio.channels.SocketChannel</span><span class="p">;</span>
+    <span class="kn">import</span> <span class="nn">java.util.Iterator</span><span class="p">;</span>
+    <span class="kn">import</span> <span class="nn">java.util.concurrent.ExecutorService</span><span class="p">;</span>
+    <span class="kn">import</span> <span class="nn">java.util.concurrent.Executors</span><span class="p">;</span>
+
+    <span class="nd">@Slf4j</span>
+    <span class="n">public</span> <span class="k">class</span> <span class="nc">Reactor</span> <span class="n">implements</span> <span class="n">Runnable</span> <span class="p">{</span>
+        <span class="n">private</span> <span class="n">final</span> <span class="n">Selector</span> <span class="n">selector</span><span class="p">;</span>
+        <span class="n">private</span> <span class="n">final</span> <span class="n">ServerSocketChannel</span> <span class="n">serverChannel</span><span class="p">;</span>
+        <span class="n">private</span> <span class="n">volatile</span> <span class="n">boolean</span> <span class="n">isStopRequested</span> <span class="o">=</span> <span class="n">false</span><span class="p">;</span>
+
+        <span class="n">public</span> <span class="n">Reactor</span><span class="p">(</span><span class="nb">int</span> <span class="n">port</span><span class="p">)</span> <span class="n">throws</span> <span class="n">IOException</span> <span class="p">{</span>
+            <span class="n">selector</span> <span class="o">=</span> <span class="n">Selector</span><span class="o">.</span><span class="n">open</span><span class="p">();</span>
+            <span class="n">serverChannel</span> <span class="o">=</span> <span class="n">ServerSocketChannel</span><span class="o">.</span><span class="n">open</span><span class="p">();</span>
+            <span class="n">serverChannel</span><span class="o">.</span><span class="n">socket</span><span class="p">()</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span><span class="n">new</span> <span class="n">InetSocketAddress</span><span class="p">(</span><span class="n">port</span><span class="p">));</span>
+            <span class="n">serverChannel</span><span class="o">.</span><span class="n">configureBlocking</span><span class="p">(</span><span class="n">false</span><span class="p">);</span>
+
+            <span class="o">//</span> <span class="n">Register</span> <span class="n">the</span> <span class="n">server</span> <span class="n">socket</span> <span class="n">channel</span> <span class="k">with</span> <span class="n">interest</span><span class="o">-</span><span class="nb">set</span> <span class="nb">set</span> <span class="n">to</span> <span class="n">ACCEPT</span> <span class="n">operation</span>
+            <span class="n">SelectionKey</span> <span class="n">sk</span> <span class="o">=</span> <span class="n">serverChannel</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="n">selector</span><span class="p">,</span> <span class="n">SelectionKey</span><span class="o">.</span><span class="n">OP_ACCEPT</span><span class="p">);</span>
+            <span class="n">sk</span><span class="o">.</span><span class="n">attach</span><span class="p">(</span><span class="n">new</span> <span class="n">Acceptor</span><span class="p">());</span>
+        <span class="p">}</span>
+
+        <span class="n">public</span> <span class="n">void</span> <span class="n">run</span><span class="p">()</span> <span class="p">{</span>
+            <span class="k">try</span> <span class="p">{</span>
+                <span class="k">while</span> <span class="p">(</span><span class="err">!</span><span class="n">isStopRequested</span><span class="p">)</span> <span class="p">{</span>
+
+                    <span class="n">selector</span><span class="o">.</span><span class="n">select</span><span class="p">();</span>
+                    <span class="n">Iterator</span> <span class="n">it</span> <span class="o">=</span> <span class="n">selector</span><span class="o">.</span><span class="n">selectedKeys</span><span class="p">()</span><span class="o">.</span><span class="n">iterator</span><span class="p">();</span>
+
+                    <span class="k">while</span> <span class="p">(</span><span class="n">it</span><span class="o">.</span><span class="n">hasNext</span><span class="p">())</span> <span class="p">{</span>
+                        <span class="n">SelectionKey</span> <span class="n">sk</span> <span class="o">=</span> <span class="p">(</span><span class="n">SelectionKey</span><span class="p">)</span> <span class="n">it</span><span class="o">.</span><span class="n">next</span><span class="p">();</span>
+                        <span class="n">it</span><span class="o">.</span><span class="n">remove</span><span class="p">();</span>
+                        <span class="n">Runnable</span> <span class="n">r</span> <span class="o">=</span> <span class="p">(</span><span class="n">Runnable</span><span class="p">)</span> <span class="n">sk</span><span class="o">.</span><span class="n">attachment</span><span class="p">();</span>
+                        <span class="k">if</span> <span class="p">(</span><span class="n">r</span> <span class="o">!=</span> <span class="n">null</span><span class="p">)</span>
+                            <span class="n">r</span><span class="o">.</span><span class="n">run</span><span class="p">();</span>
+                    <span class="p">}</span>
+                <span class="p">}</span>
+            <span class="p">}</span> <span class="n">catch</span> <span class="p">(</span><span class="n">IOException</span> <span class="n">ex</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">log</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s2">&quot;process socket error&quot;</span><span class="p">,</span> <span class="n">ex</span><span class="p">);</span>
+            <span class="p">}</span>
+            <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;stop running&quot;</span><span class="p">);</span>
+        <span class="p">}</span>
+
+        <span class="n">public</span> <span class="n">void</span> <span class="n">stop</span><span class="p">()</span> <span class="p">{</span>
+            <span class="n">this</span><span class="o">.</span><span class="n">isStopRequested</span> <span class="o">=</span> <span class="n">true</span><span class="p">;</span>
+        <span class="p">}</span>
+
+        <span class="k">class</span> <span class="nc">Acceptor</span> <span class="n">implements</span> <span class="n">Runnable</span> <span class="p">{</span>
+            <span class="n">public</span> <span class="n">void</span> <span class="n">run</span><span class="p">()</span> <span class="p">{</span>
+                <span class="k">try</span> <span class="p">{</span>
+                    <span class="n">SocketChannel</span> <span class="n">channel</span> <span class="o">=</span> <span class="n">serverChannel</span><span class="o">.</span><span class="n">accept</span><span class="p">();</span>
+                    <span class="k">if</span> <span class="p">(</span><span class="n">channel</span> <span class="o">!=</span> <span class="n">null</span><span class="p">)</span>
+                        <span class="n">new</span> <span class="n">Handler</span><span class="p">(</span><span class="n">selector</span><span class="p">,</span> <span class="n">channel</span><span class="p">);</span>
+                <span class="p">}</span> <span class="n">catch</span> <span class="p">(</span><span class="n">IOException</span> <span class="n">ex</span><span class="p">)</span> <span class="p">{</span>
+                    <span class="n">log</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s2">&quot;accept socket error&quot;</span><span class="p">,</span> <span class="n">ex</span><span class="p">);</span>
+                <span class="p">}</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+
+    <span class="p">}</span>
+</code></pre></div>
+
+
+<ul>
+<li>Handler.java</li>
+</ul>
+<div class="highlight"><pre><span></span><code><span class="n">package</span> <span class="n">com</span><span class="o">.</span><span class="n">github</span><span class="o">.</span><span class="n">walterfan</span><span class="o">.</span><span class="n">hellonetty</span><span class="o">.</span><span class="n">reactor</span><span class="p">;</span>
+
+<span class="kn">import</span> <span class="nn">lombok.extern.slf4j.Slf4j</span><span class="p">;</span>
+
+<span class="kn">import</span> <span class="nn">java.io.IOException</span><span class="p">;</span>
+<span class="kn">import</span> <span class="nn">java.nio.ByteBuffer</span><span class="p">;</span>
+<span class="kn">import</span> <span class="nn">java.nio.channels.SelectionKey</span><span class="p">;</span>
+<span class="kn">import</span> <span class="nn">java.nio.channels.Selector</span><span class="p">;</span>
+<span class="kn">import</span> <span class="nn">java.nio.channels.SocketChannel</span><span class="p">;</span>
+<span class="kn">import</span> <span class="nn">java.nio.charset.Charset</span><span class="p">;</span>
+
+<span class="nd">@Slf4j</span>
+<span class="n">public</span> <span class="k">class</span> <span class="nc">Handler</span> <span class="n">implements</span> <span class="n">Runnable</span> <span class="p">{</span>
+
+    <span class="n">private</span> <span class="n">final</span> <span class="n">SocketChannel</span> <span class="n">channel</span><span class="p">;</span>
+    <span class="n">private</span> <span class="n">final</span> <span class="n">SelectionKey</span> <span class="n">selectionKey</span><span class="p">;</span>
+
+    <span class="n">private</span> <span class="n">static</span> <span class="n">final</span> <span class="nb">int</span> <span class="n">READ_BUF_SIZE</span> <span class="o">=</span> <span class="mi">1024</span><span class="p">;</span>
+    <span class="n">private</span> <span class="n">static</span> <span class="n">final</span> <span class="nb">int</span> <span class="n">WRiTE_BUF_SIZE</span> <span class="o">=</span> <span class="mi">1024</span><span class="p">;</span>
+
+    <span class="n">private</span> <span class="n">ByteBuffer</span> <span class="n">readBuf</span> <span class="o">=</span> <span class="n">ByteBuffer</span><span class="o">.</span><span class="n">allocate</span><span class="p">(</span><span class="n">READ_BUF_SIZE</span><span class="p">);</span>
+    <span class="n">private</span> <span class="n">ByteBuffer</span> <span class="n">writeBuf</span> <span class="o">=</span> <span class="n">ByteBuffer</span><span class="o">.</span><span class="n">allocate</span><span class="p">(</span><span class="n">WRiTE_BUF_SIZE</span><span class="p">);</span>
+
+    <span class="n">public</span> <span class="n">Handler</span><span class="p">(</span><span class="n">Selector</span> <span class="n">selector</span><span class="p">,</span> <span class="n">SocketChannel</span> <span class="n">sc</span><span class="p">)</span> <span class="n">throws</span> <span class="n">IOException</span> <span class="p">{</span>
+        <span class="n">channel</span> <span class="o">=</span> <span class="n">sc</span><span class="p">;</span>
+        <span class="n">channel</span><span class="o">.</span><span class="n">configureBlocking</span><span class="p">(</span><span class="n">false</span><span class="p">);</span>
+
+        <span class="o">//</span> <span class="n">Register</span> <span class="n">the</span> <span class="n">socket</span> <span class="n">channel</span> <span class="k">with</span> <span class="n">interest</span><span class="o">-</span><span class="nb">set</span> <span class="nb">set</span> <span class="n">to</span> <span class="n">READ</span> <span class="n">operation</span>
+        <span class="n">selectionKey</span> <span class="o">=</span> <span class="n">channel</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="n">selector</span><span class="p">,</span> <span class="n">SelectionKey</span><span class="o">.</span><span class="n">OP_READ</span><span class="p">);</span>
+        <span class="n">selectionKey</span><span class="o">.</span><span class="n">attach</span><span class="p">(</span><span class="n">this</span><span class="p">);</span>
+        <span class="n">selectionKey</span><span class="o">.</span><span class="n">interestOps</span><span class="p">(</span><span class="n">SelectionKey</span><span class="o">.</span><span class="n">OP_READ</span><span class="p">);</span>
+        <span class="n">selector</span><span class="o">.</span><span class="n">wakeup</span><span class="p">();</span>
+    <span class="p">}</span>
+
+    <span class="n">public</span> <span class="n">void</span> <span class="n">run</span><span class="p">()</span> <span class="p">{</span>
+        <span class="k">try</span> <span class="p">{</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">selectionKey</span><span class="o">.</span><span class="n">isReadable</span><span class="p">())</span>
+                <span class="n">read</span><span class="p">();</span>
+            <span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="n">selectionKey</span><span class="o">.</span><span class="n">isWritable</span><span class="p">())</span>
+                <span class="n">write</span><span class="p">();</span>
+        <span class="p">}</span> <span class="n">catch</span> <span class="p">(</span><span class="n">IOException</span> <span class="n">ex</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">log</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s2">&quot;read or write socket error&quot;</span><span class="p">,</span> <span class="n">ex</span><span class="p">);</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="o">//</span> <span class="n">Process</span> <span class="n">data</span> <span class="n">by</span> <span class="n">echoing</span> <span class="nb">input</span> <span class="n">to</span> <span class="n">output</span>
+    <span class="n">synchronized</span> <span class="n">void</span> <span class="n">process</span><span class="p">()</span> <span class="p">{</span>
+        <span class="n">byte</span><span class="p">[]</span> <span class="nb">bytes</span><span class="p">;</span>
+
+        <span class="n">readBuf</span><span class="o">.</span><span class="n">flip</span><span class="p">();</span>
+        <span class="nb">bytes</span> <span class="o">=</span> <span class="n">new</span> <span class="n">byte</span><span class="p">[</span><span class="n">readBuf</span><span class="o">.</span><span class="n">remaining</span><span class="p">()];</span>
+        <span class="n">readBuf</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="nb">bytes</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="nb">bytes</span><span class="o">.</span><span class="n">length</span><span class="p">);</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;process(): &quot;</span> <span class="o">+</span> <span class="n">new</span> <span class="n">String</span><span class="p">(</span><span class="nb">bytes</span><span class="p">,</span> <span class="n">Charset</span><span class="o">.</span><span class="n">forName</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)));</span>
+
+        <span class="n">writeBuf</span> <span class="o">=</span> <span class="n">ByteBuffer</span><span class="o">.</span><span class="n">wrap</span><span class="p">(</span><span class="nb">bytes</span><span class="p">);</span>
+
+        <span class="o">//</span> <span class="n">Set</span> <span class="n">the</span> <span class="n">key</span><span class="s1">&#39;s interest to WRITE operation</span>
+        <span class="n">selectionKey</span><span class="o">.</span><span class="n">interestOps</span><span class="p">(</span><span class="n">SelectionKey</span><span class="o">.</span><span class="n">OP_WRITE</span><span class="p">);</span>
+        <span class="n">selectionKey</span><span class="o">.</span><span class="n">selector</span><span class="p">()</span><span class="o">.</span><span class="n">wakeup</span><span class="p">();</span>
+    <span class="p">}</span>
+
+    <span class="n">synchronized</span> <span class="n">void</span> <span class="n">read</span><span class="p">()</span> <span class="n">throws</span> <span class="n">IOException</span> <span class="p">{</span>
+        <span class="nb">int</span> <span class="n">numBytes</span><span class="p">;</span>
+
+        <span class="k">try</span> <span class="p">{</span>
+            <span class="n">numBytes</span> <span class="o">=</span> <span class="n">channel</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">readBuf</span><span class="p">);</span>
+            <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;read(): #bytes read into &#39;readBuf&#39; buffer = &quot;</span> <span class="o">+</span> <span class="n">numBytes</span><span class="p">);</span>
+
+            <span class="k">if</span> <span class="p">(</span><span class="n">numBytes</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">selectionKey</span><span class="o">.</span><span class="n">cancel</span><span class="p">();</span>
+                <span class="n">channel</span><span class="o">.</span><span class="n">close</span><span class="p">();</span>
+                <span class="n">log</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s2">&quot;read(): client connection might have been dropped!&quot;</span><span class="p">);</span>
+            <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+                <span class="n">EchoServer</span><span class="o">.</span><span class="n">getWorkExecutor</span><span class="p">()</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">new</span> <span class="n">Runnable</span><span class="p">()</span> <span class="p">{</span>
+                    <span class="n">public</span> <span class="n">void</span> <span class="n">run</span><span class="p">()</span> <span class="p">{</span>
+                        <span class="n">process</span><span class="p">();</span>
+                    <span class="p">}</span>
+                <span class="p">});</span>
+            <span class="p">}</span>
+        <span class="p">}</span> <span class="n">catch</span> <span class="p">(</span><span class="n">IOException</span> <span class="n">ex</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">log</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s2">&quot;read or write socket error&quot;</span><span class="p">,</span> <span class="n">ex</span><span class="p">);</span>
+            <span class="k">return</span><span class="p">;</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="n">void</span> <span class="n">write</span><span class="p">()</span> <span class="n">throws</span> <span class="n">IOException</span> <span class="p">{</span>
+        <span class="nb">int</span> <span class="n">numBytes</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+
+        <span class="k">try</span> <span class="p">{</span>
+            <span class="n">numBytes</span> <span class="o">=</span> <span class="n">channel</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">writeBuf</span><span class="p">);</span>
+            <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;write(): #bytes read from &#39;writeBuf&#39; buffer = &quot;</span> <span class="o">+</span> <span class="n">numBytes</span><span class="p">);</span>
+
+            <span class="k">if</span> <span class="p">(</span><span class="n">numBytes</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">readBuf</span><span class="o">.</span><span class="n">clear</span><span class="p">();</span>
+                <span class="n">writeBuf</span><span class="o">.</span><span class="n">clear</span><span class="p">();</span>
+
+                <span class="o">//</span> <span class="n">Set</span> <span class="n">the</span> <span class="n">key</span><span class="s1">&#39;s interest-set back to READ operation</span>
+                <span class="n">selectionKey</span><span class="o">.</span><span class="n">interestOps</span><span class="p">(</span><span class="n">SelectionKey</span><span class="o">.</span><span class="n">OP_READ</span><span class="p">);</span>
+                <span class="n">selectionKey</span><span class="o">.</span><span class="n">selector</span><span class="p">()</span><span class="o">.</span><span class="n">wakeup</span><span class="p">();</span>
+            <span class="p">}</span>
+        <span class="p">}</span> <span class="n">catch</span> <span class="p">(</span><span class="n">IOException</span> <span class="n">ex</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">log</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s2">&quot;write socket error&quot;</span><span class="p">,</span> <span class="n">ex</span><span class="p">);</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+
+<ul>
+<li>EchoServer.java</li>
+</ul>
+<div class="highlight"><pre><span></span><code><span class="n">package</span> <span class="n">com</span><span class="o">.</span><span class="n">github</span><span class="o">.</span><span class="n">walterfan</span><span class="o">.</span><span class="n">hellonetty</span><span class="o">.</span><span class="n">reactor</span><span class="p">;</span>
+
+
+<span class="kn">import</span> <span class="nn">com.github.walterfan.hellonetty.IServer</span><span class="p">;</span>
+<span class="kn">import</span> <span class="nn">com.google.common.util.concurrent.Uninterruptibles</span><span class="p">;</span>
+<span class="kn">import</span> <span class="nn">lombok.Getter</span><span class="p">;</span>
+<span class="kn">import</span> <span class="nn">lombok.extern.slf4j.Slf4j</span><span class="p">;</span>
+<span class="kn">import</span> <span class="nn">sun.misc.Signal</span><span class="p">;</span>
+<span class="kn">import</span> <span class="nn">sun.misc.SignalHandler</span><span class="p">;</span>
+
+<span class="kn">import</span> <span class="nn">java.io.IOException</span><span class="p">;</span>
+<span class="kn">import</span> <span class="nn">java.util.concurrent.ExecutorService</span><span class="p">;</span>
+<span class="kn">import</span> <span class="nn">java.util.concurrent.Executors</span><span class="p">;</span>
+<span class="kn">import</span> <span class="nn">java.util.concurrent.TimeUnit</span><span class="p">;</span>
+
+<span class="nd">@Slf4j</span>
+<span class="nd">@Getter</span>
+<span class="n">public</span> <span class="k">class</span> <span class="nc">EchoServer</span> <span class="n">implements</span> <span class="n">IServer</span> <span class="p">{</span>
+
+
+    <span class="k">class</span> <span class="nc">ShutdownHandler</span> <span class="n">implements</span> <span class="n">SignalHandler</span> <span class="p">{</span>
+
+        <span class="nd">@Override</span>
+        <span class="n">public</span> <span class="n">void</span> <span class="n">handle</span><span class="p">(</span><span class="n">Signal</span> <span class="n">signal</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;shutdown: {}&quot;</span><span class="p">,</span> <span class="n">signal</span><span class="p">);</span>
+            <span class="n">stop</span><span class="p">();</span>
+            <span class="n">System</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="n">private</span> <span class="n">static</span> <span class="n">final</span> <span class="nb">int</span> <span class="n">WORKER_POOL_SIZE</span> <span class="o">=</span> <span class="mi">10</span><span class="p">;</span>
+
+    <span class="n">private</span> <span class="n">static</span> <span class="n">ExecutorService</span> <span class="n">bossExecutor</span><span class="p">;</span>
+    <span class="n">private</span> <span class="n">static</span> <span class="n">ExecutorService</span> <span class="n">workExecutor</span><span class="p">;</span>
+    <span class="n">private</span> <span class="n">volatile</span> <span class="n">boolean</span> <span class="n">isStarted</span><span class="p">;</span>
+    <span class="n">private</span> <span class="n">Reactor</span> <span class="n">reactor</span><span class="p">;</span>
+    <span class="n">private</span> <span class="n">SignalHandler</span> <span class="n">shutdownHandler</span><span class="p">;</span>
+
+    <span class="n">public</span> <span class="n">static</span> <span class="n">ExecutorService</span> <span class="n">getWorkExecutor</span><span class="p">()</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="n">workExecutor</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="nd">@Override</span>
+    <span class="n">public</span> <span class="n">void</span> <span class="n">init</span><span class="p">()</span> <span class="n">throws</span> <span class="n">IOException</span> <span class="p">{</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;init...&quot;</span><span class="p">);</span>
+        <span class="n">isStarted</span> <span class="o">=</span> <span class="n">false</span><span class="p">;</span>
+        <span class="n">bossExecutor</span> <span class="o">=</span> <span class="n">Executors</span><span class="o">.</span><span class="n">newSingleThreadExecutor</span><span class="p">();</span>
+        <span class="n">workExecutor</span> <span class="o">=</span> <span class="n">Executors</span><span class="o">.</span><span class="n">newFixedThreadPool</span><span class="p">(</span><span class="n">WORKER_POOL_SIZE</span><span class="p">);</span>
+
+        <span class="n">shutdownHandler</span> <span class="o">=</span> <span class="n">new</span> <span class="n">ShutdownHandler</span><span class="p">();</span>
+
+        <span class="n">reactor</span> <span class="o">=</span> <span class="n">new</span> <span class="n">Reactor</span><span class="p">(</span><span class="mi">9090</span><span class="p">);</span>
+
+        <span class="n">registerStopSignal</span><span class="p">();</span>
+    <span class="p">}</span>
+
+    <span class="nd">@Override</span>
+    <span class="n">public</span> <span class="n">boolean</span> <span class="n">isStarted</span><span class="p">()</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="n">isStarted</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="nd">@Override</span>
+    <span class="n">public</span> <span class="n">void</span> <span class="n">start</span><span class="p">()</span> <span class="p">{</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;start...&quot;</span><span class="p">);</span>
+        <span class="k">if</span><span class="p">(</span><span class="n">isStarted</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">return</span><span class="p">;</span>
+        <span class="p">}</span>
+        <span class="n">bossExecutor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">reactor</span><span class="p">);</span>
+        <span class="n">isStarted</span> <span class="o">=</span> <span class="n">true</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="nd">@Override</span>
+    <span class="n">public</span> <span class="n">void</span> <span class="n">stop</span><span class="p">()</span> <span class="p">{</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;stop...&quot;</span><span class="p">);</span>
+        <span class="n">reactor</span><span class="o">.</span><span class="n">stop</span><span class="p">();</span>
+        <span class="n">workExecutor</span><span class="o">.</span><span class="n">shutdownNow</span><span class="p">();</span>
+        <span class="n">bossExecutor</span><span class="o">.</span><span class="n">shutdownNow</span><span class="p">();</span>
+        <span class="n">isStarted</span> <span class="o">=</span> <span class="n">false</span><span class="p">;</span>
+        <span class="n">Uninterruptibles</span><span class="o">.</span><span class="n">sleepUninterruptibly</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="n">TimeUnit</span><span class="o">.</span><span class="n">SECONDS</span><span class="p">);</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;stopped&quot;</span><span class="p">);</span>
+    <span class="p">}</span>
+
+
+    <span class="n">public</span> <span class="n">void</span> <span class="n">registerStopSignal</span><span class="p">()</span> <span class="p">{</span>
+
+        <span class="n">String</span> <span class="n">osName</span> <span class="o">=</span> <span class="n">System</span><span class="o">.</span><span class="n">getProperties</span><span class="p">()</span><span class="o">.</span><span class="n">getProperty</span><span class="p">(</span><span class="s2">&quot;os.name&quot;</span><span class="p">);</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;os={}&quot;</span><span class="p">,</span> <span class="n">osName</span><span class="p">);</span>
+        <span class="n">Signal</span> <span class="n">sigInt</span> <span class="o">=</span> <span class="n">new</span> <span class="n">Signal</span><span class="p">(</span><span class="s2">&quot;INT&quot;</span><span class="p">);</span>
+        <span class="n">Signal</span> <span class="n">sigTerm</span> <span class="o">=</span> <span class="n">new</span> <span class="n">Signal</span><span class="p">(</span><span class="s2">&quot;TERM&quot;</span><span class="p">);</span>
+        <span class="n">Signal</span><span class="o">.</span><span class="n">handle</span><span class="p">(</span><span class="n">sigInt</span><span class="p">,</span> <span class="n">this</span><span class="o">.</span><span class="n">shutdownHandler</span><span class="p">);</span>
+        <span class="n">Signal</span><span class="o">.</span><span class="n">handle</span><span class="p">(</span><span class="n">sigTerm</span><span class="p">,</span> <span class="n">this</span><span class="o">.</span><span class="n">shutdownHandler</span><span class="p">);</span>
+    <span class="p">}</span>
+
+    <span class="n">public</span> <span class="n">static</span> <span class="n">void</span> <span class="n">main</span><span class="p">(</span><span class="n">String</span><span class="p">[]</span> <span class="n">args</span><span class="p">)</span> <span class="n">throws</span> <span class="n">IOException</span> <span class="p">{</span>
+
+        <span class="n">EchoServer</span> <span class="n">echoServer</span> <span class="o">=</span> <span class="n">new</span> <span class="n">EchoServer</span><span class="p">();</span>
+        <span class="n">echoServer</span><span class="o">.</span><span class="n">init</span><span class="p">();</span>
+        <span class="n">echoServer</span><span class="o">.</span><span class="n">start</span><span class="p">();</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;started? {}&quot;</span><span class="p">,</span> <span class="n">echoServer</span><span class="o">.</span><span class="n">isStarted</span><span class="p">());</span>
+        <span class="n">Uninterruptibles</span><span class="o">.</span><span class="n">sleepUninterruptibly</span><span class="p">(</span><span class="n">Long</span><span class="o">.</span><span class="n">MAX_VALUE</span><span class="p">,</span> <span class="n">TimeUnit</span><span class="o">.</span><span class="n">MINUTES</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+
+<h1>参考资料</h1>
+<ul>
+<li><a href="http://www.dre.vanderbilt.edu/~schmidt/PDF/reactor-siemens.pdf">Reactor 模式论文</a></li>
+</ul>
+  </div>
+  <div class="tag-cloud">
+    <p>
+      <a href="./tag/program.html">program</a>
+      <a href="./tag/blog.html">blog</a>
+    </p>
+  </div>
+
+
+
+
+
+</article>
+
+    <footer>
+<p>&copy;  </p>
+<p>    Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+</p>    </footer>
+  </main>
+
+
+
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : ".",
+  "image": "./images/walterfan.jpg",
+  "description": "an old programmer never die, he just branch to a new address."
+}
+</script>
+
+</body>
+</html>

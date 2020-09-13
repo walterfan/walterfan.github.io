@@ -1,0 +1,376 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css?family=Source+Code+Pro|Source+Sans+Pro:300,400,400i,700" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="./theme/stylesheet/style.min.css">
+
+  <link rel="stylesheet" type="text/css" href="./theme/pygments/github.min.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/solid.css">
+
+
+
+
+    <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+    <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="Accrual Failure Detector" />
+<meta name="keywords" content="tech, blog">
+
+
+<meta property="og:site_name" content="Walter Fan's Blog"/>
+<meta property="og:title" content="Phi Accrual Failure Detector"/>
+<meta property="og:description" content="Accrual Failure Detector"/>
+<meta property="og:locale" content="en_US"/>
+<meta property="og:url" content="./phi-accrual-failure-detector.html"/>
+<meta property="og:type" content="article"/>
+<meta property="article:published_time" content="2020-08-05 10:20:00+08:00"/>
+<meta property="article:modified_time" content="2020-08-05 19:30:00+08:00"/>
+<meta property="article:author" content="./author/walter-fan.html">
+<meta property="article:section" content="Tech"/>
+<meta property="article:tag" content="tech"/>
+<meta property="article:tag" content="blog"/>
+<meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; Phi Accrual Failure Detector</title>
+
+</head>
+<body>
+  <aside>
+    <div>
+      <a href=".">
+        <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+      </a>
+      <h1><a href=".">Walter Fan</a></h1>
+
+<p>手握灵珠常奋笔, 心开天籁不吹箫</p>
+      <nav>
+        <ul class="list">
+
+
+            <li><a target="_blank" href="/min" >Think</a></li>
+            <li><a target="_blank" href="/tao" >Tao</a></li>
+            <li><a target="_blank" href="/wiki" >Wiki</a></li>
+            <li><a target="_blank" href="/public/" >Agile</a></li>
+            <li><a target="_blank" href="https://www.jianshu.com/u/e0b365801f48" >简书</a></li>
+        </ul>
+      </nav>
+
+      <ul class="social">
+          <li>
+            <a  class="sc-weibo" href="http://weibo.com/fanyamin" target="_blank">
+            <i class="fab fa-weibo">
+            </i>
+          </a></li>
+          <li>
+            <a  class="sc-douban" href="https://douban.com" target="_blank">
+            <i class="fab fa-douban">
+            </i>
+          </a></li>
+          <li>
+            <a  class="sc-github" href="http://github.com/walterfan" target="_blank">
+            <i class="fab fa-github">
+            </i>
+          </a></li>
+      </ul>
+    </div>
+
+
+  </aside>
+  <main>
+
+
+<article class="single">
+  <header>
+      
+    <h1 id="phi-accrual-failure-detector">Phi Accrual Failure Detector</h1>
+    <p>
+          Posted on Wed 05 August 2020 in <a href="./category/tech.html">Tech</a>
+
+
+    </p>
+  </header>
+
+
+  <div>
+    <blockquote>
+<p>最近在阅读 Accrual Failure Detector 论文及其网络上的分析文章，结合 Cassandra 源码，写了一点关于Accrual Failure Detector 的学习笔记，参考文章及链接附后，感觉到需要好好复习当年学过的概率论与数理统计。</p>
+</blockquote>
+<h1>概述</h1>
+<p>在分布式系统中，我们通常会在应用层做心跳检查，如果心跳消息在设定的周期中没有到达，就认为对端已经不可用了，可能crash掉了，或者网络中断了。</p>
+<p>例如，两台server,  A 和 B, A每秒钟发送一个心跳消息给 B，
+* 如果B 在3秒内没有收到来自 A 的心跳，则认为 A 已经不可用了
+* 如果 A 连续三次的心跳消息都没有收到响应，则认为 B 已经不可用了。 </p>
+<p>通常给每个节点设置一个 isAvaiable 属性就行了，当认为其可用则设为true, 不可用时设为 false，可是情况没那么简单，这个世界很复杂，不是非黑即白的情况。</p>
+<p>例如有这样一个 Job servers, 由 master node 控制 worker node 来执行任务</p>
+<p><img alt="" src="https://upload-images.jianshu.io/upload_images/1598924-dd9bfc2f260ab2a5.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240"></p>
+<ol>
+<li>当网络状态是健康的，以绿色表示：提交 job 给此 worker 节点</li>
+<li>当网络状态有点问题，以黄色表示：停止提交 job 给此 worker 节点</li>
+<li>当网络状态有些问题，以橙色表示：取消所有此 worker 节点上的 job 并重新提交 job 给其他 worker 节点</li>
+<li>当网络状态有大问题，以红色表示：将此 worker 节点从节点列表中删除。</li>
+</ol>
+<p>而且网络延迟和抖动是偶发和不可预测的，非黑即白的判断常有失误。
+而 Phi Accrual Failure Detector                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             很好地改进了这一点，它采用一个称为 Phi 的可疑程度，它可以根据当前网络的状况动态调整。</p>
+<div class="highlight"><pre><span></span><code><span class="err">phi = -log10(1 - F(timeSinceLastHeartbeat))</span>
+</code></pre></div>
+
+
+<p>这里的 F 是正态分布的累积分布函数，其均值和标准差是根据历史心跳消息的到达间隔时间估算出来的。实际应用中，随机间隔的心跳时间使用指数分布可能合适。</p>
+<p>AFD(Accrual Failure Detector) 累积故障检测器使监视和解释解耦。 这使得它们适用于更广泛的场景，并且更适合构建通用的故障检测服务。</p>
+<p>这样做的目的是保留从其他节点接收到的心跳计算出的故障统计数据的历史记录，并试图通过考虑多个因素以及它们随着时间的累积如何进行有根据的猜测，以便得出更好的结果。 猜测特定节点是否处于运行状态。 与其要回答“节点是否断开？”问题，不如不要回答“是”或“否”，而是返回一个phi值，该值表示节点断开的可能性。</p>
+<p>下图说明了自上一个心跳消息到达以来，Phi 如何随着时间增加而增加。</p>
+<p><img alt="" src="https://upload-images.jianshu.io/upload_images/1598924-02d5b02b5e70b077.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240"></p>
+<p>根据历史到达时间的平均值和标准偏差计算出Phi。 上一张图表是200 ms标准偏差的示例。 如果心跳以较小的偏差到达，则曲线会变得更陡峭，即可以更快地确定故障。 对于100 ms的标准偏差，曲线看起来像这样。</p>
+<p><img alt="" src="https://upload-images.jianshu.io/upload_images/1598924-2a930a6b5810e07b.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240"></p>
+<p>为了能够承受突发异常（例如，垃圾收集暂停和瞬态网络故障），故障检测器配置有余量，可以根据环境对它进行调整。 这是配置为3秒的failure-detector.acceptable-heartbeat-pause的曲线。</p>
+<p><img alt="" src="https://upload-images.jianshu.io/upload_images/1598924-5a66da858d548825.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240"></p>
+<p>这里的 failure-detector.acceptable-heartbeat-pause 是故障检测的阈值。</p>
+<p>较低的阈值易于产生许多误报，但可以确保在发生实际碰撞时快速检测到。
+相反，较高的阈值产生较少的错误，但需要更多的时间来检测实际的崩溃。</p>
+<h1>参考论文</h1>
+<ul>
+<li><a href="https://pdfs.semanticscholar.org/11ae/4c0c0d0c36dc177c1fff5eb84fa49aa3e1a8.pdf">The ϕ Accrual Failure Detector</a></li>
+</ul>
+<p><img alt="" src="https://upload-images.jianshu.io/upload_images/1598924-b1a25b215d2af646.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240"></p>
+<ol>
+<li>给定阀值 Φ1, Φ2</li>
+<li>在一定时间窗口内,记录各个心跳间隔时间</li>
+<li>对心跳的间隔值求指数分布(Exponential distribution)概率:</li>
+</ol>
+<div class="highlight"><pre><span></span><code><span class="err">#（E是对数2.71828...，mean为此前的间隔时间平均值）</span>
+<span class="err">P = E ^ (-1 * (now - lastTimeStamp) / mean) </span>
+</code></pre></div>
+
+
+<p>其表示,自上次统计以来,心跳到达时间将超过 now - lastTimeStamp 的概率</p>
+<ol>
+<li>
+<p>计算 φ = - log10 P</p>
+</li>
+<li>
+<p>当φ &gt; Φ1 时，app 1 怀疑主机可能宕机了。
+当φ &gt; Φ2 时，app2 怀疑主机已经宕机了。</p>
+</li>
+</ol>
+<p>当然这可能会存在误判，误判的可能性如下：
+Φ = 1, 1%
+Φ = 2, 0.1%
+Φ = 3, 0.01%
+......</p>
+<p>由此可见，当Φ = 8时，误判率已经很小了。cassandra中默认采用Φ = 8。</p>
+<h1>参考实现</h1>
+<ul>
+<li>Cassandra 中有一个 FailureDetector 类, Cassandra 节点之间通过 Gossip 协议来知晓其他节点在集群中的状态信息，其 Gossiper 类有个每秒钟的定时任务来发送和接收Gossip 消息。</li>
+</ul>
+<p><img alt="" src="https://upload-images.jianshu.io/upload_images/1598924-0f088e0917ae7ffd.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240"></p>
+<p>Gossiper 类维护了一个 endpointStateMap, key是节点地址，Value是节点状态</p>
+<p><img alt="" src="https://upload-images.jianshu.io/upload_images/1598924-074e4ef3d983adaa.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240"></p>
+<p>节点状态由 HeartBeatState 和 ApplicationState 组成</p>
+<p><img alt="" src="https://upload-images.jianshu.io/upload_images/1598924-baf069a4330899c7.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240"></p>
+<p>Gossiper 在启动的时候会通过executor.scheduleWithFixedDelay创建定时任务 GossipTask。而 GossipTask 每次运行时会调用 doGossipToLiveMember， maybeGossipToUnreachableMember，和 doStatusCheck方法。
+而 doStatusCheck方法会遍历endpointStateMap中的InetAddress，对其执行FailureDetector.instance.interpret(endpoint)</p>
+<p>org.apache.cassandra.gms.FailureDetector 的interpret方法会调用ArrivalWindow.phi计算now值的phi，然后乘以PHI_FACTOR，如果大于phiConvictThreshold则会回调IFailureDetectionEventListener的convict方法</p>
+<p><img alt="FailureDetector class" src="https://upload-images.jianshu.io/upload_images/1598924-52844f821a4e65f0.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1360"></p>
+<p>1) 心跳消息来了就汇报</p>
+<p>用一个滑动窗口记录下 接收到的 一个节点的心跳信息的时间间隔，在cassandra中，窗口的size设置为1000；然后根据窗口中的数据来生成指数分布，从而估计下一次心跳在当前时刻应该到来的概率；</p>
+<div class="highlight"><pre><span></span><code>    <span class="k">public</span> <span class="n">void</span> <span class="n">report</span><span class="p">(</span><span class="n">InetAddress</span> <span class="n">ep</span><span class="p">)</span>
+    <span class="err">{</span>
+        <span class="n">long</span> <span class="n">now</span> <span class="o">=</span> <span class="n">Clock</span><span class="p">.</span><span class="n">instance</span><span class="p">.</span><span class="n">nanoTime</span><span class="p">();</span>
+        <span class="n">ArrivalWindow</span> <span class="n">heartbeatWindow</span> <span class="o">=</span> <span class="n">arrivalSamples</span><span class="p">.</span><span class="k">get</span><span class="p">(</span><span class="n">ep</span><span class="p">);</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">heartbeatWindow</span> <span class="o">==</span> <span class="k">null</span><span class="p">)</span>
+        <span class="err">{</span>
+            <span class="o">//</span> <span class="n">avoid</span> <span class="n">adding</span> <span class="n">an</span> <span class="n">empty</span> <span class="n">ArrivalWindow</span> <span class="k">to</span> <span class="n">the</span> <span class="k">Map</span>
+            <span class="n">heartbeatWindow</span> <span class="o">=</span> <span class="k">new</span> <span class="n">ArrivalWindow</span><span class="p">(</span><span class="n">SAMPLE_SIZE</span><span class="p">);</span>
+            <span class="n">heartbeatWindow</span><span class="p">.</span><span class="k">add</span><span class="p">(</span><span class="n">now</span><span class="p">,</span> <span class="n">ep</span><span class="p">);</span>
+            <span class="n">heartbeatWindow</span> <span class="o">=</span> <span class="n">arrivalSamples</span><span class="p">.</span><span class="n">putIfAbsent</span><span class="p">(</span><span class="n">ep</span><span class="p">,</span> <span class="n">heartbeatWindow</span><span class="p">);</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">heartbeatWindow</span> <span class="o">!=</span> <span class="k">null</span><span class="p">)</span>
+                <span class="n">heartbeatWindow</span><span class="p">.</span><span class="k">add</span><span class="p">(</span><span class="n">now</span><span class="p">,</span> <span class="n">ep</span><span class="p">);</span>
+        <span class="err">}</span>
+        <span class="k">else</span>
+        <span class="err">{</span>
+            <span class="n">heartbeatWindow</span><span class="p">.</span><span class="k">add</span><span class="p">(</span><span class="n">now</span><span class="p">,</span> <span class="n">ep</span><span class="p">);</span>
+        <span class="err">}</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="n">logger</span><span class="p">.</span><span class="n">isTraceEnabled</span><span class="p">()</span> <span class="o">&amp;&amp;</span> <span class="n">heartbeatWindow</span> <span class="o">!=</span> <span class="k">null</span><span class="p">)</span>
+            <span class="n">logger</span><span class="p">.</span><span class="n">trace</span><span class="p">(</span><span class="ss">&quot;Average for {} is {}&quot;</span><span class="p">,</span> <span class="n">ep</span><span class="p">,</span> <span class="n">heartbeatWindow</span><span class="p">.</span><span class="n">mean</span><span class="p">());</span>
+    <span class="err">}</span>
+</code></pre></div>
+
+
+<p>2) 根据心跳消息到来的时间，解释计算指定节点的 Phi 值</p>
+<div class="highlight"><pre><span></span><code>    <span class="nt">public</span> <span class="nt">void</span> <span class="nt">interpret</span><span class="o">(</span><span class="nt">InetAddress</span> <span class="nt">ep</span><span class="o">)</span>
+    <span class="p">{</span>
+        <span class="err">ArrivalWindow</span> <span class="err">hbWnd</span> <span class="err">=</span> <span class="err">arrivalSamples.get(ep)</span><span class="p">;</span>
+        <span class="err">if</span> <span class="err">(hbWnd</span> <span class="err">==</span> <span class="err">null)</span>
+        <span class="err">{</span>
+            <span class="err">return</span><span class="p">;</span>
+        <span class="p">}</span>
+        <span class="nt">long</span> <span class="nt">now</span> <span class="o">=</span> <span class="nt">Clock</span><span class="p">.</span><span class="nc">instance</span><span class="p">.</span><span class="nc">nanoTime</span><span class="o">();</span>
+        <span class="nt">long</span> <span class="nt">diff</span> <span class="o">=</span> <span class="nt">now</span> <span class="nt">-</span> <span class="nt">lastInterpret</span><span class="o">;</span>
+        <span class="nt">lastInterpret</span> <span class="o">=</span> <span class="nt">now</span><span class="o">;</span>
+        <span class="nt">if</span> <span class="o">(</span><span class="nt">diff</span> <span class="o">&gt;</span> <span class="nt">MAX_LOCAL_PAUSE_IN_NANOS</span><span class="o">)</span>
+        <span class="p">{</span>
+            <span class="err">logger.warn(&quot;Not</span> <span class="err">marking</span> <span class="err">nodes</span> <span class="err">down</span> <span class="err">due</span> <span class="err">to</span> <span class="err">local</span> <span class="err">pause</span> <span class="err">of</span> <span class="err">{</span><span class="p">}</span> <span class="o">&gt;</span> <span class="p">{}</span><span class="s2">&quot;, diff, MAX_LOCAL_PAUSE_IN_NANOS);</span>
+<span class="s2">            lastPause = now;</span>
+<span class="s2">            return;</span>
+<span class="s2">        }</span>
+<span class="s2">        if (Clock.instance.nanoTime() - lastPause &lt; MAX_LOCAL_PAUSE_IN_NANOS)</span>
+<span class="s2">        {</span>
+<span class="s2">            logger.debug(&quot;</span><span class="nt">Still</span> <span class="nt">not</span> <span class="nt">marking</span> <span class="nt">nodes</span> <span class="nt">down</span> <span class="nt">due</span> <span class="nt">to</span> <span class="nt">local</span> <span class="nt">pause</span><span class="s2">&quot;);</span>
+<span class="s2">            return;</span>
+<span class="s2">        }</span>
+<span class="s2">        double phi = hbWnd.phi(now);</span>
+<span class="s2">        if (logger.isTraceEnabled())</span>
+<span class="s2">            logger.trace(&quot;</span><span class="nt">PHI</span> <span class="nt">for</span> <span class="p">{}</span> <span class="o">:</span> <span class="p">{}</span><span class="s2">&quot;, ep, phi);</span>
+
+<span class="s2">        if (PHI_FACTOR * phi &gt; getPhiConvictThreshold())</span>
+<span class="s2">        {</span>
+<span class="s2">            if (logger.isTraceEnabled())</span>
+<span class="s2">                logger.trace(&quot;</span><span class="nt">Node</span> <span class="p">{}</span> <span class="nt">phi</span> <span class="p">{}</span> <span class="o">&gt;</span> <span class="p">{}</span><span class="o">;</span> <span class="nt">intervals</span><span class="o">:</span> <span class="p">{}</span> <span class="nt">mean</span><span class="o">:</span> <span class="p">{}</span><span class="s2">&quot;, new Object</span><span class="cp">[]</span><span class="s2">{ep, PHI_FACTOR * phi, getPhiConvictThreshold(), hbWnd, hbWnd.mean()});</span>
+<span class="s2">            for (IFailureDetectionEventListener listener : fdEvntListeners)</span>
+<span class="s2">            {</span>
+<span class="s2">                listener.convict(ep, phi);</span>
+<span class="s2">            }</span>
+<span class="s2">        }</span>
+<span class="s2">        else if (logger.isDebugEnabled() &amp;&amp; (PHI_FACTOR * phi * DEBUG_PERCENTAGE / 100.0 &gt; getPhiConvictThreshold()))</span>
+<span class="s2">        {</span>
+<span class="s2">            logger.debug(&quot;</span><span class="nt">PHI</span> <span class="nt">for</span> <span class="p">{}</span> <span class="o">:</span> <span class="p">{}</span><span class="s2">&quot;, ep, phi);</span>
+<span class="s2">        }</span>
+<span class="s2">        else if (logger.isTraceEnabled())</span>
+<span class="s2">        {</span>
+<span class="s2">            logger.trace(&quot;</span><span class="nt">PHI</span> <span class="nt">for</span> <span class="p">{}</span> <span class="o">:</span> <span class="p">{}</span><span class="s2">&quot;, ep, phi);</span>
+<span class="s2">            logger.trace(&quot;</span><span class="nt">mean</span> <span class="nt">for</span> <span class="p">{}</span> <span class="o">:</span> <span class="p">{}</span><span class="err">&quot;</span><span class="o">,</span> <span class="nt">ep</span><span class="o">,</span> <span class="nt">hbWnd</span><span class="p">.</span><span class="nc">mean</span><span class="o">());</span>
+        <span class="err">}</span>
+    <span class="err">}</span>
+</code></pre></div>
+
+
+<p>如何计算 Phi 值，<a href="https://issues.apache.org/jira/browse/CASSANDRA-2597">https://issues.apache.org/jira/browse/CASSANDRA-2597</a> 中有详细解释:</p>
+<blockquote>
+<p>在分布式系统的Gossip节点之间创建 Failure Detector 时，最初的Cassandra作者对原始论文中的φ应计故障检测器示例进行了修改。他们在自己的Cassandra论文中提到：“尽管原始论文表明该分布近似于高斯分布，但由于 Gossip 通道的性质及其对延迟的影响，我们发现指数分布是更好的近似分布。”关于该主题的内容已不再赘述，但可能是因为最初的Phi Accrual论文实现期望正常的心跳消息，而ArrivalWindow仅测量了接收来自 Gossip 的'Syn'，'Ack'和'Ack2'消息之间的间隔。给定的端点，经历典型随机抖动的常规消息传输将遵循正态分布，但是由于从端点A到端点B的 Gossip消息是以随机间隔发送的，因此它们很可能构成了泊松过程，从而使指数分布变得适当。</p>
+</blockquote>
+<div class="highlight"><pre><span></span><code><span class="err">    double phi(long tnow)</span>
+<span class="err">    {</span>
+<span class="err">        assert arrivalIntervals.mean() &gt; 0 &amp;&amp; tLast &gt; 0; // should not be called before any samples arrive</span>
+<span class="err">        long t = tnow - tLast;</span>
+<span class="err">        lastReportedPhi = t / mean();</span>
+<span class="err">        return lastReportedPhi;</span>
+<span class="err">    }</span>
+</code></pre></div>
+
+
+<p>phi 方法通过t / mean()来近似计算P(x &lt;= t),  这是一个近似公式，推导过程如下：
+（P_later 表示 endpoint B 挂掉的概率，t参数表示自从上一次收到B的heartbeat信息以来的时间）</p>
+<div class="highlight"><pre><span></span><code><span class="err"># 原始公式：  </span>
+<span class="err">P_later(t) = 1 - F(t)</span>
+<span class="err"># F(t) 是指数分布的CDF(累积分布函数)，也就是如下公式，其中 L 是速率参数</span>
+<span class="err">P_later(t) = 1 - (1 - e^(-Lt))</span>
+</code></pre></div>
+
+
+<p>速率参数L的最大似然估计由 <code>1/平均值</code> 给出，其中平均值是从实际数据中观察到的时间的算术平均值（此处是从端点B到达的最新 Gossip 消息到达的时间）。 我们希望这个速率参数会随时间变化，因此有必要存储到达间隔的滑动窗口。所以</p>
+<div class="highlight"><pre><span></span><code><span class="err">P_later(t) = 1 - (1 - e^(-t/mean))</span>
+<span class="err">=&gt; P_later(t) = e^(-t/mean)</span>
+<span class="err">=&gt; phi(t) = -log10(P_later(t))</span>
+<span class="err">=&gt; phi(t) = -log10(e^(-t/mean))</span>
+<span class="err">=&gt; phi(t) = -log(e^(-t/mean)) / log(10)</span>
+<span class="err">           = (t/mean) / log(10)</span>
+<span class="err">~&gt; phi(t) = 0.4342945 * t/mean</span>
+</code></pre></div>
+
+
+<h1>参考资料</h1>
+<ul>
+<li><a href="https://doc.akka.io/docs/akka/current/typed/failure-detector.html">Akka Phi Accrual Failure Detector</a></li>
+<li><a href="http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.80.7427&amp;rep=rep1&amp;type=pdf">The Phi Accrual Failure Detector by Hayashibara et al</a></li>
+<li><a href="http://www.cs.cornell.edu/projects/ladis2009/papers/lakshman-ladis2009.pdf">Cassandra - A Decentralized Structured Storage System</a></li>
+<li><a href="https://issues.apache.org/jira/browse/CASSANDRA-2597">Inconsistent implementation of 'cumulative distribution function' for Exponential Distribution</a></li>
+<li><a href="https://qiemengdao.iteye.com/blog/1328606">Cassandra中失效检测原理详解</a></li>
+<li><a href="https://www.cnblogs.com/yuhan-TB/p/4746510.html">cassandra中对节点失败与否的探测方法</a></li>
+</ul>
+<h1>Words</h1>
+<ul>
+<li>
+<p>accrual
+ 英  [əˈkruːəl]   美  [əˈkruːəl]
+n. 自然增长；自然增长额；应计项目
+adj. 收益的</p>
+</li>
+<li>
+<p>obstacle 
+ 英  [ˈɒbstəkl]   美  [ˈɑːbstəkl]
+n. 障碍，干扰，妨碍；障碍物</p>
+</li>
+<li>
+<p>precautionary
+ 英  [prɪˈkɔːʃənəri]  美  [prɪˈkɔːʃəneri]
+adj. 预防的；留心的；预先警戒的</p>
+</li>
+<li>
+<p>prone 
+ 英  [prəʊn]   美  [proʊn]
+adj. 俯卧的；有…倾向的，易于…的
+n. (Prone)人名；(意、法)普罗内</p>
+</li>
+<li>
+<p>suspicion 
+ 英  [səˈspɪʃn]   美  [səˈspɪʃn]
+n. 怀疑；嫌疑；疑心；一点儿
+vt. 怀疑</p>
+</li>
+<li>
+<p>drastic 
+ 英  [ˈdræstɪk; ˈdrɑːstɪk]  美  [ˈdræstɪk]
+adj. 激烈的；猛烈的
+n. 烈性泻药</p>
+</li>
+</ul>
+  </div>
+  <div class="tag-cloud">
+    <p>
+      <a href="./tag/tech.html">tech</a>
+      <a href="./tag/blog.html">blog</a>
+    </p>
+  </div>
+
+
+
+
+
+</article>
+
+    <footer>
+<p>&copy;  </p>
+<p>    Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+</p>    </footer>
+  </main>
+
+
+
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : ".",
+  "image": "./images/walterfan.jpg",
+  "description": "an old programmer never die, he just branch to a new address."
+}
+</script>
+
+</body>
+</html>

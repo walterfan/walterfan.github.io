@@ -1,0 +1,323 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css?family=Source+Code+Pro|Source+Sans+Pro:300,400,400i,700" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="./theme/stylesheet/style.min.css">
+
+  <link rel="stylesheet" type="text/css" href="./theme/pygments/github.min.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/solid.css">
+
+
+
+
+    <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+    <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="Daily minute" />
+<meta name="keywords" content="journal, blog">
+
+
+<meta property="og:site_name" content="Walter Fan's Blog"/>
+<meta property="og:title" content="为什么需要发送和接收缓存"/>
+<meta property="og:description" content="Daily minute"/>
+<meta property="og:locale" content="en_US"/>
+<meta property="og:url" content="./wei-shi-yao-xu-yao-fa-song-he-jie-shou-huan-cun.html"/>
+<meta property="og:type" content="article"/>
+<meta property="article:published_time" content="2020-09-30 10:20:00+08:00"/>
+<meta property="article:modified_time" content="2020-09-30 19:30:00+08:00"/>
+<meta property="article:author" content="./author/walter-fan.html">
+<meta property="article:section" content="Journal"/>
+<meta property="article:tag" content="journal"/>
+<meta property="article:tag" content="blog"/>
+<meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 为什么需要发送和接收缓存</title>
+
+</head>
+<body>
+  <aside>
+    <div>
+      <a href=".">
+        <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+      </a>
+      <h1><a href=".">Walter Fan</a></h1>
+
+<p>手握灵珠常奋笔, 心开天籁不吹箫</p>
+      <nav>
+        <ul class="list">
+
+
+            <li><a target="_blank" href="/min" >Think</a></li>
+            <li><a target="_blank" href="/tao" >Tao</a></li>
+            <li><a target="_blank" href="/wiki" >Wiki</a></li>
+            <li><a target="_blank" href="/public/" >Agile</a></li>
+            <li><a target="_blank" href="/webrtc/examples/index.html" >WebRTC</a></li>
+            <li><a target="_blank" href="https://www.jianshu.com/u/e0b365801f48" >简书</a></li>
+        </ul>
+      </nav>
+
+      <ul class="social">
+          <li>
+            <a  class="sc-weibo" href="http://weibo.com/fanyamin" target="_blank">
+            <i class="fab fa-weibo">
+            </i>
+          </a></li>
+          <li>
+            <a  class="sc-douban" href="https://douban.com" target="_blank">
+            <i class="fab fa-douban">
+            </i>
+          </a></li>
+          <li>
+            <a  class="sc-github" href="http://github.com/walterfan" target="_blank">
+            <i class="fab fa-github">
+            </i>
+          </a></li>
+      </ul>
+    </div>
+
+
+  </aside>
+  <main>
+
+
+<article class="single">
+  <header>
+      
+    <h1 id="wei-shi-yao-xu-yao-fa-song-he-jie-shou-huan-cun">为什么需要发送和接收缓存</h1>
+    <p>
+          Posted on Wed 30 September 2020 in <a href="./category/journal.html">Journal</a>
+
+
+    </p>
+  </header>
+
+
+  <div>
+    <h1>基于网络的应用程序都需要将接收到的数据先放入缓冲区，等一个数据包完整接收到了再传递给应用层。 大家都知道TCP是面向字节流的，发送方 send 了 n 字节，但接收方并不知道一次 read 操作收到了多少字节，可能是1，可能是n, 也可能是n-x 或 n+x (x 未知)。</h1>
+<p>发送数据也是一样，一个数据包可能只发送了一部分，剩余的放在缓冲区中在 socket 端口可写时通过 on_write 回调函数中继续发送。</p>
+<p>这里缓冲区的设计就很有讲究，尽量避免不必要的内存分配和复制，以提高性能。它可以是一个字符队列：</p>
+<ul>
+<li>发送方缓冲：从队尾追加数据，从队头取出数据发送到 socket</li>
+<li>接收方缓冲：从队头取出数据，从队尾接收从 socket 中的数据</li>
+</ul>
+<p>最简单的方法就是开辟一块内存，比如一个大数组为缓冲区，设置一个读指针 readIndex，从readIndex 位置开始读一直读到 writeIndex， 一个写指针writeIndex，数据从writeIndex 开始写一直写到 capacity。</p>
+<p>著名的 C++ 网络编程框架 ACE 中就有 ACE_Message_Block 的设计</p>
+<p><img alt="" src="https://upload-images.jianshu.io/upload_images/1598924-3a1346461b424f59.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240"></p>
+<p>ACE_Message_Block 主要有读指针，写指针，数据块(ACE_Data_Block), 和连接指针(指向下一个消息体)，这样就会将收到的数据串成一个链表。 </p>
+<p>再以 Netty 中的 ByteBuf 为例详细了解一下其设计思想</p>
+<p><img alt="" src="https://upload-images.jianshu.io/upload_images/1598924-3a72b2a07ec93402.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240"></p>
+<p>1）0 ~ readIndex 为无效区域
+2）readIndex ~ writeIndex 为可读区域
+3）writeIndex ~ capacity 为可写区域
+4）capacity ~ maxCapacity 为可扩容区域</p>
+<p>具体实现类为 AbstractByteBuf 的各个子类，主要区别在于是不是使用了内存池，是不是在堆内</p>
+<p><img alt="" src="https://upload-images.jianshu.io/upload_images/1598924-0491e18c94cdd49a.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240"></p>
+<p>内存区域主要分两类:</p>
+<ol>
+<li>堆内内存： heap 堆内存</li>
+<li>堆外内存： direct 或 native 内存</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>ByteBuf 实现</th>
+<th>内存池中？</th>
+<th>安全？</th>
+<th>堆内?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PooledHeapByteBuf</td>
+<td>Y</td>
+<td>Y</td>
+<td>Y</td>
+</tr>
+<tr>
+<td>PooledUnsafeHeapByteBuf</td>
+<td>Y</td>
+<td>N</td>
+<td>Y</td>
+</tr>
+<tr>
+<td>PooledDirectByteBuf</td>
+<td>Y</td>
+<td>Y</td>
+<td>N</td>
+</tr>
+<tr>
+<td>PooledUnsafeDirectByteBuf</td>
+<td>Y</td>
+<td>N</td>
+<td>N</td>
+</tr>
+<tr>
+<td>UnpooledHeapByteBuf</td>
+<td>N</td>
+<td>Y</td>
+<td>Y</td>
+</tr>
+<tr>
+<td>UnpooledUnsafeHeapByteBuf</td>
+<td>N</td>
+<td>N</td>
+<td>Y</td>
+</tr>
+<tr>
+<td>UnpooledDirectByteBuf</td>
+<td>N</td>
+<td>Y</td>
+<td>N</td>
+</tr>
+<tr>
+<td>UnpooledUnsafeDirectByteBuf</td>
+<td>N</td>
+<td>N</td>
+<td>N</td>
+</tr>
+</tbody>
+</table>
+<p>主要方法有</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>capacity()</td>
+<td>容量=废弃的字节数+可读字节数+可写字节数</td>
+</tr>
+<tr>
+<td>maxCapacity()</td>
+<td>ByteBuf 最大所能容纳的最大字节数</td>
+</tr>
+<tr>
+<td>isWritable()</td>
+<td>ByteBuf 是否可写, capacity() &gt; writerIndex</td>
+</tr>
+<tr>
+<td>writeBytes(byte[] src)</td>
+<td>写入字节</td>
+</tr>
+<tr>
+<td>isReadable()</td>
+<td>ByteBuf 是否可写, writerIndex &gt; readerIndex</td>
+</tr>
+<tr>
+<td>readBytes(byte[] dst)</td>
+<td>读取字节</td>
+</tr>
+</tbody>
+</table>
+<p>内存的分配是交由 ByteBufAllocator 来分配的</p>
+<p><img alt="" src="https://upload-images.jianshu.io/upload_images/1598924-e6bdeaebe77b3599.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240"></p>
+<p>写段代码演示一下</p>
+<div class="highlight"><pre><span></span><code><span class="w">    </span><span class="k">public</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="n">void</span><span class="w"> </span><span class="n">printBufferIndex</span><span class="p">(</span><span class="n">ByteBuf</span><span class="w"> </span><span class="n">buffer</span><span class="p">,</span><span class="w"> </span><span class="n">String</span><span class="w"> </span><span class="n">message</span><span class="p">)</span><span class="w"> </span><span class="err">{</span><span class="w"></span>
+
+<span class="w">        </span><span class="nf">log</span><span class="p">.</span><span class="n">info</span><span class="p">(</span><span class="ss">&quot;# {} -&gt; buffer: {},  readableTypes {}, writableBytes: {}, capacity: {}&quot;</span><span class="p">,</span><span class="w"></span>
+<span class="w">                </span><span class="n">message</span><span class="p">,</span><span class="w"> </span><span class="n">buffer</span><span class="p">,</span><span class="w">  </span><span class="n">buffer</span><span class="p">.</span><span class="n">readableBytes</span><span class="p">(),</span><span class="w"> </span><span class="n">buffer</span><span class="p">.</span><span class="n">writableBytes</span><span class="p">(),</span><span class="w"> </span><span class="n">buffer</span><span class="p">.</span><span class="n">capacity</span><span class="p">());</span><span class="w"></span>
+<span class="w">    </span><span class="err">}</span><span class="w"></span>
+
+<span class="w">    </span><span class="nv">@Test</span><span class="w"></span>
+<span class="w">    </span><span class="k">public</span><span class="w"> </span><span class="n">void</span><span class="w"> </span><span class="n">testByteBuf</span><span class="p">()</span><span class="w"> </span><span class="err">{</span><span class="w"></span>
+
+<span class="w">        </span><span class="n">ByteBuf</span><span class="w"> </span><span class="n">buffer</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ByteBufAllocator</span><span class="p">.</span><span class="k">DEFAULT</span><span class="p">.</span><span class="n">buffer</span><span class="p">(</span><span class="mi">12</span><span class="p">,</span><span class="w"> </span><span class="mi">16</span><span class="p">);</span><span class="w"></span>
+
+<span class="w">        </span><span class="n">buffer</span><span class="p">.</span><span class="n">writeBytes</span><span class="p">(</span><span class="k">new</span><span class="w"> </span><span class="n">byte</span><span class="err">[]</span><span class="w"> </span><span class="err">{</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span><span class="w"> </span><span class="mi">6</span><span class="err">}</span><span class="p">);</span><span class="w"></span>
+<span class="w">        </span><span class="n">printBufferIndex</span><span class="p">(</span><span class="n">buffer</span><span class="p">,</span><span class="w"> </span><span class="ss">&quot;write 6 bytes&quot;</span><span class="p">);</span><span class="w"></span>
+<span class="w">        </span><span class="n">assertTrue</span><span class="p">(</span><span class="n">buffer</span><span class="p">.</span><span class="n">readerIndex</span><span class="p">()</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">buffer</span><span class="p">.</span><span class="n">writerIndex</span><span class="p">()</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">6</span><span class="p">);</span><span class="w"></span>
+
+<span class="w">        </span><span class="n">buffer</span><span class="p">.</span><span class="n">writeBytes</span><span class="p">(</span><span class="k">new</span><span class="w"> </span><span class="n">byte</span><span class="err">[]</span><span class="w"> </span><span class="err">{</span><span class="w">  </span><span class="mi">7</span><span class="p">,</span><span class="w"> </span><span class="mi">8</span><span class="p">,</span><span class="w"> </span><span class="mi">9</span><span class="p">,</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="mi">11</span><span class="w"> </span><span class="p">,</span><span class="mi">12</span><span class="p">,</span><span class="w"> </span><span class="mi">13</span><span class="p">,</span><span class="w"> </span><span class="mi">14</span><span class="p">,</span><span class="w"> </span><span class="mi">15</span><span class="p">,</span><span class="w"> </span><span class="mi">16</span><span class="err">}</span><span class="p">);</span><span class="w"></span>
+<span class="w">        </span><span class="n">printBufferIndex</span><span class="p">(</span><span class="n">buffer</span><span class="p">,</span><span class="w"> </span><span class="ss">&quot;write 12 bytes&quot;</span><span class="p">);</span><span class="w"></span>
+<span class="w">        </span><span class="n">assertTrue</span><span class="p">(</span><span class="n">buffer</span><span class="p">.</span><span class="n">readerIndex</span><span class="p">()</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">buffer</span><span class="p">.</span><span class="n">writerIndex</span><span class="p">()</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">16</span><span class="p">);</span><span class="w"></span>
+
+<span class="w">        </span><span class="nc">int</span><span class="w"> </span><span class="k">size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">buffer</span><span class="p">.</span><span class="n">readableBytes</span><span class="p">();</span><span class="w"></span>
+<span class="w">        </span><span class="n">byte</span><span class="err">[]</span><span class="w"> </span><span class="k">output</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">byte</span><span class="o">[</span><span class="n">size</span><span class="o">]</span><span class="p">;</span><span class="w"></span>
+<span class="w">        </span><span class="n">buffer</span><span class="p">.</span><span class="n">readBytes</span><span class="p">(</span><span class="k">output</span><span class="p">);</span><span class="w"></span>
+<span class="w">        </span><span class="n">printBufferIndex</span><span class="p">(</span><span class="n">buffer</span><span class="p">,</span><span class="w"> </span><span class="n">String</span><span class="p">.</span><span class="nf">format</span><span class="p">(</span><span class="ss">&quot;read %d bytes&quot;</span><span class="p">,</span><span class="w"> </span><span class="k">size</span><span class="p">));</span><span class="w"></span>
+<span class="w">        </span><span class="n">assertTrue</span><span class="p">(</span><span class="n">buffer</span><span class="p">.</span><span class="n">readerIndex</span><span class="p">()</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">16</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">buffer</span><span class="p">.</span><span class="n">writerIndex</span><span class="p">()</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">16</span><span class="p">);</span><span class="w"></span>
+
+<span class="w">        </span><span class="n">buffer</span><span class="p">.</span><span class="n">discardReadBytes</span><span class="p">();</span><span class="w"></span>
+<span class="w">        </span><span class="n">printBufferIndex</span><span class="p">(</span><span class="n">buffer</span><span class="p">,</span><span class="w"> </span><span class="ss">&quot;discardReadBytess&quot;</span><span class="p">);</span><span class="w"></span>
+<span class="w">        </span><span class="n">assertTrue</span><span class="p">(</span><span class="n">buffer</span><span class="p">.</span><span class="n">readerIndex</span><span class="p">()</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">buffer</span><span class="p">.</span><span class="n">writerIndex</span><span class="p">()</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="err">}</span><span class="w"></span>
+</code></pre></div>
+
+
+<p>执行结果如下</p>
+<div class="highlight"><pre><span></span><code><span class="err"># 先写6个字节，readIndex = 0,   writeIndex = 6</span>
+<span class="err">write 6 bytes -&gt; buffer: PooledUnsafeDirectByteBuf(ridx: 0, widx: 6, cap: 12/16),  readableTypes 6, writableBytes: 6, capacity: 12</span>
+<span class="err"># 再写10个字节，readIndex = 0,   writeIndex = 16</span>
+<span class="err">write 12 bytes -&gt; buffer: PooledUnsafeDirectByteBuf(ridx: 0, widx: 16, cap: 16/16),  readableTypes 16, writableBytes: 0, capacity: 16</span>
+<span class="err"># 再读16个字节，readIndex = 16,   writeIndex = 16</span>
+<span class="err">read 16 bytes -&gt; buffer: PooledUnsafeDirectByteBuf(ridx: 16, widx: 16, cap: 16/16),  readableTypes 0, writableBytes: 0, capacity: 16</span>
+<span class="err"># 已经读过的字节丢弃掉，readIndex = 0,   writeIndex = 0</span>
+<span class="err">discardReadBytess -&gt; buffer: PooledUnsafeDirectByteBuf(ridx: 0, widx: 0, cap: 16/16),  readableTypes 0, writableBytes: 16, capacity: 16</span>
+</code></pre></div>
+
+
+<h1>零拷贝</h1>
+<p>除了通过读写指针来减少内存的复制，Netty 还应用了如下的技术来提高性能</p>
+<ul>
+<li>
+<p>Netty 接收及发送 ByteBuffer 用 DirectBuffer, 使用堆外直接内存进行 socket 读写，不需要进行字节缓冲区的二次拷贝</p>
+</li>
+<li>
+<p>Netty 使用 ComposeByteBuffer ，可以聚合多个 ByteBuffer 对象，不需要通过内存拷贝的方式来合并几个小的 ByteBuffer 到一个大的 ByteBuffer</p>
+</li>
+<li>
+<p>Netty 对于文件传输采用了  transferTo 方法，可以直接将文件缓冲区的数据发送到目标 Channel, 避免了通过循环 write() 的方式进行内存拷贝</p>
+</li>
+</ul>
+  </div>
+  <div class="tag-cloud">
+    <p>
+      <a href="./tag/journal.html">journal</a>
+      <a href="./tag/blog.html">blog</a>
+    </p>
+  </div>
+
+
+
+
+
+</article>
+
+    <footer>
+<p>&copy;  </p>
+<p>    Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+</p>    </footer>
+  </main>
+
+
+
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : ".",
+  "image": "./images/walterfan.jpg",
+  "description": "an old programmer never die, he just branch to a new address."
+}
+</script>
+
+</body>
+</html>

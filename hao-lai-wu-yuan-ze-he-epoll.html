@@ -1,0 +1,318 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css?family=Source+Code+Pro|Source+Sans+Pro:300,400,400i,700" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="./theme/stylesheet/style.min.css">
+
+  <link rel="stylesheet" type="text/css" href="./theme/pygments/github.min.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/solid.css">
+
+
+
+
+    <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+    <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="Daily minute" />
+<meta name="keywords" content="journal, blog">
+
+
+<meta property="og:site_name" content="Walter Fan's Blog"/>
+<meta property="og:title" content="好莱坞原则和 epoll"/>
+<meta property="og:description" content="Daily minute"/>
+<meta property="og:locale" content="en_US"/>
+<meta property="og:url" content="./hao-lai-wu-yuan-ze-he-epoll.html"/>
+<meta property="og:type" content="article"/>
+<meta property="article:published_time" content="2021-05-09 10:20:00+08:00"/>
+<meta property="article:modified_time" content="2021-05-09 19:30:00+08:00"/>
+<meta property="article:author" content="./author/walter-fan.html">
+<meta property="article:section" content="Journal"/>
+<meta property="article:tag" content="journal"/>
+<meta property="article:tag" content="blog"/>
+<meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 好莱坞原则和 epoll</title>
+
+</head>
+<body>
+  <aside>
+    <div>
+      <a href=".">
+        <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+      </a>
+      <h1><a href=".">Walter Fan</a></h1>
+
+<p>手握灵珠常奋笔, 心开天籁不吹箫</p>
+      <nav>
+        <ul class="list">
+
+
+            <li><a target="_blank" href="/min" >Think</a></li>
+            <li><a target="_blank" href="/tao" >Tao</a></li>
+            <li><a target="_blank" href="/wiki" >Wiki</a></li>
+            <li><a target="_blank" href="/public/" >Agile</a></li>
+            <li><a target="_blank" href="/webrtc/examples/index.html" >WebRTC</a></li>
+            <li><a target="_blank" href="https://www.jianshu.com/u/e0b365801f48" >简书</a></li>
+        </ul>
+      </nav>
+
+      <ul class="social">
+          <li>
+            <a  class="sc-github" href="http://github.com/walterfan" target="_blank">
+            <i class="fab fa-github">
+            </i>
+          </a></li>
+      </ul>
+    </div>
+
+
+  </aside>
+  <main>
+
+
+<article class="single">
+  <header>
+      
+    <h1 id="hao-lai-wu-yuan-ze-he-epoll">好莱坞原则和 epoll</h1>
+    <p>
+          Posted on Sun 09 May 2021 in <a href="./category/journal.html">Journal</a>
+
+
+    </p>
+  </header>
+
+
+  <div>
+    <h1>Thinking</h1>
+<p>人的本性就是喜新厌旧，一成不变的东西多数人不会喜欢，每个人都乐于看见自己的想法和点子被人喜爱和采纳，自己的工作和成绩被人认可和称颂，没人喜欢凡事听命于人，少有人愿意默默无闻，大多数人都有虚荣心。</p>
+<h1>Quote</h1>
+<p>How to initiate, receive, demultiplex, dispatch, and process events in networked systems: </p>
+<ul>
+<li>Reactor, </li>
+<li>Proactor, </li>
+<li>Asynchronous Completion Token, and </li>
+<li>Acceptor-Connector</li>
+</ul>
+<h1>Program</h1>
+<p>主动发送，被动接收，网络编程就是这样，不要阻塞，不要等待，就象著名的好莱坞原则那样 - “不要打电话给我们，我们会打给你”。</p>
+<p>Hollywood Principle — 'Don't call us, we'll call you'</p>
+<p>According to https://man7.org/linux/man-pages/man7/epoll.7.html, </p>
+<p>The epoll API performs a similar task to poll: monitoring multiple file descriptors to see if I/O is possible on any of them.  </p>
+<p>The epoll API can be used either as an edge-triggered or a  level-triggered interface and scales well to large numbers of watched file descriptors.</p>
+<p>The central concept of the epoll API is the epoll instance, an in-kernel data structure which, from a user-space perspective, can be considered as a container for two lists:</p>
+<ul>
+<li>
+<p>兴趣列表 The interest list (sometimes also called the epoll set): 关注的文件句柄
+the set of file descriptors that the process has registered an interest in monitoring.</p>
+</li>
+<li>
+<p>就绪列表 The ready list: the set of file descriptors that are "ready" for I/O. 有I/O活动的文件句柄 
+The ready list is a subset of (or, more precisely, a set of references to) the file descriptors in the interest list.  The ready list is dynamically populated by the kernel as a result of I/O activity on those file descriptors.</p>
+</li>
+</ul>
+<p>现代Linux系统对于epoll 提供了三个系统调用 
+* epoll_create  
+* epoll_ctl
+* epoll_wait</p>
+<p>一个epoll集连接到由epoll_create创建的文件描述符。 然后通过epoll_ctl注册某些文件描述符的兴趣。 最后，实际的等待由epoll_wait开始。</p>
+<p>epoll事件分发接口既可以表示为边缘触发（ET: Edge Trigger）也可以表示为 水平触发（LT: Level Trigger）。</p>
+<p>Q. 边缘触发ET和水平触发LT有什么区别?</p>
+<p>以如下步骤为例：</p>
+<ol>
+<li>The file descriptor that represents the read side of a pipe ( RFD ) is added inside the epoll device.</li>
+<li>Pipe writer writes 2Kb of data on the write side of the pipe.</li>
+<li>A call to epoll_wait(2) is done that will return RFD as ready file descriptor.</li>
+<li>The pipe reader reads 1Kb of data from RFD.</li>
+<li>A call to epoll_wait(2) is done.</li>
+</ol>
+<p>If the  RFD  file descriptor has been added to the  epoll  interface using the  EPOLLET  flag, the call to  epoll_wait(2)  done in step  5  will probably hang because of the available data still present in the file input buffers and the remote peer might be expecting a response based on the data it already sent. </p>
+<p>在边缘触发方式下，第5步或许会hang住，因为依然有 data 在输入缓冲里，而发送数据的远端可能正在期望对于发送的数据的一个响应</p>
+<p>其原因是，边缘触发事件分发仅在事件发生在受监视文件上时才传送事件。 因此，在第5步中，调用者可能最终等待输入缓冲区中已经存在的某些数据。</p>
+<p>在上面的示例中，由于在步骤 2中完成写操作，将在 RFD（读文件句柄） 上生成一个事件，并且在步骤3中使用该事件。 由于在步骤4中完成的读取操作不会占用整个缓冲区数据，因此在步骤5中对epoll_wait 的调用可能会无限期锁定。</p>
+<p>epoll接口与EPOLLET标志（Edge Triggered）一起使用时，应使用非阻塞文件描述符，以避免阻塞读写操作处理多个文件描述符的任务。</p>
+<p>边缘触发一定要用非阻塞方式,通常建议使用边缘触发，原因在于不会这种方式不会对同一不变的状态多次触发，仅在状态改变才作通知</p>
+<p>需要注意的事项有：</p>
+<p>1) with non-blocking file descriptors 
+使用非阻塞文件描述符</p>
+<p>2) by going to wait for an event only after   read(2)   or   write(2)  return EAGAIN
+只有在 read/write返回 EAGAIN 之后才去等待其他事件</p>
+<p>而当用作水平触发（LT）时，epoll绝对是一种更快的poll，并且可以在任何使用后者的地方使用，因为它具有相同的语义。</p>
+<p>由于即使在接收到多个数据块的情况下也可以生成边缘触发的epoll多个事件，因此调用者可以选择指定EPOLLONESHOT标志，以在epoll_wait（）接收到事件后告诉epoll禁用关联的文件描述符。</p>
+<p>当指定了EPOLLONESHOT标志时，调用者负责使用带有EPOLL_CTL_MOD的epoll_ctl（2）重新设置文件描述符。</p>
+<p>常用流程为
+1) 添加一个文件句柄 fd 到 epoll watch set</p>
+<div class="highlight"><pre><span></span><code><span class="nb">int</span> <span class="n">fdEpoll</span> <span class="o">=</span> <span class="n">epoll_create</span><span class="p">(</span><span class="n">MAX_FD_SIZE</span><span class="p">);</span> <span class="o">//</span> <span class="n">the</span> <span class="k">parameter</span> <span class="k">is</span> <span class="n">ignored</span> <span class="n">since</span> <span class="n">Linux</span> <span class="mi">2</span><span class="p">.</span><span class="mi">6</span><span class="p">.</span><span class="mi">8</span><span class="p">,</span> <span class="n">but</span> <span class="n">should</span> <span class="n">be</span> <span class="n">greater</span> <span class="k">than</span> <span class="mi">0</span>
+<span class="k">if</span><span class="p">(</span><span class="n">fdEpoll</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="k">return</span> <span class="o">-</span><span class="mi">1</span><span class="p">;</span>
+<span class="n">struct</span> <span class="n">epoll_event</span> <span class="n">evt</span><span class="p">;</span>
+<span class="nb">int</span> <span class="n">sock</span><span class="p">;</span>
+<span class="n">memset</span><span class="p">(</span><span class="o">&amp;</span><span class="n">evt</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">sizeof</span><span class="p">(</span><span class="n">evt</span><span class="p">));</span>
+<span class="n">evt</span><span class="p">.</span><span class="n">events</span> <span class="o">=</span> <span class="n">EPOLLIN</span><span class="p">;</span>
+<span class="n">evt</span><span class="p">.</span><span class="k">data</span><span class="p">.</span><span class="n">fd</span><span class="o">=</span><span class="n">sock</span><span class="p">;</span>
+
+<span class="nb">int</span> <span class="n">nRet</span> <span class="o">=</span> <span class="n">epoll_ctl</span><span class="p">(</span><span class="n">fdEpoll</span><span class="p">,</span> <span class="n">EPOLL_CTL_ADD</span><span class="p">,</span> <span class="n">sock</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">evt</span><span class="p">);</span>
+<span class="k">if</span><span class="p">(</span><span class="n">nRet</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="k">return</span> <span class="o">-</span><span class="mi">2</span><span class="p">;</span>
+</code></pre></div>
+
+
+<p>2) 等待感兴趣的事件触发 wait the interesting event trigger</p>
+<div class="highlight"><pre><span></span><code><span class="n">struct</span><span class="w"> </span><span class="n">epoll_event</span><span class="w"> </span><span class="n">ev</span><span class="p">,</span><span class="w"> </span><span class="o">*</span><span class="n">events</span><span class="p">;</span><span class="w"></span>
+<span class="k">for</span><span class="p">(;;)</span><span class="w"> </span><span class="err">{</span><span class="w"></span>
+<span class="w">    </span><span class="n">nfds</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">epoll_wait</span><span class="p">(</span><span class="n">kdpfd</span><span class="p">,</span><span class="w"> </span><span class="n">events</span><span class="p">,</span><span class="w"> </span><span class="n">maxevents</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="k">for</span><span class="p">(</span><span class="n">n</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">n</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">nfds</span><span class="p">;</span><span class="w"> </span><span class="o">++</span><span class="n">n</span><span class="p">)</span><span class="w"> </span><span class="err">{</span><span class="w"></span>
+<span class="w">        </span><span class="k">if</span><span class="p">(</span><span class="n">events</span><span class="o">[</span><span class="n">n</span><span class="o">]</span><span class="p">.</span><span class="k">data</span><span class="p">.</span><span class="n">fd</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">listener</span><span class="p">)</span><span class="w"> </span><span class="err">{</span><span class="w"></span>
+<span class="w">            </span><span class="n">client</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">accept</span><span class="p">(</span><span class="n">listener</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="n">struct</span><span class="w"> </span><span class="n">sockaddr</span><span class="w"> </span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="o">&amp;</span><span class="k">local</span><span class="p">,</span><span class="w"></span>
+<span class="w">                            </span><span class="o">&amp;</span><span class="n">addrlen</span><span class="p">);</span><span class="w"></span>
+<span class="w">            </span><span class="k">if</span><span class="p">(</span><span class="n">client</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="err">{</span><span class="w"></span>
+<span class="w">                </span><span class="n">perror</span><span class="p">(</span><span class="ss">&quot;accept&quot;</span><span class="p">);</span><span class="w"></span>
+<span class="w">                </span><span class="k">continue</span><span class="p">;</span><span class="w"></span>
+<span class="w">            </span><span class="err">}</span><span class="w"></span>
+<span class="w">            </span><span class="n">setnonblocking</span><span class="p">(</span><span class="n">client</span><span class="p">);</span><span class="w"></span>
+<span class="w">            </span><span class="n">ev</span><span class="p">.</span><span class="n">events</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">EPOLLIN</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">EPOLLET</span><span class="p">;</span><span class="w"></span>
+<span class="w">            </span><span class="n">ev</span><span class="p">.</span><span class="k">data</span><span class="p">.</span><span class="n">fd</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">client</span><span class="p">;</span><span class="w"></span>
+<span class="w">            </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">epoll_ctl</span><span class="p">(</span><span class="n">kdpfd</span><span class="p">,</span><span class="w"> </span><span class="n">EPOLL_CTL_ADD</span><span class="p">,</span><span class="w"> </span><span class="n">client</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">ev</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="err">{</span><span class="w"></span>
+<span class="w">                </span><span class="n">fprintf</span><span class="p">(</span><span class="n">stderr</span><span class="p">,</span><span class="w"> </span><span class="err">&quot;</span><span class="n">epoll</span><span class="w"> </span><span class="k">set</span><span class="w"> </span><span class="n">insertion</span><span class="w"> </span><span class="nl">error</span><span class="p">:</span><span class="w"> </span><span class="n">fd</span><span class="o">=%</span><span class="n">d0</span><span class="p">,</span><span class="w"></span>
+<span class="w">                        </span><span class="n">client</span><span class="p">);</span><span class="w"></span>
+<span class="w">                </span><span class="k">return</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="p">;</span><span class="w"></span>
+<span class="w">            </span><span class="err">}</span><span class="w"></span>
+<span class="w">        </span><span class="err">}</span><span class="w"></span>
+<span class="w">        </span><span class="k">else</span><span class="w"></span>
+<span class="w">            </span><span class="n">do_use_fd</span><span class="p">(</span><span class="n">events</span><span class="o">[</span><span class="n">n</span><span class="o">]</span><span class="p">.</span><span class="k">data</span><span class="p">.</span><span class="n">fd</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="err">}</span><span class="w"></span>
+<span class="err">}</span><span class="w"></span>
+</code></pre></div>
+
+
+<h2>FAQ</h2>
+<ul>
+<li>
+<p>问题
+使用EPOLLET标志（边沿触发的行为）时，是否需要连续读取/写入文件描述符直到EAGAIN？</p>
+</li>
+<li>
+<p>回答
+从epoll_wait（2）接收到一个事件应该提示您该文件描述符已准备就绪，可以执行请求的I / O操作。您必须考虑到它准备就绪，直到下一次（非阻塞）读/写产生EAGAIN为止。何时以及如何使用文件描述符完全取决于您。</p>
+</li>
+</ul>
+<p>对于面向数据包/令牌的文件（例如，数据报套接字，标准模式下的终端），检测读/写I / O空间结束的唯一方法是继续读/写直到EAGAIN。</p>
+<p>对于面向流的文件（例如管道，FIFO，流套接字），还可以通过检查从目标文件描述符读取/写入到目标文件描述符的数据量来检测读取/写入I / O空间已用完的情况。例如，如果通过要求读取一定数量的数据来调用read（2），而read（2）返回的字节数较少，则可以确定已经用完了文件描述符的读取I / O空间。使用write（2）进行写入时也是如此。 （如果不能保证受监视的文件描述符始终引用面向流的文件，请避免使用后一种技术。）</p>
+<p>注意事项：在边缘触发方式下，保险的方式是一条道跑到黑，读到read return -1, errno = EAGAIN (读完了) 或 read return 0 (连接关闭了)
+当然 ，如果你知道了缓冲区中有多少数据，通过read 想读取一定量的数据，结果只返回了很少的数据，那么也可得知要读取的缓冲空间已经耗尽了？通过 ioctl 的 FIONREAD 命令?
+从Linux 2.6.17 开始， 可以用 EPOLLRDHUP 来检测socket 的正常关闭, 注意不是 EPOLLHUP (这个是指异常的关闭)</p>
+<h1>Words</h1>
+<ul>
+<li>breakthrough 
+ 英  [ˈbreɪkθruː]  美  [ˈbreɪkθruː]
+n. 突破；突破性进展</li>
+</ul>
+<p>Science and engineering breakthroughs are rapidly changing the way we live our lives</p>
+<ul>
+<li>
+<p>These events are not predictable and can happen at any time.</p>
+</li>
+<li>
+<p>This led to the deaths of many more species.</p>
+</li>
+<li>
+<p>An explosion is a rapid, violent release of energy.</p>
+</li>
+<li>
+<p>The respiratory system includes nose and lungs.</p>
+</li>
+<li>
+<p>herd 
+ 英  [hɜːd]   美  [hɜːrd]
+n. 兽群，畜群；放牧人
+vi. 成群，聚在一起
+vt. 放牧；使成群
+n. (Herd)人名；(英、芬)赫德</p>
+</li>
+<li>
+<p>judaism 
+ 英  [ˈdʒuːdeɪɪzəm]  美  [ˈdʒuːdiɪzəm,ˈdʒuːdeɪɪzəm]</p>
+</li>
+</ul>
+<p>n. 犹太教；（总称）犹太人；犹太主义</p>
+<ul>
+<li>wreckage 
+ 英  [ˈrekɪdʒ]   美  [ˈrekɪdʒ]</li>
+</ul>
+<p>n. （失事船或飞机等的）残骸；（船只等的）失事</p>
+<ul>
+<li>point of view</li>
+</ul>
+<p>Learn to understand things from another person's point of view</p>
+<ul>
+<li>Jews</li>
+</ul>
+<p>美  [dʒuːz]</p>
+<p>n. 犹太人，犹太教
+Followers of Judaism are called Jews</p>
+<ul>
+<li>Hindus</li>
+</ul>
+<p>英  [,hin'du:]   美  [,hin'du:]</p>
+<p>n. 印度教徒</p>
+<p>Some Hindus believe in the cycle of birth, life, death and rebirth</p>
+<ul>
+<li>immune 
+ 英  [ɪˈmjuːn]   美  [ɪˈmjuːn]</li>
+</ul>
+<p>adj. 免疫的；免于……的，免除的
+n. 免疫者；免除者</p>
+<p>Sneezing and fever are examples of how the immune system works</p>
+  </div>
+  <div class="tag-cloud">
+    <p>
+      <a href="./tag/journal.html">journal</a>
+      <a href="./tag/blog.html">blog</a>
+    </p>
+  </div>
+
+
+
+
+
+</article>
+
+    <footer>
+<p>&copy; Walter Fan 2010 ~ 2030 </p>
+<p>
+  <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号</a>
+</p>
+<p>    Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+</p><!-- StatusCake -->
+
+<!-- End StatusCake -->    </footer>
+  </main>
+
+
+
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : ".",
+  "image": "./images/walterfan.jpg",
+  "description": "an old programmer never die, he just branch to a new address."
+}
+</script>
+
+</body>
+</html>

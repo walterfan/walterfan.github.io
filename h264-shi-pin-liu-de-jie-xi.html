@@ -1,0 +1,766 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css?family=Source+Code+Pro|Source+Sans+Pro:300,400,400i,700" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="./theme/stylesheet/style.min.css">
+
+  <link rel="stylesheet" type="text/css" href="./theme/pygments/github.min.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/solid.css">
+
+
+
+
+    <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+    <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="Daily minute" />
+<meta name="keywords" content="journal, blog">
+
+
+<meta property="og:site_name" content="Walter Fan's Blog"/>
+<meta property="og:title" content="H.264 视频流的解析"/>
+<meta property="og:description" content="Daily minute"/>
+<meta property="og:locale" content="en_US"/>
+<meta property="og:url" content="./h264-shi-pin-liu-de-jie-xi.html"/>
+<meta property="og:type" content="article"/>
+<meta property="article:published_time" content="2021-12-12 10:20:00+08:00"/>
+<meta property="article:modified_time" content="2021-12-12 19:30:00+08:00"/>
+<meta property="article:author" content="./author/walter-fan.html">
+<meta property="article:section" content="Journal"/>
+<meta property="article:tag" content="journal"/>
+<meta property="article:tag" content="blog"/>
+<meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; H.264 视频流的解析</title>
+
+</head>
+<body>
+  <aside>
+    <div>
+      <a href=".">
+        <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+      </a>
+      <h1><a href=".">Walter Fan</a></h1>
+
+<p>手握灵珠常奋笔, 心开天籁不吹箫</p>
+      <nav>
+        <ul class="list">
+
+            <li><a target="_blank" href="./about.html#about-me">About Me</a></li>
+
+            <li><a target="_blank" href="/wordpress" >Think</a></li>
+            <li><a target="_blank" href="/wordpress/?yada_wiki=knowledge-base" >Wiki</a></li>
+            <li><a target="_blank" href="/webrtc/examples/index.html" >WebRTC</a></li>
+            <li><a target="_blank" href="https://www.jianshu.com/u/e0b365801f48" >简书</a></li>
+        </ul>
+      </nav>
+
+      <ul class="social">
+          <li>
+            <a  class="sc-github" href="http://github.com/walterfan" target="_blank">
+            <i class="fab fa-github">
+            </i>
+          </a></li>
+      </ul>
+    </div>
+
+
+  </aside>
+  <main>
+
+
+<article class="single">
+  <header>
+      
+    <h1 id="h264-shi-pin-liu-de-jie-xi">H.264 视频流的解析</h1>
+    <p>
+          Posted on Sun 12 December 2021 in <a href="./category/journal.html">Journal</a>
+
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>H.264 视频流的解析</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td>Walter Fan</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>WIP</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2021-12-10</td>
+</tr>
+</tbody>
+</table>
+<h1>视频流简介</h1>
+<p>视频就是一幅幅图片以每秒几十幅的速度播放，这些图片称帧(frame), 播放速度称为帧率(FPS - Frame Per Second)</p>
+<p>准确地说，视频是由一系列图像组成的动作序列，并且该序列中的每个图像都将在要显示的动作序列的时间轴中接替前一个图像。 这些静止图像称为视频帧。每个视频帧之间的时间差越小，刷新率就越高，并且视频中的运动表现得越自然。</p>
+<p>现代视频编码将这些帧分为三类</p>
+<p><img alt="iImage source: Wikimedia commons" src="https://upload-images.jianshu.io/upload_images/1598924-f69d2c62f7311928.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240"></p>
+<ul>
+<li>I-frame 信息帧</li>
+</ul>
+<p>信息帧用帧内压缩，用作关键帧</p>
+<ul>
+<li>P-frame</li>
+</ul>
+<p>预测帧 Predictive Frame 用帧间压缩，反映之前的 I-frame 的变化</p>
+<ul>
+<li>B-frame</li>
+</ul>
+<p>双向预测帧 Bidirectional Predictive Frames 使得总体压缩更高， 它参考了之前的 I-frame 和之后的 P-frame</p>
+<p><img alt="Image source: Wikimedia commons" src="https://upload-images.jianshu.io/upload_images/1598924-673d73421dfa1217.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240"></p>
+<h1>术语</h1>
+<ul>
+<li>I-Frame:  Info frame 关键信息帧</li>
+<li>P-Frame: Predictive Frames 预测帧</li>
+<li>B-Frame: Bidirectional Predictive Frames 双向预测帧</li>
+<li>GOP: Group of Piciture 一组图片帧，通常是一个关键帧加上后续的预测帧</li>
+<li>IDR: Instant Decoder Refresh frames  立即解码刷新帧，不需要参考帧, 它通常是 GOP 中的第一帧</li>
+<li>GDR: Gradual Decoder Refresh frames 可分割更小的帧以更小的时间间隔发送</li>
+<li>LTRP: Long-Term Reference Picture frames 可供长期参考校正的帧</li>
+<li>SPS(Sequence Paramater Set) 序列参数集”。SPS中保存了一组编码视频序列(Coded Video Sequence)的全局参数。因此该类型保存的是和编码序列相关的参数</li>
+<li>PPS (Picture Paramater Set)图像参数集。该类型保存了整体图像相关的参数。</li>
+<li>SEI (Supplemental Enhancement Information) 补充增强信息，提供了向视频码流中加入额外信息的方法。</li>
+<li>
+<p>AU(Access Unit):
+访问单元，它是一个或者多个NALU的集合，代表了一个完整的帧。一组 NAL 单元总是包含一个主要的编码图片。 除了主要编码图片之外，访问单元还可以包含一个或多个冗余编码图片， 或是不包含编码图片的切片或切片数据分区的其他NAL单元。 存取单元的解码总是产生解码图像。</p>
+</li>
+<li>
+<p>coded video sequence: 编码的视频序列</p>
+</li>
+</ul>
+<p>访问单元序列，按解码顺序由瞬时解码刷新 (IDR) 访问单元和零个或多个非 IDR 访问单元组成，包括所有后续访问单元，直到但不包括任何后续 IDR 访问单元。</p>
+<ul>
+<li>IDR access unit: </li>
+</ul>
+<p>主要编码图片为 IDR 图片的访问单元。</p>
+<ul>
+<li>IDR picture: </li>
+</ul>
+<p>仅包含 I 或 SI 类型的slice 的编码图片，这会在解码过程中导致“重置”。 在对 IDR 图片进行解码之后，可以根据在 IDR 图片之前解码的任何图片，在没有帧间预测的情况下，对按照解码顺序的所有后续编码图片进行解码。</p>
+<ul>
+<li>primary coded picture: </li>
+</ul>
+<p>解码过程使用的图片的编码表示，用于符合 H.264 的比特流。
+主要编码图片包含图片的所有宏块。</p>
+<ul>
+<li>redundant coded picture: </li>
+</ul>
+<p>图片或其中一部分的编码表示。 对符合 H.264 的比特流的解码过程不应使用冗余编码图片的内容。 冗余编码图片的内容可由解码过程用于包含错误或损失的比特流。</p>
+<ul>
+<li>VCL NAL unit: </li>
+</ul>
+<p>用于指代编码切片（slice）和编码数据分区(data partition) 的 NAL 单元的统称。</p>
+<ul>
+<li>DON: Decoding Order Number 解码顺序号</li>
+</ul>
+<h1>H.264 视频流</h1>
+<p>基于以上的概念， H.264 将这些视频帧进行了分组，这些组称为  GOP(Group of Picture), 在这些组中的第一个视频帧通常都是 I-Frame</p>
+<p><img alt="" src="https://upload-images.jianshu.io/upload_images/1598924-deb7258c1329927d.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240"></p>
+<p>以一个视频通信的应用程序为例，视频编码程序会将采样的视频图片从 RGB 格式转为 YUV 格式，再将它们打包为  RTP packet ，如下图所示</p>
+<p><img alt="h254_stream" src="./images/h264_encode_flow.png"></p>
+<p>让我们从外而内，看看视频 RTP 包的结构</p>
+<h2>RTP header - RTP 包头</h2>
+<div class="highlight"><pre><span></span><code><span class="c">0                   1                   2                   3</span>
+<span class="c">0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1</span>
+<span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+<span class="c">|V=2|P|X|  CC   |M|     PT      |       sequence number         |</span>
+<span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+<span class="c">|                           timestamp                           |</span>
+<span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+<span class="c">|           synchronization source (SSRC) identifier            |</span>
+<span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c"></span>
+<span class="c">|            contributing source (CSRC) identifiers             |</span>
+<span class="c">|                             </span><span class="nt">....</span><span class="c">                              |</span>
+<span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+</code></pre></div>
+
+<p>针对 H264视频帧，RTP 头中的某些字段有如下设置</p>
+<ul>
+<li>Marker bit (M): 1 bit</li>
+</ul>
+<p>为 RTP 包中时间戳所指示的访问单元的最后一个数据包中设置 marker=1，这样可以用来进行有效的播放缓冲区处理。</p>
+<p>在FU-A中的 marker 设定为只有最后一包才会设定 marker=1，其它则为 0</p>
+<ul>
+<li>Sequence number (SN): 16 bits</li>
+</ul>
+<p>根据 RFC 3550 的定义来设置和使用，对于单NALU和非交错打包模式，序列号用于确定NALU的解码顺序。</p>
+<ul>
+<li>Timestamp: 32 bits</li>
+</ul>
+<p>RTP 时间戳设置为视频内容的采样时间戳, 必须使用 90 kHz 时钟频率。</p>
+<p>例如 H264的采样率为 90khz, 帧率 frame rate =15 那么每个包的时间戳 Timestamp 的步长约为 90000/15 = 6000</p>
+<h2>RTP payload - RTP 包内容</h2>
+<p>RTP 包的荷载中包含 H.264 中的视频流内容，也就是 NAL 网络抽象层</p>
+<p><img alt="" src="./images/h264_packet.png"></p>
+<ul>
+<li>NAL: Network Abstraction Layer 网络抽象层</li>
+<li>VCL: Video Coding Layer 视频编码层 VCL Layer 包含图片切片编码</li>
+</ul>
+<h3>NAL Unit</h3>
+<p>NAL Unit 是 header 和 playload 组成的</p>
+<p>NAL Unit Header 就是一个字节，格式如下: </p>
+<div class="highlight"><pre><span></span><code>+---------------+
+|0|1|2|3|4|5|6|7|
++-+-+-+-+-+-+-+-+
+|F|NRI|  Type   |
++---------------+
+</code></pre></div>
+
+<h4>1) forbidden zero bit</h4>
+<p>forbidden_zero_bit: 一个比特，  H.264 规范将值 1 声明为语法违反规范。</p>
+<h4>2) NRI</h4>
+<p>NRI 两个比特，即 nal_ref_idc 称 NAL 参考索引</p>
+<p>值 00 表示 NAL 单元的内容不用于重建用于图片间预测的参考图片，此类 NAL 单元可以丢弃，而不会危及参考图片的完整性。 
+大于 00 的值表示需要对 NAL 单元进行解码以保持参考图片的完整性。</p>
+<p>例如：</p>
+<ul>
+<li>00: the content of the NAL unit is not used to reconstruct reference pictures for inter picture prediction</li>
+<li>11:</li>
+<li>nal_unit_type=7: SPS(Sequence Parameter Set)</li>
+<li>nal_unit_type=8: PPS(Picture Parameter Set)</li>
+<li>nal_unit_type=5: a coded slice belonging to an IDR picture</li>
+</ul>
+<p>H.264 规定如下的 NAL unit type , 其 NRI 必须为 0 </p>
+<ul>
+<li>6 Additional information (SEI)</li>
+<li>9 Access unit delimiter</li>
+<li>10 End of sequence</li>
+<li>11 End of stream</li>
+<li>12 Filler data</li>
+</ul>
+<div class="highlight"><pre><span></span><code><span class="nv">Table</span> <span class="mi">2</span>.  <span class="nv">Example</span> <span class="nv">of</span> <span class="nv">NRI</span> <span class="nv">values</span> <span class="k">for</span> <span class="nv">coded</span> <span class="nv">slices</span> <span class="nv">and</span> <span class="nv">coded</span> <span class="nv">slice</span>
+         <span class="nv">data</span> <span class="nv">partitions</span> <span class="nv">of</span> <span class="nv">primary</span> <span class="nv">coded</span> <span class="nv">reference</span> <span class="nv">pictures</span>
+
+<span class="nv">NAL</span> <span class="nv">Unit</span> <span class="nv">Type</span>     <span class="nv">Content</span> <span class="nv">of</span> <span class="nv">NAL</span> <span class="nv">Unit</span>              <span class="nv">NRI</span> <span class="ss">(</span><span class="nv">binary</span><span class="ss">)</span>
+<span class="o">----------------------------------------------------------------</span>
+ <span class="mi">1</span>              <span class="nv">non</span><span class="o">-</span><span class="nv">IDR</span> <span class="nv">coded</span> <span class="nv">slice</span>                         <span class="mi">10</span>
+ <span class="mi">2</span>              <span class="nv">Coded</span> <span class="nv">slice</span> <span class="nv">data</span> <span class="nv">partition</span> <span class="nv">A</span>                <span class="mi">10</span>
+ <span class="mi">3</span>              <span class="nv">Coded</span> <span class="nv">slice</span> <span class="nv">data</span> <span class="nv">partition</span> <span class="nv">B</span>                <span class="mi">01</span>
+ <span class="mi">4</span>              <span class="nv">Coded</span> <span class="nv">slice</span> <span class="nv">data</span> <span class="nv">partition</span> <span class="nv">C</span>                <span class="mi">01</span>
+</code></pre></div>
+
+<h5>3) NAL Unit Type</h5>
+<p>NAL 类型以  5 个比特来表示</p>
+<table>
+<thead>
+<tr>
+<th>NAL Type</th>
+<th>Definition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>Undefined</td>
+</tr>
+<tr>
+<td>1</td>
+<td>Slice layer without partitioning non IDR</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Slice data partition A layer</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Slice data partition B layer</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Slice data partition C layer</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Slice layer without partitioning IDR</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Additional information (SEI)</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Sequence parameter set</td>
+</tr>
+<tr>
+<td>8</td>
+<td>Picture parameter set</td>
+</tr>
+<tr>
+<td>9</td>
+<td>Access unit delimiter</td>
+</tr>
+<tr>
+<td>10</td>
+<td>End of sequence</td>
+</tr>
+<tr>
+<td>11</td>
+<td>End of stream</td>
+</tr>
+<tr>
+<td>12</td>
+<td>Filler data</td>
+</tr>
+<tr>
+<td>13..23</td>
+<td>Reserved</td>
+</tr>
+<tr>
+<td>24..31</td>
+<td>Undefined</td>
+</tr>
+</tbody>
+</table>
+<h1>视频包的种类</h1>
+<p>为适合于通过 RTP 协议在网络上传输， H264  的视频包大体上分为三种：</p>
+<ol>
+<li>
+<p>Single NAL unit packet 单独包，一个包就是一个视频帧, NALU type : 1 \~ 23</p>
+</li>
+<li>
+<p>Aggregation packet 聚合包，即一个包中含有多個H264帧</p>
+<ul>
+<li>NALU type 24: Single-Time Aggregation Packet type A (STAP-A) 单一时间聚合包 A</li>
+<li>NALU type 25: Single-Time Aggregation Packet type B (STAP-B) 单一时间聚合包 B</li>
+<li>NALU type 26: Multi-Time Aggregation Packet (MTAP) with 16-bit offset (MTAP16) 即 16 比特位移多时间聚合包 </li>
+<li>NALU type 27: Multi-Time Aggregation Packet (MTAP) with 24-bit offset (MTAP24) 即 24 比特位移多时间聚合包 </li>
+</ul>
+</li>
+<li>
+<p>Fragmentation unit packet 分片包，用于将一帧数据被分为多个 RTP包, 常用于关键帧</p>
+<ul>
+<li>NALU type 28: FU-A</li>
+<li>NALU type 29: FU-B</li>
+</ul>
+</li>
+</ol>
+<p>在 RFC6184 中有如下规定</p>
+<div class="highlight"><pre><span></span><code><span class="n">Table</span> <span class="mf">1.</span>  <span class="n">Summary</span> <span class="n">of</span> <span class="n">NAL</span> <span class="n">unit</span> <span class="n">types</span> <span class="k">and</span> <span class="n">the</span> <span class="n">corresponding</span> <span class="n">packet</span>
+          <span class="n">types</span>
+
+<span class="n">NAL</span> <span class="n">Unit</span>  <span class="n">Packet</span>    <span class="n">Packet</span> <span class="n">Type</span> <span class="n">Name</span>               <span class="n">Section</span>
+<span class="n">Type</span>      <span class="n">Type</span>
+<span class="o">-------------------------------------------------------------</span>
+<span class="mh">0</span>        <span class="n">reserved</span>                                     <span class="o">-</span>
+<span class="mh">1</span><span class="o">-</span><span class="mh">23</span>     <span class="n">NAL</span> <span class="n">unit</span>  <span class="n">Single</span> <span class="n">NAL</span> <span class="n">unit</span> <span class="n">packet</span>             <span class="mf">5.6</span>
+<span class="mh">24</span>       <span class="n">STAP</span><span class="o">-</span><span class="n">A</span>    <span class="n">Single</span><span class="o">-</span><span class="kt">time</span> <span class="n">aggregation</span> <span class="n">packet</span>     <span class="mf">5.7.1</span>
+<span class="mh">25</span>       <span class="n">STAP</span><span class="o">-</span><span class="n">B</span>    <span class="n">Single</span><span class="o">-</span><span class="kt">time</span> <span class="n">aggregation</span> <span class="n">packet</span>     <span class="mf">5.7.1</span>
+<span class="mh">26</span>       <span class="n">MTAP16</span>    <span class="n">Multi</span><span class="o">-</span><span class="kt">time</span> <span class="n">aggregation</span> <span class="n">packet</span>      <span class="mf">5.7.2</span>
+<span class="mh">27</span>       <span class="n">MTAP24</span>    <span class="n">Multi</span><span class="o">-</span><span class="kt">time</span> <span class="n">aggregation</span> <span class="n">packet</span>      <span class="mf">5.7.2</span>
+<span class="mh">28</span>       <span class="n">FU</span><span class="o">-</span><span class="n">A</span>      <span class="n">Fragmentation</span> <span class="n">unit</span>                 <span class="mf">5.8</span>
+<span class="mh">29</span>       <span class="n">FU</span><span class="o">-</span><span class="n">B</span>      <span class="n">Fragmentation</span> <span class="n">unit</span>                 <span class="mf">5.8</span>
+<span class="mh">30</span><span class="o">-</span><span class="mh">31</span>    <span class="n">reserved</span>                                     <span class="o">-</span>
+</code></pre></div>
+
+<p>在视频会议中，一般打包模式选择为非交错模式，会使用下面三种单元，不使用 STAP-B, FU-B 和 MTAP 单元</p>
+<ul>
+<li>
+<p>单一 NAL 单元 Single NALU：如果一个视频帧包含1个NALU，可以单独打包成一个 RTP 包，那么RTP时间戳就对应这个帧的采集时间</p>
+</li>
+<li>
+<p>单一时间聚合 NAL 单元 STAP-A：如果某帧较大不能单独打包，但是该帧内部单独的 NALU 比较小，可以使用STAP-A方式合并多个NALU打包发送，但是这些NALU的时间戳必须一致，打包后的RTP时间戳也必须一致</p>
+</li>
+<li>
+<p>FU-A：如果一个视频帧的 NALU 过大(超过 MTU)需要拆分成多个包，可以使用， FU-A 方式来拆分并打到不同的 RTP 包里，那么这几个包的 RTP 时间戳是一样的；</p>
+</li>
+</ul>
+<h2>Signal NAL Unit packet 单一 NAL 单元包</h2>
+<ul>
+<li>Single NALU：如果一个视频帧包含1个NALU，可以单独打包成一个RTP包，那么RTP时间戳就对应这个帧的采集时间；</li>
+</ul>
+<div class="highlight"><pre><span></span><code><span class="mi">0</span>                   <span class="mi">1</span>                   <span class="mi">2</span>                   <span class="mi">3</span>
+<span class="mi">0</span> <span class="mi">1</span> <span class="mi">2</span> <span class="mi">3</span> <span class="mi">4</span> <span class="mi">5</span> <span class="mi">6</span> <span class="mi">7</span> <span class="mi">8</span> <span class="mi">9</span> <span class="mi">0</span> <span class="mi">1</span> <span class="mi">2</span> <span class="mi">3</span> <span class="mi">4</span> <span class="mi">5</span> <span class="mi">6</span> <span class="mi">7</span> <span class="mi">8</span> <span class="mi">9</span> <span class="mi">0</span> <span class="mi">1</span> <span class="mi">2</span> <span class="mi">3</span> <span class="mi">4</span> <span class="mi">5</span> <span class="mi">6</span> <span class="mi">7</span> <span class="mi">8</span> <span class="mi">9</span> <span class="mi">0</span> <span class="mi">1</span>
+<span class="o">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span>
+<span class="o">|</span><span class="n">F</span><span class="o">|</span><span class="n">NRI</span><span class="o">|</span>  <span class="n">Type</span>   <span class="o">|</span>                                               <span class="o">|</span>
+<span class="o">+-+-+-+-+-+-+-+-+</span>                                               <span class="o">|</span>
+<span class="o">|</span>                                                               <span class="o">|</span>
+<span class="o">|</span>               <span class="n">Bytes</span> <span class="mf">2.</span><span class="o">.</span><span class="n">n</span> <span class="n">of</span> <span class="n">a</span> <span class="n">single</span> <span class="n">NAL</span> <span class="n">unit</span>                 <span class="o">|</span>
+<span class="o">|</span>                                                               <span class="o">|</span>
+<span class="o">|</span>                               <span class="o">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span>
+<span class="o">|</span>                               <span class="p">:</span><span class="o">...</span><span class="n">OPTIONAL</span> <span class="n">RTP</span> <span class="n">padding</span>        <span class="o">|</span>
+<span class="o">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span>
+
+<span class="n">Figure</span> <span class="mf">2.</span>  <span class="n">RTP</span> <span class="n">payload</span> <span class="n">format</span> <span class="k">for</span> <span class="n">single</span> <span class="n">NAL</span> <span class="n">unit</span> <span class="n">packet</span>
+</code></pre></div>
+
+<h2>STAP 单一时间聚合包</h2>
+<p>如果某帧较大不能单独打包，但是该帧内部单独的 NALU 比较小，可以使用STAP 方式合并多个NALU打包发送，但是这些 NALU 的时间戳必须一致，打包后的 RTP 时间戳也必须一致，一个 STAP 单元包含多个子单元，每个子单元之前会有一个 NAL unit size 来指明这个子单元的长度， 这里只以 STAP-A 为例， STAP-B 也就是多了一个 DON(Decoding Order Number)</p>
+<div class="highlight"><pre><span></span><code><span class="c">0                   1                   2                   3</span>
+<span class="c">0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1</span>
+<span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+<span class="c">                :        NAL unit size          |               |</span>
+<span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c">               |</span>
+<span class="c">|                                                               |</span>
+<span class="c">|                           NAL unit                            |</span>
+<span class="c">|                                                               |</span>
+<span class="c">|                               </span><span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+<span class="c">|                               :</span>
+<span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+
+<span class="c">Figure 6</span><span class="nt">.</span><span class="c">  Structure for single</span><span class="nb">-</span><span class="c">time aggregation unit</span>
+</code></pre></div>
+
+<p>例如下面的例子</p>
+<div class="highlight"><pre><span></span><code><span class="c">     0                   1                   2                   3</span>
+<span class="c">     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1</span>
+<span class="c">    </span><span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+<span class="c">    |                          RTP Header                           |</span>
+<span class="c">    </span><span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+<span class="c">    |STAP</span><span class="nb">-</span><span class="c">A NAL HDR |         NALU 1 Size           | NALU 1 HDR    |</span>
+<span class="c">    </span><span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+<span class="c">    |                         NALU 1 Data                           |</span>
+<span class="c">    :                                                               :</span>
+<span class="c">    </span><span class="nb">+</span><span class="c">               </span><span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+<span class="c">    |               | NALU 2 Size                   | NALU 2 HDR    |</span>
+<span class="c">    </span><span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+<span class="c">    |                         NALU 2 Data                           |</span>
+<span class="c">    :                                                               :</span>
+<span class="c">    |                               </span><span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+<span class="c">    |                               :</span><span class="nt">...</span><span class="c">OPTIONAL RTP padding        |</span>
+<span class="c">    </span><span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+
+<span class="c">    Figure 7</span><span class="nt">.</span><span class="c">  An example of an RTP packet including an STAP</span><span class="nb">-</span><span class="c">A</span>
+<span class="c">               containing two single</span><span class="nb">-</span><span class="c">time aggregation units</span>
+</code></pre></div>
+
+<h2>FU 分片单元包</h2>
+<p>如果一个视频帧的 NALU 过大(超过MTU)需要拆分成多个包，可以使用 FU 方式来拆分并打到不同的RTP包里，那么这几个包的RTP时间戳是一样的；</p>
+<p>以 FU-A 为例 (FU-B 的区别就是多了一个 DON), 如图所示</p>
+<div class="highlight"><pre><span></span><code>     <span class="mi">0</span>                   <span class="mi">1</span>                   <span class="mi">2</span>                   <span class="mi">3</span>
+     <span class="mi">0</span> <span class="mi">1</span> <span class="mi">2</span> <span class="mi">3</span> <span class="mi">4</span> <span class="mi">5</span> <span class="mi">6</span> <span class="mi">7</span> <span class="mi">8</span> <span class="mi">9</span> <span class="mi">0</span> <span class="mi">1</span> <span class="mi">2</span> <span class="mi">3</span> <span class="mi">4</span> <span class="mi">5</span> <span class="mi">6</span> <span class="mi">7</span> <span class="mi">8</span> <span class="mi">9</span> <span class="mi">0</span> <span class="mi">1</span> <span class="mi">2</span> <span class="mi">3</span> <span class="mi">4</span> <span class="mi">5</span> <span class="mi">6</span> <span class="mi">7</span> <span class="mi">8</span> <span class="mi">9</span> <span class="mi">0</span> <span class="mi">1</span>
+    <span class="o">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span>
+    <span class="o">|</span> <span class="n">FU</span> <span class="n">indicator</span>  <span class="o">|</span>   <span class="n">FU</span> <span class="n">header</span>   <span class="o">|</span>                               <span class="o">|</span>
+    <span class="o">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span>                               <span class="o">|</span>
+    <span class="o">|</span>                                                               <span class="o">|</span>
+    <span class="o">|</span>                         <span class="n">FU</span> <span class="n">payload</span>                            <span class="o">|</span>
+    <span class="o">|</span>                                                               <span class="o">|</span>
+    <span class="o">|</span>                               <span class="o">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span>
+    <span class="o">|</span>                               <span class="p">:</span><span class="o">...</span><span class="n">OPTIONAL</span> <span class="n">RTP</span> <span class="n">padding</span>        <span class="o">|</span>
+    <span class="o">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span>
+
+    <span class="n">Figure</span> <span class="mf">14.</span>  <span class="n">RTP</span> <span class="n">payload</span> <span class="n">format</span> <span class="k">for</span> <span class="n">FU</span><span class="o">-</span><span class="n">A</span>
+</code></pre></div>
+
+<p>其中 FU indicator 字节的格式如下</p>
+<div class="highlight"><pre><span></span><code>       +---------------+
+       |0|1|2|3|4|5|6|7|
+       +-+-+-+-+-+-+-+-+
+       |F|NRI|  Type   |
+       +---------------+
+</code></pre></div>
+
+<p>它就是一个普通的 NAL header, 只是它的 type 等于 28（FU-A） 或 29 （FU-B）</p>
+<p>其后的 FU header 字节的格式如下</p>
+<div class="highlight"><pre><span></span><code>      +---------------+
+      |0|1|2|3|4|5|6|7|
+      +-+-+-+-+-+-+-+-+
+      |S|E|R|  Type   |
+      +---------------+
+</code></pre></div>
+
+<p>含义如下</p>
+<ul>
+<li>S: 1 bit 开始位</li>
+</ul>
+<p>当设置为 1 时，Start 位指示分片 NAL 单元的开始。 当随后的 FU 有效载荷不是分片 NAL 单元有效载荷的开始时，起始位设置为零。</p>
+<ul>
+<li>E:     1 bit</li>
+</ul>
+<p>当设置为 1 时，End 位表示分片 NAL 单元的结束，即有效载荷的最后一个字节也是分片 NAL 单元的最后一个字节。 当随后的 FU 有效载荷不是分片 NAL 单元的最后一个片段时，结束位设置为零。</p>
+<ul>
+<li>
+<p>R:     1 bit 保留位，始终为0</p>
+</li>
+<li>
+<p>Type:  5 bits</p>
+</li>
+</ul>
+<p>实际被分片的 NAL 单元的类型，参见 RFC6184 的 Table 7-1</p>
+<h1>代码示例</h1>
+<p>在 https://github.com/cisco/openh264 中有相关结构和类型的详细定义,  至于聚合包和分片包，openh264 中本身并未定义</p>
+<p>在 webrtc 的 video_coding 中有相关的定义</p>
+<p>third_party/webrtc/modules/video_coding/codecs/h264/include/h264_globals.h</p>
+<div class="highlight"><pre><span></span><code><span class="o">//</span> <span class="n">The</span> <span class="n">packetization</span> <span class="n">types</span> <span class="n">that</span> <span class="n">we</span> <span class="n">support</span><span class="p">:</span> <span class="n">single</span><span class="p">,</span> <span class="n">aggregated</span><span class="p">,</span> <span class="ow">and</span> <span class="n">fragmented</span><span class="o">.</span>
+<span class="k">enum</span> <span class="n">H264PacketizationTypes</span> <span class="p">{</span>
+  <span class="n">kH264SingleNalu</span><span class="p">,</span>  <span class="o">//</span> <span class="n">This</span> <span class="n">packet</span> <span class="n">contains</span> <span class="n">a</span> <span class="n">single</span> <span class="n">NAL</span> <span class="n">unit</span><span class="o">.</span>
+  <span class="n">kH264StapA</span><span class="p">,</span>       <span class="o">//</span> <span class="n">This</span> <span class="n">packet</span> <span class="n">contains</span> <span class="n">STAP</span><span class="o">-</span><span class="n">A</span> <span class="p">(</span><span class="n">single</span> <span class="n">time</span>
+                    <span class="o">//</span> <span class="n">aggregation</span><span class="p">)</span> <span class="n">packets</span><span class="o">.</span> <span class="n">If</span> <span class="n">this</span> <span class="n">packet</span> <span class="n">has</span> <span class="n">an</span>
+                    <span class="o">//</span> <span class="n">associated</span> <span class="n">NAL</span> <span class="n">unit</span> <span class="n">type</span><span class="p">,</span> <span class="n">it</span><span class="s1">&#39;ll be for the</span>
+                    <span class="o">//</span> <span class="n">first</span> <span class="n">such</span> <span class="n">aggregated</span> <span class="n">packet</span><span class="o">.</span>
+  <span class="n">kH264FuA</span><span class="p">,</span>         <span class="o">//</span> <span class="n">This</span> <span class="n">packet</span> <span class="n">contains</span> <span class="n">a</span> <span class="n">FU</span><span class="o">-</span><span class="n">A</span> <span class="p">(</span><span class="n">fragmentation</span>
+                    <span class="o">//</span> <span class="n">unit</span><span class="p">)</span> <span class="n">packet</span><span class="p">,</span> <span class="n">meaning</span> <span class="n">it</span> <span class="k">is</span> <span class="n">a</span> <span class="n">part</span> <span class="n">of</span> <span class="n">a</span> <span class="n">frame</span>
+                    <span class="o">//</span> <span class="n">that</span> <span class="n">was</span> <span class="n">too</span> <span class="n">large</span> <span class="n">to</span> <span class="n">fit</span> <span class="n">into</span> <span class="n">a</span> <span class="n">single</span> <span class="n">packet</span><span class="o">.</span>
+<span class="p">};</span>
+
+<span class="o">//</span> <span class="n">Packetization</span> <span class="n">modes</span> <span class="n">are</span> <span class="n">defined</span> <span class="ow">in</span> <span class="n">RFC</span> <span class="mi">6184</span> <span class="n">section</span> <span class="mi">6</span>
+<span class="o">//</span> <span class="n">Due</span> <span class="n">to</span> <span class="n">the</span> <span class="n">structure</span> <span class="n">containing</span> <span class="n">this</span> <span class="n">being</span> <span class="n">initialized</span> <span class="n">with</span> <span class="n">zeroes</span>
+<span class="o">//</span> <span class="ow">in</span> <span class="n">some</span> <span class="n">places</span><span class="p">,</span> <span class="ow">and</span> <span class="n">mode</span> <span class="mi">1</span> <span class="n">being</span> <span class="n">default</span><span class="p">,</span> <span class="n">mode</span> <span class="mi">1</span> <span class="n">needs</span> <span class="n">to</span> <span class="n">have</span> <span class="n">the</span> <span class="n">value</span>
+<span class="o">//</span> <span class="n">zero</span><span class="o">.</span> <span class="n">https</span><span class="p">:</span><span class="o">//</span><span class="n">crbug</span><span class="o">.</span><span class="n">com</span><span class="o">/</span><span class="n">webrtc</span><span class="o">/</span><span class="mi">6803</span>
+<span class="k">enum</span> <span class="k">class</span> <span class="n">H264PacketizationMode</span> <span class="p">{</span>
+  <span class="n">NonInterleaved</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>  <span class="o">//</span> <span class="n">Mode</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">STAP</span><span class="o">-</span><span class="n">A</span><span class="p">,</span> <span class="n">FU</span><span class="o">-</span><span class="n">A</span> <span class="k">is</span> <span class="n">allowed</span>
+  <span class="n">SingleNalUnit</span>        <span class="o">//</span> <span class="n">Mode</span> <span class="mi">0</span> <span class="o">-</span> <span class="n">only</span> <span class="n">single</span> <span class="n">NALU</span> <span class="n">allowed</span>
+<span class="p">};</span>
+</code></pre></div>
+
+<p>我自己也写了一个小例子，演示如下</p>
+<p><img alt="" src="./images/rtp_dump_parser.png"></p>
+<p>1) 先启动一个本地的服务器，我就写一个简单的 UDP server,  将从网络端口 8888 接收到的 RTP 包保存起来，代码很简单</p>
+<div class="highlight"><pre><span></span><code><span class="n">#include</span><span class="w"> </span><span class="o">&lt;</span><span class="n">arpa</span><span class="o">/</span><span class="n">inet</span><span class="p">.</span><span class="n">h</span><span class="o">&gt;</span><span class="w"></span>
+<span class="n">#include</span><span class="w"> </span><span class="o">&lt;</span><span class="n">netinet</span><span class="o">/</span><span class="ow">in</span><span class="p">.</span><span class="n">h</span><span class="o">&gt;</span><span class="w"></span>
+<span class="n">#include</span><span class="w"> </span><span class="o">&lt;</span><span class="n">stdio</span><span class="p">.</span><span class="n">h</span><span class="o">&gt;</span><span class="w"></span>
+<span class="n">#include</span><span class="w"> </span><span class="o">&lt;</span><span class="n">sys</span><span class="o">/</span><span class="n">types</span><span class="p">.</span><span class="n">h</span><span class="o">&gt;</span><span class="w"></span>
+<span class="n">#include</span><span class="w"> </span><span class="o">&lt;</span><span class="n">sys</span><span class="o">/</span><span class="n">socket</span><span class="p">.</span><span class="n">h</span><span class="o">&gt;</span><span class="w"></span>
+<span class="n">#include</span><span class="w"> </span><span class="o">&lt;</span><span class="n">unistd</span><span class="p">.</span><span class="n">h</span><span class="o">&gt;</span><span class="w"></span>
+<span class="n">#include</span><span class="w"> </span><span class="o">&lt;</span><span class="n">stdlib</span><span class="p">.</span><span class="n">h</span><span class="o">&gt;</span><span class="w"> </span>
+<span class="n">#include</span><span class="w"> </span><span class="o">&lt;</span><span class="n">string</span><span class="p">.</span><span class="n">h</span><span class="o">&gt;</span><span class="w"></span>
+
+<span class="n">#include</span><span class="w"> </span><span class="o">&lt;</span><span class="n">iostream</span><span class="o">&gt;</span><span class="w"></span>
+<span class="n">#include</span><span class="w"> </span><span class="o">&lt;</span><span class="n">string</span><span class="o">&gt;</span><span class="w"></span>
+<span class="n">#include</span><span class="w"> </span><span class="ss">&quot;rtputil.h&quot;</span><span class="w"></span>
+
+<span class="n">#define</span><span class="w"> </span><span class="n">BUFLEN</span><span class="w"> </span><span class="mi">5120</span><span class="w"></span>
+<span class="n">#define</span><span class="w"> </span><span class="n">PORT</span><span class="w"> </span><span class="mi">8880</span><span class="w"></span>
+<span class="n">#define</span><span class="w"> </span><span class="n">msg_trace</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span><span class="w">  </span><span class="nl">std</span><span class="p">:</span><span class="err">:</span><span class="n">cout</span><span class="o">&lt;&lt;</span><span class="n">__FILE__</span><span class="o">&lt;&lt;</span><span class="ss">&quot;,&quot;</span><span class="o">&lt;&lt;</span><span class="n">__LINE__</span><span class="o">&lt;&lt;</span><span class="ss">&quot;: &quot;</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">msg</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="nl">std</span><span class="p">:</span><span class="err">:</span><span class="n">endl</span><span class="w"></span>
+
+<span class="k">using</span><span class="w"> </span><span class="n">namespace</span><span class="w"> </span><span class="n">std</span><span class="p">;</span><span class="w"></span>
+
+
+<span class="n">void</span><span class="w"> </span><span class="n">exitWithMsg</span><span class="p">(</span><span class="n">const</span><span class="w"> </span><span class="nc">char</span><span class="w"> </span><span class="o">*</span><span class="nf">str</span><span class="p">)</span><span class="w"></span>
+<span class="err">{</span><span class="w"></span>
+<span class="w">    </span><span class="n">perror</span><span class="p">(</span><span class="nf">str</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="k">exit</span><span class="p">(</span><span class="mi">1</span><span class="p">);</span><span class="w"></span>
+<span class="err">}</span><span class="w"></span>
+
+<span class="nc">int</span><span class="w"> </span><span class="n">main</span><span class="p">(</span><span class="nc">int</span><span class="w"> </span><span class="n">argc</span><span class="p">,</span><span class="w"> </span><span class="nc">char</span><span class="w"> </span><span class="o">*</span><span class="n">argv</span><span class="err">[]</span><span class="p">)</span><span class="w"></span>
+<span class="err">{</span><span class="w"></span>
+<span class="w">    </span><span class="n">string</span><span class="w"> </span><span class="n">rtpDumpFile</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ss">&quot;rtp_dump.dat&quot;</span><span class="p">;</span><span class="w"></span>
+<span class="w">  </span><span class="nc">int</span><span class="w"> </span><span class="n">nPort</span><span class="w"> </span><span class="o">=</span><span class="w">  </span><span class="n">PORT</span><span class="p">;</span><span class="w"></span>
+<span class="w">  </span><span class="nc">int</span><span class="w"> </span><span class="n">nCount</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">10000</span><span class="p">;</span><span class="w"></span>
+<span class="w">  </span><span class="nc">int</span><span class="w"> </span><span class="n">nRet</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w">  </span>
+<span class="w">  </span><span class="k">if</span><span class="p">(</span><span class="n">argc</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">2</span><span class="p">)</span><span class="w"> </span><span class="err">{</span><span class="w"></span>
+
+<span class="w">     </span><span class="n">nPort</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">atoi</span><span class="p">(</span><span class="n">argv</span><span class="o">[</span><span class="n">1</span><span class="o">]</span><span class="p">);</span><span class="w"></span>
+<span class="w">     </span><span class="n">rtpDumpFile</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">argv</span><span class="o">[</span><span class="n">2</span><span class="o">]</span><span class="p">;</span><span class="w"></span>
+
+<span class="w">     </span><span class="k">if</span><span class="p">(</span><span class="n">argc</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">3</span><span class="p">)</span><span class="w">     </span><span class="n">nCount</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">atoi</span><span class="p">(</span><span class="w"> </span><span class="n">argv</span><span class="o">[</span><span class="n">3</span><span class="o">]</span><span class="p">);</span><span class="w"></span>
+
+<span class="w">     </span><span class="n">msg_trace</span><span class="p">(</span><span class="ss">&quot;To dump rtp packets to &quot;</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">rtpDumpFile</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="ss">&quot; for &quot;</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">nCount</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="ss">&quot; packets&quot;</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="ss">&quot; from udp port &quot;</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">nPort</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="err">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="err">{</span><span class="w"></span>
+<span class="w">    </span><span class="n">cout</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="ss">&quot;usage: &quot;</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">argv</span><span class="o">[</span><span class="n">0</span><span class="o">]</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="ss">&quot;&lt;port&gt; &lt;dump_file&gt; [&lt;dump_rtp_count&gt;]&quot;</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">endl</span><span class="p">;</span><span class="w"></span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="p">;</span><span class="w"></span>
+<span class="w">  </span><span class="err">}</span><span class="w"></span>
+
+<span class="w">      </span><span class="n">msg_trace</span><span class="p">(</span><span class="ss">&quot;--- udp server as rtp receiver ---&quot;</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="n">struct</span><span class="w"> </span><span class="n">sockaddr_in</span><span class="w"> </span><span class="n">my_addr</span><span class="p">,</span><span class="w"> </span><span class="n">cli_addr</span><span class="p">;</span><span class="w"></span>
+<span class="w">    </span><span class="nc">int</span><span class="w"> </span><span class="n">sockfd</span><span class="p">;</span><span class="w"> </span>
+<span class="w">    </span><span class="n">socklen_t</span><span class="w"> </span><span class="n">slen</span><span class="o">=</span><span class="n">sizeof</span><span class="p">(</span><span class="n">cli_addr</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="n">uint8_t</span><span class="w"> </span><span class="n">buf</span><span class="o">[</span><span class="n">BUFLEN</span><span class="o">]</span><span class="p">;</span><span class="w"></span>
+
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">((</span><span class="n">sockfd</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">socket</span><span class="p">(</span><span class="n">AF_INET</span><span class="p">,</span><span class="w"> </span><span class="n">SOCK_DGRAM</span><span class="p">,</span><span class="w"> </span><span class="n">IPPROTO_UDP</span><span class="p">))</span><span class="o">==-</span><span class="mi">1</span><span class="p">)</span><span class="w"></span>
+<span class="w">      </span><span class="n">exitWithMsg</span><span class="p">(</span><span class="ss">&quot;socket error&quot;</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="k">else</span><span class="w"> </span>
+<span class="w">      </span><span class="n">printf</span><span class="p">(</span><span class="ss">&quot;Server : Socket() successful\n&quot;</span><span class="p">);</span><span class="w"></span>
+
+<span class="w">    </span><span class="n">bzero</span><span class="p">(</span><span class="o">&amp;</span><span class="n">my_addr</span><span class="p">,</span><span class="w"> </span><span class="n">sizeof</span><span class="p">(</span><span class="n">my_addr</span><span class="p">));</span><span class="w"></span>
+<span class="w">    </span><span class="n">my_addr</span><span class="p">.</span><span class="n">sin_family</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">AF_INET</span><span class="p">;</span><span class="w"></span>
+<span class="w">    </span><span class="n">my_addr</span><span class="p">.</span><span class="n">sin_port</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">htons</span><span class="p">(</span><span class="n">nPort</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="n">my_addr</span><span class="p">.</span><span class="n">sin_addr</span><span class="p">.</span><span class="n">s_addr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">htonl</span><span class="p">(</span><span class="n">INADDR_ANY</span><span class="p">);</span><span class="w"></span>
+
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">::</span><span class="n">bind</span><span class="p">(</span><span class="n">sockfd</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="n">struct</span><span class="w"> </span><span class="n">sockaddr</span><span class="o">*</span><span class="w"> </span><span class="p">)</span><span class="w"> </span><span class="o">&amp;</span><span class="n">my_addr</span><span class="p">,</span><span class="w"> </span><span class="n">sizeof</span><span class="p">(</span><span class="n">my_addr</span><span class="p">))</span><span class="o">==-</span><span class="mi">1</span><span class="p">)</span><span class="w"></span>
+<span class="w">      </span><span class="n">exitWithMsg</span><span class="p">(</span><span class="ss">&quot;bind error&quot;</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="k">else</span><span class="w"></span>
+<span class="w">      </span><span class="n">printf</span><span class="p">(</span><span class="ss">&quot;Server : bind() successful\n&quot;</span><span class="p">);</span><span class="w"></span>
+
+
+<span class="w">    </span><span class="n">ofstream</span><span class="w"> </span><span class="n">ofs</span><span class="p">;</span><span class="w"></span>
+<span class="w">        </span><span class="n">ofs</span><span class="p">.</span><span class="k">open</span><span class="w"> </span><span class="p">(</span><span class="n">rtpDumpFile</span><span class="p">,</span><span class="w"> </span><span class="nl">std</span><span class="p">:</span><span class="err">:</span><span class="nl">ofstream</span><span class="p">:</span><span class="err">:</span><span class="k">out</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nl">std</span><span class="p">:</span><span class="err">:</span><span class="nl">ofstream</span><span class="p">:</span><span class="err">:</span><span class="n">app</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nl">std</span><span class="p">:</span><span class="err">:</span><span class="nl">ofstream</span><span class="p">:</span><span class="err">:</span><span class="nc">binary</span><span class="p">);</span><span class="w"></span>
+
+<span class="w">    </span><span class="nc">int</span><span class="w"> </span><span class="n">pktCount</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"></span>
+<span class="w">    </span><span class="k">while</span><span class="p">(</span><span class="n">nCount</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"></span>
+<span class="w">    </span><span class="err">{</span><span class="w"></span>
+<span class="w">        </span><span class="nc">int</span><span class="w"> </span><span class="n">pktSize</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">recvfrom</span><span class="p">(</span><span class="n">sockfd</span><span class="p">,</span><span class="w"> </span><span class="n">buf</span><span class="p">,</span><span class="w"> </span><span class="n">BUFLEN</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="n">struct</span><span class="w"> </span><span class="n">sockaddr</span><span class="o">*</span><span class="p">)</span><span class="o">&amp;</span><span class="n">cli_addr</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">slen</span><span class="p">);</span><span class="w"></span>
+<span class="w">        </span><span class="k">if</span><span class="p">(</span><span class="n">pktSize</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="err">{</span><span class="w"></span>
+<span class="w">            </span><span class="n">exitWithMsg</span><span class="p">(</span><span class="ss">&quot;recvfrom()&quot;</span><span class="p">);</span><span class="w"></span>
+<span class="w">        </span><span class="err">}</span><span class="w"></span>
+
+<span class="w">        </span><span class="n">printf</span><span class="p">(</span><span class="ss">&quot;The %d packet received %d from %s:%d &quot;</span><span class="p">,</span><span class="w"> </span><span class="o">++</span><span class="n">pktCount</span><span class="p">,</span><span class="w"> </span><span class="n">pktSize</span><span class="p">,</span><span class="w"> </span><span class="n">inet_ntoa</span><span class="p">(</span><span class="n">cli_addr</span><span class="p">.</span><span class="n">sin_addr</span><span class="p">),</span><span class="w"> </span><span class="n">ntohs</span><span class="p">(</span><span class="n">cli_addr</span><span class="p">.</span><span class="n">sin_port</span><span class="p">));</span><span class="w"></span>
+<span class="w">        </span><span class="k">if</span><span class="p">(</span><span class="n">pktSize</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">12</span><span class="p">)</span><span class="w"> </span><span class="err">{</span><span class="w"></span>
+<span class="w">          </span><span class="n">cout</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">dump_rtp_packet</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span><span class="w">  </span><span class="n">pktSize</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span><span class="w"></span>
+<span class="w">          </span><span class="n">dump_rtp_to_file</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span><span class="w">  </span><span class="n">pktSize</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">ofs</span><span class="p">);</span><span class="w"></span>
+<span class="w">          </span><span class="n">nCount</span><span class="w"> </span><span class="o">--</span><span class="p">;</span><span class="w"></span>
+<span class="w">        </span><span class="err">}</span><span class="w"></span>
+
+<span class="w">    </span><span class="err">}</span><span class="w"></span>
+
+<span class="w">    </span><span class="k">close</span><span class="p">(</span><span class="n">sockfd</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"></span>
+<span class="err">}</span><span class="w"></span>
+</code></pre></div>
+
+<p>其中用到的一个工具类 rtputil 源码就不贴了，参见</p>
+<ul>
+<li><a href="https://github.com/walterfan/webrtc_snippets/blob/master/media/rtputil.h">rtputil.h</a></li>
+<li><a href="https://github.com/walterfan/webrtc_snippets/blob/master/media/rtputil.cpp">rtputil.cpp</a></li>
+</ul>
+<p>编译运行</p>
+<div class="highlight"><pre><span></span><code><span class="n">git</span><span class="w"> </span><span class="n">clone</span><span class="w"> </span><span class="n">git</span><span class="nv">@github</span><span class="p">.</span><span class="nl">com</span><span class="p">:</span><span class="n">walterfan</span><span class="o">/</span><span class="n">webrtc_snippets</span><span class="p">.</span><span class="n">git</span><span class="w"></span>
+<span class="n">cd</span><span class="w"> </span><span class="n">media</span><span class="w"></span>
+<span class="n">mkdir</span><span class="w"> </span><span class="n">bld</span><span class="w"></span>
+<span class="n">cd</span><span class="w"> </span><span class="n">bld</span><span class="w"></span>
+<span class="n">cmake</span><span class="w"> </span><span class="p">..</span><span class="w"></span>
+<span class="n">make</span><span class="w"></span>
+<span class="p">.</span><span class="o">/</span><span class="n">udpserver</span><span class="w"> </span><span class="mi">8888</span><span class="w"> </span><span class="k">dump</span><span class="p">.</span><span class="n">dat</span><span class="w"> </span><span class="mi">1000</span><span class="w"></span>
+</code></pre></div>
+
+<p>2) 将本地的一个 mp4 文件通过 ffmpeg 发送到这个服务器的 8888 端口上，命令如下</p>
+<div class="highlight"><pre><span></span><code>ffmpeg \
+    -re \
+    -i ../../obama_talk.mp4 \
+    -an \
+    -c:v copy \
+    -f rtp \
+    -sdp_file video.sdp \
+    &quot;rtp://127.0.0.1:5004&quot;
+</code></pre></div>
+
+<p>3) 将保存下来的 RTP 文件解析出来，分析其中保存的 H264 NAL 包</p>
+<div class="highlight"><pre><span></span><code><span class="cp">#include</span> <span class="cpf">&lt;stdio.h&gt;</span><span class="cp"></span>
+<span class="cp">#include</span> <span class="cpf">&lt;stdint.h&gt;</span><span class="cp"></span>
+<span class="cp">#include</span> <span class="cpf">&lt;iostream&gt;</span><span class="cp"></span>
+<span class="cp">#include</span> <span class="cpf">&lt;stdio.h&gt;</span><span class="cp"></span>
+<span class="cp">#include</span> <span class="cpf">&lt;string.h&gt;</span><span class="cp"></span>
+<span class="cp">#include</span> <span class="cpf">&lt;time.h&gt;</span><span class="cp"></span>
+<span class="cp">#include</span> <span class="cpf">&lt;sys/time.h&gt;</span><span class="cp"></span>
+<span class="cp">#include</span> <span class="cpf">&lt;assert.h&gt;</span><span class="cp"></span>
+<span class="cp">#include</span> <span class="cpf">&lt;unistd.h&gt;</span><span class="cp"></span>
+
+
+<span class="cp">#include</span> <span class="cpf">&quot;MediaUtil.h&quot;</span><span class="cp"></span>
+
+<span class="n">using</span> <span class="n">namespace</span> <span class="n">std</span><span class="p">;</span>
+
+<span class="kr">int</span> <span class="nf">main</span><span class="p">(</span><span class="kr">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kr">char</span> <span class="o">*</span><span class="n">argv</span><span class="p">[])</span>
+<span class="p">{</span>
+  <span class="n">msg_trace</span><span class="p">(</span><span class="s">&quot;--- Walter test program ---&quot;</span><span class="p">);</span>
+
+  <span class="kr">int</span> <span class="n">nRet</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>  
+  <span class="k">if</span><span class="p">(</span><span class="n">argc</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">)</span> <span class="p">{</span>
+     <span class="n">msg_trace</span><span class="p">(</span><span class="s">&quot;--- read media file ---&quot;</span><span class="p">);</span>
+     <span class="kr">string</span> <span class="n">media_file</span> <span class="o">=</span> <span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">];</span>
+     <span class="n">MediaFileParser</span><span class="o">*</span> <span class="n">pParser</span> <span class="o">=</span> <span class="k">new</span> <span class="n">MediaFileParser</span><span class="p">(</span><span class="n">media_file</span><span class="p">);</span>
+     <span class="n">pParser</span><span class="o">-&gt;</span><span class="n">parse_stream</span><span class="p">();</span>
+     <span class="kr">delete</span> <span class="n">pParser</span><span class="p">;</span>
+     <span class="n">msg_trace</span><span class="p">(</span><span class="s">&quot;--- byebye ---&quot;</span><span class="p">);</span>
+  <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+     <span class="n">msg_trace</span><span class="p">(</span><span class="s">&quot;Usage: &quot;</span> <span class="o">&lt;&lt;</span> <span class="n">argv</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&lt;&lt;</span> <span class="s">&quot; &lt;media_file&gt;&quot;</span><span class="p">);</span>
+  <span class="p">}</span>
+  <span class="k">return</span> <span class="n">nRet</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>其中用到的一个工具类 MediaUtil 源码就不贴了，参见
+* <a href="https://github.com/walterfan/webrtc_snippets/blob/master/video/MediaUtil.h">MediaParser.h</a>
+* <a href="https://github.com/walterfan/webrtc_snippets/blob/master/video/MediaUtil.cpp">MediaParser.cpp</a></p>
+<p>编译运行</p>
+<div class="highlight"><pre><span></span><code><span class="n">git</span><span class="w"> </span><span class="n">clone</span><span class="w"> </span><span class="n">git</span><span class="nv">@github</span><span class="p">.</span><span class="nl">com</span><span class="p">:</span><span class="n">walterfan</span><span class="o">/</span><span class="n">webrtc_snippets</span><span class="p">.</span><span class="n">git</span><span class="w"></span>
+<span class="n">cd</span><span class="w"> </span><span class="n">video</span><span class="w"></span>
+<span class="n">mkdir</span><span class="w"> </span><span class="n">bld</span><span class="w"></span>
+<span class="n">cd</span><span class="w"> </span><span class="n">bld</span><span class="w"></span>
+<span class="n">cmake</span><span class="w"> </span><span class="p">..</span><span class="w"></span>
+<span class="n">make</span><span class="w"></span>
+<span class="p">.</span><span class="o">/</span><span class="n">media_parser</span><span class="w"> </span><span class="p">..</span><span class="o">/</span><span class="p">..</span><span class="o">/</span><span class="n">media</span><span class="o">/</span><span class="n">bld</span><span class="o">/</span><span class="k">dump</span><span class="p">.</span><span class="n">dat</span><span class="w"> </span><span class="o">|</span><span class="n">more</span><span class="w"></span>
+</code></pre></div>
+
+<p>运行结果如下</p>
+<div class="highlight"><pre><span></span><code># ,<span class="nv">size</span>, <span class="nv">pt</span>, <span class="nv">ssrc</span>, <span class="nv">m</span>, <span class="nv">sn</span>, <span class="nv">ts</span>, <span class="nv">nalType</span>, <span class="nv">subNalType</span>, <span class="nv">start</span>, <span class="k">end</span>
+<span class="mi">1</span>, <span class="mi">1472</span>, <span class="mi">96</span>, <span class="mi">1352798098</span>, <span class="mi">0</span>, <span class="mi">2156</span>, <span class="mi">704725956</span>, <span class="mi">28</span>, <span class="mi">5</span>, <span class="mi">1</span>, <span class="mi">0</span>,
+<span class="mi">2</span>, <span class="mi">1472</span>, <span class="mi">96</span>, <span class="mi">1352798098</span>, <span class="mi">0</span>, <span class="mi">2157</span>, <span class="mi">704725956</span>, <span class="mi">28</span>, <span class="mi">5</span>, <span class="mi">0</span>, <span class="mi">0</span>,
+<span class="mi">3</span>, <span class="mi">1472</span>, <span class="mi">96</span>, <span class="mi">1352798098</span>, <span class="mi">0</span>, <span class="mi">2158</span>, <span class="mi">704725956</span>, <span class="mi">28</span>, <span class="mi">5</span>, <span class="mi">0</span>, <span class="mi">0</span>,
+<span class="mi">4</span>, <span class="mi">1472</span>, <span class="mi">96</span>, <span class="mi">1352798098</span>, <span class="mi">0</span>, <span class="mi">2159</span>, <span class="mi">704725956</span>, <span class="mi">28</span>, <span class="mi">5</span>, <span class="mi">0</span>, <span class="mi">0</span>,
+<span class="mi">5</span>, <span class="mi">1472</span>, <span class="mi">96</span>, <span class="mi">1352798098</span>, <span class="mi">0</span>, <span class="mi">2160</span>, <span class="mi">704725956</span>, <span class="mi">28</span>, <span class="mi">5</span>, <span class="mi">0</span>, <span class="mi">0</span>,
+<span class="mi">6</span>, <span class="mi">1472</span>, <span class="mi">96</span>, <span class="mi">1352798098</span>, <span class="mi">0</span>, <span class="mi">2161</span>, <span class="mi">704725956</span>, <span class="mi">28</span>, <span class="mi">5</span>, <span class="mi">0</span>, <span class="mi">0</span>,
+<span class="mi">7</span>, <span class="mi">1472</span>, <span class="mi">96</span>, <span class="mi">1352798098</span>, <span class="mi">0</span>, <span class="mi">2162</span>, <span class="mi">704725956</span>, <span class="mi">28</span>, <span class="mi">5</span>, <span class="mi">0</span>, <span class="mi">0</span>,
+<span class="mi">8</span>, <span class="mi">1472</span>, <span class="mi">96</span>, <span class="mi">1352798098</span>, <span class="mi">0</span>, <span class="mi">2163</span>, <span class="mi">704725956</span>, <span class="mi">28</span>, <span class="mi">5</span>, <span class="mi">0</span>, <span class="mi">0</span>,
+<span class="mi">9</span>, <span class="mi">1472</span>, <span class="mi">96</span>, <span class="mi">1352798098</span>, <span class="mi">0</span>, <span class="mi">2164</span>, <span class="mi">704725956</span>, <span class="mi">28</span>, <span class="mi">5</span>, <span class="mi">0</span>, <span class="mi">0</span>,
+<span class="mi">10</span>, <span class="mi">1472</span>, <span class="mi">96</span>, <span class="mi">1352798098</span>, <span class="mi">0</span>, <span class="mi">2165</span>, <span class="mi">704725956</span>, <span class="mi">28</span>, <span class="mi">5</span>, <span class="mi">0</span>, <span class="mi">0</span>,
+<span class="mi">11</span>, <span class="mi">1472</span>, <span class="mi">96</span>, <span class="mi">1352798098</span>, <span class="mi">0</span>, <span class="mi">2166</span>, <span class="mi">704725956</span>, <span class="mi">28</span>, <span class="mi">5</span>, <span class="mi">0</span>, <span class="mi">0</span>,
+<span class="mi">12</span>, <span class="mi">1472</span>, <span class="mi">96</span>, <span class="mi">1352798098</span>, <span class="mi">0</span>, <span class="mi">2167</span>, <span class="mi">704725956</span>, <span class="mi">28</span>, <span class="mi">5</span>, <span class="mi">0</span>, <span class="mi">0</span>,
+<span class="mi">13</span>, <span class="mi">1472</span>, <span class="mi">96</span>, <span class="mi">1352798098</span>, <span class="mi">0</span>, <span class="mi">2168</span>, <span class="mi">704725956</span>, <span class="mi">28</span>, <span class="mi">5</span>, <span class="mi">0</span>, <span class="mi">0</span>,
+<span class="mi">14</span>, <span class="mi">1472</span>, <span class="mi">96</span>, <span class="mi">1352798098</span>, <span class="mi">0</span>, <span class="mi">2169</span>, <span class="mi">704725956</span>, <span class="mi">28</span>, <span class="mi">5</span>, <span class="mi">0</span>, <span class="mi">0</span>,
+<span class="mi">15</span>, <span class="mi">1260</span>, <span class="mi">96</span>, <span class="mi">1352798098</span>, <span class="mi">1</span>, <span class="mi">2170</span>, <span class="mi">704725956</span>, <span class="mi">28</span>, <span class="mi">5</span>, <span class="mi">0</span>, <span class="mi">1</span>,
+<span class="mi">16</span>, <span class="mi">1472</span>, <span class="mi">96</span>, <span class="mi">1352798098</span>, <span class="mi">0</span>, <span class="mi">2171</span>, <span class="mi">704729710</span>, <span class="mi">28</span>, <span class="mi">1</span>, <span class="mi">1</span>, <span class="mi">0</span>,
+<span class="mi">17</span>, <span class="mi">1472</span>, <span class="mi">96</span>, <span class="mi">1352798098</span>, <span class="mi">0</span>, <span class="mi">2172</span>, <span class="mi">704729710</span>, <span class="mi">28</span>, <span class="mi">1</span>, <span class="mi">0</span>, <span class="mi">0</span>,
+</code></pre></div>
+
+<h1>参考资料</h1>
+<ul>
+<li><a href="">RFC6184</a>: RTP Payload Format for H.264 Video</li>
+</ul>
+  </div>
+  <div class="tag-cloud">
+    <p>
+      <a href="./tag/journal.html">journal</a>
+      <a href="./tag/blog.html">blog</a>
+    </p>
+  </div>
+
+
+
+
+
+</article>
+
+    <footer>
+<p>&copy; Walter Fan 2010 ~ 2030 </p>
+<p>
+  <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号</a>
+</p>
+<p>    Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+</p><!-- StatusCake -->
+
+<!-- End StatusCake -->    </footer>
+  </main>
+
+
+
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : ".",
+  "image": "./images/walterfan.jpg",
+  "description": "an old programmer never die, he just branch to a new address."
+}
+</script>
+
+</body>
+</html>

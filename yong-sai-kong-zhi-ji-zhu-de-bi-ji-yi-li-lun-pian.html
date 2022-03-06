@@ -1,0 +1,592 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css?family=Source+Code+Pro|Source+Sans+Pro:300,400,400i,700" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="./theme/stylesheet/style.min.css">
+
+  <link rel="stylesheet" type="text/css" href="./theme/pygments/github.min.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/solid.css">
+
+
+
+
+    <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+    <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="Daily minute" />
+<meta name="keywords" content="webrtc, tech">
+
+
+<meta property="og:site_name" content="Walter Fan's Blog"/>
+<meta property="og:title" content="拥塞控制技术的笔记一: 理论篇"/>
+<meta property="og:description" content="Daily minute"/>
+<meta property="og:locale" content="en_US"/>
+<meta property="og:url" content="./yong-sai-kong-zhi-ji-zhu-de-bi-ji-yi-li-lun-pian.html"/>
+<meta property="og:type" content="article"/>
+<meta property="article:published_time" content="2022-02-10 10:20:00+08:00"/>
+<meta property="article:modified_time" content="2022-02-10 19:30:00+08:00"/>
+<meta property="article:author" content="./author/walter-fan.html">
+<meta property="article:section" content="Journal"/>
+<meta property="article:tag" content="webrtc"/>
+<meta property="article:tag" content="tech"/>
+<meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 拥塞控制技术的笔记一: 理论篇</title>
+
+</head>
+<body>
+  <aside>
+    <div>
+      <a href=".">
+        <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+      </a>
+      <h1><a href=".">Walter Fan</a></h1>
+
+<p>手握灵珠常奋笔, 心开天籁不吹箫</p>
+      <nav>
+        <ul class="list">
+
+            <li><a target="_blank" href="./about.html#about-me">About Me</a></li>
+
+            <li><a target="_blank" href="/wordpress" >Notebook</a></li>
+            <li><a target="_blank" href="/tao" >Tao</a></li>
+            <li><a target="_blank" href="/webrtc/examples/index.html" >WebRTC</a></li>
+            <li><a target="_blank" href="https://github.com/walterfan" >github</a></li>
+            <li><a target="_blank" href="https://www.jianshu.com/u/e0b365801f48" >jianshu</a></li>
+        </ul>
+      </nav>
+
+      <ul class="social">
+          <li>
+            <a  class="sc-github" href="http://github.com/walterfan" target="_blank">
+            <i class="fab fa-github">
+            </i>
+          </a></li>
+      </ul>
+    </div>
+
+
+  </aside>
+  <main>
+
+
+<article class="single">
+  <header>
+      
+    <h1 id="yong-sai-kong-zhi-ji-zhu-de-bi-ji-yi-li-lun-pian">拥塞控制技术的笔记一: 理论篇</h1>
+    <p>
+          Posted on Thu 10 February 2022 in <a href="./category/journal.html">Journal</a>
+
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>拥塞控制技术的笔记一</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td> <strong>Category</strong>   </td>
+<td> learning notes  </td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>WIP</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2022-2-10</td>
+</tr>
+</tbody>
+</table>
+<h1>引言</h1>
+<p>如果带宽足够的话, 没有拥塞,没有大的延迟和抖动, 那么语音和视频的发送和接收都会很顺滑,一切会很美好.</p>
+<p>现实总是很残酷的, 网络会断, 会丢包, 会变慢，在路由节点上会排队，会拥塞，就象城市的环线道路，平常车来车往，道路通畅，一到上下班的时候，大大小小的车辆就象乌龟一样慢慢向前爬。</p>
+<p>视频会议需要低延迟和高带宽，可是实际情况中，高带宽是难以保证的，一旦网络出现拥塞，原本就不宽阔的“马路” 堵得更窄，延迟更大。这时候，就需要做拥塞控制</p>
+<p>在网络会议中，如果延迟太大，对在线交流就会产生影响。语音会感觉很明显，视频相对迟钝一些。</p>
+<p>以视频来说，据研究，大致的关系如下</p>
+<table>
+<thead>
+<tr>
+<th>延迟</th>
+<th>感觉</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0 ~ 400 毫秒</td>
+<td>在交流过程中感觉不到延迟</td>
+</tr>
+<tr>
+<td>400 ~ 800 毫秒</td>
+<td>能感觉到延迟，但不影响沟通和交流</td>
+</tr>
+<tr>
+<td>800 毫秒及以上</td>
+<td>能感觉到延迟，并且影响沟通和交流</td>
+</tr>
+</tbody>
+</table>
+<p>以一个每秒 24 帧 640*480 分辨率，以 H.264 编码的视频流，视频的比特率和用户感觉的关系如下</p>
+<table>
+<thead>
+<tr>
+<th>比特率</th>
+<th>感觉</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>&gt; 800kbps</td>
+<td>用户对视频的清晰度感到满意，感知不到视频图像信息的丢失</td>
+</tr>
+<tr>
+<td>480 ~ 800kbps</td>
+<td>用户对视频的清晰度基本满意，有些人能感知到视频图像信息的丢失</td>
+</tr>
+<tr>
+<td>&lt; 480kbps</td>
+<td>用户对视频的清晰度很不满意，大多数时候难以分辨出图像的细节</td>
+</tr>
+</tbody>
+</table>
+<h1>相关文档</h1>
+<p>标准化组织有两个工作组在从事拥塞控制相关的研究和标准制订</p>
+<p>一个是 <a href="https://datatracker.ietf.org/wg/rmcat/about/">rmcat</a> 工作组，全称是 RTP Media Congestion Avoidance Techniques 实时通信媒体拥塞避免技术工作组</p>
+<p>一个是 <a href="https://datatracker.ietf.org/wg/avtcore/about/">acvcore</a> 工作组，全称是 Audio/Video Transport Core Maintenance (avtcore) 音视频传输核心维护工作组</p>
+<p>rmcat 工作组专注于拥塞避免技术，发布了若干了拥塞避免技术和测试方法相关的文档</p>
+<ul>
+<li>
+<p><a href="https://datatracker.ietf.org/doc/draft-ietf-rmcat-rtp-cc-feedback/">draft-ietf-rmcat-rtp-cc-feedback-08</a>
+<strong>Sending RTP Control Protocol (RTCP) Feedback for Congestion Control in Interactive Multimedia Conferences</strong></p>
+</li>
+<li>
+<p><a href="https://datatracker.ietf.org/doc/rfc8298/">RFC 8298</a> <em>(was draft-ietf-rmcat-scream-cc)</em>
+<strong>Self-Clocked Rate Adaptation for Multimedia</strong></p>
+</li>
+<li>
+<p><a href="https://datatracker.ietf.org/doc/rfc8382/">RFC 8382</a> <em>(was draft-ietf-rmcat-sbd)</em>
+<strong>Shared Bottleneck Detection for Coupled Congestion Control for RTP Media</strong></p>
+</li>
+<li>
+<p><a href="https://datatracker.ietf.org/doc/rfc8593/">RFC 8593</a> <em>(was draft-ietf-rmcat-video-traffic-model)</em>
+<strong>Video Traffic Models for RTP Congestion Control Evaluations</strong></p>
+</li>
+<li>
+<p><a href="https://datatracker.ietf.org/doc/rfc8698/">RFC 8698</a> <em>(was draft-ietf-rmcat-nada)</em>
+<strong>Network-Assisted Dynamic Adaptation (NADA): A Unified Congestion Control Scheme for Real-Time Media</strong></p>
+</li>
+<li>
+<p><a href="https://datatracker.ietf.org/doc/rfc8699/">RFC 8699</a> <em>(was draft-ietf-rmcat-coupled-cc)</em>
+<strong>Coupled Congestion Control for RTP Media</strong></p>
+</li>
+<li>
+<p><a href="https://datatracker.ietf.org/doc/rfc8836/">RFC 8836</a> <em>(was draft-ietf-rmcat-cc-requirements)</em>
+<strong>Congestion Control Requirements for Interactive Real-Time Media</strong></p>
+</li>
+<li>
+<p><a href="https://datatracker.ietf.org/doc/rfc8867/">RFC 8867</a> <em>(was draft-ietf-rmcat-eval-test)</em>
+<strong>Test Cases for Evaluating Congestion Control for Interactive Real-Time Media</strong></p>
+</li>
+<li>
+<p><a href="https://datatracker.ietf.org/doc/rfc8868/">RFC 8868</a> <em>(was draft-ietf-rmcat-eval-criteria)</em>
+<strong>Evaluating Congestion Control for Interactive Real-Time Media</strong></p>
+</li>
+<li>
+<p><a href="https://datatracker.ietf.org/doc/rfc8869/">RFC 8869</a> <em>(was draft-ietf-rmcat-wireless-tests)</em>
+<strong>Evaluation Test Cases for Interactive Real-Time Media over Wireless Networks</strong></p>
+</li>
+</ul>
+<p>acvcore 工作组专注于音视频的传输，也发布了几个拥塞控制相关的文档</p>
+<ul>
+<li>
+<p><a href="https://datatracker.ietf.org/doc/rfc6679/">RFC 6679</a> <em>(was draft-ietf-avtcore-ecn-for-rtp)</em>
+<strong>Explicit Congestion Notification (ECN) for RTP over UDP</strong></p>
+</li>
+<li>
+<p><a href="https://datatracker.ietf.org/doc/rfc8083/">RFC 8083</a> <em>(was draft-ietf-avtcore-rtp-circuit-breakers)</em>
+<strong>Multimedia Congestion Control: Circuit Breakers for Unicast RTP Sessions</strong></p>
+</li>
+<li>
+<p><a href="https://datatracker.ietf.org/doc/rfc8888/">RFC 8888</a> <em>(was draft-ietf-avtcore-cc-feedback-message)</em>
+<strong>RTP Control Protocol (RTCP) Feedback for Congestion Control</strong></p>
+</li>
+</ul>
+<p>还有另外一些文档也提及了拥塞控制相关的技术</p>
+<ul>
+<li><a href="https://datatracker.ietf.org/doc/rfc2914/">rfc2914</a> <strong>Congestion Control Principles</strong></li>
+<li><a href="https://datatracker.ietf.org/doc/rfc8085/">rfc8085</a> <strong>UDP Usage Guidelines</strong></li>
+<li><a href="https://datatracker.ietf.org/doc/rfc8834/">rfc8834</a> <strong>Media Transport and Use of RTP in WebRTC</strong></li>
+<li><a href="https://datatracker.ietf.org/doc/rfc5348/">rfc5348</a> <strong>TCP Friendly Rate Control (TFRC): Protocol Specification</strong></li>
+</ul>
+<h2>相关术语</h2>
+<ul>
+<li>
+<p>RMCAT: RTP Media Congestion Avoidance Techniques 即 RTP 媒体拥塞避免技术</p>
+</li>
+<li>
+<p>Queuing Delay 排队延迟</p>
+</li>
+<li>
+<p>Delay gradient 延迟梯度</p>
+</li>
+<li>
+<p>Kalman filter 卡尔曼滤波</p>
+</li>
+<li>
+<p>inter-depature delta time 发送间隔时差</p>
+</li>
+<li>
+<p>inter-arrival delta time 接收间隔时差</p>
+</li>
+<li>
+<p>inter-group delay variation 包间延迟变化</p>
+</li>
+<li>
+<p>GCC: Google Congestion control 谷歌拥塞控制</p>
+</li>
+<li>
+<p>BBR: Bottleneck Bandwidth and Round-trip propagation time 瓶颈带宽和往返传播时间</p>
+</li>
+<li>
+<p>PCC: Performance-oriented Congestion Control 基于性能的拥塞控制</p>
+</li>
+<li>
+<p>TCC: Transport-wide Congestion Control 传输带宽控制</p>
+</li>
+<li>
+<p>REMB: Receiver Estimated Maximum Bitrate 接收端估计最大比特率</p>
+</li>
+<li>
+<p>ECN: Explicit Congestion Notification (ECN) 显式的拥塞通知</p>
+</li>
+<li>
+<p>Starvation: 饥饿，如果某个传输通道由于其他传输通道抢占了带宽而没有得到流量，称为饥饿</p>
+</li>
+<li>
+<p>TMMBR: Temporary Maximum Media Stream Bit Rate Request 临时最大媒体流带宽请求</p>
+</li>
+<li>
+<p>TMMBN: Temporary Maximum Media Stream Bit Rate Notification 临时最大媒体流带宽通知， 表示 TMMBR 收到</p>
+</li>
+<li>
+<p>QP: Quantization Parameter, that ranges from 0 to 51. 量化参数 QP 越小，细节保留得越多，质量就更好， 反之质量越差，压缩率更高</p>
+</li>
+</ul>
+<h1>技术实践</h1>
+<p>工业界的技术实践常常领先标准文档一步，实践形成理论，理论指导实践，实践再反过来影响和验证理论，从来都是这样一个螺旋上升的循环。</p>
+<p>已有三种主要的拥塞避免算法提出来， 详见下表</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>GCC</th>
+<th>NADA</th>
+<th>SCReAM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Metrics</td>
+<td>One-way delay variation,loss ratio</td>
+<td>One-way delay, loss ratio</td>
+<td>One-way delay, loss ratio</td>
+</tr>
+<tr>
+<td>Architecture</td>
+<td>Sender-side or hybrid</td>
+<td>Sender-side</td>
+<td>Sender-side</td>
+</tr>
+<tr>
+<td>Actuation mechanism</td>
+<td>Rate-based</td>
+<td>Rate-based</td>
+<td>Window-based</td>
+</tr>
+<tr>
+<td>Network support</td>
+<td>None</td>
+<td>ECN, PCN</td>
+<td>ECN</td>
+</tr>
+<tr>
+<td>Implementation status</td>
+<td>Chrome/Edge, Firefox, Safari</td>
+<td>Ns-2 and Ns-3 simulators</td>
+<td>OpenWebRTC and simulator</td>
+</tr>
+</tbody>
+</table>
+<p>1. GCC by Google</p>
+<p>Google Congestion Control (GCC) 被应用于 Chrome 浏览器，是相对比较成熟的算法.</p>
+<p>2. NADA by Cisco</p>
+<p>Network Assisted Dynamic Adaptation(NADA) 由思科提出，还未应用于实际产品中，有相关的模拟器实现</p>
+<p>3. SCReAM by Ericsson</p>
+<p>Self-Clocked Rate Adaptation for Multimedia(SCReAM) 由爱立信提出，应用于 OpenWebRTC，有相关的模拟器实现</p>
+<h1>算法设计</h1>
+<h2>目标</h2>
+<p>拥塞控制算法的目标是产生尽可能接近可用的端到端带宽的发送速率，同时保持队列占用尽可能低。</p>
+<p>此外，WebRTC 应用程序生成的媒体流应该与其他并发流公平地共享网络带宽。</p>
+<p>基本要求：在最多几百毫秒之内，接收方能够连贯流畅地听到或看到发送方的声音，图像或视频。</p>
+<p>具体要求, 参见 <a href="https://datatracker.ietf.org/doc/html/rfc8836">RFC8836</a></p>
+<ol>
+<li>
+<p>拥塞控制算法必须尝试为交互式实时流量提供尽可能低的延迟传输，同时仍然提供有用的带宽量。</p>
+</li>
+<li>
+<p>该算法必须对其他流公平，包括实时流（例如自身的其他实例）和 TCP 流，包括长期存在的流和突发流量，例如典型的 Web 浏览会话生成的流量。</p>
+</li>
+<li>
+<p>该算法不应该由于竞争带宽而使得 TCP 流饥饿，并且应该尽可能避免 TCP 流饥饿</p>
+</li>
+<li>
+<p>该算法应该尽快适应流开始时的初始网络条件。</p>
+</li>
+<li>
+<p>如果 RTP 流停止或不连续时（例如，当使用 VAD 语音活动检测时），算法应该是稳定的。</p>
+</li>
+<li>
+<p>在可能的情况下，当 RTP 流共享一个公用的瓶颈时，算法应该综合考虑在两个端点之间发送的多个 RTP 流之间的信息，无论这些流是否复用相同的端口。</p>
+</li>
+<li>
+<p>该算法不应该需要来自网络元素的任何特殊支持才能传达与拥塞相关的信息。</p>
+</li>
+<li>
+<p>由于这里假设是一组 RTP 流，反向通道通常应该通过 RTP 控制协议 (RTCP) 完成</p>
+</li>
+<li>
+<p>由该算法管理的流和在瓶颈处相互竞争的流可能具有不同的差分服务代码点 (DSCP) <a href="https://walterfan.github.io/webrtc_note/3.media/webrtc_rcc.html#id26">2</a> [RFC5865] 标记，具体取决于流量类型，或者可能受基于流的 QoS 的约束。</p>
+</li>
+<li>
+<p>该算法应该将反向信道(backchannel)信息的意外缺失, 感知为信道过度使用问题的可能指示，并相应地做出反应, 以避免导致拥塞崩溃的突发事件。</p>
+</li>
+<li>
+<p>当应用主动队列管理 (AQM: Active Queue Management) 算法时，该算法应该是稳定的并保持低延迟。另请注意，这些算法可能适用于瓶颈中的多个队列或单个队列。</p>
+</li>
+</ol>
+<p>简而言之，针对以下几个主要的指标，有如下需求</p>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>需求</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>延迟 Latency</td>
+<td>尽可能低于 100ms</td>
+</tr>
+<tr>
+<td>丢包 Packet losses</td>
+<td>越少越好，可应用 FEC</td>
+</tr>
+<tr>
+<td>吞吐量 Throughput</td>
+<td>越高越好</td>
+</tr>
+<tr>
+<td>突发性 Burstiness</td>
+<td>要产生一个平滑的发送速率</td>
+</tr>
+<tr>
+<td>公平性 Fairness</td>
+<td>应在实时媒体流和数据流之间公平地分享带宽</td>
+</tr>
+<tr>
+<td>饥饿 Starvation</td>
+<td>媒体流不应由于过度竞争而使 TCP 流饥饿</td>
+</tr>
+<tr>
+<td>网络支持 Network support</td>
+<td>无需特别的网络支持即可运行</td>
+</tr>
+</tbody>
+</table>
+<h2>选择</h2>
+<p>满足这些要求的算法设计面临着几个选择</p>
+<ol>
+<li>
+<p>The transport protocol <strong>传输协议</strong></p>
+</li>
+<li>
+<p>Congestion detection <strong>拥塞检测</strong></p>
+</li>
+<li>
+<p>The actuation mechanism to be employed <strong>所采用的驱动机制</strong></p>
+</li>
+</ol>
+<p>通过端到端的度量来检测拥塞的方法可以分为两大类：</p>
+<ol>
+<li>
+<p>基于丢包的算法 Loss-based algorithms</p>
+</li>
+<li>
+<p>基于延迟的算法 Delay-based algorithms</p>
+</li>
+</ol>
+<p>拥塞检测可以是隐式的（基于在端点执行的端到端测量），也可以是显式的（通过监视路由器的缓冲区长度，在网络元素中直接测量拥塞）。</p>
+<p>一般来说，基于延迟的算法优于基于损失的算法，有如下两个原因：</p>
+<ul>
+<li>
+<p>首先，基于延迟的方案可以在数据包因缓冲区溢出而丢失之前检测到拥塞；</p>
+</li>
+<li>
+<p>其次，基于损失的算法无法控制排队延迟，因为它们通过填充和耗尽 Internet 缓冲区不断探测网络可用带宽，从而产生显着的延迟变化。</p>
+</li>
+</ul>
+<p>注意：</p>
+<ul>
+<li>
+<p>显式控制排队延迟也是必要的，因为过大的缓冲区可能会导致几秒的延迟</p>
+</li>
+<li>
+<p>需要考虑的一个重要问题是在尽力而为的互联网中与基于损失的流量竞争时，防止基于延迟的流量被饿死。</p>
+</li>
+<li>
+<p>拥塞控制算法可以使用从网络元素发送到端点的显式拥塞信号来补充端到端测量，例如通过使用显式拥塞通知 (ECN) 机制。</p>
+</li>
+</ul>
+<p>关于驱动机制, 拥塞控制算法或者计算一个 congestion window (window-based approach) ，或者显式计算一个 sending rate (rate-based approach).</p>
+<p><strong>基于速率的机制的使用使得可以直接使用拥塞控制算法计算的速率来驱动媒体编码器，而在基于窗口的算法的情况下，应该执行从窗口到速率的适当转换。</strong></p>
+<h1>度量指标</h1>
+<ol>
+<li><strong>Packet Loss 丢包</strong></li>
+<li><strong>RTT 往返时间</strong></li>
+<li><strong>Jitter 抖动</strong></li>
+<li><strong>Delay</strong>
+4.1 One Way delay
+4.2 One-Way Delay Variation (OWDV)</li>
+</ol>
+<p>前 3 个指标不用说了，RTP 协议中有详细说明，通过 RTCP 也能够计算出来，参见以前写的笔记 <a href="https://www.jianshu.com/p/3a4142e54f73">实时传输协议RTP 和RTCP</a></p>
+<p>One way delay (OWD)单向延迟很简单，表示接收时间减去发送时间，如图所示， $$OWD = t_i - T_i$$</p>
+<p>而One-Way Delay Variation(OWDV) 单向延迟变化，表示发送间隔与到达时间之间的差
+ $$OWDV = t_i - t_{i-1} - (T_i - T_{i-1})$$</p>
+<p><img alt="" src="https://upload-images.jianshu.io/upload_images/1598924-f2577d12a7c568a0.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/480"></p>
+<p>OWDV 的值有三种情况:</p>
+<ul>
+<li>
+<ol>
+<li>OWDV &gt; 0: 排队延迟在增长</li>
+</ol>
+</li>
+<li>
+<ol>
+<li>OWDV &lt; 0: 排队延迟在减小</li>
+</ol>
+</li>
+<li>
+<ol>
+<li>OWDV = 0: 排队延迟保持在一个恒定的值:</li>
+</ol>
+</li>
+<li>3.1 拥塞队列是空的：发送速率小于传输能力，不需要排队</li>
+<li>3.2 拥塞队列是满的：发送速率大于传输能力，排队堵住了</li>
+<li>3.3 拥塞队列是空的：发送速率等于传输能力，排队有序通过</li>
+</ul>
+<p>第 3 种情况下，队列保持不变，OWDV 介于零和其最大值之间。 这是一种称为站立队列的不良情况，它会不断延迟传入流量。 因此，为了在充分利用可用带宽的同时保证较小的队列占用，算法必须通过增加其发送速率来持续探测可用带宽，直到检测到正排队延迟变化。 此时，发送速率应迅速降低。 总而言之，需要引入一些排队延迟来运行基于延迟变化的拥塞控制算法</p>
+<h1>GCC</h1>
+<p>WebRTC 中应用较广的是 Google 提出来的 GCC(Google Congestion Control), 它有两个版本
+1. GCC v1:  通过 RTP abs_send_time header 和 RTCP REMB message 扩展，基于丢包和延迟估算带宽占用和是否有拥塞，从而调整媒体流的发送速率，主要的估算和决策在接收方，采用了卡尔曼滤波</p>
+<ol>
+<li>GCC v2: 通过 RTP transport wide cc sn header 和 RTCP transport feedback message 扩展，基于丢包和延迟估算带宽占用和是否有拥塞，从而调整媒体流的发送速率，主要的估算和决策在发送方，采用了线性回归和最小二乘法</li>
+</ol>
+<p>后面有时间来详细讲讲  GCC v2 的设计和实现</p>
+<h1>参考资料</h1>
+<ul>
+<li>
+<p><a href="https://c3lab.poliba.it/images/6/65/Gcc-analysis.pdf">Analysis and Design of the Google Congestion Control for WebRTC</a></p>
+</li>
+<li>
+<p><a href="https://blog.mozilla.org/webrtc/what-is-rmcat-congestion-control/">What is RMCAT congestion control, and how will it affect WebRTC?</a></p>
+</li>
+<li>
+<p><a href="https://datatracker.ietf.org/wg/rmcat/about/">RMCAT work group</a></p>
+</li>
+<li>
+<p><a href="https://datatracker.ietf.org/wg/rmcat/documents/">RMCAT documents</a>: RTP Media Congestion Avoidance Techniques documents</p>
+</li>
+<li>
+<p><a href="https://datatracker.ietf.org/doc/html/rfc8825">RFC8825</a>: Overview: Real-Time Protocols for Browser-Based Applications</p>
+</li>
+<li>
+<p><a href="https://datatracker.ietf.org/doc/html/rfc8836">RFC8836</a>: Congestion Control Requirements for Interactive Real-Time Media</p>
+</li>
+<li>
+<p><a href="https://datatracker.ietf.org/doc/html/rfc8083">RFC8083</a>: Multimedia Congestion Control: Circuit Breakers for Unicast RTP Sessions</p>
+</li>
+<li>
+<p><a href="ttps://datatracker.ietf.org/doc/html/rfc8698">RFC8698 Network-Assisted Dynamic Adaptation (NADA): A Unified Congestion Control Scheme for Real-Time Media</a></p>
+</li>
+<li>
+<p><a href="https://datatracker.ietf.org/doc/html/rfc8888">RFC8888 RTP Control Protocol (RTCP) Feedback for Congestion Control</a></p>
+</li>
+<li>
+<p><a href="https://datatracker.ietf.org/doc/html/rfc3168">RFC3168 The Addition of Explicit Congestion Notification (ECN) to IP</a></p>
+</li>
+</ul>
+  </div>
+  <div class="tag-cloud">
+    <p>
+      <a href="./tag/webrtc.html">webrtc</a>
+      <a href="./tag/tech.html">tech</a>
+    </p>
+  </div>
+
+
+
+
+
+</article>
+
+    <footer>
+<p>&copy; Walter Fan 2010 ~ 2030 </p>
+<p>
+  <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号</a>
+</p>
+<p>    Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+</p><!-- StatusCake -->
+
+<!-- End StatusCake -->    </footer>
+  </main>
+
+
+
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : ".",
+  "image": "./images/walterfan.jpg",
+  "description": "an old programmer never die, he just branch to a new address."
+}
+</script>
+
+</body>
+</html>

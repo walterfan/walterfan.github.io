@@ -1,0 +1,990 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css?family=Source+Code+Pro|Source+Sans+Pro:300,400,400i,700" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="./theme/stylesheet/style.min.css">
+
+  <link rel="stylesheet" type="text/css" href="./theme/pygments/github.min.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/solid.css">
+
+
+
+
+    <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+    <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="Daily minute" />
+<meta name="keywords" content="webrtc, tech">
+
+
+<meta property="og:site_name" content="Walter Fan's Blog"/>
+<meta property="og:title" content="拥塞控制技术的笔记三: TWCC 在 libwebrtc 中的实现"/>
+<meta property="og:description" content="Daily minute"/>
+<meta property="og:locale" content="en_US"/>
+<meta property="og:url" content="./yong-sai-kong-zhi-ji-zhu-de-bi-ji-san-twcc-zai-libwebrtc-zhong-de-shi-xian.html"/>
+<meta property="og:type" content="article"/>
+<meta property="article:published_time" content="2022-02-13 10:20:00+08:00"/>
+<meta property="article:modified_time" content="2022-02-13 19:30:00+08:00"/>
+<meta property="article:author" content="./author/walter-fan.html">
+<meta property="article:section" content="Journal"/>
+<meta property="article:tag" content="webrtc"/>
+<meta property="article:tag" content="tech"/>
+<meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 拥塞控制技术的笔记三: TWCC 在 libwebrtc 中的实现</title>
+
+</head>
+<body>
+  <aside>
+    <div>
+      <a href=".">
+        <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+      </a>
+      <h1><a href=".">Walter Fan</a></h1>
+
+<p>手握灵珠常奋笔, 心开天籁不吹箫</p>
+      <nav>
+        <ul class="list">
+
+            <li><a target="_blank" href="./about.html#about-me">About Me</a></li>
+
+            <li><a target="_blank" href="/wordpress" >Notebook</a></li>
+            <li><a target="_blank" href="/tao" >Tao</a></li>
+            <li><a target="_blank" href="/webrtc/examples/index.html" >WebRTC</a></li>
+            <li><a target="_blank" href="https://github.com/walterfan" >github</a></li>
+            <li><a target="_blank" href="https://www.jianshu.com/u/e0b365801f48" >jianshu</a></li>
+        </ul>
+      </nav>
+
+      <ul class="social">
+          <li>
+            <a  class="sc-github" href="http://github.com/walterfan" target="_blank">
+            <i class="fab fa-github">
+            </i>
+          </a></li>
+      </ul>
+    </div>
+
+
+  </aside>
+  <main>
+
+
+<article class="single">
+  <header>
+      
+    <h1 id="yong-sai-kong-zhi-ji-zhu-de-bi-ji-san-twcc-zai-libwebrtc-zhong-de-shi-xian">拥塞控制技术的笔记三: TWCC 在 libwebrtc 中的实现</h1>
+    <p>
+          Posted on Sun 13 February 2022 in <a href="./category/journal.html">Journal</a>
+
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>拥塞控制技术的笔记三: TWCC 在 libwebrtc 中的实现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td> <strong>Category</strong>   </td>
+<td> learning note  </td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>WIP</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2022-2-10</td>
+</tr>
+</tbody>
+</table>
+<h1>构建 libwebrtc</h1>
+<ol>
+<li>安装 Chromium 软件库工具.</li>
+</ol>
+<p>参见 
+* WebRTC 开发依赖软件 <a href="https://webrtc.googlesource.com/src/+/main/docs/native-code/development/prerequisite-sw/index.md">webrtc-prerequisite-sw</a>
+* `安装 WebRTC 开发工具  <a href="https://commondatastorage.googleapis.com/chrome-infra-docs/flat/depot_tools/docs/html/depot_tools_tutorial.html#_setting_up">webrtc-depot-tools</a></p>
+<ol>
+<li>下载 WebRTC 源码</li>
+</ol>
+<div class="highlight"><pre><span></span><code>   $ mkdir webrtc-checkout
+   $ cd webrtc-checkout
+   $ fetch --nohooks webrtc
+   $ gclient sync --force
+</code></pre></div>
+
+<ol>
+<li>更新源码到你自己的分支</li>
+</ol>
+<div class="highlight"><pre><span></span><code>   $ git checkout main
+   $ git pull origin main
+   $ gclient sync
+   $ git checkout my-branch
+   $ git merge main
+</code></pre></div>
+
+<ol>
+<li>构建</li>
+</ol>
+<p>先要安装 ninja 构建工具 <a href="https://ninja-build.org/">ninja-tool</a> 这一构建工具, 通过它来生成构建脚本</p>
+<p>在 Linux 系统上，比较简单的方法是运行 <code>./build/install-build-deps.sh</code></p>
+<div class="highlight"><pre><span></span><code>   $ cd src
+   $ python build/util/lastchange.py build/util/LASTCHANGE
+   # generate project files using the defaults (Debug build)
+   $ gn gen out/Default
+   # clean all build artifacts in a directory but leave the current GN configuration untouched
+   $ gn clean out/Default
+   $ ninja -C out/Default
+</code></pre></div>
+
+<p>在 windows 系统上，建议安装 visual studio 和 windows 10 SDK</p>
+<p>注意:</p>
+<p>1）一定要在系统设置中选择 Windows SDK , 再选择修改，安装 debugging tool)
+2）为了使用本地安装的 visual studio, 需要先设置一下环境变量 <code>set DEPOT_TOOLS_WIN_TOOLCHAIN=0</code></p>
+<div class="highlight"><pre><span></span><code>   gn gen --ide=vs out\Default
+</code></pre></div>
+
+<p>然后用 visual studio 打开 out\Default\all.sln</p>
+<h1>主要模块</h1>
+<p>拥塞控制的相关代码主要存在于 webrtc 代码的以下两个模块中</p>
+<ul>
+<li>modules/remote_bitrate_estimator 基于 REMB 的旧版本，基本已经废弃了，其中几个类在新版本中也有使用</li>
+<li>congestion_controller 基于 Transport Wide CC 的新版本，新旧版本中接收端的估算逻辑移到了发送端，其中的卡尔曼滤波算法也改成了线性回归算法</li>
+</ul>
+<p>还有相关联的一些模块,例如:</p>
+<ul>
+<li>modules/pacing: 控制发送速率</li>
+<li>modules/rtp_rtcp: 支持 RTP 协议</li>
+<li>modules/video_coding: 控制编码速率</li>
+</ul>
+<h2>主要接口</h2>
+<p>NetworkControllerInterface 是拥塞控制的主要,其实现类是 GoogCcNetworkController</p>
+<table>
+<thead>
+<tr>
+<th>method</th>
+<th>parameter</th>
+<th>description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>OnNetworkAvailability</td>
+<td>NetworkAvailability</td>
+<td>当网络连接有效或无效时</td>
+</tr>
+<tr>
+<td>OnNetworkRouteChange</td>
+<td>NetworkRouteChange</td>
+<td>当网络地址更改时</td>
+</tr>
+<tr>
+<td>OnProcessInterval</td>
+<td>ProcessInterval</td>
+<td>定时回调，以检查网络</td>
+</tr>
+<tr>
+<td>OnRemoteBitrateReport</td>
+<td>RemoteBitrateReport</td>
+<td>当收到 REMB RTCP 消息时回调</td>
+</tr>
+<tr>
+<td>OnRoundTripTimeUpdate</td>
+<td>RoundTripTimeUpdate</td>
+<td>当 RTT 更改时回调（可通过 RTCP RR）</td>
+</tr>
+<tr>
+<td>OnSentPacket</td>
+<td>SentPacket</td>
+<td>当发出一个 RTP 包时</td>
+</tr>
+<tr>
+<td>OnReceivedPacket</td>
+<td>ReceivedPacket</td>
+<td>当收到一个 RTP 包时</td>
+</tr>
+<tr>
+<td>OnStreamsConfig</td>
+<td>StreamsConfig</td>
+<td>当有媒体流相关的配置更新时</td>
+</tr>
+<tr>
+<td>OnTargetRateConstraints</td>
+<td>TargetRateConstraints</td>
+<td>当目标速率约束更改时</td>
+</tr>
+<tr>
+<td>OnTransportLossReport</td>
+<td></td>
+<td>当收到 TransportLossReport 时</td>
+</tr>
+<tr>
+<td>OnTransportPacketsFeedback</td>
+<td>TransportPacketsFeedback</td>
+<td>当收到 TransportPacketsFeedback 时</td>
+</tr>
+<tr>
+<td>OnNetworkStateEstimate</td>
+<td>NetworkStateEstimate</td>
+<td>当网络状态估计更新时，还在开发中</td>
+</tr>
+</tbody>
+</table>
+<h2>主要流程</h2>
+<h3>带宽探测　Bandwidth Probe</h3>
+<p>相关类有
+* class ProbeController　控制在什么时候如何进行带宽探测
+* class ProbeBitrateEstimator 根据探测包的反馈结果进行带宽估算
+  主要方法有:
+  - HandleProbeAndEstimateBitrate
+  - FetchAndResetLastEstimatedBitrate</p>
+<p>主要流程如下，详细分析另外找个时间再说</p>
+<div class="highlight"><pre><span></span><code><span class="n">s</span><span class="o">=&gt;</span><span class="n">start</span><span class="o">:</span><span class="w"> </span><span class="n">start</span><span class="w"></span>
+<span class="n">e</span><span class="o">=&gt;</span><span class="kd">end:</span><span class="w"> </span><span class="kd">end</span>
+<span class="n">OnNetworkAvailability1</span><span class="o">=&gt;</span><span class="n">operation</span><span class="o">:</span><span class="w"> </span><span class="n">GoogCcNetworkController</span><span class="o">::</span><span class="n">OnNetworkAvailability</span><span class="w"></span>
+<span class="n">OnNetworkAvailability2</span><span class="o">=&gt;</span><span class="n">operation</span><span class="o">:</span><span class="w"> </span><span class="n">ProbeController</span><span class="o">::</span><span class="n">OnNetworkAvailability</span><span class="w"></span>
+<span class="n">is_available</span><span class="o">=&gt;</span><span class="n">condition</span><span class="o">:</span><span class="w"> </span><span class="n">is</span><span class="w"> </span><span class="n">network</span><span class="w"> </span><span class="n">available</span><span class="w"></span>
+<span class="n">InitiateExponentialProbing</span><span class="o">=&gt;</span><span class="n">operation</span><span class="o">:</span><span class="w"> </span><span class="n">ProbeController</span><span class="o">::</span><span class="n">InitiateExponentialProbing</span><span class="w"></span>
+<span class="n">InitiateProbing</span><span class="o">=&gt;</span><span class="n">operation</span><span class="o">:</span><span class="w"> </span><span class="n">ProbeController</span><span class="o">::</span><span class="n">InitiateProbing</span><span class="o">:</span><span class="w"> </span><span class="mi">900</span><span class="n">k</span><span class="p">,</span><span class="w"> </span><span class="mf">1.8</span><span class="n">m</span><span class="w"></span>
+
+<span class="n">s</span><span class="o">-&gt;</span><span class="n">OnNetworkAvailability1</span><span class="o">-&gt;</span><span class="n">OnNetworkAvailability2</span><span class="o">-&gt;</span><span class="n">is_available</span><span class="w"></span>
+<span class="n">is_available</span><span class="p">(</span><span class="n">yes</span><span class="p">)</span><span class="o">-&gt;</span><span class="n">InitiateExponentialProbing</span><span class="o">-&gt;</span><span class="n">InitiateProbing</span><span class="o">-&gt;</span><span class="n">e</span><span class="w"></span>
+<span class="n">is_available</span><span class="p">(</span><span class="n">no</span><span class="p">)</span><span class="o">-&gt;</span><span class="n">e</span><span class="w"></span>
+</code></pre></div>
+
+<h3>带宽估算　Bandwidth estimate</h3>
+<ul>
+<li>GoogCcNetworkController 是核心类, ##　主要方法是 OnTransportPacketsFeedback 处理传输通道的 RTP 包的状态反馈报告</li>
+</ul>
+<p>可以通过 webrtc library 自带的 peerconnection example 和一些单元测试来了解其流程.</p>
+<p>在 WebRTC 的 test/scenario 模块中有一个称为 Scenario 的类， 它是一个拥有测试场景所有内容的类。 它创建并保存网络节点、呼叫客户端和媒体流。 它还提供了在运行时改变行为的方法。</p>
+<p>由于它始终保持所创建组件的所有权，因此它通常返回的指针是不具有拥有仅的，只能由 Scenario 自己来保持其对象的生命，直到它被销毁。</p>
+<p>对于接受配置结构体的方法，一般会提供一个修改函数接口。 这样测试者可以简单地覆盖部分默认的配置。</p>
+<p>在发送端的流程大致有</p>
+<h4>1) RTCP message 接收后由 TransportFeedbackAdapter 解析</h4>
+<div class="highlight"><pre><span></span><code><span class="n">absl</span><span class="o">::</span><span class="n">optional</span><span class="o">&lt;</span><span class="n">TransportPacketsFeedback</span><span class="o">&gt;</span><span class="w"> </span><span class="n">TransportFeedbackAdapter</span><span class="o">::</span><span class="n">ProcessTransportFeedback</span><span class="p">(</span><span class="w"></span>
+<span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="n">rtcp</span><span class="o">::</span><span class="n">TransportFeedback</span><span class="o">&amp;</span><span class="w"> </span><span class="n">feedback</span><span class="p">,</span><span class="w"></span>
+<span class="w">    </span><span class="n">Timestamp</span><span class="w"> </span><span class="n">feedback_receive_time</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">feedback</span><span class="p">.</span><span class="n">GetPacketStatusCount</span><span class="p">()</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="n">RTC_LOG</span><span class="p">(</span><span class="n">LS_INFO</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot;Empty transport feedback packet received.&quot;</span><span class="p">;</span><span class="w"></span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">absl</span><span class="o">::</span><span class="n">nullopt</span><span class="p">;</span><span class="w"></span>
+<span class="w">  </span><span class="p">}</span><span class="w"></span>
+
+<span class="w">  </span><span class="n">TransportPacketsFeedback</span><span class="w"> </span><span class="n">msg</span><span class="p">;</span><span class="w"></span>
+<span class="w">  </span><span class="n">msg</span><span class="p">.</span><span class="n">feedback_time</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">feedback_receive_time</span><span class="p">;</span><span class="w"></span>
+
+<span class="w">  </span><span class="n">msg</span><span class="p">.</span><span class="n">prior_in_flight</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">in_flight_</span><span class="p">.</span><span class="n">GetOutstandingData</span><span class="p">(</span><span class="n">network_route_</span><span class="p">);</span><span class="w"></span>
+<span class="w">  </span><span class="n">msg</span><span class="p">.</span><span class="n">packet_feedbacks</span><span class="w"> </span><span class="o">=</span><span class="w"></span>
+<span class="w">      </span><span class="n">ProcessTransportFeedbackInner</span><span class="p">(</span><span class="n">feedback</span><span class="p">,</span><span class="w"> </span><span class="n">feedback_receive_time</span><span class="p">);</span><span class="w"></span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">msg</span><span class="p">.</span><span class="n">packet_feedbacks</span><span class="p">.</span><span class="n">empty</span><span class="p">())</span><span class="w"></span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">absl</span><span class="o">::</span><span class="n">nullopt</span><span class="p">;</span><span class="w"></span>
+
+<span class="w">  </span><span class="k">auto</span><span class="w"> </span><span class="n">it</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">history_</span><span class="p">.</span><span class="n">find</span><span class="p">(</span><span class="n">last_ack_seq_num_</span><span class="p">);</span><span class="w"></span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">it</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">history_</span><span class="p">.</span><span class="n">end</span><span class="p">())</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="n">msg</span><span class="p">.</span><span class="n">first_unacked_send_time</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">it</span><span class="o">-&gt;</span><span class="n">second</span><span class="p">.</span><span class="n">sent</span><span class="p">.</span><span class="n">send_time</span><span class="p">;</span><span class="w"></span>
+<span class="w">  </span><span class="p">}</span><span class="w"></span>
+<span class="w">  </span><span class="n">msg</span><span class="p">.</span><span class="n">data_in_flight</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">in_flight_</span><span class="p">.</span><span class="n">GetOutstandingData</span><span class="p">(</span><span class="n">network_route_</span><span class="p">);</span><span class="w"></span>
+
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">msg</span><span class="p">;</span><span class="w"></span>
+<span class="p">}</span><span class="w"></span>
+</code></pre></div>
+
+<h4>2) 将 RTCP 消息转化为 TransportPacketsFeedback</h4>
+<div class="highlight"><pre><span></span><code><span class="k">struct</span><span class="w"> </span><span class="nc">TransportPacketsFeedback</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">  </span><span class="n">TransportPacketsFeedback</span><span class="p">();</span><span class="w"></span>
+<span class="w">  </span><span class="n">TransportPacketsFeedback</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">TransportPacketsFeedback</span><span class="o">&amp;</span><span class="w"> </span><span class="n">other</span><span class="p">);</span><span class="w"></span>
+<span class="w">  </span><span class="o">~</span><span class="n">TransportPacketsFeedback</span><span class="p">();</span><span class="w"></span>
+
+<span class="w">  </span><span class="n">Timestamp</span><span class="w"> </span><span class="n">feedback_time</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Timestamp</span><span class="o">::</span><span class="n">PlusInfinity</span><span class="p">();</span><span class="w"></span>
+<span class="w">  </span><span class="n">Timestamp</span><span class="w"> </span><span class="n">first_unacked_send_time</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Timestamp</span><span class="o">::</span><span class="n">PlusInfinity</span><span class="p">();</span><span class="w"></span>
+<span class="w">  </span><span class="n">DataSize</span><span class="w"> </span><span class="n">data_in_flight</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">DataSize</span><span class="o">::</span><span class="n">Zero</span><span class="p">();</span><span class="w"></span>
+<span class="w">  </span><span class="n">DataSize</span><span class="w"> </span><span class="n">prior_in_flight</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">DataSize</span><span class="o">::</span><span class="n">Zero</span><span class="p">();</span><span class="w"></span>
+<span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">PacketResult</span><span class="o">&gt;</span><span class="w"> </span><span class="n">packet_feedbacks</span><span class="p">;</span><span class="w"></span>
+
+<span class="w">  </span><span class="c1">// Arrival times for messages without send time information.</span>
+<span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">Timestamp</span><span class="o">&gt;</span><span class="w"> </span><span class="n">sendless_arrival_times</span><span class="p">;</span><span class="w"></span>
+
+<span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">PacketResult</span><span class="o">&gt;</span><span class="w"> </span><span class="n">ReceivedWithSendInfo</span><span class="p">()</span><span class="w"> </span><span class="k">const</span><span class="p">;</span><span class="w"></span>
+<span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">PacketResult</span><span class="o">&gt;</span><span class="w"> </span><span class="n">LostWithSendInfo</span><span class="p">()</span><span class="w"> </span><span class="k">const</span><span class="p">;</span><span class="w"></span>
+<span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">PacketResult</span><span class="o">&gt;</span><span class="w"> </span><span class="n">PacketsWithFeedback</span><span class="p">()</span><span class="w"> </span><span class="k">const</span><span class="p">;</span><span class="w"></span>
+<span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">PacketResult</span><span class="o">&gt;</span><span class="w"> </span><span class="n">SortedByReceiveTime</span><span class="p">()</span><span class="w"> </span><span class="k">const</span><span class="p">;</span><span class="w"></span>
+<span class="p">};</span><span class="w"></span>
+</code></pre></div>
+
+<p>可以跑这个单元测试来加深理解</p>
+<div class="highlight"><pre><span></span><code><span class="cp"># ./out/Default/modules_unittests --gtest_filter=TransportFeedbackAdapterTest.AdaptsFeedbackAndPopulatesSendTimes</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">TransportFeedbackAdapterTest</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="k">public</span><span class="w"> </span><span class="o">::</span><span class="n">testing</span><span class="o">::</span><span class="n">Test</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w"> </span><span class="k">public</span><span class="o">:</span><span class="w"></span>
+<span class="w">  </span><span class="n">TransportFeedbackAdapterTest</span><span class="p">()</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">clock_</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{}</span><span class="w"></span>
+
+<span class="w">  </span><span class="k">virtual</span><span class="w"> </span><span class="o">~</span><span class="n">TransportFeedbackAdapterTest</span><span class="p">()</span><span class="w"> </span><span class="p">{}</span><span class="w"></span>
+
+<span class="w">  </span><span class="k">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="n">SetUp</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="n">adapter_</span><span class="p">.</span><span class="n">reset</span><span class="p">(</span><span class="k">new</span><span class="w"> </span><span class="n">TransportFeedbackAdapter</span><span class="p">(</span><span class="o">&amp;</span><span class="n">clock_</span><span class="p">));</span><span class="w"></span>
+<span class="w">  </span><span class="p">}</span><span class="w"></span>
+
+<span class="w">  </span><span class="k">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="n">TearDown</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">adapter_</span><span class="p">.</span><span class="n">reset</span><span class="p">();</span><span class="w"> </span><span class="p">}</span><span class="w"></span>
+
+<span class="w"> </span><span class="k">protected</span><span class="o">:</span><span class="w"></span>
+<span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="n">OnReceivedEstimatedBitrate</span><span class="p">(</span><span class="kt">uint32_t</span><span class="w"> </span><span class="n">bitrate</span><span class="p">)</span><span class="w"> </span><span class="p">{}</span><span class="w"></span>
+
+<span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="n">OnReceivedRtcpReceiverReport</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">ReportBlockList</span><span class="o">&amp;</span><span class="w"> </span><span class="n">report_blocks</span><span class="p">,</span><span class="w"></span>
+<span class="w">                                    </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">rtt</span><span class="p">,</span><span class="w"></span>
+<span class="w">                                    </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">now_ms</span><span class="p">)</span><span class="w"> </span><span class="p">{}</span><span class="w"></span>
+
+<span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="n">OnSentPacket</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">PacketFeedback</span><span class="o">&amp;</span><span class="w"> </span><span class="n">packet_feedback</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="n">adapter_</span><span class="o">-&gt;</span><span class="n">AddPacket</span><span class="p">(</span><span class="n">kSsrc</span><span class="p">,</span><span class="w"> </span><span class="n">packet_feedback</span><span class="p">.</span><span class="n">sequence_number</span><span class="p">,</span><span class="w"></span>
+<span class="w">                        </span><span class="n">packet_feedback</span><span class="p">.</span><span class="n">payload_size</span><span class="p">,</span><span class="w"></span>
+<span class="w">                        </span><span class="n">packet_feedback</span><span class="p">.</span><span class="n">pacing_info</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="n">adapter_</span><span class="o">-&gt;</span><span class="n">OnSentPacket</span><span class="p">(</span><span class="n">packet_feedback</span><span class="p">.</span><span class="n">sequence_number</span><span class="p">,</span><span class="w"></span>
+<span class="w">                           </span><span class="n">packet_feedback</span><span class="p">.</span><span class="n">send_time_ms</span><span class="p">);</span><span class="w"></span>
+<span class="w">  </span><span class="p">}</span><span class="w"></span>
+
+<span class="w">  </span><span class="k">static</span><span class="w"> </span><span class="k">constexpr</span><span class="w"> </span><span class="kt">uint32_t</span><span class="w"> </span><span class="n">kSsrc</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">8492</span><span class="p">;</span><span class="w"></span>
+
+<span class="w">  </span><span class="n">SimulatedClock</span><span class="w"> </span><span class="n">clock_</span><span class="p">;</span><span class="w"></span>
+<span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><span class="n">TransportFeedbackAdapter</span><span class="o">&gt;</span><span class="w"> </span><span class="n">adapter_</span><span class="p">;</span><span class="w"></span>
+<span class="p">};</span><span class="w"></span>
+</code></pre></div>
+
+<h4>3) Feedback 消息交由拥塞控制器来进行拥塞检测和带宽评估</h4>
+<p>基于延迟的带宽评估主要入口是下面这个方法 OnTransportPacketsFeedback（TransportPacketsFeedback report)
+这个方法相当复杂，先把代码贴出来，详细流程需要再单独剖析</p>
+<p>这个方法用到了若干个子类</p>
+<ul>
+<li>ProbleController, ProbeBitrateEstimatro 用来做初始化时，以及网络吞吐急剧变化的探测和带宽估计</li>
+<li>AcknowledgedBitrateEstimator 和 BitrateEstimator 用来计算网络上的吞吐量，用到了滑动窗口和卡尔曼滤波</li>
+<li>SendSideBandwidthEstimation 基于丢包进行带宽的评估, 它同时也参考了 Propagation RTT, 最后还要看下面 DelayBasedBwe 做的基于延迟的估算结果</li>
+<li>AlrDetector 处理了 Application Limited Region 的检测，并根据配置看要不要启用 Proble</li>
+<li>DelayBasedBwe 基于延迟的码率估算，通过指数移动平均 EWMV 和 Trendline filter 估算出带宽</li>
+<li>CongestionWindowPushbackController : 根据当前窗口内的数据用量，对目标码率做进一步的调整</li>
+</ul>
+<div class="highlight"><pre><span></span><code><span class="n">NetworkControlUpdate</span><span class="w"> </span><span class="nf">GoogCcNetworkController::OnTransportPacketsFeedback</span><span class="p">(</span><span class="w"></span>
+<span class="w">    </span><span class="n">TransportPacketsFeedback</span><span class="w"> </span><span class="n">report</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">report</span><span class="p">.</span><span class="n">packet_feedbacks</span><span class="p">.</span><span class="n">empty</span><span class="p">())</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="c1">// TODO(bugs.webrtc.org/10125): Design a better mechanism to safe-guard</span>
+<span class="w">    </span><span class="c1">// against building very large network queues.</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">NetworkControlUpdate</span><span class="p">();</span><span class="w"></span>
+<span class="w">  </span><span class="p">}</span><span class="w"></span>
+
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">congestion_window_pushback_controller_</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="n">congestion_window_pushback_controller_</span><span class="o">-&gt;</span><span class="n">UpdateOutstandingData</span><span class="p">(</span><span class="w"></span>
+<span class="w">        </span><span class="n">report</span><span class="p">.</span><span class="n">data_in_flight</span><span class="p">.</span><span class="n">bytes</span><span class="p">());</span><span class="w"></span>
+<span class="w">  </span><span class="p">}</span><span class="w"></span>
+<span class="w">  </span><span class="n">TimeDelta</span><span class="w"> </span><span class="n">max_feedback_rtt</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">TimeDelta</span><span class="o">::</span><span class="n">MinusInfinity</span><span class="p">();</span><span class="w"></span>
+<span class="w">  </span><span class="n">TimeDelta</span><span class="w"> </span><span class="n">min_propagation_rtt</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">TimeDelta</span><span class="o">::</span><span class="n">PlusInfinity</span><span class="p">();</span><span class="w"></span>
+<span class="w">  </span><span class="n">Timestamp</span><span class="w"> </span><span class="n">max_recv_time</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Timestamp</span><span class="o">::</span><span class="n">MinusInfinity</span><span class="p">();</span><span class="w"></span>
+
+<span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">PacketResult</span><span class="o">&gt;</span><span class="w"> </span><span class="n">feedbacks</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">report</span><span class="p">.</span><span class="n">ReceivedWithSendInfo</span><span class="p">();</span><span class="w"></span>
+<span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="o">&amp;</span><span class="w"> </span><span class="n">feedback</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">feedbacks</span><span class="p">)</span><span class="w"></span>
+<span class="w">    </span><span class="n">max_recv_time</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">max</span><span class="p">(</span><span class="n">max_recv_time</span><span class="p">,</span><span class="w"> </span><span class="n">feedback</span><span class="p">.</span><span class="n">receive_time</span><span class="p">);</span><span class="w"></span>
+
+<span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="o">&amp;</span><span class="w"> </span><span class="n">feedback</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">feedbacks</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="n">TimeDelta</span><span class="w"> </span><span class="n">feedback_rtt</span><span class="w"> </span><span class="o">=</span><span class="w"></span>
+<span class="w">        </span><span class="n">report</span><span class="p">.</span><span class="n">feedback_time</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">feedback</span><span class="p">.</span><span class="n">sent_packet</span><span class="p">.</span><span class="n">send_time</span><span class="p">;</span><span class="w"></span>
+<span class="w">    </span><span class="n">TimeDelta</span><span class="w"> </span><span class="n">min_pending_time</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">feedback</span><span class="p">.</span><span class="n">receive_time</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">max_recv_time</span><span class="p">;</span><span class="w"></span>
+<span class="w">    </span><span class="n">TimeDelta</span><span class="w"> </span><span class="n">propagation_rtt</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">feedback_rtt</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">min_pending_time</span><span class="p">;</span><span class="w"></span>
+<span class="w">    </span><span class="n">max_feedback_rtt</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">max</span><span class="p">(</span><span class="n">max_feedback_rtt</span><span class="p">,</span><span class="w"> </span><span class="n">feedback_rtt</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="n">min_propagation_rtt</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">min</span><span class="p">(</span><span class="n">min_propagation_rtt</span><span class="p">,</span><span class="w"> </span><span class="n">propagation_rtt</span><span class="p">);</span><span class="w"></span>
+<span class="w">  </span><span class="p">}</span><span class="w"></span>
+
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">max_feedback_rtt</span><span class="p">.</span><span class="n">IsFinite</span><span class="p">())</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="n">feedback_max_rtts_</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="n">max_feedback_rtt</span><span class="p">.</span><span class="n">ms</span><span class="p">());</span><span class="w"></span>
+<span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">kMaxFeedbackRttWindow</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">32</span><span class="p">;</span><span class="w"></span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">feedback_max_rtts_</span><span class="p">.</span><span class="n">size</span><span class="p">()</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">kMaxFeedbackRttWindow</span><span class="p">)</span><span class="w"></span>
+<span class="w">      </span><span class="n">feedback_max_rtts_</span><span class="p">.</span><span class="n">pop_front</span><span class="p">();</span><span class="w"></span>
+<span class="w">    </span><span class="c1">// TODO(srte): Use time since last unacknowledged packet.</span>
+<span class="w">    </span><span class="n">bandwidth_estimation_</span><span class="o">-&gt;</span><span class="n">UpdatePropagationRtt</span><span class="p">(</span><span class="n">report</span><span class="p">.</span><span class="n">feedback_time</span><span class="p">,</span><span class="w"></span>
+<span class="w">                                                </span><span class="n">min_propagation_rtt</span><span class="p">);</span><span class="w"></span>
+<span class="w">  </span><span class="p">}</span><span class="w"></span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">packet_feedback_only_</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">feedback_max_rtts_</span><span class="p">.</span><span class="n">empty</span><span class="p">())</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">      </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">sum_rtt_ms</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">accumulate</span><span class="p">(</span><span class="n">feedback_max_rtts_</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span><span class="w"></span>
+<span class="w">                                           </span><span class="n">feedback_max_rtts_</span><span class="p">.</span><span class="n">end</span><span class="p">(),</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span><span class="w"></span>
+<span class="w">      </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">mean_rtt_ms</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">sum_rtt_ms</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">feedback_max_rtts_</span><span class="p">.</span><span class="n">size</span><span class="p">();</span><span class="w"></span>
+<span class="w">      </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">delay_based_bwe_</span><span class="p">)</span><span class="w"></span>
+<span class="w">        </span><span class="n">delay_based_bwe_</span><span class="o">-&gt;</span><span class="n">OnRttUpdate</span><span class="p">(</span><span class="n">TimeDelta</span><span class="o">::</span><span class="n">Millis</span><span class="p">(</span><span class="n">mean_rtt_ms</span><span class="p">));</span><span class="w"></span>
+<span class="w">    </span><span class="p">}</span><span class="w"></span>
+
+<span class="w">    </span><span class="n">TimeDelta</span><span class="w"> </span><span class="n">feedback_min_rtt</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">TimeDelta</span><span class="o">::</span><span class="n">PlusInfinity</span><span class="p">();</span><span class="w"></span>
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="o">&amp;</span><span class="w"> </span><span class="n">packet_feedback</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">feedbacks</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">      </span><span class="n">TimeDelta</span><span class="w"> </span><span class="n">pending_time</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">packet_feedback</span><span class="p">.</span><span class="n">receive_time</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">max_recv_time</span><span class="p">;</span><span class="w"></span>
+<span class="w">      </span><span class="n">TimeDelta</span><span class="w"> </span><span class="n">rtt</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">report</span><span class="p">.</span><span class="n">feedback_time</span><span class="w"> </span><span class="o">-</span><span class="w"></span>
+<span class="w">                      </span><span class="n">packet_feedback</span><span class="p">.</span><span class="n">sent_packet</span><span class="p">.</span><span class="n">send_time</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">pending_time</span><span class="p">;</span><span class="w"></span>
+<span class="w">      </span><span class="c1">// Value used for predicting NACK round trip time in FEC controller.</span>
+<span class="w">      </span><span class="n">feedback_min_rtt</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">min</span><span class="p">(</span><span class="n">rtt</span><span class="p">,</span><span class="w"> </span><span class="n">feedback_min_rtt</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="p">}</span><span class="w"></span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">feedback_min_rtt</span><span class="p">.</span><span class="n">IsFinite</span><span class="p">())</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">      </span><span class="n">bandwidth_estimation_</span><span class="o">-&gt;</span><span class="n">UpdateRtt</span><span class="p">(</span><span class="n">feedback_min_rtt</span><span class="p">,</span><span class="w"> </span><span class="n">report</span><span class="p">.</span><span class="n">feedback_time</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="p">}</span><span class="w"></span>
+
+<span class="w">    </span><span class="n">expected_packets_since_last_loss_update_</span><span class="w"> </span><span class="o">+=</span><span class="w"></span>
+<span class="w">        </span><span class="n">report</span><span class="p">.</span><span class="n">PacketsWithFeedback</span><span class="p">().</span><span class="n">size</span><span class="p">();</span><span class="w"></span>
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="o">&amp;</span><span class="w"> </span><span class="n">packet_feedback</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">report</span><span class="p">.</span><span class="n">PacketsWithFeedback</span><span class="p">())</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">      </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">packet_feedback</span><span class="p">.</span><span class="n">IsReceived</span><span class="p">())</span><span class="w"></span>
+<span class="w">        </span><span class="n">lost_packets_since_last_loss_update_</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w"></span>
+<span class="w">    </span><span class="p">}</span><span class="w"></span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">report</span><span class="p">.</span><span class="n">feedback_time</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">next_loss_update_</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">      </span><span class="n">next_loss_update_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">report</span><span class="p">.</span><span class="n">feedback_time</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">kLossUpdateInterval</span><span class="p">;</span><span class="w"></span>
+<span class="w">      </span><span class="n">bandwidth_estimation_</span><span class="o">-&gt;</span><span class="n">UpdatePacketsLost</span><span class="p">(</span><span class="w"></span>
+<span class="w">          </span><span class="n">lost_packets_since_last_loss_update_</span><span class="p">,</span><span class="w"></span>
+<span class="w">          </span><span class="n">expected_packets_since_last_loss_update_</span><span class="p">,</span><span class="w"> </span><span class="n">report</span><span class="p">.</span><span class="n">feedback_time</span><span class="p">);</span><span class="w"></span>
+<span class="w">      </span><span class="n">expected_packets_since_last_loss_update_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"></span>
+<span class="w">      </span><span class="n">lost_packets_since_last_loss_update_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"></span>
+<span class="w">    </span><span class="p">}</span><span class="w"></span>
+<span class="w">  </span><span class="p">}</span><span class="w"></span>
+<span class="w">  </span><span class="n">absl</span><span class="o">::</span><span class="n">optional</span><span class="o">&lt;</span><span class="kt">int64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">alr_start_time</span><span class="w"> </span><span class="o">=</span><span class="w"></span>
+<span class="w">      </span><span class="n">alr_detector_</span><span class="o">-&gt;</span><span class="n">GetApplicationLimitedRegionStartTime</span><span class="p">();</span><span class="w"></span>
+
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">previously_in_alr_</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="o">!</span><span class="n">alr_start_time</span><span class="p">.</span><span class="n">has_value</span><span class="p">())</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">now_ms</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">report</span><span class="p">.</span><span class="n">feedback_time</span><span class="p">.</span><span class="n">ms</span><span class="p">();</span><span class="w"></span>
+<span class="w">    </span><span class="n">acknowledged_bitrate_estimator_</span><span class="o">-&gt;</span><span class="n">SetAlrEndedTime</span><span class="p">(</span><span class="n">report</span><span class="p">.</span><span class="n">feedback_time</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="n">probe_controller_</span><span class="o">-&gt;</span><span class="n">SetAlrEndedTimeMs</span><span class="p">(</span><span class="n">now_ms</span><span class="p">);</span><span class="w"></span>
+<span class="w">  </span><span class="p">}</span><span class="w"></span>
+<span class="w">  </span><span class="n">previously_in_alr_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">alr_start_time</span><span class="p">.</span><span class="n">has_value</span><span class="p">();</span><span class="w"></span>
+<span class="w">  </span><span class="n">acknowledged_bitrate_estimator_</span><span class="o">-&gt;</span><span class="n">IncomingPacketFeedbackVector</span><span class="p">(</span><span class="w"></span>
+<span class="w">      </span><span class="n">report</span><span class="p">.</span><span class="n">SortedByReceiveTime</span><span class="p">());</span><span class="w"></span>
+<span class="w">  </span><span class="k">auto</span><span class="w"> </span><span class="n">acknowledged_bitrate</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">acknowledged_bitrate_estimator_</span><span class="o">-&gt;</span><span class="n">bitrate</span><span class="p">();</span><span class="w"></span>
+<span class="w">  </span><span class="n">bandwidth_estimation_</span><span class="o">-&gt;</span><span class="n">SetAcknowledgedRate</span><span class="p">(</span><span class="n">acknowledged_bitrate</span><span class="p">,</span><span class="w"></span>
+<span class="w">                                             </span><span class="n">report</span><span class="p">.</span><span class="n">feedback_time</span><span class="p">);</span><span class="w"></span>
+<span class="w">  </span><span class="n">bandwidth_estimation_</span><span class="o">-&gt;</span><span class="n">IncomingPacketFeedbackVector</span><span class="p">(</span><span class="n">report</span><span class="p">);</span><span class="w"></span>
+<span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="o">&amp;</span><span class="w"> </span><span class="n">feedback</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">report</span><span class="p">.</span><span class="n">SortedByReceiveTime</span><span class="p">())</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">feedback</span><span class="p">.</span><span class="n">sent_packet</span><span class="p">.</span><span class="n">pacing_info</span><span class="p">.</span><span class="n">probe_cluster_id</span><span class="w"> </span><span class="o">!=</span><span class="w"></span>
+<span class="w">        </span><span class="n">PacedPacketInfo</span><span class="o">::</span><span class="n">kNotAProbe</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">      </span><span class="n">probe_bitrate_estimator_</span><span class="o">-&gt;</span><span class="n">HandleProbeAndEstimateBitrate</span><span class="p">(</span><span class="n">feedback</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="p">}</span><span class="w"></span>
+<span class="w">  </span><span class="p">}</span><span class="w"></span>
+
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">network_estimator_</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="n">network_estimator_</span><span class="o">-&gt;</span><span class="n">OnTransportPacketsFeedback</span><span class="p">(</span><span class="n">report</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">prev_estimate</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">estimate_</span><span class="p">;</span><span class="w"></span>
+<span class="w">    </span><span class="n">estimate_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">network_estimator_</span><span class="o">-&gt;</span><span class="n">GetCurrentEstimate</span><span class="p">();</span><span class="w"></span>
+<span class="w">    </span><span class="c1">// TODO(srte): Make OnTransportPacketsFeedback signal whether the state</span>
+<span class="w">    </span><span class="c1">// changed to avoid the need for this check.</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">estimate_</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">prev_estimate</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">estimate_</span><span class="o">-&gt;</span><span class="n">last_feed_time</span><span class="w"> </span><span class="o">!=</span><span class="w"></span>
+<span class="w">                                            </span><span class="n">prev_estimate</span><span class="o">-&gt;</span><span class="n">last_feed_time</span><span class="p">))</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">      </span><span class="n">event_log_</span><span class="o">-&gt;</span><span class="n">Log</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">make_unique</span><span class="o">&lt;</span><span class="n">RtcEventRemoteEstimate</span><span class="o">&gt;</span><span class="p">(</span><span class="w"></span>
+<span class="w">          </span><span class="n">estimate_</span><span class="o">-&gt;</span><span class="n">link_capacity_lower</span><span class="p">,</span><span class="w"> </span><span class="n">estimate_</span><span class="o">-&gt;</span><span class="n">link_capacity_upper</span><span class="p">));</span><span class="w"></span>
+<span class="w">    </span><span class="p">}</span><span class="w"></span>
+<span class="w">  </span><span class="p">}</span><span class="w"></span>
+<span class="w">  </span><span class="n">absl</span><span class="o">::</span><span class="n">optional</span><span class="o">&lt;</span><span class="n">DataRate</span><span class="o">&gt;</span><span class="w"> </span><span class="n">probe_bitrate</span><span class="w"> </span><span class="o">=</span><span class="w"></span>
+<span class="w">      </span><span class="n">probe_bitrate_estimator_</span><span class="o">-&gt;</span><span class="n">FetchAndResetLastEstimatedBitrate</span><span class="p">();</span><span class="w"></span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">ignore_probes_lower_than_network_estimate_</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">probe_bitrate</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"></span>
+<span class="w">      </span><span class="n">estimate_</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="o">*</span><span class="n">probe_bitrate</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">delay_based_bwe_</span><span class="o">-&gt;</span><span class="n">last_estimate</span><span class="p">()</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"></span>
+<span class="w">      </span><span class="o">*</span><span class="n">probe_bitrate</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">estimate_</span><span class="o">-&gt;</span><span class="n">link_capacity_lower</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="n">probe_bitrate</span><span class="p">.</span><span class="n">reset</span><span class="p">();</span><span class="w"></span>
+<span class="w">  </span><span class="p">}</span><span class="w"></span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">limit_probes_lower_than_throughput_estimate_</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">probe_bitrate</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"></span>
+<span class="w">      </span><span class="n">acknowledged_bitrate</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="c1">// Limit the backoff to something slightly below the acknowledged</span>
+<span class="w">    </span><span class="c1">// bitrate. (&quot;Slightly below&quot; because we want to drain the queues</span>
+<span class="w">    </span><span class="c1">// if we are actually overusing.)</span>
+<span class="w">    </span><span class="c1">// The acknowledged bitrate shouldn&#39;t normally be higher than the delay</span>
+<span class="w">    </span><span class="c1">// based estimate, but it could happen e.g. due to packet bursts or</span>
+<span class="w">    </span><span class="c1">// encoder overshoot. We use std::min to ensure that a probe result</span>
+<span class="w">    </span><span class="c1">// below the current BWE never causes an increase.</span>
+<span class="w">    </span><span class="n">DataRate</span><span class="w"> </span><span class="n">limit</span><span class="w"> </span><span class="o">=</span><span class="w"></span>
+<span class="w">        </span><span class="n">std</span><span class="o">::</span><span class="n">min</span><span class="p">(</span><span class="n">delay_based_bwe_</span><span class="o">-&gt;</span><span class="n">last_estimate</span><span class="p">(),</span><span class="w"></span>
+<span class="w">                 </span><span class="o">*</span><span class="n">acknowledged_bitrate</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">kProbeDropThroughputFraction</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="n">probe_bitrate</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">max</span><span class="p">(</span><span class="o">*</span><span class="n">probe_bitrate</span><span class="p">,</span><span class="w"> </span><span class="n">limit</span><span class="p">);</span><span class="w"></span>
+<span class="w">  </span><span class="p">}</span><span class="w"></span>
+
+<span class="w">  </span><span class="n">NetworkControlUpdate</span><span class="w"> </span><span class="n">update</span><span class="p">;</span><span class="w"></span>
+<span class="w">  </span><span class="kt">bool</span><span class="w"> </span><span class="n">recovered_from_overuse</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">false</span><span class="p">;</span><span class="w"></span>
+<span class="w">  </span><span class="kt">bool</span><span class="w"> </span><span class="n">backoff_in_alr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">false</span><span class="p">;</span><span class="w"></span>
+
+<span class="w">  </span><span class="n">DelayBasedBwe</span><span class="o">::</span><span class="n">Result</span><span class="w"> </span><span class="n">result</span><span class="p">;</span><span class="w"></span>
+<span class="w">  </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">delay_based_bwe_</span><span class="o">-&gt;</span><span class="n">IncomingPacketFeedbackVector</span><span class="p">(</span><span class="w"></span>
+<span class="w">      </span><span class="n">report</span><span class="p">,</span><span class="w"> </span><span class="n">acknowledged_bitrate</span><span class="p">,</span><span class="w"> </span><span class="n">probe_bitrate</span><span class="p">,</span><span class="w"> </span><span class="n">estimate_</span><span class="p">,</span><span class="w"></span>
+<span class="w">      </span><span class="n">alr_start_time</span><span class="p">.</span><span class="n">has_value</span><span class="p">());</span><span class="w"></span>
+
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">result</span><span class="p">.</span><span class="n">updated</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">result</span><span class="p">.</span><span class="n">probe</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">      </span><span class="n">bandwidth_estimation_</span><span class="o">-&gt;</span><span class="n">SetSendBitrate</span><span class="p">(</span><span class="n">result</span><span class="p">.</span><span class="n">target_bitrate</span><span class="p">,</span><span class="w"></span>
+<span class="w">                                            </span><span class="n">report</span><span class="p">.</span><span class="n">feedback_time</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="p">}</span><span class="w"></span>
+<span class="w">    </span><span class="c1">// Since SetSendBitrate now resets the delay-based estimate, we have to</span>
+<span class="w">    </span><span class="c1">// call UpdateDelayBasedEstimate after SetSendBitrate.</span>
+<span class="w">    </span><span class="n">bandwidth_estimation_</span><span class="o">-&gt;</span><span class="n">UpdateDelayBasedEstimate</span><span class="p">(</span><span class="n">report</span><span class="p">.</span><span class="n">feedback_time</span><span class="p">,</span><span class="w"></span>
+<span class="w">                                                    </span><span class="n">result</span><span class="p">.</span><span class="n">target_bitrate</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="c1">// Update the estimate in the ProbeController, in case we want to probe.</span>
+<span class="w">    </span><span class="n">MaybeTriggerOnNetworkChanged</span><span class="p">(</span><span class="o">&amp;</span><span class="n">update</span><span class="p">,</span><span class="w"> </span><span class="n">report</span><span class="p">.</span><span class="n">feedback_time</span><span class="p">);</span><span class="w"></span>
+<span class="w">  </span><span class="p">}</span><span class="w"></span>
+<span class="w">  </span><span class="n">recovered_from_overuse</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">result</span><span class="p">.</span><span class="n">recovered_from_overuse</span><span class="p">;</span><span class="w"></span>
+<span class="w">  </span><span class="n">backoff_in_alr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">result</span><span class="p">.</span><span class="n">backoff_in_alr</span><span class="p">;</span><span class="w"></span>
+
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">recovered_from_overuse</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="n">probe_controller_</span><span class="o">-&gt;</span><span class="n">SetAlrStartTimeMs</span><span class="p">(</span><span class="n">alr_start_time</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">probes</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">probe_controller_</span><span class="o">-&gt;</span><span class="n">RequestProbe</span><span class="p">(</span><span class="n">report</span><span class="p">.</span><span class="n">feedback_time</span><span class="p">.</span><span class="n">ms</span><span class="p">());</span><span class="w"></span>
+<span class="w">    </span><span class="n">update</span><span class="p">.</span><span class="n">probe_cluster_configs</span><span class="p">.</span><span class="n">insert</span><span class="p">(</span><span class="n">update</span><span class="p">.</span><span class="n">probe_cluster_configs</span><span class="p">.</span><span class="n">end</span><span class="p">(),</span><span class="w"></span>
+<span class="w">                                        </span><span class="n">probes</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span><span class="w"> </span><span class="n">probes</span><span class="p">.</span><span class="n">end</span><span class="p">());</span><span class="w"></span>
+<span class="w">  </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">backoff_in_alr</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="c1">// If we just backed off during ALR, request a new probe.</span>
+<span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">probes</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">probe_controller_</span><span class="o">-&gt;</span><span class="n">RequestProbe</span><span class="p">(</span><span class="n">report</span><span class="p">.</span><span class="n">feedback_time</span><span class="p">.</span><span class="n">ms</span><span class="p">());</span><span class="w"></span>
+<span class="w">    </span><span class="n">update</span><span class="p">.</span><span class="n">probe_cluster_configs</span><span class="p">.</span><span class="n">insert</span><span class="p">(</span><span class="n">update</span><span class="p">.</span><span class="n">probe_cluster_configs</span><span class="p">.</span><span class="n">end</span><span class="p">(),</span><span class="w"></span>
+<span class="w">                                        </span><span class="n">probes</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span><span class="w"> </span><span class="n">probes</span><span class="p">.</span><span class="n">end</span><span class="p">());</span><span class="w"></span>
+<span class="w">  </span><span class="p">}</span><span class="w"></span>
+
+<span class="w">  </span><span class="c1">// No valid RTT could be because send-side BWE isn&#39;t used, in which case</span>
+<span class="w">  </span><span class="c1">// we don&#39;t try to limit the outstanding packets.</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">rate_control_settings_</span><span class="p">.</span><span class="n">UseCongestionWindow</span><span class="p">()</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"></span>
+<span class="w">      </span><span class="n">max_feedback_rtt</span><span class="p">.</span><span class="n">IsFinite</span><span class="p">())</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="n">UpdateCongestionWindowSize</span><span class="p">();</span><span class="w"></span>
+<span class="w">  </span><span class="p">}</span><span class="w"></span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">congestion_window_pushback_controller_</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">current_data_window_</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="n">congestion_window_pushback_controller_</span><span class="o">-&gt;</span><span class="n">SetDataWindow</span><span class="p">(</span><span class="w"></span>
+<span class="w">        </span><span class="o">*</span><span class="n">current_data_window_</span><span class="p">);</span><span class="w"></span>
+<span class="w">  </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="n">update</span><span class="p">.</span><span class="n">congestion_window</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">current_data_window_</span><span class="p">;</span><span class="w"></span>
+<span class="w">  </span><span class="p">}</span><span class="w"></span>
+
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">update</span><span class="p">;</span><span class="w"></span>
+<span class="p">}</span><span class="w"></span>
+</code></pre></div>
+
+<h3>拥塞控制相关的单元测试</h3>
+<div class="highlight"><pre><span></span><code>$ ./modules_unittests --gtest_filter<span class="o">=</span><span class="s2">&quot;GoogCc*&quot;</span> --gtest_output<span class="o">=</span><span class="s2">&quot;xml:goog-cc-ut-report.xml&quot;</span>
+
+$ gtest2html.py --input<span class="o">=</span>./goog-cc-ut-report.xml --output<span class="o">=</span>goog-cc-ut-report.md
+</code></pre></div>
+
+<p>gtest2html.py 是我写的一个 python 脚本，将测试结果由 xml 转化成下面这样的 markdown 格式</p>
+<h2>Test suite:  GoogCcNetworkControllerTest</h2>
+<ul>
+<li>tests=6, failures=0, errors=0, disabled=0, time=0.076</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>suite</th>
+<th>case</th>
+<th>time</th>
+<th>result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>GoogCcNetworkControllerTest</td>
+<td>InitializeTargetRateOnFirstProcessInterval</td>
+<td>0.016</td>
+<td>pass</td>
+</tr>
+<tr>
+<td>2</td>
+<td>GoogCcNetworkControllerTest</td>
+<td>ReactsToChangedNetworkConditions</td>
+<td>0</td>
+<td>pass</td>
+</tr>
+<tr>
+<td>3</td>
+<td>GoogCcNetworkControllerTest</td>
+<td>OnNetworkRouteChanged</td>
+<td>0</td>
+<td>pass</td>
+</tr>
+<tr>
+<td>4</td>
+<td>GoogCcNetworkControllerTest</td>
+<td>ProbeOnRouteChange</td>
+<td>0</td>
+<td>pass</td>
+</tr>
+<tr>
+<td>5</td>
+<td>GoogCcNetworkControllerTest</td>
+<td>UpdatesDelayBasedEstimate</td>
+<td>0.054</td>
+<td>pass</td>
+</tr>
+<tr>
+<td>6</td>
+<td>GoogCcNetworkControllerTest</td>
+<td>PaceAtMaxOfLowerLinkCapacityAndBwe</td>
+<td>0</td>
+<td>pass</td>
+</tr>
+</tbody>
+</table>
+<h2>Test suite:  GoogCcScenario</h2>
+<ul>
+<li>tests=20, failures=0, errors=0, disabled=0, time=22.666</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>suite</th>
+<th>case</th>
+<th>time</th>
+<th>result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>7</td>
+<td>GoogCcScenario</td>
+<td>CongestionWindowPushbackOnNetworkDelay</td>
+<td>0.509</td>
+<td>pass</td>
+</tr>
+<tr>
+<td>8</td>
+<td>GoogCcScenario</td>
+<td>CongestionWindowPushbackDropFrameOnNetworkDelay</td>
+<td>0.432</td>
+<td>pass</td>
+</tr>
+<tr>
+<td>9</td>
+<td>GoogCcScenario</td>
+<td>PaddingRateLimitedByCongestionWindowInTrial</td>
+<td>0.366</td>
+<td>pass</td>
+</tr>
+<tr>
+<td>10</td>
+<td>GoogCcScenario</td>
+<td>LimitsToFloorIfRttIsHighInTrial</td>
+<td>0.255</td>
+<td>pass</td>
+</tr>
+<tr>
+<td>11</td>
+<td>GoogCcScenario</td>
+<td>UpdatesTargetRateBasedOnLinkCapacity</td>
+<td>2.233</td>
+<td>pass</td>
+</tr>
+<tr>
+<td>12</td>
+<td>GoogCcScenario</td>
+<td>StableEstimateDoesNotVaryInSteadyState</td>
+<td>1.559</td>
+<td>pass</td>
+</tr>
+<tr>
+<td>13</td>
+<td>GoogCcScenario</td>
+<td>LossBasedControlUpdatesTargetRateBasedOnLinkCapacity</td>
+<td>2.23</td>
+<td>pass</td>
+</tr>
+<tr>
+<td>14</td>
+<td>GoogCcScenario</td>
+<td>LossBasedControlDoesModestBackoffToHighLoss</td>
+<td>3.106</td>
+<td>pass</td>
+</tr>
+<tr>
+<td>15</td>
+<td>GoogCcScenario</td>
+<td>LossBasedRecoversFasterAfterCrossInducedLoss</td>
+<td>5.93</td>
+<td>pass</td>
+</tr>
+<tr>
+<td>16</td>
+<td>GoogCcScenario</td>
+<td>LossBasedEstimatorCapsRateAtModerateLoss</td>
+<td>1.211</td>
+<td>pass</td>
+</tr>
+<tr>
+<td>17</td>
+<td>GoogCcScenario</td>
+<td>MaintainsLowRateInSafeResetTrial</td>
+<td>0.016</td>
+<td>pass</td>
+</tr>
+<tr>
+<td>18</td>
+<td>GoogCcScenario</td>
+<td>CutsHighRateInSafeResetTrial</td>
+<td>0.015</td>
+<td>pass</td>
+</tr>
+<tr>
+<td>19</td>
+<td>GoogCcScenario</td>
+<td>DetectsHighRateInSafeResetTrial</td>
+<td>0.079</td>
+<td>pass</td>
+</tr>
+<tr>
+<td>20</td>
+<td>GoogCcScenario</td>
+<td>TargetRateReducedOnPacingBufferBuildupInTrial</td>
+<td>0.169</td>
+<td>pass</td>
+</tr>
+<tr>
+<td>21</td>
+<td>GoogCcScenario</td>
+<td>NoBandwidthTogglingInLossControlTrial</td>
+<td>0.082</td>
+<td>pass</td>
+</tr>
+<tr>
+<td>22</td>
+<td>GoogCcScenario</td>
+<td>NoRttBackoffCollapseWhenVideoStops</td>
+<td>0.071</td>
+<td>pass</td>
+</tr>
+<tr>
+<td>23</td>
+<td>GoogCcScenario</td>
+<td>NoCrashOnVeryLateFeedback</td>
+<td>2.252</td>
+<td>pass</td>
+</tr>
+<tr>
+<td>24</td>
+<td>GoogCcScenario</td>
+<td>IsFairToTCP</td>
+<td>0.289</td>
+<td>pass</td>
+</tr>
+<tr>
+<td>25</td>
+<td>GoogCcScenario</td>
+<td>FastRampupOnRembCapLifted</td>
+<td>1.077</td>
+<td>pass</td>
+</tr>
+<tr>
+<td>26</td>
+<td>GoogCcScenario</td>
+<td>SlowRampupOnRembCapLiftedWithFieldTrial</td>
+<td>0.775</td>
+<td>pass</td>
+</tr>
+</tbody>
+</table>
+<p>测试用例比较多，先看看下面这个比较简单的用例</p>
+<div class="highlight"><pre><span></span><code>./out/Default/modules_unittests --gtest_filter<span class="o">=</span>GoogCcNetworkControllerTest.UpdatesDelayBasedEstimate --gtest_output<span class="o">=</span><span class="s2">&quot;xml:goog_cc_ut.xml&quot;</span> &gt; goog_cc_ut.log <span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span>
+</code></pre></div>
+
+<p>代码如下，其实挺简单</p>
+<ol>
+<li>
+<p>调用 PacketTransmissionAndFeedbackBlock， 也就是发送包并接收反馈消息，反馈的延迟为 0， 时长为 6000 ms
+  1.1 创建并发送RTP 包，调用 controller-&gt;OnSentPacket
+  1.2 构造反馈包，并喂给拥塞控制器，调用  update = controller-&gt;OnTransportPacketsFeedback(feedback);
+  1.3 再过 50ms 调用 controller-&gt;OnProcessInterval(), 取出 target_bitrate, 也就是估算出的带宽</p>
+</li>
+<li>
+<p>调用 PacketTransmissionAndFeedbackBlock， 也就是发送包并接收反馈消息，反馈的延迟为 50ms， 时长为 6000 ms</p>
+</li>
+<li>
+<p>检查第二次估算的带宽 bitrate ， 它一定是小于第一次估算的延迟</p>
+</li>
+</ol>
+<p>而 OnTransportPacketsFeedback() 和 OnProcessInterval() 就是我们需要重点关注的方法</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// Bandwidth estimation is updated when feedbacks are received.</span>
+<span class="c1">// Feedbacks which show an increasing delay cause the estimation to be reduced.</span>
+<span class="n">TEST</span><span class="p">(</span><span class="n">GoogCcNetworkControllerTest</span><span class="p">,</span><span class="w"> </span><span class="n">UpdatesDelayBasedEstimate</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">  </span><span class="n">NetworkControllerTestFixture</span><span class="w"> </span><span class="n">fixture</span><span class="p">;</span><span class="w"></span>
+<span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><span class="n">NetworkControllerInterface</span><span class="o">&gt;</span><span class="w"> </span><span class="n">controller</span><span class="w"> </span><span class="o">=</span><span class="w"></span>
+<span class="w">      </span><span class="n">fixture</span><span class="p">.</span><span class="n">CreateController</span><span class="p">();</span><span class="w"></span>
+<span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">kRunTimeMs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">6000</span><span class="p">;</span><span class="w"></span>
+<span class="w">  </span><span class="n">Timestamp</span><span class="w"> </span><span class="n">current_time</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Timestamp</span><span class="o">::</span><span class="n">Millis</span><span class="p">(</span><span class="mi">123</span><span class="p">);</span><span class="w"></span>
+
+<span class="w">  </span><span class="c1">// The test must run and insert packets/feedback long enough that the</span>
+<span class="w">  </span><span class="c1">// BWE computes a valid estimate. This is first done in an environment which</span>
+<span class="w">  </span><span class="c1">// simulates no bandwidth limitation, and therefore not built-up delay.</span>
+<span class="w">  </span><span class="n">absl</span><span class="o">::</span><span class="n">optional</span><span class="o">&lt;</span><span class="n">DataRate</span><span class="o">&gt;</span><span class="w"> </span><span class="n">target_bitrate_before_delay</span><span class="w"> </span><span class="o">=</span><span class="w"></span>
+<span class="w">      </span><span class="n">PacketTransmissionAndFeedbackBlock</span><span class="p">(</span><span class="n">controller</span><span class="p">.</span><span class="n">get</span><span class="p">(),</span><span class="w"> </span><span class="n">kRunTimeMs</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"></span>
+<span class="w">                                         </span><span class="n">current_time</span><span class="p">);</span><span class="w"></span>
+<span class="w">  </span><span class="n">ASSERT_TRUE</span><span class="p">(</span><span class="n">target_bitrate_before_delay</span><span class="p">.</span><span class="n">has_value</span><span class="p">());</span><span class="w"></span>
+
+<span class="w">  </span><span class="c1">// Repeat, but this time with a building delay, and make sure that the</span>
+<span class="w">  </span><span class="c1">// estimation is adjusted downwards.</span>
+<span class="w">  </span><span class="n">absl</span><span class="o">::</span><span class="n">optional</span><span class="o">&lt;</span><span class="n">DataRate</span><span class="o">&gt;</span><span class="w"> </span><span class="n">target_bitrate_after_delay</span><span class="w"> </span><span class="o">=</span><span class="w"></span>
+<span class="w">      </span><span class="n">PacketTransmissionAndFeedbackBlock</span><span class="p">(</span><span class="n">controller</span><span class="p">.</span><span class="n">get</span><span class="p">(),</span><span class="w"> </span><span class="n">kRunTimeMs</span><span class="p">,</span><span class="w"> </span><span class="mi">50</span><span class="p">,</span><span class="w"></span>
+<span class="w">                                         </span><span class="n">current_time</span><span class="p">);</span><span class="w"></span>
+<span class="w">  </span><span class="n">EXPECT_LT</span><span class="p">(</span><span class="o">*</span><span class="n">target_bitrate_after_delay</span><span class="p">,</span><span class="w"> </span><span class="o">*</span><span class="n">target_bitrate_before_delay</span><span class="p">);</span><span class="w"></span>
+<span class="p">}</span><span class="w"></span>
+
+<span class="c1">// Simulate sending packets and receiving transport feedback during</span>
+<span class="c1">// `runtime_ms`.</span>
+<span class="n">absl</span><span class="o">::</span><span class="n">optional</span><span class="o">&lt;</span><span class="n">DataRate</span><span class="o">&gt;</span><span class="w"> </span><span class="n">PacketTransmissionAndFeedbackBlock</span><span class="p">(</span><span class="w"></span>
+<span class="w">    </span><span class="n">NetworkControllerInterface</span><span class="o">*</span><span class="w"> </span><span class="n">controller</span><span class="p">,</span><span class="w"></span>
+<span class="w">    </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">runtime_ms</span><span class="p">,</span><span class="w"></span>
+<span class="w">    </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">delay</span><span class="p">,</span><span class="w"></span>
+<span class="w">    </span><span class="n">Timestamp</span><span class="o">&amp;</span><span class="w"> </span><span class="n">current_time</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">  </span><span class="n">NetworkControlUpdate</span><span class="w"> </span><span class="n">update</span><span class="p">;</span><span class="w"></span>
+<span class="w">  </span><span class="n">absl</span><span class="o">::</span><span class="n">optional</span><span class="o">&lt;</span><span class="n">DataRate</span><span class="o">&gt;</span><span class="w"> </span><span class="n">target_bitrate</span><span class="p">;</span><span class="w"></span>
+<span class="w">  </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">delay_buildup</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"></span>
+<span class="w">  </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">start_time_ms</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">current_time</span><span class="p">.</span><span class="n">ms</span><span class="p">();</span><span class="w"></span>
+<span class="w">  </span><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="n">current_time</span><span class="p">.</span><span class="n">ms</span><span class="p">()</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">start_time_ms</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">runtime_ms</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="k">constexpr</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">kPayloadSize</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1000</span><span class="p">;</span><span class="w"></span>
+<span class="w">    </span><span class="n">PacketResult</span><span class="w"> </span><span class="n">packet</span><span class="w"> </span><span class="o">=</span><span class="w"></span>
+<span class="w">        </span><span class="n">CreatePacketResult</span><span class="p">(</span><span class="n">current_time</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">TimeDelta</span><span class="o">::</span><span class="n">Millis</span><span class="p">(</span><span class="n">delay_buildup</span><span class="p">),</span><span class="w"></span>
+<span class="w">                           </span><span class="n">current_time</span><span class="p">,</span><span class="w"> </span><span class="n">kPayloadSize</span><span class="p">,</span><span class="w"> </span><span class="n">PacedPacketInfo</span><span class="p">());</span><span class="w"></span>
+<span class="w">    </span><span class="n">delay_buildup</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">delay</span><span class="p">;</span><span class="w"></span>
+<span class="w">    </span><span class="n">update</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">controller</span><span class="o">-&gt;</span><span class="n">OnSentPacket</span><span class="p">(</span><span class="n">packet</span><span class="p">.</span><span class="n">sent_packet</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">update</span><span class="p">.</span><span class="n">target_rate</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">      </span><span class="n">target_bitrate</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">update</span><span class="p">.</span><span class="n">target_rate</span><span class="o">-&gt;</span><span class="n">target_rate</span><span class="p">;</span><span class="w"></span>
+<span class="w">    </span><span class="p">}</span><span class="w"></span>
+<span class="w">    </span><span class="n">TransportPacketsFeedback</span><span class="w"> </span><span class="n">feedback</span><span class="p">;</span><span class="w"></span>
+<span class="w">    </span><span class="n">feedback</span><span class="p">.</span><span class="n">feedback_time</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">packet</span><span class="p">.</span><span class="n">receive_time</span><span class="p">;</span><span class="w"></span>
+<span class="w">    </span><span class="n">feedback</span><span class="p">.</span><span class="n">packet_feedbacks</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="n">packet</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="n">update</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">controller</span><span class="o">-&gt;</span><span class="n">OnTransportPacketsFeedback</span><span class="p">(</span><span class="n">feedback</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">update</span><span class="p">.</span><span class="n">target_rate</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">      </span><span class="n">target_bitrate</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">update</span><span class="p">.</span><span class="n">target_rate</span><span class="o">-&gt;</span><span class="n">target_rate</span><span class="p">;</span><span class="w"></span>
+<span class="w">    </span><span class="p">}</span><span class="w"></span>
+<span class="w">    </span><span class="n">current_time</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">TimeDelta</span><span class="o">::</span><span class="n">Millis</span><span class="p">(</span><span class="mi">50</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="n">update</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">controller</span><span class="o">-&gt;</span><span class="n">OnProcessInterval</span><span class="p">({.</span><span class="n">at_time</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">current_time</span><span class="p">});</span><span class="w"></span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">update</span><span class="p">.</span><span class="n">target_rate</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">      </span><span class="n">target_bitrate</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">update</span><span class="p">.</span><span class="n">target_rate</span><span class="o">-&gt;</span><span class="n">target_rate</span><span class="p">;</span><span class="w"></span>
+<span class="w">    </span><span class="p">}</span><span class="w"></span>
+<span class="w">  </span><span class="p">}</span><span class="w"></span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">target_bitrate</span><span class="p">;</span><span class="w"></span>
+<span class="p">}</span><span class="w"></span>
+</code></pre></div>
+
+<p>运行结果如下</p>
+<div class="highlight"><pre><span></span><code>[ <span class="nv">RUN</span>      ] <span class="nv">GoogCcNetworkControllerTest</span>.<span class="nv">UpdatesDelayBasedEstimate</span>
+<span class="ss">(</span><span class="nv">alr_experiment</span>.<span class="nv">cc</span>:<span class="mi">79</span><span class="ss">)</span>: <span class="nv">Using</span> <span class="nv">ALR</span> <span class="nv">experiment</span> <span class="nv">settings</span>: <span class="nv">pacing</span> <span class="nv">factor</span>: <span class="mi">1</span>, <span class="nv">max</span> <span class="nv">pacer</span> <span class="nv">queue</span> <span class="nv">length</span>: <span class="mi">2875</span>, <span class="nv">ALR</span> <span class="nv">bandwidth</span> <span class="nv">usage</span> <span class="nv">percent</span>: <span class="mi">80</span>, <span class="nv">ALR</span> <span class="nv">start</span> <span class="nv">budget</span> <span class="nv">level</span> <span class="nv">percent</span>: <span class="mi">40</span>, <span class="nv">ALR</span> <span class="k">end</span> <span class="nv">budget</span> <span class="nv">level</span> <span class="nv">percent</span>: <span class="o">-</span><span class="mi">60</span>, <span class="nv">ALR</span> <span class="nv">experiment</span> <span class="nv">group</span> <span class="nv">ID</span>: <span class="mi">3</span>
+<span class="ss">(</span><span class="nv">trendline_estimator</span>.<span class="nv">cc</span>:<span class="mi">185</span><span class="ss">)</span>: <span class="nv">Using</span> <span class="nv">Trendline</span> <span class="nv">filter</span> <span class="k">for</span> <span class="nv">delay</span> <span class="nv">change</span> <span class="nv">estimation</span> <span class="nv">with</span> <span class="nv">settings</span> <span class="nv">sort</span>:<span class="nv">false</span>,<span class="nv">cap</span>:<span class="nv">false</span>,<span class="nv">beginning_packets</span>:<span class="mi">7</span>,<span class="nv">end_packets</span>:<span class="mi">7</span>,<span class="nv">cap_uncertainty</span>:<span class="mi">0</span>,<span class="nv">window_size</span>:<span class="mi">20</span> <span class="nv">and</span> <span class="nv">no</span> <span class="nv">network</span> <span class="nv">state</span> <span class="nv">predictor</span>
+<span class="ss">(</span><span class="nv">trendline_estimator</span>.<span class="nv">cc</span>:<span class="mi">185</span><span class="ss">)</span>: <span class="nv">Using</span> <span class="nv">Trendline</span> <span class="nv">filter</span> <span class="k">for</span> <span class="nv">delay</span> <span class="nv">change</span> <span class="nv">estimation</span> <span class="nv">with</span> <span class="nv">settings</span> <span class="nv">sort</span>:<span class="nv">false</span>,<span class="nv">cap</span>:<span class="nv">false</span>,<span class="nv">beginning_packets</span>:<span class="mi">7</span>,<span class="nv">end_packets</span>:<span class="mi">7</span>,<span class="nv">cap_uncertainty</span>:<span class="mi">0</span>,<span class="nv">window_size</span>:<span class="mi">20</span> <span class="nv">and</span> <span class="nv">no</span> <span class="nv">network</span> <span class="nv">state</span> <span class="nv">predictor</span>
+<span class="ss">(</span><span class="nv">aimd_rate_control</span>.<span class="nv">cc</span>:<span class="mi">112</span><span class="ss">)</span>: <span class="nv">Using</span> <span class="nv">aimd</span> <span class="nv">rate</span> <span class="nv">control</span> <span class="nv">with</span> <span class="nv">back</span> <span class="nv">off</span> <span class="nv">factor</span> <span class="mi">0</span>.<span class="mi">85</span>
+<span class="ss">(</span><span class="nv">delay_based_bwe</span>.<span class="nv">cc</span>:<span class="mi">88</span><span class="ss">)</span>: <span class="nv">Initialized</span> <span class="nv">DelayBasedBwe</span> <span class="nv">with</span> <span class="nv">separate</span> <span class="nv">audio</span> <span class="nv">overuse</span> <span class="nv">detectionenabled</span>:<span class="nv">false</span>,<span class="nv">packet_threshold</span>:<span class="mi">10</span>,<span class="nv">time_threshold</span>:<span class="mi">1</span> <span class="nv">s</span> <span class="nv">and</span> <span class="nv">alr</span> <span class="nv">limited</span> <span class="nv">backoff</span> <span class="nv">disabled</span>
+<span class="ss">(</span><span class="nv">trendline_estimator</span>.<span class="nv">cc</span>:<span class="mi">185</span><span class="ss">)</span>: <span class="nv">Using</span> <span class="nv">Trendline</span> <span class="nv">filter</span> <span class="k">for</span> <span class="nv">delay</span> <span class="nv">change</span> <span class="nv">estimation</span> <span class="nv">with</span> <span class="nv">settings</span> <span class="nv">sort</span>:<span class="nv">false</span>,<span class="nv">cap</span>:<span class="nv">false</span>,<span class="nv">beginning_packets</span>:<span class="mi">7</span>,<span class="nv">end_packets</span>:<span class="mi">7</span>,<span class="nv">cap_uncertainty</span>:<span class="mi">0</span>,<span class="nv">window_size</span>:<span class="mi">20</span> <span class="nv">and</span> <span class="nv">no</span> <span class="nv">network</span> <span class="nv">state</span> <span class="nv">predictor</span>
+<span class="ss">(</span><span class="nv">trendline_estimator</span>.<span class="nv">cc</span>:<span class="mi">185</span><span class="ss">)</span>: <span class="nv">Using</span> <span class="nv">Trendline</span> <span class="nv">filter</span> <span class="k">for</span> <span class="nv">delay</span> <span class="nv">change</span> <span class="nv">estimation</span> <span class="nv">with</span> <span class="nv">settings</span> <span class="nv">sort</span>:<span class="nv">false</span>,<span class="nv">cap</span>:<span class="nv">false</span>,<span class="nv">beginning_packets</span>:<span class="mi">7</span>,<span class="nv">end_packets</span>:<span class="mi">7</span>,<span class="nv">cap_uncertainty</span>:<span class="mi">0</span>,<span class="nv">window_size</span>:<span class="mi">20</span> <span class="nv">and</span> <span class="nv">no</span> <span class="nv">network</span> <span class="nv">state</span> <span class="nv">predictor</span>
+<span class="ss">(</span><span class="nv">delay_based_bwe</span>.<span class="nv">cc</span>:<span class="mi">301</span><span class="ss">)</span>: <span class="nv">BWE</span> <span class="nv">Setting</span> <span class="nv">start</span> <span class="nv">bitrate</span> <span class="nv">to</span>: <span class="mi">60</span> <span class="nv">kbps</span>
+<span class="nv">PLOT</span>    <span class="mi">1</span>       <span class="nv">fraction_loss_</span><span class="o">%</span>:<span class="mi">0</span>@<span class="o">-</span>     <span class="mi">0</span>.<span class="mi">123000</span>        <span class="mi">0</span>.<span class="mi">000000</span>
+<span class="nv">PLOT</span>    <span class="mi">1</span>       <span class="nv">rtt_ms</span>:<span class="mi">0</span>@<span class="o">-</span>      <span class="mi">0</span>.<span class="mi">123000</span>        <span class="mi">0</span>.<span class="mi">000000</span>
+<span class="nv">PLOT</span>    <span class="mi">1</span>       <span class="nv">Target_bitrate_kbps</span>:<span class="mi">0</span>@<span class="o">-</span> <span class="mi">0</span>.<span class="mi">123000</span>        <span class="mi">5</span>.<span class="mi">000000</span>
+<span class="nv">PLOT</span>    <span class="mi">1</span>       <span class="nv">fraction_loss_</span><span class="o">%</span>:<span class="mi">0</span>@<span class="o">-</span>     <span class="mi">0</span>.<span class="mi">173000</span>        <span class="mi">0</span>.<span class="mi">000000</span>
+<span class="nv">PLOT</span>    <span class="mi">1</span>       <span class="nv">rtt_ms</span>:<span class="mi">0</span>@<span class="o">-</span>      <span class="mi">0</span>.<span class="mi">173000</span>        <span class="mi">0</span>.<span class="mi">000000</span>
+<span class="nv">PLOT</span>    <span class="mi">1</span>       <span class="nv">Target_bitrate_kbps</span>:<span class="mi">0</span>@<span class="o">-</span> <span class="mi">0</span>.<span class="mi">173000</span>        <span class="mi">60</span>.<span class="mi">000000</span>
+
+...
+
+<span class="nv">PLOT</span>    <span class="mi">1</span>       <span class="nv">rtt_ms</span>:<span class="mi">0</span>@<span class="o">-</span>      <span class="mi">12</span>.<span class="mi">073000</span>       <span class="mi">0</span>.<span class="mi">000000</span>
+<span class="nv">PLOT</span>    <span class="mi">1</span>       <span class="nv">Target_bitrate_kbps</span>:<span class="mi">0</span>@<span class="o">-</span> <span class="mi">12</span>.<span class="mi">073000</span>       <span class="mi">41</span>.<span class="mi">000000</span>
+<span class="nv">PLOT</span>    <span class="mi">1</span>       <span class="nv">acknowledged_bitrate</span>:<span class="mi">0</span>@<span class="o">-</span>        <span class="mi">18</span>.<span class="mi">023000</span>       <span class="mi">93079</span>.<span class="mi">859375</span>
+<span class="nv">PLOT</span>    <span class="mi">1</span>       <span class="nv">accumulated_delay_ms</span>:<span class="mi">0</span>@<span class="o">-</span>        <span class="mi">18</span>.<span class="mi">023000</span>       <span class="mi">5900</span>.<span class="mi">000000</span>
+<span class="nv">PLOT</span>    <span class="mi">1</span>       <span class="nv">smoothed_delay_ms</span>:<span class="mi">0</span>@<span class="o">-</span>   <span class="mi">18</span>.<span class="mi">023000</span>       <span class="mi">5450</span>.<span class="mi">001794</span>
+<span class="nv">PLOT</span>    <span class="mi">1</span>       <span class="nv">trendline_slope</span>:<span class="mi">0</span>@<span class="o">-</span>     <span class="mi">18</span>.<span class="mi">023000</span>       <span class="mi">0</span>.<span class="mi">499994</span>
+<span class="nv">PLOT</span>    <span class="mi">1</span>       <span class="nv">T</span>:<span class="mi">0</span>@<span class="o">-</span>   <span class="mi">18</span>.<span class="mi">023000</span>       <span class="mi">119</span>.<span class="mi">998624</span>
+<span class="nv">PLOT</span>    <span class="mi">1</span>       <span class="nv">threshold</span>:<span class="mi">0</span>@<span class="o">-</span>   <span class="mi">18</span>.<span class="mi">023000</span>       <span class="mi">119</span>.<span class="mi">998445</span>
+<span class="nv">PLOT</span>    <span class="mi">1</span>       <span class="nv">fraction_loss_</span><span class="o">%</span>:<span class="mi">0</span>@<span class="o">-</span>     <span class="mi">12</span>.<span class="mi">123000</span>       <span class="mi">0</span>.<span class="mi">000000</span>
+<span class="nv">PLOT</span>    <span class="mi">1</span>       <span class="nv">rtt_ms</span>:<span class="mi">0</span>@<span class="o">-</span>      <span class="mi">12</span>.<span class="mi">123000</span>       <span class="mi">0</span>.<span class="mi">000000</span>
+<span class="nv">PLOT</span>    <span class="mi">1</span>       <span class="nv">Target_bitrate_kbps</span>:<span class="mi">0</span>@<span class="o">-</span> <span class="mi">12</span>.<span class="mi">123000</span>       <span class="mi">41</span>.<span class="mi">000000</span>
+[       <span class="nv">OK</span> ] <span class="nv">GoogCcNetworkControllerTest</span>.<span class="nv">UpdatesDelayBasedEstimate</span> <span class="ss">(</span><span class="mi">11</span> <span class="nv">ms</span><span class="ss">)</span>
+[<span class="o">----------</span>] <span class="mi">1</span> <span class="nv">test</span> <span class="nv">from</span> <span class="nv">GoogCcNetworkControllerTest</span> <span class="ss">(</span><span class="mi">11</span> <span class="nv">ms</span> <span class="nv">total</span><span class="ss">)</span>
+
+[<span class="o">----------</span>] <span class="nv">Global</span> <span class="nv">test</span> <span class="nv">environment</span> <span class="nv">tear</span><span class="o">-</span><span class="nv">down</span>
+[<span class="o">==========</span>] <span class="mi">1</span> <span class="nv">test</span> <span class="nv">from</span> <span class="mi">1</span> <span class="nv">test</span> <span class="nv">suite</span> <span class="nv">ran</span>. <span class="ss">(</span><span class="mi">12</span> <span class="nv">ms</span> <span class="nv">total</span><span class="ss">)</span>
+[  <span class="nv">PASSED</span>  ] <span class="mi">1</span> <span class="nv">test</span>.
+</code></pre></div>
+
+<p>以上的 PLOT 是由 宏 BWE_TEST_LOGGING_PLOT 调用 </p>
+<div class="highlight"><pre><span></span><code><span class="c1">#define BWE_TEST_LOGGING_PLOT(figure, name, time, value)                     \</span><span class="w"></span>
+<span class="w">  </span><span class="n">do</span><span class="w"> </span><span class="p">{</span><span class="w">                                                                       </span>\<span class="w"></span>
+<span class="w">    </span><span class="n">__BWE_TEST_LOGGING_CONTEXT_DECLARE</span><span class="p">(</span><span class="n">__bwe_log_</span><span class="p">,</span><span class="w"> </span><span class="n">__PLOT__</span><span class="p">,</span><span class="w"> </span><span class="n">name</span><span class="p">,</span><span class="w">           </span>\<span class="w"></span>
+<span class="w">                                       </span><span class="n">static_cast</span><span class="o">&lt;</span><span class="n">int64_t</span><span class="o">&gt;</span><span class="p">(</span><span class="n">time</span><span class="p">),</span><span class="w"> </span><span class="bp">true</span><span class="p">);</span><span class="w">    </span>\<span class="w"></span>
+<span class="w">    </span><span class="n">webrtc</span><span class="p">::</span><span class="n">testing</span><span class="p">::</span><span class="n">bwe</span><span class="p">::</span><span class="n">Logging</span><span class="p">::</span><span class="n">GetInstance</span><span class="p">()</span><span class="o">-&gt;</span><span class="n">Plot</span><span class="p">(</span><span class="n">figure</span><span class="p">,</span><span class="w"> </span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="n">value</span><span class="p">);</span><span class="w"> </span>\<span class="w"></span>
+<span class="w">  </span><span class="p">}</span><span class="w"> </span><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="w"></span>
+
+<span class="nb nb-Type">void</span><span class="w"> </span><span class="n">Logging</span><span class="p">::</span><span class="n">Plot</span><span class="p">(</span><span class="nb nb-Type">int</span><span class="w"> </span><span class="n">figure</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="n">double</span><span class="w"> </span><span class="n">value</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">  </span><span class="n">Plot</span><span class="p">(</span><span class="n">figure</span><span class="p">,</span><span class="w"> </span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="n">value</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;-&quot;</span><span class="p">);</span><span class="w"></span>
+<span class="p">}</span><span class="w"></span>
+
+<span class="nb nb-Type">void</span><span class="w"> </span><span class="n">Logging</span><span class="p">::</span><span class="n">Plot</span><span class="p">(</span><span class="nb nb-Type">int</span><span class="w"> </span><span class="n">figure</span><span class="p">,</span><span class="w"></span>
+<span class="w">                   </span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">name</span><span class="p">,</span><span class="w"></span>
+<span class="w">                   </span><span class="n">double</span><span class="w"> </span><span class="n">value</span><span class="p">,</span><span class="w"></span>
+<span class="w">                   </span><span class="n">uint32_t</span><span class="w"> </span><span class="n">ssrc</span><span class="p">,</span><span class="w"></span>
+<span class="w">                   </span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">alg_name</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">  </span><span class="n">MutexLock</span><span class="w"> </span><span class="n">lock</span><span class="p">(</span><span class="o">&amp;</span><span class="n">mutex_</span><span class="p">);</span><span class="w"></span>
+<span class="w">  </span><span class="n">ThreadMap</span><span class="p">::</span><span class="n">iterator</span><span class="w"> </span><span class="n">it</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">thread_map_</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="n">rtc</span><span class="p">::</span><span class="n">CurrentThreadId</span><span class="p">());</span><span class="w"></span>
+<span class="w">  </span><span class="n">RTC_DCHECK</span><span class="p">(</span><span class="n">it</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">thread_map_</span><span class="o">.</span><span class="n">end</span><span class="p">());</span><span class="w"></span>
+<span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="n">State</span><span class="o">&amp;</span><span class="w"> </span><span class="n">state</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">it</span><span class="o">-&gt;</span><span class="n">second</span><span class="o">.</span><span class="n">stack</span><span class="o">.</span><span class="n">top</span><span class="p">();</span><span class="w"></span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">state</span><span class="o">.</span><span class="n">enabled</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="n">printf</span><span class="p">(</span><span class="s2">&quot;PLOT</span><span class="se">\t</span><span class="si">%d</span><span class="se">\t</span><span class="si">%s</span><span class="s2">:%&quot;</span><span class="w"> </span><span class="n">PRIu32</span><span class="w"> </span><span class="s2">&quot;@</span><span class="si">%s</span><span class="se">\t</span><span class="si">%f</span><span class="se">\t</span><span class="si">%f</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">figure</span><span class="p">,</span><span class="w"> </span><span class="n">name</span><span class="o">.</span><span class="n">c_str</span><span class="p">(),</span><span class="w"> </span><span class="n">ssrc</span><span class="p">,</span><span class="w"></span>
+<span class="w">           </span><span class="n">alg_name</span><span class="o">.</span><span class="n">c_str</span><span class="p">(),</span><span class="w"> </span><span class="n">state</span><span class="o">.</span><span class="n">timestamp_ms</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.001</span><span class="p">,</span><span class="w"> </span><span class="n">value</span><span class="p">);</span><span class="w"></span>
+<span class="w">  </span><span class="p">}</span><span class="w"></span>
+<span class="p">}</span><span class="w"></span>
+</code></pre></div>
+
+<p>第 1 列：PLOT 关键字
+第 2 列：figure number
+第 3 列：figure name + ssrc + alg name
+第 4 列：timestamp
+第 5 列：value</p>
+<p>这样我们就可以根据这种格式绘制各种各样的图表了</p>
+  </div>
+  <div class="tag-cloud">
+    <p>
+      <a href="./tag/webrtc.html">webrtc</a>
+      <a href="./tag/tech.html">tech</a>
+    </p>
+  </div>
+
+
+
+
+
+</article>
+
+    <footer>
+<p>&copy; Walter Fan 2010 ~ 2030 </p>
+<p>
+  <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号</a>
+</p>
+<p>    Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+</p><!-- StatusCake -->
+
+<!-- End StatusCake -->    </footer>
+  </main>
+
+
+
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : ".",
+  "image": "./images/walterfan.jpg",
+  "description": "an old programmer never die, he just branch to a new address."
+}
+</script>
+
+</body>
+</html>

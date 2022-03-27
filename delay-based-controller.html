@@ -1,0 +1,304 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css?family=Source+Code+Pro|Source+Sans+Pro:300,400,400i,700" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="./theme/stylesheet/style.min.css">
+
+  <link rel="stylesheet" type="text/css" href="./theme/pygments/github.min.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/solid.css">
+
+
+
+
+    <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+    <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="Delay based controller based on kalman filter" />
+<meta name="keywords" content="journal, webrtc">
+
+
+<meta property="og:site_name" content="Walter Fan's Blog"/>
+<meta property="og:title" content="基于延迟的带宽评估"/>
+<meta property="og:description" content="Delay based controller based on kalman filter"/>
+<meta property="og:locale" content="en_US"/>
+<meta property="og:url" content="./delay-based-controller.html"/>
+<meta property="og:type" content="article"/>
+<meta property="article:published_time" content="2022-03-18 10:20:00+08:00"/>
+<meta property="article:modified_time" content="2022-03-18 10:20:00+08:00"/>
+<meta property="article:author" content="./author/walter-fan.html">
+<meta property="article:section" content="webrtc"/>
+<meta property="article:tag" content="journal"/>
+<meta property="article:tag" content="webrtc"/>
+<meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 基于延迟的带宽评估</title>
+
+</head>
+<body>
+  <aside>
+    <div>
+      <a href=".">
+        <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+      </a>
+      <h1><a href=".">Walter Fan</a></h1>
+
+<p>手握灵珠常奋笔, 心开天籁不吹箫</p>
+      <nav>
+        <ul class="list">
+
+
+            <li><a target="_blank" href="tao.html" >tao</a></li>
+            <li><a target="_blank" href="interest.html" >interest</a></li>
+            <li><a target="_blank" href="/wordpress" >notebook</a></li>
+            <li><a target="_blank" href="/webrtc/examples/index.html" >webrtc</a></li>
+            <li><a target="_blank" href="https://github.com/walterfan" >github</a></li>
+            <li><a target="_blank" href="https://www.jianshu.com/u/e0b365801f48" >jianshu</a></li>
+            <li><a target="_blank" href="about.html" >about</a></li>
+        </ul>
+      </nav>
+
+      <ul class="social">
+          <li>
+            <a  class="sc-github" href="http://github.com/walterfan" target="_blank">
+            <i class="fab fa-github">
+            </i>
+          </a></li>
+      </ul>
+    </div>
+
+
+  </aside>
+  <main>
+
+
+<article class="single">
+  <header>
+      
+    <h1 id="delay-based-controller">基于延迟的带宽评估</h1>
+    <p>
+          Posted on Fri 18 March 2022 in <a href="./category/webrtc.html">webrtc</a>
+
+
+    </p>
+  </header>
+
+
+  <div>
+    <div class="section" id="section-2">
+<h2>概述</h2>
+<p>基于延迟的控制的算法主要分为四个部分：</p>
+<ol class="arabic simple">
+<li>pre-filtering 预先过滤</li>
+<li>arrival-time filter 到达时间过滤器</li>
+<li>over-use detector 过度使用检测器</li>
+<li>rate-control 速率控制器</li>
+</ol>
+</div>
+<div class="section" id="section-3">
+<h2>1. 到达时间模型</h2>
+<p>两个包发送的间隔 T(i) – T(i-1) 和接收的间隔 t(i) – t(i-1) 在理想情况下是相同的，实际上会有不同.
+也就是说包的到达时间并未保持稳定的速度。 在计算的时候可以用以帧分组，对两个组的到达时间进行计算。</p>
+<ul class="simple">
+<li>发送时间间隔与到达时间间隔之间的延时的观测公式，称为单向延迟变化</li>
+</ul>
+<div class="formula">
+<i>d</i>(<i>i</i>) = <i>t</i>(<i>i</i>)–<i>t</i>(<i>i</i> − 1)–(<i>T</i>(<i>i</i>)–<i>T</i>(<i>i</i> − 1))
+</div>
+<p>还可将数据包组之间的延迟变化建模为</p>
+<div class="formula">
+<i>d</i>(<i>i</i>) = <i>w</i>(<i>i</i>)
+</div>
+<p>这里的 w(i) 是一个随机过程 W 的采样，它是一个连接容量，当前交叉流量和当前比特率的函数，我们将 W 建模为一个白高斯过程。如果我们过度使用了传输通道，则 w(i) 的平均值就会增大，如果网络路径中的拥塞队列已经清空了，这个 w(i) 的平均值就会减小，否则 w(i) 的平均值为零。</p>
+<p>由此，我们可以将w(i) 分解为它的平均值加上一个偏差</p>
+<div class="formula">
+<i>d</i>(<i>i</i>) = <i>m</i>(<i>i</i>) + <i>v</i>(<i>i</i>)
+</div>
+<p>v(i) 表示网络抖动和其他没有被这个模型捕捉到的延迟</p>
+</div>
+<div class="section" id="pre-filtering">
+<h2>2.  Pre-filtering 预先过滤</h2>
+<p>预滤波旨在处理由信道中断引起的延迟瞬变。 在中断期间，由于与拥塞无关的原因，在网络缓冲区中排队的数据包会在中断结束时突发传送。</p>
+<p>预过滤将突发到达的数据包组合并在一起。 如果满足以下两个条件之一，则数据包将合并到同一组中：</p>
+<ul class="simple">
+<li>在一个 burst_time 间隔内发送的数据包序列构成一个组。</li>
+<li>具有小于 burst_time 的到达间隔时间和小于0 的组间延迟变化d(i) 的数据包被认为是当前数据包组的一部分。</li>
+</ul>
+<p>在 RTCP Sender Report 中有成对的 NTP timstamp 和 RTP timestamp， 这样就可以把 RTP 包中的 timestamp 转换为 NTP timstamp。
+但是这个是与媒体采集和回放相关的时间戳，并不是包发送的时间，我们需要把发送时间通过 RTP 包头的扩展 abs_send_time 发到接收方去。</p>
+<p>接收端控制器是一种基于延迟的拥塞控制算法，通过下面的公式来计算 <span class="formula"><i>A</i><sub><i>r</i></sub></span></p>
+<div class="formula">
+<i>A</i><sub><i>r</i></sub>(<i>t</i><sub><i>i</i></sub>) = <span class="unknown">\cases</span><i>η</i><i>A</i><sub><i>r</i></sub>(<i>t</i><sub><i>i</i> − 1</sub>)	<span class="unknown">\rm</span><i>Increase</i><span class="unknown">\cr</span><i>α</i><i>R</i>(<i>t</i><sub><i>i</i></sub>)	<span class="unknown">\rm</span><i>Decrease</i><span class="unknown">\cr</span><i>A</i>(<i>t</i><sub><i>i</i> − 1</sub>)	<span class="unknown">\rm</span><i>Hold</i>
+</div>
+</div>
+<div class="section" id="arrival-time-filter">
+<h2>3. 到达时间滤波器 arrival time filter</h2>
+<p>根据到达时间模型，我们可以通过 Kalman Filter 或者 Trendline Filter 来求得网络排队延迟 <cite>m(i)</cite></p>
+<div class="formula">
+<i>m</i>(<i>i</i> + 1) = <i>m</i>(<i>i</i>) + <i>u</i>(<i>i</i>)
+</div>
+<div class="formula">
+<i>q</i>(<i>i</i>) = <i>E</i><i>u</i>(<i>i</i>)<sup>2</sup>
+</div>
+<div class="formula">
+<i>d</i>(<i>i</i>) = <i>m</i>(<i>i</i>) + <i>v</i>(<i>i</i>)
+</div>
+<p>其中</p>
+<ul class="simple">
+<li>q(i) 为状态噪声 u(i) 方差的期望，推荐值是 10^-3</li>
+<li>u(i) 是指状态噪声, 把它建模为具有零均值和方差的高斯统计模拟的平稳过程</li>
+<li>v(i) 是指测量噪声，它是具有方差 <cite>var_v = E{v(i)^2}</cite> 的零均值高斯白测量噪声</li>
+</ul>
+<p>注:</p>
+<ul class="simple">
+<li>中心化（又叫零均值化）：是指变量減去它的均值。其实就是一个平移的过程，平移后所有数据的中心是（0，0）</li>
+<li>标准化（又叫归一化）： 是指數值減去均值，再除以标准差。</li>
+</ul>
+<p>GCC v1 中使用卡尔曼滤波器递归地更新这个估计值 m_hat(i)， 在 GCC v2 中则以 Trendline Filter 使用最小二乘法以线性回归来估计</p>
+<div class="highlight"><pre><span></span>z(i) = d(i) - m_hat(i-1)
+
+m_hat(i) = m_hat(i-1) + z(i) * k(i)
+
+                  e(i-1) + q(i)
+k(i) = ----------------------------------------
+            var_v_hat(i) + (e(i-1) + q(i))
+
+e(i) = (1 - k(i)) * (e(i-1) + q(i))
+
+var_v_hat(i) = max(alpha * var_v_hat(i-1) + (1-alpha) * z(i)^2, 1)
+
+alpha = (1-chi)^(30/(1000 * f_max))
+</pre></div>
+</div>
+<div class="section" id="the-over-use-detector">
+<h2>4. 过度使用检测器 The over-use detector</h2>
+<p>每次接收到视频帧 <span class="formula"><i>t</i><sub><i>i</i></sub></span> 时，过度使用检测器都会产生一个信号 s，该信号基于排队延迟 <span class="formula"><i>m</i>(<i>t</i><sub><i>i</i></sub>)</span> 和阈值 <span class="formula"><i>γ</i></span> 来驱动 FSM (下面的有限状态机) 的状态 <span class="formula"><i>σ</i></span>，算法 1 详细显示了 s 是如何生成的 ：</p>
+<p>当 <span class="formula"><i>m</i>(<i>t</i><sub><i>i</i></sub>) &gt; <i>γ</i></span> 时，算法通过增加帧间隔时间 <span class="formula">Δ<i>T</i></span> 的变量 <span class="formula"><i>t</i><sub><i>OU</i></sub></span> 来跟踪在这种情况下花费的时间。
+当 <span class="formula"><i>t</i><sub><i>OU</i></sub></span> 达到 <span class="formula"><span class="embellished"><sup>‒</sup><span class="base"><i>t</i></span></span><sub><i>OU</i></sub> = 100<i>ms</i></span> 且 <span class="formula"><i>m</i>(<i>t</i><sub><i>i</i></sub>) &gt; <i>m</i>(<i>t</i><sub><i>i</i> − 1</sub>)`</span> 时，产生过度使用信号。</p>
+<p>另一方面，如果 <span class="formula"><i>m</i>(<i>t</i><sub><i>i</i></sub>)</span> 减小到 <span class="formula"><i>γ</i></span> 以下，则产生未充分利用信号，而当 <span class="formula"> − <i>γ</i> ≤ <i>m</i>(<i>t</i><sub><i>i</i></sub>) ≤ <i>γ</i></span> 时触发正常信号。</p>
+<div class="figure align-center">
+<img alt="remote rate controller finite state machine" src="./images/rate-controller-fsm.gif" />
+<p class="caption">remote rate controller finite state machine</p>
+</div>
+<ul class="simple">
+<li>算法: Over-use Detector pseudo-code 过度使用检测器的伪代码</li>
+</ul>
+<div class="figure align-center">
+<img alt="over-use detector pseudo code" src="./images/over-use-detector-pseudo-code.gif" />
+<p class="caption">over-use detector pseudo code</p>
+</div>
+</div>
+<div class="section" id="rate-controller">
+<h2>5. Rate controller</h2>
+<p>The rate control is split in two parts,</p>
+<ol class="arabic simple">
+<li>controlling the bandwidth estimate based on delay</li>
+<li>controlling the bandwidth estimate based on loss</li>
+</ol>
+<ul class="simple">
+<li>The state transitions (with blank fields meaning &quot;remain in state&quot;)</li>
+</ul>
+<div class="highlight"><pre><span></span>+----+--------+-----------+------------+--------+
+|     \ State |   Hold    |  Increase  |Decrease|
+|      \      |           |            |        |
+| Signal\     |           |            |        |
++--------+----+-----------+------------+--------+
+|  Over-use   | Decrease  |  Decrease  |        |
++-------------+-----------+------------+--------+
+|  Normal     | Increase  |            |  Hold  |
++-------------+-----------+------------+--------+
+|  Under-use  |           |   Hold     |  Hold  |
++-------------+-----------+------------+--------+
+</pre></div>
+<div class="section" id="parameters-settings">
+<h3>Parameters settings</h3>
+<div class="highlight"><pre><span></span>+-----------------+-----------------------------------+-------------+
+| Parameter       | Description                       | RECOMMENDED |
+|                 |                                   | Value       |
++-----------------+-----------------------------------+-------------+
+| burst_time      | Time limit in milliseconds        | 5 ms        |
+|                 | between packet bursts which       |             |
+|                 | identifies a group                |             |
+| q               | State noise covariance matrix     | q = 10^-3   |
+| e(0)            | Initial value of the  system      | e(0) = 0.1  |
+|                 | error covariance                  |             |
+| chi             | Coefficient used  for the         | [0.1,       |
+|                 | measured noise variance           | 0.001]      |
+| del_var_th(0)   | Initial value for the adaptive    | 12.5 ms     |
+|                 | threshold                         |             |
+| overuse_time_th | Time required to trigger an       | 10 ms       |
+|                 | overuse signal                    |             |
+| K_u             | Coefficient for the adaptive      | 0.01        |
+|                 | threshold                         |             |
+| K_d             | Coefficient for the adaptive      | 0.00018     |
+|                 | threshold                         |             |
+| T               | Time window for measuring the     | [0.5, 1] s  |
+|                 | received bitrate                  |             |
+| beta            | Decrease rate factor              | 0.85        |
++-----------------+-----------------------------------+-------------+
+
+       Table 1: RECOMMENDED values for delay based controller
+</pre></div>
+</div>
+</div>
+<div class="section" id="section-4">
+<h2>参考代码</h2>
+<ul class="simple">
+<li><a class="reference external" href="https://source.chromium.org/chromium/chromium/src/+/main:third_party/webrtc/modules/congestion_controller">congestion_controller</a></li>
+<li><a class="reference external" href="https://source.chromium.org/chromium/chromium/src/+/main:third_party/webrtc/modules/remote_bitrate_estimator">remote_bitrate_estimator</a></li>
+</ul>
+</div>
+
+  </div>
+  <div class="tag-cloud">
+    <p>
+      <a href="./tag/journal.html">journal</a>
+      <a href="./tag/webrtc.html">webrtc</a>
+    </p>
+  </div>
+
+
+
+
+
+</article>
+
+    <footer>
+<p>&copy; Walter Fan 2010 ~ 2030 </p>
+<p>
+  <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号</a>
+</p>
+<p>    Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+</p><!-- StatusCake -->
+
+<!-- End StatusCake -->    </footer>
+  </main>
+
+
+
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : ".",
+  "image": "./images/walterfan.jpg",
+  "description": "an old programmer never die, he just branch to a new address."
+}
+</script>
+
+</body>
+</html>

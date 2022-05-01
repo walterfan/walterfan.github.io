@@ -121,25 +121,299 @@
 
 
   <div>
-    <h1>Thinking</h1>
-<h1>Quote</h1>
-<blockquote>
-<p>A given BUNDLE address:port MUST only be associated with a single
-   BUNDLE group.  If an SDP offer or SDP answer (hereafter referred to
-   as "offer" and "answer") contains multiple BUNDLE groups, the
-   procedures in this specification apply to each group independently.
-   All RTP-based bundled media associated with a given BUNDLE group
-   belong to a single RTP session [RFC3550].</p>
-</blockquote>
-<p>The BUNDLE extension is backward compatible.  Endpoints that do not
-   support the extension are expected to generate offers and answers
-   without an SDP 'group:BUNDLE' attribute and assign a unique
-   address:port to each "m=" section within an offer and answer,
-   according to the procedures in [RFC3264] and [RFC4566].</p>
-<p>-- https://datatracker.ietf.org/doc/html/rfc8843</p>
-<h1>Program</h1>
-<h2>WebRTC</h2>
-<h1>Words</h1>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>WebRTC 中多路复用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td> <strong>Category</strong>   </td>
+<td> learning note  </td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2022-4-30</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<p>回顾一下这张经典的图</p>
+<p><img alt="" src="https://upload-images.jianshu.io/upload_images/1598924-a0b7b8dd85776b92.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240"></p>
+<p>我改了一下 audio 和 video 的 codec, 现在 Opus 和 H.264 用的比较多
+Web API 中最主要的就是  MediaStream, RTCPeerConnection 和  DataChannel.</p>
+<p>在两个端点之间所传输的消息有这样几种</p>
+<p><img alt="" src="https://upload-images.jianshu.io/upload_images/1598924-305ba0be176396bc.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240"></p>
+<p>媒体数据一般都是优先走 UDP</p>
+<div class="highlight"><pre><span></span><code><span class="c">      0                   1                   2                   3</span>
+<span class="c">      0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1</span>
+<span class="c">     </span><span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+<span class="c">     |           Source Port          |        Destination port      |</span>
+<span class="c">     </span><span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+<span class="c">     |               Length           |        Checksum              |</span>
+<span class="c">     </span><span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+<span class="c">     |                                                               |</span>
+<span class="c">     |                        data octets </span><span class="nt">...</span><span class="c">                        |</span>
+<span class="c">     |                                                               |</span>
+<span class="c">     </span><span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+</code></pre></div>
+
+<h1>1. 区分 STUN, DTLS 和 RTP 包</h1>
+<p>注: 这里提到的 RTP 包括 RTP, RTCP, SRTP, SRTCP</p>
+<p>在 UDP 传输通道上会跑 STUN, DTLS 和 RTP(SRTP) 的数据，我们首先要区分这几种数据</p>
+<ul>
+<li>STUN 消息头如下</li>
+</ul>
+<div class="highlight"><pre><span></span><code><span class="c">      0                   1                   2                   3</span>
+<span class="c">      0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1</span>
+<span class="c">     </span><span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+<span class="c">     |0 0|     STUN Message Type     |         Message Length        |</span>
+<span class="c">     </span><span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+<span class="c">     |                         Magic Cookie                          |</span>
+<span class="c">     </span><span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+<span class="c">     |                                                               |</span>
+<span class="c">     |                     Transaction ID (96 bits)                  |</span>
+<span class="c">     |                                                               |</span>
+<span class="c">     </span><span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+</code></pre></div>
+
+<ul>
+<li>DTLS 消息，包含 SRTP 密钥的传输及用于 Datat Channel 的 SCTP 消息</li>
+</ul>
+<div class="highlight"><pre><span></span><code> struct {
+        ContentType type;
+        ProtocolVersion version;
+        uint16 epoch;                                     // New field
+        uint48 sequence_number;                           // New field
+        uint16 length;
+        opaque fragment[DTLSPlaintext.length];
+ } DTLSPlaintext;
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="c">      0                   1                   2                   3</span>
+<span class="c">      0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1</span>
+<span class="c">     </span><span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+<span class="c">     | ContentType |        Version     |        epoch               |</span>
+<span class="c">     </span><span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+<span class="c">     |                         sequence_number                       |</span>
+<span class="c">     </span><span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+<span class="c">     |    sequence_number              |         length              |</span>
+<span class="c">     </span><span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+<span class="c">     |                                                               |</span>
+<span class="c">     |                     opaque fragment                           |</span>
+<span class="c">     |                                                               |</span>
+<span class="c">     </span><span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+</code></pre></div>
+
+<ul>
+<li>RTP 消息，包含音频或视频的媒体数据, SRTP 的头与 RTP 头是相同的</li>
+</ul>
+<div class="highlight"><pre><span></span><code><span class="c">    0                   1                   2                   3</span>
+<span class="c">    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1</span>
+<span class="c">   </span><span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+<span class="c">   |V=2|P|X|  CC   |M|     PT      |       sequence number         |</span>
+<span class="c">   </span><span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+<span class="c">   |                           timestamp                           |</span>
+<span class="c">   </span><span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+<span class="c">   |           synchronization source (SSRC) identifier            |</span>
+<span class="c">   </span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c">=</span><span class="nb">+</span><span class="c"></span>
+<span class="c">   |            contributing source (CSRC) identifiers             |</span>
+<span class="c">   |                             </span><span class="nt">....</span><span class="c">                              |</span>
+<span class="c">   </span><span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+</code></pre></div>
+
+<ul>
+<li>RTCP 包括各种报告和反馈消息， SRTCP 的头与 RTCP 头是相同的</li>
+</ul>
+<div class="highlight"><pre><span></span><code><span class="c">        0                   1                   2                   3</span>
+<span class="c">        0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1</span>
+<span class="c">       </span><span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+<span class="c">       |V=2|P| RC/FMT  |       PT      |             length            |</span>
+<span class="c">       </span><span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+<span class="c">       |                         SSRC of sender                        |</span>
+<span class="c">       |                              </span><span class="nt">...</span><span class="c">                              |</span>
+</code></pre></div>
+
+<p>我们从包头的第一个字节就能够区分</p>
+<div class="highlight"><pre><span></span><code>                   <span class="o">+----------------+</span>
+                   <span class="o">|</span> <span class="mi">127</span> <span class="o">&lt;</span> <span class="n">B</span> <span class="o">&lt;</span> <span class="mi">192</span> <span class="o">-+--&gt;</span> <span class="n">forward</span> <span class="n">to</span> <span class="n">RTP</span>
+                   <span class="o">|</span>                <span class="o">|</span>
+       <span class="n">packet</span> <span class="o">--&gt;</span>  <span class="o">|</span>  <span class="mi">19</span> <span class="o">&lt;</span> <span class="n">B</span> <span class="o">&lt;</span> <span class="mi">64</span>  <span class="o">-+--&gt;</span> <span class="n">forward</span> <span class="n">to</span> <span class="n">DTLS</span>
+                   <span class="o">|</span>                <span class="o">|</span>
+                   <span class="o">|</span>       <span class="n">B</span> <span class="o">&lt;</span> <span class="mi">2</span>   <span class="o">-+--&gt;</span> <span class="n">forward</span> <span class="n">to</span> <span class="n">STUN</span>
+                   <span class="o">+----------------+</span>
+</code></pre></div>
+
+<p>代码示例如下:</p>
+<div class="highlight"><pre><span></span><code> <span class="k">if</span><span class="ss">((</span><span class="nv">buffer</span>[<span class="mi">0</span>]<span class="o">==</span><span class="mi">0</span><span class="ss">)</span> <span class="o">||</span> <span class="ss">(</span><span class="nv">buffer</span>[<span class="mi">0</span>]<span class="o">==</span><span class="mi">1</span><span class="ss">))</span>
+      <span class="k">return</span> <span class="nv">stun</span><span class="c1">; // STUN packet</span>
+
+ <span class="k">if</span><span class="ss">((</span><span class="nv">buffer</span>[<span class="mi">0</span>]<span class="o">&gt;=</span><span class="mi">128</span><span class="ss">)</span> <span class="o">&amp;&amp;</span> <span class="ss">(</span><span class="nv">buffer</span>[<span class="mi">0</span>]<span class="o">&lt;=</span><span class="mi">191</span><span class="ss">))</span>
+      <span class="k">return</span> <span class="nv">rtp</span><span class="c1">; // RTP packet</span>
+
+ <span class="k">if</span><span class="ss">((</span><span class="nv">buffer</span>[<span class="mi">0</span>]<span class="o">&gt;=</span><span class="mi">20</span><span class="ss">)</span>  <span class="o">&amp;&amp;</span> <span class="ss">(</span><span class="nv">buffer</span>[<span class="mi">0</span>]<span class="o">&lt;=</span><span class="mi">64</span><span class="ss">))</span>
+      <span class="k">return</span> <span class="nv">dtls</span><span class="c1">; // DTLS packet  </span>
+</code></pre></div>
+
+<h1>2. 区分 RTP 和 RTCP</h1>
+<p>在一个端口上传输 RTP 和 RTCP 包会面临 payload 冲突的问题。RTCP 头的第二个字节是 payload type, RTP 头的第二个字节的低 7 位是 payload type, RFC 5761 总结了一下，有如下冲突</p>
+<ul>
+<li>
+<p>RTP 有效载荷类型 64-65 与原始“H.261 视频流的 RTP 有效载荷格式”（由 RFC 2032 定义，由 RFC 4587 废弃）中定义的（过时的）RTCP FIR 和 NACK 数据包冲突。</p>
+</li>
+<li>
+<p>RTP 有效载荷类型 72-76 与 RTP 规范 (RFC3550) 中定义的 RTCP SR、RR、SDES、BYE 和 APP 数据包冲突。</p>
+</li>
+<li>
+<p>RTP 有效负载类型 77-78 与 RTP/AVPF 配置文件 (RFC 4585) 中定义的 RTCP RTPFB 和 PSFB 数据包冲突。</p>
+</li>
+<li>
+<p>RTP 负载类型 79 与 RTCP 扩展报告 (XR) (RFC 3611) 数据包冲突。</p>
+</li>
+<li>
+<p>RTP 有效负载类型 80 与“具有单播反馈的单源多播会话的 RTCP 扩展”(RFC 5760) 中定义的接收器摘要信息 (RSI) 数据包冲突。</p>
+</li>
+</ul>
+<p>也就是 RTP payload type 64 ~ 95 会和 RTCP 有冲突，所以根据 RFC3551 RTP/AVP profile 的规定，RFC 5761 建议 RTP payload 64 ~ 95 不要再使用， RTP 的动态 payload type 的选择最好在 96 ~ 127 之间</p>
+<h1>3. 区分不同的媒体流</h1>
+<p>传统上，一个传输通道只传输一路媒体流，其 RTP 包 的 SSRC 也用来标识这路媒体流。 RTCP 会使用一个单独的传输
+媒体协商的 SDP 中的一个 m-line 也只包含一路或者一对(包括重传 RTX 的媒体流 )媒体流。</p>
+<p>WebRTC 中为避免过多地使用 NAT 技术来穿透防火墙，可用多路复用技术在一个传输通道中传输多路媒体，包括RTCP, 重传的媒体流。</p>
+<p>一个传输通道（五元组: protocol, srcHost, srcPort, destHost, destPort）中包含多路媒体流，也就是有多个 m-line。而一个 m-line 中也可包含多个 ssrc, 即通过联播 Simulcast 技术让 MediaStream 包含多个 MediaStreamTrack（分辨率或码率不同）。</p>
+<p>那么如何辨别这些 MediaStream 和 MediaStreamTrack 呢？ SSRC 和 Payload Type 显然不够，因为 SSRC 会变化，Payload Type 会重复。</p>
+<p>WebRTC 将这些媒体流放在一个 bundle group 中， 通过 mid 来标识媒体流 MediaStream, 通过 rid 来标识媒体流中不同的 MediaStreamTrack, 例如来自相同源的不同质量，分辨率或帧率的流</p>
+<div class="highlight"><pre><span></span><code><span class="nt">v</span><span class="o">=</span><span class="nt">0</span>
+<span class="nt">o</span><span class="o">=</span><span class="nt">-</span> <span class="nt">708564895714429943</span> <span class="nt">2</span> <span class="nt">IN</span> <span class="nt">IP4</span> <span class="nt">127</span><span class="p">.</span><span class="nc">0</span><span class="p">.</span><span class="nc">0</span><span class="p">.</span><span class="nc">1</span>
+<span class="nt">s</span><span class="o">=</span><span class="nt">-</span>
+<span class="nt">t</span><span class="o">=</span><span class="nt">0</span> <span class="nt">0</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">group</span><span class="p">:</span><span class="nd">BUNDLE</span> <span class="nt">0</span> <span class="nt">1</span> <span class="nt">2</span> <span class="nt">3</span> <span class="nt">4</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">extmap-allow-mixed</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">msid-semantic</span><span class="o">:</span> <span class="nt">WMS</span> <span class="nt">rb3Uanb7CQq8HfZe0gexpjwoNCQai0AbUoQB</span>
+<span class="nt">m</span><span class="o">=</span><span class="nt">audio</span> <span class="nt">9</span> <span class="nt">UDP</span><span class="o">/</span><span class="nt">TLS</span><span class="o">/</span><span class="nt">RTP</span><span class="o">/</span><span class="nt">SAVPF</span> <span class="nt">111</span> <span class="nt">63</span> <span class="nt">103</span> <span class="nt">104</span> <span class="nt">9</span> <span class="nt">0</span> <span class="nt">8</span> <span class="nt">106</span> <span class="nt">105</span> <span class="nt">13</span> <span class="nt">110</span> <span class="nt">112</span> <span class="nt">113</span> <span class="nt">126</span>
+<span class="nt">c</span><span class="o">=</span><span class="nt">IN</span> <span class="nt">IP4</span> <span class="nt">0</span><span class="p">.</span><span class="nc">0</span><span class="p">.</span><span class="nc">0</span><span class="p">.</span><span class="nc">0</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">rtcp</span><span class="p">:</span><span class="nd">9</span> <span class="nt">IN</span> <span class="nt">IP4</span> <span class="nt">0</span><span class="p">.</span><span class="nc">0</span><span class="p">.</span><span class="nc">0</span><span class="p">.</span><span class="nc">0</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">ice-ufrag</span><span class="p">:</span><span class="nd">u8aT</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">ice-pwd</span><span class="p">:</span><span class="nd">nTH</span><span class="o">+</span><span class="nt">98fL7o</span><span class="o">+</span><span class="nt">XacAd</span><span class="o">//</span><span class="nt">X7uStI</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">ice-options</span><span class="p">:</span><span class="nd">trickle</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">fingerprint</span><span class="p">:</span><span class="nd">sha-256</span> <span class="nt">6E</span><span class="p">:</span><span class="nd">FD</span><span class="p">:</span><span class="nd">8F</span><span class="p">:</span><span class="nd">7C</span><span class="p">:</span><span class="nd">E7</span><span class="p">:</span><span class="nd">6B</span><span class="p">:</span><span class="nd">DF</span><span class="p">:</span><span class="nd">2B</span><span class="p">:</span><span class="nd">6F</span><span class="p">:</span><span class="nd">D6</span><span class="p">:</span><span class="nd">32</span><span class="p">:</span><span class="nd">B6</span><span class="p">:</span><span class="nd">A6</span><span class="p">:</span><span class="nd">00</span><span class="p">:</span><span class="nd">62</span><span class="p">:</span><span class="nd">D5</span><span class="p">:</span><span class="nd">7E</span><span class="p">:</span><span class="nd">4E</span><span class="p">:</span><span class="nd">11</span><span class="p">:</span><span class="nd">91</span><span class="p">:</span><span class="nd">91</span><span class="p">:</span><span class="nd">37</span><span class="p">:</span><span class="nd">95</span><span class="p">:</span><span class="nd">BE</span><span class="p">:</span><span class="nd">2C</span><span class="p">:</span><span class="nd">00</span><span class="p">:</span><span class="nd">3F</span><span class="p">:</span><span class="nd">B2</span><span class="p">:</span><span class="nd">67</span><span class="p">:</span><span class="nd">6F</span><span class="p">:</span><span class="nd">DF</span><span class="p">:</span><span class="nd">3C</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">setup</span><span class="p">:</span><span class="nd">actpass</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">mid</span><span class="p">:</span><span class="nd">0</span>
+<span class="o">//..</span><span class="p">.</span><span class="nc">省略若干属性</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">ssrc</span><span class="p">:</span><span class="nd">104648773</span> <span class="nt">cname</span><span class="p">:</span><span class="nd">XQRmiLwREWI1CiN0</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">ssrc</span><span class="p">:</span><span class="nd">104648773</span> <span class="nt">msid</span><span class="p">:</span><span class="nd">rb3Uanb7CQq8HfZe0gexpjwoNCQai0AbUoQB</span> <span class="nt">fc805128-e98d-47d2-a9a6-b8976c91a404</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">ssrc</span><span class="p">:</span><span class="nd">104648773</span> <span class="nt">mslabel</span><span class="p">:</span><span class="nd">rb3Uanb7CQq8HfZe0gexpjwoNCQai0AbUoQB</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">ssrc</span><span class="p">:</span><span class="nd">104648773</span> <span class="nt">label</span><span class="p">:</span><span class="nd">fc805128-e98d-47d2-a9a6-b8976c91a404</span>
+
+<span class="nt">m</span><span class="o">=</span><span class="nt">video</span> <span class="nt">9</span> <span class="nt">UDP</span><span class="o">/</span><span class="nt">TLS</span><span class="o">/</span><span class="nt">RTP</span><span class="o">/</span><span class="nt">SAVPF</span> <span class="nt">96</span> <span class="nt">97</span> <span class="nt">98</span> <span class="nt">99</span> <span class="nt">100</span> <span class="nt">101</span> <span class="nt">127</span> <span class="nt">121</span> <span class="nt">125</span> <span class="nt">107</span> <span class="nt">108</span> <span class="nt">109</span> <span class="nt">124</span> <span class="nt">120</span> <span class="nt">123</span> <span class="nt">119</span> <span class="nt">35</span> <span class="nt">36</span> <span class="nt">41</span> <span class="nt">42</span> <span class="nt">114</span> <span class="nt">115</span> <span class="nt">116</span>
+<span class="nt">c</span><span class="o">=</span><span class="nt">IN</span> <span class="nt">IP4</span> <span class="nt">0</span><span class="p">.</span><span class="nc">0</span><span class="p">.</span><span class="nc">0</span><span class="p">.</span><span class="nc">0</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">rtcp</span><span class="p">:</span><span class="nd">9</span> <span class="nt">IN</span> <span class="nt">IP4</span> <span class="nt">0</span><span class="p">.</span><span class="nc">0</span><span class="p">.</span><span class="nc">0</span><span class="p">.</span><span class="nc">0</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">ice-ufrag</span><span class="p">:</span><span class="nd">u8aT</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">ice-pwd</span><span class="p">:</span><span class="nd">nTH</span><span class="o">+</span><span class="nt">98fL7o</span><span class="o">+</span><span class="nt">XacAd</span><span class="o">//</span><span class="nt">X7uStI</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">ice-options</span><span class="p">:</span><span class="nd">trickle</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">fingerprint</span><span class="p">:</span><span class="nd">sha-256</span> <span class="nt">6E</span><span class="p">:</span><span class="nd">FD</span><span class="p">:</span><span class="nd">8F</span><span class="p">:</span><span class="nd">7C</span><span class="p">:</span><span class="nd">E7</span><span class="p">:</span><span class="nd">6B</span><span class="p">:</span><span class="nd">DF</span><span class="p">:</span><span class="nd">2B</span><span class="p">:</span><span class="nd">6F</span><span class="p">:</span><span class="nd">D6</span><span class="p">:</span><span class="nd">32</span><span class="p">:</span><span class="nd">B6</span><span class="p">:</span><span class="nd">A6</span><span class="p">:</span><span class="nd">00</span><span class="p">:</span><span class="nd">62</span><span class="p">:</span><span class="nd">D5</span><span class="p">:</span><span class="nd">7E</span><span class="p">:</span><span class="nd">4E</span><span class="p">:</span><span class="nd">11</span><span class="p">:</span><span class="nd">91</span><span class="p">:</span><span class="nd">91</span><span class="p">:</span><span class="nd">37</span><span class="p">:</span><span class="nd">95</span><span class="p">:</span><span class="nd">BE</span><span class="p">:</span><span class="nd">2C</span><span class="p">:</span><span class="nd">00</span><span class="p">:</span><span class="nd">3F</span><span class="p">:</span><span class="nd">B2</span><span class="p">:</span><span class="nd">67</span><span class="p">:</span><span class="nd">6F</span><span class="p">:</span><span class="nd">DF</span><span class="p">:</span><span class="nd">3C</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">setup</span><span class="p">:</span><span class="nd">actpass</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">mid</span><span class="p">:</span><span class="nd">1</span>
+<span class="o">//..</span><span class="p">.</span><span class="nc">省略若干属性</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">rtcp-mux</span>
+<span class="o">//..</span><span class="p">.</span><span class="nc">省略若干属性</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">rid</span><span class="p">:</span><span class="nd">high</span> <span class="nt">send</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">rid</span><span class="p">:</span><span class="nd">middle</span> <span class="nt">send</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">rid</span><span class="p">:</span><span class="nd">low</span> <span class="nt">send</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">simulcast</span><span class="p">:</span><span class="nd">send</span> <span class="nt">high</span><span class="o">;</span><span class="nt">middle</span><span class="o">;</span><span class="nt">low</span>
+
+<span class="nt">m</span><span class="o">=</span><span class="nt">audio</span> <span class="nt">9</span> <span class="nt">UDP</span><span class="o">/</span><span class="nt">TLS</span><span class="o">/</span><span class="nt">RTP</span><span class="o">/</span><span class="nt">SAVPF</span> <span class="nt">111</span> <span class="nt">63</span> <span class="nt">103</span> <span class="nt">104</span> <span class="nt">9</span> <span class="nt">0</span> <span class="nt">8</span> <span class="nt">106</span> <span class="nt">105</span> <span class="nt">13</span> <span class="nt">110</span> <span class="nt">112</span> <span class="nt">113</span> <span class="nt">126</span>
+<span class="nt">c</span><span class="o">=</span><span class="nt">IN</span> <span class="nt">IP4</span> <span class="nt">0</span><span class="p">.</span><span class="nc">0</span><span class="p">.</span><span class="nc">0</span><span class="p">.</span><span class="nc">0</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">rtcp</span><span class="p">:</span><span class="nd">9</span> <span class="nt">IN</span> <span class="nt">IP4</span> <span class="nt">0</span><span class="p">.</span><span class="nc">0</span><span class="p">.</span><span class="nc">0</span><span class="p">.</span><span class="nc">0</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">ice-ufrag</span><span class="p">:</span><span class="nd">u8aT</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">ice-pwd</span><span class="p">:</span><span class="nd">nTH</span><span class="o">+</span><span class="nt">98fL7o</span><span class="o">+</span><span class="nt">XacAd</span><span class="o">//</span><span class="nt">X7uStI</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">ice-options</span><span class="p">:</span><span class="nd">trickle</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">fingerprint</span><span class="p">:</span><span class="nd">sha-256</span> <span class="nt">6E</span><span class="p">:</span><span class="nd">FD</span><span class="p">:</span><span class="nd">8F</span><span class="p">:</span><span class="nd">7C</span><span class="p">:</span><span class="nd">E7</span><span class="p">:</span><span class="nd">6B</span><span class="p">:</span><span class="nd">DF</span><span class="p">:</span><span class="nd">2B</span><span class="p">:</span><span class="nd">6F</span><span class="p">:</span><span class="nd">D6</span><span class="p">:</span><span class="nd">32</span><span class="p">:</span><span class="nd">B6</span><span class="p">:</span><span class="nd">A6</span><span class="p">:</span><span class="nd">00</span><span class="p">:</span><span class="nd">62</span><span class="p">:</span><span class="nd">D5</span><span class="p">:</span><span class="nd">7E</span><span class="p">:</span><span class="nd">4E</span><span class="p">:</span><span class="nd">11</span><span class="p">:</span><span class="nd">91</span><span class="p">:</span><span class="nd">91</span><span class="p">:</span><span class="nd">37</span><span class="p">:</span><span class="nd">95</span><span class="p">:</span><span class="nd">BE</span><span class="p">:</span><span class="nd">2C</span><span class="p">:</span><span class="nd">00</span><span class="p">:</span><span class="nd">3F</span><span class="p">:</span><span class="nd">B2</span><span class="p">:</span><span class="nd">67</span><span class="p">:</span><span class="nd">6F</span><span class="p">:</span><span class="nd">DF</span><span class="p">:</span><span class="nd">3C</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">setup</span><span class="p">:</span><span class="nd">actpass</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">mid</span><span class="p">:</span><span class="nd">2</span>
+<span class="o">//..</span><span class="p">.</span><span class="nc">省略若干属性</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">rtcp-mux</span>
+
+<span class="o">//..</span><span class="p">.</span><span class="nc">省略若干属性</span>
+
+<span class="nt">m</span><span class="o">=</span><span class="nt">video</span> <span class="nt">9</span> <span class="nt">UDP</span><span class="o">/</span><span class="nt">TLS</span><span class="o">/</span><span class="nt">RTP</span><span class="o">/</span><span class="nt">SAVPF</span> <span class="nt">96</span> <span class="nt">97</span> <span class="nt">98</span> <span class="nt">99</span> <span class="nt">100</span> <span class="nt">101</span> <span class="nt">102</span> <span class="nt">122</span> <span class="nt">127</span> <span class="nt">121</span> <span class="nt">125</span> <span class="nt">107</span> <span class="nt">108</span> <span class="nt">109</span> <span class="nt">124</span> <span class="nt">120</span> <span class="nt">123</span> <span class="nt">119</span> <span class="nt">35</span> <span class="nt">36</span> <span class="nt">37</span> <span class="nt">38</span> <span class="nt">39</span> <span class="nt">40</span> <span class="nt">41</span> <span class="nt">42</span> <span class="nt">114</span> <span class="nt">115</span> <span class="nt">116</span> <span class="nt">43</span>
+<span class="nt">c</span><span class="o">=</span><span class="nt">IN</span> <span class="nt">IP4</span> <span class="nt">0</span><span class="p">.</span><span class="nc">0</span><span class="p">.</span><span class="nc">0</span><span class="p">.</span><span class="nc">0</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">rtcp</span><span class="p">:</span><span class="nd">9</span> <span class="nt">IN</span> <span class="nt">IP4</span> <span class="nt">0</span><span class="p">.</span><span class="nc">0</span><span class="p">.</span><span class="nc">0</span><span class="p">.</span><span class="nc">0</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">ice-ufrag</span><span class="p">:</span><span class="nd">u8aT</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">ice-pwd</span><span class="p">:</span><span class="nd">nTH</span><span class="o">+</span><span class="nt">98fL7o</span><span class="o">+</span><span class="nt">XacAd</span><span class="o">//</span><span class="nt">X7uStI</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">ice-options</span><span class="p">:</span><span class="nd">trickle</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">fingerprint</span><span class="p">:</span><span class="nd">sha-256</span> <span class="nt">6E</span><span class="p">:</span><span class="nd">FD</span><span class="p">:</span><span class="nd">8F</span><span class="p">:</span><span class="nd">7C</span><span class="p">:</span><span class="nd">E7</span><span class="p">:</span><span class="nd">6B</span><span class="p">:</span><span class="nd">DF</span><span class="p">:</span><span class="nd">2B</span><span class="p">:</span><span class="nd">6F</span><span class="p">:</span><span class="nd">D6</span><span class="p">:</span><span class="nd">32</span><span class="p">:</span><span class="nd">B6</span><span class="p">:</span><span class="nd">A6</span><span class="p">:</span><span class="nd">00</span><span class="p">:</span><span class="nd">62</span><span class="p">:</span><span class="nd">D5</span><span class="p">:</span><span class="nd">7E</span><span class="p">:</span><span class="nd">4E</span><span class="p">:</span><span class="nd">11</span><span class="p">:</span><span class="nd">91</span><span class="p">:</span><span class="nd">91</span><span class="p">:</span><span class="nd">37</span><span class="p">:</span><span class="nd">95</span><span class="p">:</span><span class="nd">BE</span><span class="p">:</span><span class="nd">2C</span><span class="p">:</span><span class="nd">00</span><span class="p">:</span><span class="nd">3F</span><span class="p">:</span><span class="nd">B2</span><span class="p">:</span><span class="nd">67</span><span class="p">:</span><span class="nd">6F</span><span class="p">:</span><span class="nd">DF</span><span class="p">:</span><span class="nd">3C</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">setup</span><span class="p">:</span><span class="nd">actpass</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">mid</span><span class="p">:</span><span class="nd">3</span>
+<span class="o">//..</span><span class="p">.</span><span class="nc">省略若干属性</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">rtcp-mux</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">rtcp-rsize</span>
+<span class="o">//..</span><span class="p">.</span><span class="nc">省略若干属性</span>
+
+<span class="nt">m</span><span class="o">=</span><span class="nt">application</span> <span class="nt">9</span> <span class="nt">UDP</span><span class="o">/</span><span class="nt">DTLS</span><span class="o">/</span><span class="nt">SCTP</span> <span class="nt">webrtc-datachannel</span>
+<span class="nt">c</span><span class="o">=</span><span class="nt">IN</span> <span class="nt">IP4</span> <span class="nt">0</span><span class="p">.</span><span class="nc">0</span><span class="p">.</span><span class="nc">0</span><span class="p">.</span><span class="nc">0</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">ice-ufrag</span><span class="p">:</span><span class="nd">u8aT</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">ice-pwd</span><span class="p">:</span><span class="nd">nTH</span><span class="o">+</span><span class="nt">98fL7o</span><span class="o">+</span><span class="nt">XacAd</span><span class="o">//</span><span class="nt">X7uStI</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">ice-options</span><span class="p">:</span><span class="nd">trickle</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">fingerprint</span><span class="p">:</span><span class="nd">sha-256</span> <span class="nt">6E</span><span class="p">:</span><span class="nd">FD</span><span class="p">:</span><span class="nd">8F</span><span class="p">:</span><span class="nd">7C</span><span class="p">:</span><span class="nd">E7</span><span class="p">:</span><span class="nd">6B</span><span class="p">:</span><span class="nd">DF</span><span class="p">:</span><span class="nd">2B</span><span class="p">:</span><span class="nd">6F</span><span class="p">:</span><span class="nd">D6</span><span class="p">:</span><span class="nd">32</span><span class="p">:</span><span class="nd">B6</span><span class="p">:</span><span class="nd">A6</span><span class="p">:</span><span class="nd">00</span><span class="p">:</span><span class="nd">62</span><span class="p">:</span><span class="nd">D5</span><span class="p">:</span><span class="nd">7E</span><span class="p">:</span><span class="nd">4E</span><span class="p">:</span><span class="nd">11</span><span class="p">:</span><span class="nd">91</span><span class="p">:</span><span class="nd">91</span><span class="p">:</span><span class="nd">37</span><span class="p">:</span><span class="nd">95</span><span class="p">:</span><span class="nd">BE</span><span class="p">:</span><span class="nd">2C</span><span class="p">:</span><span class="nd">00</span><span class="p">:</span><span class="nd">3F</span><span class="p">:</span><span class="nd">B2</span><span class="p">:</span><span class="nd">67</span><span class="p">:</span><span class="nd">6F</span><span class="p">:</span><span class="nd">DF</span><span class="p">:</span><span class="nd">3C</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">setup</span><span class="p">:</span><span class="nd">actpass</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">mid</span><span class="p">:</span><span class="nd">4</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">sctp-port</span><span class="p">:</span><span class="nd">5000</span>
+<span class="nt">a</span><span class="o">=</span><span class="nt">max-message-size</span><span class="p">:</span><span class="nd">262144</span>
+</code></pre></div>
+
+<p>RTP 包 会带上 mid 和 rid 的扩展头</p>
+<div class="highlight"><pre><span></span><code><span class="c">0                   1                   2                   3</span>
+<span class="c"> 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1</span>
+<span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+<span class="c">|       0xBE    |    0xDE       |           length=3            |</span>
+<span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+<span class="c">|  ID   | L=0   |     mid       |  ID   |  L=1  |   rid</span>
+<span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+<span class="c">      </span><span class="nt">...</span><span class="c">data   |    0 (pad)    |    0 (pad)    |  ID   | L=3   |</span>
+<span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+<span class="c">|                          other extension                      |</span>
+<span class="nb">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><span class="c"></span>
+</code></pre></div>
+
+<p>这样我们就能够通过 mid 和 rid 来区分不同的媒体流</p>
+<p>注意:<br>
+1) mid 通常用来区分不同的媒体源（麦克风，摄像头或共享屏幕），而 rid 通常用来区分来自一个媒体源所发送的不同质量的媒体流
+2) mid 和 rid 并不会始终附加在 RTP 包中，通常只会在开头一直到收到第一个 RTCP RR 包</p>
+<h1>参考资料</h1>
+<ul>
+<li><a href="https://tools.ietf.org/html/rfc3550">RFC3550</a>: RTP 核心协议</li>
+<li><a href="https://tools.ietf.org/html/rfc3711">RFC3711</a>: SRTP 安全的 RTP</li>
+<li><a href="https://www.rfc-editor.org/rfc/rfc5761.html">RFC5761</a>:  Multiplexing RTP Data and Control Packets on a Single Port</li>
+<li><a href="https://www.rfc-editor.org/rfc/rfc7941.html">RFC7941</a>: RTP Header Extension for the RTP Control Protocol (RTCP) Source Description Items - 旧版为 draft-ietf-avtext-sdes-hdr-ext-07</li>
+<li><a href="https://www.rfc-editor.org/rfc/rfc8843.html">RFC8843</a>: Negotiating Media Multiplexing Using the Session Description Protocol(SDP)</li>
+<li><a href="https://www.rfc-editor.org/rfc/rfc8851.html">RFC8851</a>:  RTP Payload Format Restrictions - 旧版为 draft-ietf-mmusic-rid-15</li>
+<li><a href="https://www.rfc-editor.org/rfc/rfc8852.html">RFC8852</a>: RTP Stream Identifier Source Description (SDES) draft-ietf-avtext-rid-09</li>
+<li><a href="https://www.rfc-editor.org/rfc/rfc8853.html">RFC8853</a>: Using Simulcast in Session Description Protocol (SDP) and RTP Sessions</li>
+<li><a href="https://www.rfc-editor.org/rfc/rfc8858.html">RFC8858</a>: Indicating Exclusive Support of RTP and RTP Control Protocol (RTCP) Multiplexing Using the Session Description Protocol (SDP)</li>
+<li><a href="https://www.rfc-editor.org/rfc/rfc8860.html">RFC8860</a>:  Sending Multiple Types of Media in a Single RTP Session</li>
+<li><a href="https://www.rfc-editor.org/rfc/rfc8872.html">RFC8872</a>:  Guidelines for Using the Multiplexing Features of RTP to Support Multiple Media Streams</li>
+<li><a href="https://tools.ietf.org/html/rfc8834">RFC 8834</a>: Media Transport and Use of RTP in WebRTC</li>
+<li><a href="http://tools.ietf.org/html/rfc5245">RFC 5245</a>: Interactive Connectivity Establishment (ICE): A Protocol for Network Address Translator (NAT) Traversal for Offer/Answer Protocols</li>
+<li><a href="https://tools.ietf.org/html/rfc8445">RFC 8445</a>: Interactive Connectivity Establishment (ICE): A Protocol for Network Address Translator (NAT) Traversal</li>
+<li><a href="https://tools.ietf.org/html/rfc8489">RFC 8489</a>: Session Traversal Utilities for NAT (STUN)</li>
+<li><a href="https://tools.ietf.org/html/rfc5766">RFC 5766</a>: Traversal Using Relays around NAT (TURN):Relay Extensions to Session Traversal Utilities for NAT (STUN)</li>
+</ul>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。</p>
+<p><img alt="" src="https://upload-images.jianshu.io/upload_images/1598924-db2f3f4f60ac136a.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240"></p>
   </div>
   <div class="tag-cloud">
     <p>

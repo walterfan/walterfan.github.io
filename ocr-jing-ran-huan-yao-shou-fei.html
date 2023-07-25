@@ -91,6 +91,9 @@
               <a target="_self" href="https://www.jianshu.com/u/e0b365801f48" >jianshu</a>
             </li>
             <li>
+              <a target="_self" href="bookmark.html" >bookmark</a>
+            </li>
+            <li>
               <a target="_self" href="about.html" >about</a>
             </li>
         </ul>
@@ -152,9 +155,58 @@
 </tbody>
 </table>
 <p>我曾经是 evernote(印象笔记)的重度用户，现在用的少了，主要原因是我建了自己的网站，有了自己的 wordpress, 自己用 moinmoin 搭的 wiki, 没有什么需求非要有一个印象笔记，尤其还要收不少钱，连 OCR 还得收钱，也有次数限制，这对一个程序员来说这钱花得不值</p>
-<p>当然，我常有需求要把图片上的文本转成文字的需求，例如在网上浏览的 ppt，pdf，png时，发现有不错的内容我会写个小程序来提取图片中的文本, </p>
-<p>代码很简单, 用 opencv 来读取图片, 将彩色图像转换成灰度图像,然后调用 pytesseract 的 image_to_string 方法识别图像中的文字, 并用正则表达式提取出超文本链接</p>
-<div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<p>当然，我常有需求要把图片上的文本转成文字的需求，例如在网上浏览的 ppt，pdf，png时，发现有不错的内容我会写个小程序来提取图片中的文本, 特别是其中的超文本链接。</p>
+<p>1) 先安装相关的依赖</p>
+<div class="highlight"><pre><span></span>sudo apt install tesseract-ocr
+sudo apt install libtesseract-dev
+pip install pytesseract
+</pre></div>
+
+
+<p>2) 相关的 Python 代码很简单</p>
+<table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal"> 1</span>
+<span class="normal"> 2</span>
+<span class="normal"> 3</span>
+<span class="normal"> 4</span>
+<span class="normal"> 5</span>
+<span class="normal"> 6</span>
+<span class="normal"> 7</span>
+<span class="normal"> 8</span>
+<span class="normal"> 9</span>
+<span class="normal">10</span>
+<span class="normal">11</span>
+<span class="normal">12</span>
+<span class="normal">13</span>
+<span class="normal">14</span>
+<span class="normal">15</span>
+<span class="normal">16</span>
+<span class="normal">17</span>
+<span class="normal">18</span>
+<span class="normal">19</span>
+<span class="normal">20</span>
+<span class="normal">21</span>
+<span class="normal">22</span>
+<span class="normal">23</span>
+<span class="normal">24</span>
+<span class="normal">25</span>
+<span class="normal">26</span>
+<span class="normal">27</span>
+<span class="normal">28</span>
+<span class="normal">29</span>
+<span class="normal">30</span>
+<span class="normal">31</span>
+<span class="normal">32</span>
+<span class="normal">33</span>
+<span class="normal">34</span>
+<span class="normal">35</span>
+<span class="normal">36</span>
+<span class="normal">37</span>
+<span class="normal">38</span>
+<span class="normal">39</span>
+<span class="normal">40</span>
+<span class="normal">41</span>
+<span class="normal">42</span>
+<span class="normal">43</span></pre></div></td><td class="code"><div class="highlight"><pre><span></span><span class="ch">#!/usr/bin/env python3</span>
 
 <span class="kn">from</span> <span class="nn">PIL</span> <span class="kn">import</span> <span class="n">Image</span>
 <span class="kn">import</span> <span class="nn">pytesseract</span>
@@ -197,15 +249,199 @@
         <span class="n">image_file</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
 
     <span class="n">extract_urls</span><span class="p">(</span><span class="n">image_file</span><span class="p">)</span>
-</code></pre></div>
+</pre></div>
+</td></tr></table>
 
+<p>3) Web 版本的 OCR </p>
+<p>基于这个小程序，我又做了一些扩展，通过 Web 页面来抽取文本和超链接</p>
+<p><img alt="web gui" src="https://upload-images.jianshu.io/upload_images/1598924-93791467d42ef8f2.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1241"></p>
+<ul>
+<li>views.py</li>
+</ul>
+<div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">flask</span> <span class="kn">import</span> <span class="n">render_template</span><span class="p">,</span> <span class="n">redirect</span><span class="p">,</span> <span class="n">url_for</span><span class="p">,</span> <span class="n">flash</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">current_app</span>
+<span class="kn">from</span> <span class="nn">portal.test</span> <span class="kn">import</span> <span class="n">test_module</span>
+<span class="kn">from</span> <span class="nn">portal.test.forms</span> <span class="kn">import</span> <span class="n">OcrForm</span>
+<span class="kn">from</span> <span class="nn">portal.test.ocr</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="kn">from</span> <span class="nn">portal</span> <span class="kn">import</span> <span class="n">logger</span>
+<span class="kn">from</span> <span class="nn">portal</span> <span class="kn">import</span> <span class="n">db</span>
+<span class="kn">import</span> <span class="nn">os</span>
+
+
+<span class="n">dir_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">realpath</span><span class="p">(</span><span class="vm">__file__</span><span class="p">))</span>
+
+<span class="n">ALLOWED_EXTENSIONS</span> <span class="o">=</span> <span class="nb">set</span><span class="p">([</span><span class="s1">&#39;gif&#39;</span><span class="p">,</span> <span class="s1">&#39;jpg&#39;</span><span class="p">,</span> <span class="s1">&#39;png&#39;</span><span class="p">,</span> <span class="s1">&#39;bmp&#39;</span><span class="p">])</span>
+
+<span class="k">def</span> <span class="nf">allowed_file</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
+    <span class="k">return</span> <span class="s1">&#39;.&#39;</span> <span class="ow">in</span> <span class="n">filename</span> <span class="ow">and</span> <span class="n">filename</span><span class="o">.</span><span class="n">rsplit</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="n">ALLOWED_EXTENSIONS</span>
+
+
+<span class="nd">@test_module</span><span class="o">.</span><span class="n">route</span><span class="p">(</span><span class="s1">&#39;/test&#39;</span><span class="p">,</span> <span class="n">methods</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;GET&#39;</span><span class="p">,</span> <span class="s1">&#39;POST&#39;</span><span class="p">])</span>
+<span class="k">def</span> <span class="nf">index</span><span class="p">():</span>
+    <span class="n">test_form</span> <span class="o">=</span> <span class="n">OcrForm</span><span class="p">()</span>
+    <span class="n">links</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="n">test_form</span><span class="o">.</span><span class="n">validate_on_submit</span><span class="p">():</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;submit: </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">test_form</span><span class="o">.</span><span class="n">ocr_command</span><span class="o">.</span><span class="n">data</span><span class="p">))</span>
+
+        <span class="n">image_file</span><span class="o">=</span><span class="n">dir_path</span> <span class="o">+</span> <span class="s2">&quot;/../static/image/reference.png&quot;</span>
+        <span class="k">if</span> <span class="n">test_form</span><span class="o">.</span><span class="n">ocr_command</span><span class="o">.</span><span class="n">data</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">links</span> <span class="o">=</span> <span class="n">extract_urls</span><span class="p">(</span><span class="n">image_file</span><span class="p">)</span>
+            <span class="n">test_form</span><span class="o">.</span><span class="n">output_content</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">links</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">test_form</span><span class="o">.</span><span class="n">ocr_command</span><span class="o">.</span><span class="n">data</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="n">text</span> <span class="o">=</span> <span class="n">extract_text</span><span class="p">(</span><span class="n">image_file</span><span class="p">)</span>
+            <span class="n">test_form</span><span class="o">.</span><span class="n">output_content</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">text</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">test_form</span><span class="o">.</span><span class="n">is_submitted</span><span class="p">():</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">test_form</span><span class="o">.</span><span class="n">errors</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">render_template</span><span class="p">(</span><span class="s1">&#39;test.html&#39;</span><span class="p">,</span> <span class="n">form</span><span class="o">=</span><span class="n">test_form</span><span class="p">,</span> <span class="n">links</span><span class="o">=</span><span class="n">links</span><span class="p">)</span>
+</pre></div>
+
+
+<ul>
+<li>forms.py</li>
+</ul>
+<div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">flask_wtf</span> <span class="kn">import</span> <span class="n">FlaskForm</span>
+<span class="kn">from</span> <span class="nn">flask_wtf.file</span> <span class="kn">import</span> <span class="n">FileAllowed</span>
+<span class="kn">from</span> <span class="nn">wtforms</span> <span class="kn">import</span> <span class="n">StringField</span><span class="p">,</span> <span class="n">SubmitField</span><span class="p">,</span> <span class="n">TextAreaField</span><span class="p">,</span> <span class="n">PasswordField</span>
+<span class="kn">from</span> <span class="nn">wtforms</span> <span class="kn">import</span> <span class="n">BooleanField</span><span class="p">,</span> <span class="n">SelectField</span><span class="p">,</span> <span class="n">FileField</span>
+<span class="kn">from</span> <span class="nn">wtforms</span> <span class="kn">import</span> <span class="n">HiddenField</span>
+<span class="kn">from</span> <span class="nn">wtforms.validators</span> <span class="kn">import</span> <span class="n">DataRequired</span><span class="p">,</span> <span class="n">Length</span><span class="p">,</span> <span class="n">Optional</span>
+<span class="kn">import</span> <span class="nn">datetime</span>
+
+
+
+<span class="k">class</span> <span class="nc">OcrForm</span><span class="p">(</span><span class="n">FlaskForm</span><span class="p">):</span>
+
+    <span class="n">input_content</span> <span class="o">=</span> <span class="n">TextAreaField</span><span class="p">(</span><span class="s1">&#39;input&#39;</span><span class="p">,</span> <span class="n">validators</span><span class="o">=</span><span class="p">[</span><span class="n">Optional</span><span class="p">()],</span>
+                                   <span class="n">render_kw</span><span class="o">=</span><span class="p">{</span>
+                                       <span class="s2">&quot;class&quot;</span><span class="p">:</span> <span class="s2">&quot;form-control&quot;</span><span class="p">,</span>
+                                       <span class="s2">&quot;rows&quot;</span><span class="p">:</span> <span class="mi">5</span><span class="p">})</span>
+    <span class="n">output_content</span> <span class="o">=</span> <span class="n">TextAreaField</span><span class="p">(</span><span class="s1">&#39;output&#39;</span><span class="p">,</span> <span class="n">validators</span><span class="o">=</span><span class="p">[</span><span class="n">Optional</span><span class="p">()],</span>
+                                   <span class="n">render_kw</span><span class="o">=</span><span class="p">{</span>
+                                       <span class="s2">&quot;class&quot;</span><span class="p">:</span> <span class="s2">&quot;form-control&quot;</span><span class="p">,</span>
+                                       <span class="s2">&quot;rows&quot;</span><span class="p">:</span> <span class="mi">5</span><span class="p">,</span>
+                                       <span class="s2">&quot;cols&quot;</span><span class="p">:</span> <span class="mi">60</span><span class="p">})</span>
+
+    <span class="n">ocr_command</span> <span class="o">=</span> <span class="n">SelectField</span><span class="p">(</span><span class="s1">&#39;test_command&#39;</span><span class="p">,</span>
+                              <span class="n">choices</span><span class="o">=</span><span class="p">[(</span><span class="mi">1</span><span class="p">,</span> <span class="s1">&#39;Extract URLs&#39;</span><span class="p">),</span>
+                                        <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="s1">&#39;Extract Text&#39;</span><span class="p">)</span>
+                                        <span class="p">],</span>
+                              <span class="n">render_kw</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;class&quot;</span><span class="p">:</span> <span class="s2">&quot;form-control&quot;</span><span class="p">},</span>
+                              <span class="n">coerce</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+
+    <span class="n">ocr_params</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">(</span><span class="s1">&#39;test_params&#39;</span><span class="p">,</span> <span class="n">validators</span><span class="o">=</span><span class="p">[</span><span class="n">Optional</span><span class="p">()],</span>
+                             <span class="n">render_kw</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;class&quot;</span><span class="p">:</span> <span class="s2">&quot;form-control&quot;</span><span class="p">})</span>
+
+    <span class="n">submit_button</span> <span class="o">=</span> <span class="n">SubmitField</span><span class="p">(</span><span class="s1">&#39;Submit&#39;</span><span class="p">,</span> <span class="n">render_kw</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;class&quot;</span><span class="p">:</span> <span class="s2">&quot;btn btn-primary&quot;</span><span class="p">})</span>
+</pre></div>
+
+
+<ul>
+<li>ocr.py</li>
+</ul>
+<table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal"> 1</span>
+<span class="normal"> 2</span>
+<span class="normal"> 3</span>
+<span class="normal"> 4</span>
+<span class="normal"> 5</span>
+<span class="normal"> 6</span>
+<span class="normal"> 7</span>
+<span class="normal"> 8</span>
+<span class="normal"> 9</span>
+<span class="normal">10</span>
+<span class="normal">11</span>
+<span class="normal">12</span>
+<span class="normal">13</span>
+<span class="normal">14</span>
+<span class="normal">15</span>
+<span class="normal">16</span>
+<span class="normal">17</span>
+<span class="normal">18</span>
+<span class="normal">19</span>
+<span class="normal">20</span>
+<span class="normal">21</span>
+<span class="normal">22</span>
+<span class="normal">23</span>
+<span class="normal">24</span>
+<span class="normal">25</span>
+<span class="normal">26</span>
+<span class="normal">27</span>
+<span class="normal">28</span>
+<span class="normal">29</span>
+<span class="normal">30</span>
+<span class="normal">31</span>
+<span class="normal">32</span>
+<span class="normal">33</span>
+<span class="normal">34</span>
+<span class="normal">35</span>
+<span class="normal">36</span>
+<span class="normal">37</span>
+<span class="normal">38</span>
+<span class="normal">39</span>
+<span class="normal">40</span>
+<span class="normal">41</span>
+<span class="normal">42</span>
+<span class="normal">43</span>
+<span class="normal">44</span>
+<span class="normal">45</span>
+<span class="normal">46</span></pre></div></td><td class="code"><div class="highlight"><pre><span></span><span class="ch">#!/usr/bin/env python3</span>
+
+<span class="kn">from</span> <span class="nn">PIL</span> <span class="kn">import</span> <span class="n">Image</span>
+<span class="kn">import</span> <span class="nn">pytesseract</span>
+<span class="kn">import</span> <span class="nn">cv2</span>
+<span class="kn">import</span> <span class="nn">re</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+
+
+
+<span class="n">URL_PATTERN</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()&lt;&gt;]+|\(([^\s()&lt;&gt;]+|(\([^\s()&lt;&gt;]+\)))*\))+(?:\(([^\s()&lt;&gt;]+|(\([^\s()&lt;&gt;]+\)))*\)|[^\s`!()\[\]</span><span class="si">{}</span><span class="s2">;:&#39;</span><span class="se">\&quot;</span><span class="s2">.,&lt;&gt;?«»“”‘’]))&quot;</span>
+
+
+<span class="k">def</span> <span class="nf">extract_text</span><span class="p">(</span><span class="n">image_file</span><span class="p">):</span>
+    <span class="n">img</span><span class="o">=</span><span class="n">cv2</span><span class="o">.</span><span class="n">imread</span><span class="p">(</span><span class="n">image_file</span><span class="p">)</span>
+
+    <span class="n">gray</span><span class="o">=</span><span class="n">cv2</span><span class="o">.</span><span class="n">cvtColor</span><span class="p">(</span><span class="n">img</span><span class="p">,</span><span class="n">cv2</span><span class="o">.</span><span class="n">COLOR_BGR2GRAY</span><span class="p">)</span>
+
+    <span class="n">gray_image</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">{}</span><span class="s2">_gray_</span><span class="si">{}</span><span class="s2">.png&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">image_file</span><span class="p">,</span> <span class="n">os</span><span class="o">.</span><span class="n">getpid</span><span class="p">())</span>
+
+    <span class="n">cv2</span><span class="o">.</span><span class="n">imwrite</span><span class="p">(</span><span class="n">gray_image</span><span class="p">,</span> <span class="n">gray</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;begin to extract urls from </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">gray_image</span><span class="p">))</span>
+    <span class="n">text</span><span class="o">=</span><span class="n">pytesseract</span><span class="o">.</span><span class="n">image_to_string</span><span class="p">(</span><span class="n">Image</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">gray_image</span><span class="p">))</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">gray_image</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">text</span>
+
+<span class="k">def</span> <span class="nf">extract_urls</span><span class="p">(</span><span class="n">image_file</span><span class="p">):</span>
+    <span class="n">text</span> <span class="o">=</span> <span class="n">extract_text</span><span class="p">(</span><span class="n">image_file</span><span class="p">)</span>
+
+    <span class="n">urls</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="n">URL_PATTERN</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+    <span class="n">links</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">url</span> <span class="ow">in</span> <span class="n">urls</span><span class="p">:</span>
+        <span class="c1">#link = &#39;&lt;a href=&quot;{}&quot; target=&quot;_blank&quot;&gt;{}&lt;/a&gt;&#39;.format(url[0], url[0])</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">url</span><span class="p">)</span>
+        <span class="n">links</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">url</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">links</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">image_file</span>  <span class="o">=</span> <span class="s2">&quot;test.png&quot;</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">image_file</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+
+    <span class="n">extract_urls</span><span class="p">(</span><span class="n">image_file</span><span class="p">)</span>
+</pre></div>
+</td></tr></table>
+
+<p>完整代码参见  https://github.com/walterfan/webocr/tree/master</p>
 <h1>参考资料</h1>
 <ul>
 <li>OCR 开源项目 https://github.com/tesseract-ocr/tesseract</li>
 <li>https://nanonets.com/blog/ocr-with-tesseract/</li>
 </ul>
-<hr/>
-<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。</p>
+<p><hr/>
+本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。</p>
   </div>
   <div class="tag-cloud">
     <p>

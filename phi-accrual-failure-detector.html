@@ -143,9 +143,8 @@
 </ol>
 <p>而且网络延迟和抖动是偶发和不可预测的，非黑即白的判断常有失误。
 而 Phi Accrual Failure Detector                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             很好地改进了这一点，它采用一个称为 Phi 的可疑程度，它可以根据当前网络的状况动态调整。</p>
-<div class="highlight"><pre><span></span>phi = -log10(1 - F(timeSinceLastHeartbeat))
-</pre></div>
-
+<div class="highlight"><pre><span></span><code>phi = -log10(1 - F(timeSinceLastHeartbeat))
+</code></pre></div>
 
 <p>这里的 F 是正态分布的累积分布函数，其均值和标准差是根据历史心跳消息的到达间隔时间估算出来的。实际应用中，随机间隔的心跳时间使用指数分布可能合适。</p>
 <p>AFD(Accrual Failure Detector) 累积故障检测器使监视和解释解耦。 这使得它们适用于更广泛的场景，并且更适合构建通用的故障检测服务。</p>
@@ -169,10 +168,9 @@
 <li>在一定时间窗口内,记录各个心跳间隔时间</li>
 <li>对心跳的间隔值求指数分布(Exponential distribution)概率:</li>
 </ol>
-<div class="highlight"><pre><span></span>#（E是对数2.71828...，mean为此前的间隔时间平均值）
+<div class="highlight"><pre><span></span><code>#（E是对数2.71828...，mean为此前的间隔时间平均值）
 P = E ^ (-1 * (now - lastTimeStamp) / mean) 
-</pre></div>
-
+</code></pre></div>
 
 <p>其表示,自上次统计以来,心跳到达时间将超过 now - lastTimeStamp 的概率</p>
 <ol>
@@ -205,7 +203,7 @@ P = E ^ (-1 * (now - lastTimeStamp) / mean)
 <p><img alt="FailureDetector class" src="https://upload-images.jianshu.io/upload_images/1598924-52844f821a4e65f0.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1360"></p>
 <p>1) 心跳消息来了就汇报</p>
 <p>用一个滑动窗口记录下 接收到的 一个节点的心跳信息的时间间隔，在cassandra中，窗口的size设置为1000；然后根据窗口中的数据来生成指数分布，从而估计下一次心跳在当前时刻应该到来的概率；</p>
-<div class="highlight"><pre><span></span><span class="w">    </span><span class="nv">public</span><span class="w"> </span><span class="nv">void</span><span class="w"> </span><span class="nv">report</span><span class="ss">(</span><span class="nv">InetAddress</span><span class="w"> </span><span class="nv">ep</span><span class="ss">)</span>
+<div class="highlight"><pre><span></span><code><span class="w">    </span><span class="nv">public</span><span class="w"> </span><span class="nv">void</span><span class="w"> </span><span class="nv">report</span><span class="ss">(</span><span class="nv">InetAddress</span><span class="w"> </span><span class="nv">ep</span><span class="ss">)</span>
 <span class="w">    </span>{
 <span class="w">        </span><span class="nv">long</span><span class="w"> </span><span class="nv">now</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">Clock</span>.<span class="nv">instance</span>.<span class="nv">nanoTime</span><span class="ss">()</span><span class="c1">;</span>
 <span class="w">        </span><span class="nv">ArrivalWindow</span><span class="w"> </span><span class="nv">heartbeatWindow</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">arrivalSamples</span>.<span class="nv">get</span><span class="ss">(</span><span class="nv">ep</span><span class="ss">)</span><span class="c1">;</span>
@@ -226,11 +224,10 @@ P = E ^ (-1 * (now - lastTimeStamp) / mean)
 <span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="ss">(</span><span class="nv">logger</span>.<span class="nv">isTraceEnabled</span><span class="ss">()</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nv">heartbeatWindow</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="nv">null</span><span class="ss">)</span>
 <span class="w">            </span><span class="nv">logger</span>.<span class="nv">trace</span><span class="ss">(</span><span class="s2">&quot;Average for {} is {}&quot;</span>,<span class="w"> </span><span class="nv">ep</span>,<span class="w"> </span><span class="nv">heartbeatWindow</span>.<span class="nv">mean</span><span class="ss">())</span><span class="c1">;</span>
 <span class="w">    </span>}
-</pre></div>
-
+</code></pre></div>
 
 <p>2) 根据心跳消息到来的时间，解释计算指定节点的 Phi 值</p>
-<div class="highlight"><pre><span></span><span class="w">    </span><span class="nt">public</span><span class="w"> </span><span class="nt">void</span><span class="w"> </span><span class="nt">interpret</span><span class="o">(</span><span class="nt">InetAddress</span><span class="w"> </span><span class="nt">ep</span><span class="o">)</span>
+<div class="highlight"><pre><span></span><code><span class="w">    </span><span class="nt">public</span><span class="w"> </span><span class="nt">void</span><span class="w"> </span><span class="nt">interpret</span><span class="o">(</span><span class="nt">InetAddress</span><span class="w"> </span><span class="nt">ep</span><span class="o">)</span>
 <span class="w">    </span><span class="p">{</span>
 <span class="w">        </span><span class="err">ArrivalWindow</span><span class="w"> </span><span class="err">hbWnd</span><span class="w"> </span><span class="err">=</span><span class="w"> </span><span class="err">arrivalSamples.get(ep)</span><span class="p">;</span>
 <span class="w">        </span><span class="err">if</span><span class="w"> </span><span class="err">(hbWnd</span><span class="w"> </span><span class="err">==</span><span class="w"> </span><span class="err">null)</span>
@@ -274,42 +271,38 @@ P = E ^ (-1 * (now - lastTimeStamp) / mean)
 <span class="s2">            logger.trace(&quot;</span><span class="nt">mean</span><span class="w"> </span><span class="nt">for</span><span class="w"> </span><span class="p">{}</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="p">{}</span><span class="err">&quot;</span><span class="o">,</span><span class="w"> </span><span class="nt">ep</span><span class="o">,</span><span class="w"> </span><span class="nt">hbWnd</span><span class="p">.</span><span class="nc">mean</span><span class="o">());</span>
 <span class="w">        </span><span class="err">}</span>
 <span class="w">    </span><span class="err">}</span>
-</pre></div>
-
+</code></pre></div>
 
 <p>如何计算 Phi 值，<a href="https://issues.apache.org/jira/browse/CASSANDRA-2597">https://issues.apache.org/jira/browse/CASSANDRA-2597</a> 中有详细解释:</p>
 <blockquote>
 <p>在分布式系统的Gossip节点之间创建 Failure Detector 时，最初的Cassandra作者对原始论文中的φ应计故障检测器示例进行了修改。他们在自己的Cassandra论文中提到：“尽管原始论文表明该分布近似于高斯分布，但由于 Gossip 通道的性质及其对延迟的影响，我们发现指数分布是更好的近似分布。”关于该主题的内容已不再赘述，但可能是因为最初的Phi Accrual论文实现期望正常的心跳消息，而ArrivalWindow仅测量了接收来自 Gossip 的'Syn'，'Ack'和'Ack2'消息之间的间隔。给定的端点，经历典型随机抖动的常规消息传输将遵循正态分布，但是由于从端点A到端点B的 Gossip消息是以随机间隔发送的，因此它们很可能构成了泊松过程，从而使指数分布变得适当。</p>
 </blockquote>
-<div class="highlight"><pre><span></span><span class="w">    </span><span class="nv">double</span><span class="w"> </span><span class="nv">phi</span><span class="ss">(</span><span class="nv">long</span><span class="w"> </span><span class="nv">tnow</span><span class="ss">)</span>
+<div class="highlight"><pre><span></span><code><span class="w">    </span><span class="nv">double</span><span class="w"> </span><span class="nv">phi</span><span class="ss">(</span><span class="nv">long</span><span class="w"> </span><span class="nv">tnow</span><span class="ss">)</span>
 <span class="w">    </span>{
 <span class="w">        </span><span class="nv">assert</span><span class="w"> </span><span class="nv">arrivalIntervals</span>.<span class="nv">mean</span><span class="ss">()</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nv">tLast</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="c1">; // should not be called before any samples arrive</span>
 <span class="w">        </span><span class="nv">long</span><span class="w"> </span><span class="nv">t</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">tnow</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nv">tLast</span><span class="c1">;</span>
 <span class="w">        </span><span class="nv">lastReportedPhi</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">t</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="nv">mean</span><span class="ss">()</span><span class="c1">;</span>
 <span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nv">lastReportedPhi</span><span class="c1">;</span>
 <span class="w">    </span>}
-</pre></div>
-
+</code></pre></div>
 
 <p>phi 方法通过t / mean()来近似计算P(x &lt;= t),  这是一个近似公式，推导过程如下：
 （P_later 表示 endpoint B 挂掉的概率，t参数表示自从上一次收到B的heartbeat信息以来的时间）</p>
-<div class="highlight"><pre><span></span># 原始公式：  
+<div class="highlight"><pre><span></span><code># 原始公式：  
 P_later(t) = 1 - F(t)
 # F(t) 是指数分布的CDF(累积分布函数)，也就是如下公式，其中 L 是速率参数
 P_later(t) = 1 - (1 - e^(-Lt))
-</pre></div>
-
+</code></pre></div>
 
 <p>速率参数L的最大似然估计由 <code>1/平均值</code> 给出，其中平均值是从实际数据中观察到的时间的算术平均值（此处是从端点B到达的最新 Gossip 消息到达的时间）。 我们希望这个速率参数会随时间变化，因此有必要存储到达间隔的滑动窗口。所以</p>
-<div class="highlight"><pre><span></span>P_later(t) = 1 - (1 - e^(-t/mean))
+<div class="highlight"><pre><span></span><code>P_later(t) = 1 - (1 - e^(-t/mean))
 =&gt; P_later(t) = e^(-t/mean)
 =&gt; phi(t) = -log10(P_later(t))
 =&gt; phi(t) = -log10(e^(-t/mean))
 =&gt; phi(t) = -log(e^(-t/mean)) / log(10)
            = (t/mean) / log(10)
 ~&gt; phi(t) = 0.4342945 * t/mean
-</pre></div>
-
+</code></pre></div>
 
 <h1>参考资料</h1>
 <ul>

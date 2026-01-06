@@ -175,7 +175,7 @@
 <hr>
 <h1 id="plantuml">二、攻击流程（PlantUML 时序图）</h1>
 <p>下面的 PlantUML 脚本展示了一个典型的 TOCTTOU 攻击时序：</p>
-<div class="highlight"><pre><span></span>@startuml
+<div class="highlight"><pre><span></span><code>@startuml
 title TOCTTOU 漏洞时序图
 actor Attacker
 participant Program
@@ -192,8 +192,7 @@ FS --&gt; Program: open returns fd for /etc/passwd
 Program -&gt; FS: write(fd, &quot;malicious content&quot;)
 FS --&gt; Program: write OK (but wrote to /etc/passwd)
 @enduml
-</pre></div>
-
+</code></pre></div>
 
 <hr>
 <h1 id="_1">三、为什么会发生？（直观理解）</h1>
@@ -208,7 +207,7 @@ FS --&gt; Program: write OK (but wrote to /etc/passwd)
 </ol>
 <h2 id="1-cposix">1) C++（POSIX 环境）</h2>
 <h3 id="_3">易受攻击示例（不要在生产中这样写）</h3>
-<div class="highlight"><pre><span></span><span class="c1">// vulnerable.cpp</span>
+<div class="highlight"><pre><span></span><code><span class="c1">// vulnerable.cpp</span>
 <span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;sys/stat.h&gt;</span>
 <span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;cstdio&gt;</span>
 <span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;iostream&gt;</span>
@@ -227,13 +226,12 @@ FS --&gt; Program: write OK (but wrote to /etc/passwd)
 <span class="w">    </span><span class="n">fclose</span><span class="p">(</span><span class="n">f</span><span class="p">);</span>
 <span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
 <span class="p">}</span>
-</pre></div>
-
+</code></pre></div>
 
 <p><strong>为什么有漏洞</strong>：<code>stat()</code> 与 <code>fopen()</code> 之间的窗口允许攻击者替换路径目标（软链接、移动等）。</p>
 <hr>
 <h3 id="open-fstat">安全修复（基于 <code>open()</code> + <code>fstat()</code>）</h3>
-<div class="highlight"><pre><span></span><span class="c1">// safe.cpp</span>
+<div class="highlight"><pre><span></span><code><span class="c1">// safe.cpp</span>
 <span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;sys/types.h&gt;</span>
 <span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;sys/stat.h&gt;</span>
 <span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;fcntl.h&gt;</span>
@@ -276,8 +274,7 @@ FS --&gt; Program: write OK (but wrote to /etc/passwd)
 <span class="w">    </span><span class="n">close</span><span class="p">(</span><span class="n">fd</span><span class="p">);</span>
 <span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
 <span class="p">}</span>
-</pre></div>
-
+</code></pre></div>
 
 <p><strong>逐行解释</strong>：</p>
 <ul>
@@ -294,7 +291,7 @@ FS --&gt; Program: write OK (but wrote to /etc/passwd)
 <hr>
 <h2 id="2-go-unix">2) Go（类 Unix 环境）</h2>
 <h3 id="_4">易受攻击示例</h3>
-<div class="highlight"><pre><span></span><span class="c1">// vulnerable_go.go</span>
+<div class="highlight"><pre><span></span><code><span class="c1">// vulnerable_go.go</span>
 <span class="kn">package</span><span class="w"> </span><span class="nx">main</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="p">(</span>
@@ -320,13 +317,12 @@ FS --&gt; Program: write OK (but wrote to /etc/passwd)
 <span class="w">    </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">unsafeWrite</span><span class="p">(</span><span class="s">&quot;/tmp/myapp.cfg&quot;</span><span class="p">,</span><span class="w"> </span><span class="p">[]</span><span class="nb">byte</span><span class="p">(</span><span class="s">&quot;important config\n&quot;</span><span class="p">))</span>
 <span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="s">&quot;err:&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="p">)</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="s">&quot;written&quot;</span><span class="p">)</span><span class="w"> </span><span class="p">}</span>
 <span class="p">}</span>
-</pre></div>
-
+</code></pre></div>
 
 <p>问题同样是 <code>os.Stat()</code> 与 <code>os.OpenFile()</code> 之间的窗口。</p>
 <hr>
 <h3 id="syscallopen-fd">安全修复（使用 <code>syscall.Open</code> + 基于 fd 的检查）</h3>
-<div class="highlight"><pre><span></span><span class="c1">// safe_go.go</span>
+<div class="highlight"><pre><span></span><code><span class="c1">// safe_go.go</span>
 <span class="kn">package</span><span class="w"> </span><span class="nx">main</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="p">(</span>
@@ -369,8 +365,7 @@ FS --&gt; Program: write OK (but wrote to /etc/passwd)
 <span class="w">        </span><span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="s">&quot;written safely&quot;</span><span class="p">)</span>
 <span class="w">    </span><span class="p">}</span>
 <span class="p">}</span>
-</pre></div>
-
+</code></pre></div>
 
 <p><strong>要点解释</strong>：</p>
 <ul>
@@ -386,34 +381,32 @@ FS --&gt; Program: write OK (but wrote to /etc/passwd)
 <h2 id="3-javajdk">3) Java（JDK）</h2>
 <p>Java 在文件层面有更高层的抽象，但同样会遇到 TOCTTOU。下面给出常见错误与推荐修复。</p>
 <h3 id="_5">不安全示例（常见反模式）</h3>
-<div class="highlight"><pre><span></span><span class="c1">// VulnerableJava.java</span>
+<div class="highlight"><pre><span></span><code><span class="c1">// VulnerableJava.java</span>
 <span class="n">File</span><span class="w"> </span><span class="n">file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">File</span><span class="p">(</span><span class="s">&quot;/tmp/data.txt&quot;</span><span class="p">);</span>
 <span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">file</span><span class="p">.</span><span class="na">exists</span><span class="p">()</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">file</span><span class="p">.</span><span class="na">canRead</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="k">try</span><span class="w"> </span><span class="p">(</span><span class="n">FileInputStream</span><span class="w"> </span><span class="n">fis</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">FileInputStream</span><span class="p">(</span><span class="n">file</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
 <span class="w">        </span><span class="c1">// read...</span>
 <span class="w">    </span><span class="p">}</span>
 <span class="p">}</span>
-</pre></div>
-
+</code></pre></div>
 
 <p><code>exists()</code> 与 <code>FileInputStream</code> 之间有窗口，攻击者可替换路径。</p>
 <hr>
 <h3 id="java-a">Java 推荐修复方案 A：原子创建（仅当不存在时）</h3>
-<div class="highlight"><pre><span></span><span class="n">Path</span><span class="w"> </span><span class="n">p</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Paths</span><span class="p">.</span><span class="na">get</span><span class="p">(</span><span class="s">&quot;/tmp/myapp_new.cfg&quot;</span><span class="p">);</span>
+<div class="highlight"><pre><span></span><code><span class="n">Path</span><span class="w"> </span><span class="n">p</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Paths</span><span class="p">.</span><span class="na">get</span><span class="p">(</span><span class="s">&quot;/tmp/myapp_new.cfg&quot;</span><span class="p">);</span>
 <span class="k">try</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="n">Files</span><span class="p">.</span><span class="na">createFile</span><span class="p">(</span><span class="n">p</span><span class="p">);</span><span class="w"> </span><span class="c1">// 若已存在抛 FileAlreadyExistsException</span>
 <span class="w">    </span><span class="n">Files</span><span class="p">.</span><span class="na">write</span><span class="p">(</span><span class="n">p</span><span class="p">,</span><span class="w"> </span><span class="n">contentBytes</span><span class="p">,</span><span class="w"> </span><span class="n">StandardOpenOption</span><span class="p">.</span><span class="na">WRITE</span><span class="p">);</span>
 <span class="p">}</span><span class="w"> </span><span class="k">catch</span><span class="w"> </span><span class="p">(</span><span class="n">FileAlreadyExistsException</span><span class="w"> </span><span class="n">e</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="c1">// 处理已存在情况</span>
 <span class="p">}</span>
-</pre></div>
-
+</code></pre></div>
 
 <p><strong>解释</strong>：<code>Files.createFile()</code> 在底层执行原子创建操作（若已存在则失败），比 <code>exists()</code>+<code>create</code> 更安全。</p>
 <hr>
 <h3 id="java-b-">Java 推荐修复方案 B（更通用、推荐）：写临时文件 -&gt; 原子替换</h3>
 <p>这是最常见也最可靠的模式：在目标目录创建临时文件，写入后用 <code>Files.move(..., ATOMIC_MOVE, REPLACE_EXISTING)</code> 做原子替换。</p>
-<div class="highlight"><pre><span></span><span class="n">Path</span><span class="w"> </span><span class="n">target</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Paths</span><span class="p">.</span><span class="na">get</span><span class="p">(</span><span class="s">&quot;/tmp/myapp.cfg&quot;</span><span class="p">);</span>
+<div class="highlight"><pre><span></span><code><span class="n">Path</span><span class="w"> </span><span class="n">target</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Paths</span><span class="p">.</span><span class="na">get</span><span class="p">(</span><span class="s">&quot;/tmp/myapp.cfg&quot;</span><span class="p">);</span>
 <span class="n">Path</span><span class="w"> </span><span class="n">dir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">target</span><span class="p">.</span><span class="na">getParent</span><span class="p">();</span>
 <span class="n">Path</span><span class="w"> </span><span class="n">tmp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Files</span><span class="p">.</span><span class="na">createTempFile</span><span class="p">(</span><span class="n">dir</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;.tmp-&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;.tmp&quot;</span><span class="p">);</span>
 <span class="n">Files</span><span class="p">.</span><span class="na">write</span><span class="p">(</span><span class="n">tmp</span><span class="p">,</span><span class="w"> </span><span class="n">contentBytes</span><span class="p">);</span>
@@ -422,8 +415,7 @@ FS --&gt; Program: write OK (but wrote to /etc/passwd)
 <span class="p">}</span><span class="w"> </span><span class="k">catch</span><span class="w"> </span><span class="p">(</span><span class="n">AtomicMoveNotSupportedException</span><span class="w"> </span><span class="n">e</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="n">Files</span><span class="p">.</span><span class="na">move</span><span class="p">(</span><span class="n">tmp</span><span class="p">,</span><span class="w"> </span><span class="n">target</span><span class="p">,</span><span class="w"> </span><span class="n">StandardCopyOption</span><span class="p">.</span><span class="na">REPLACE_EXISTING</span><span class="p">);</span>
 <span class="p">}</span>
-</pre></div>
-
+</code></pre></div>
 
 <p><strong>优势</strong>：</p>
 <ul>
@@ -471,8 +463,8 @@ FS --&gt; Program: write OK (but wrote to /etc/passwd)
 <li>快速审查并指出 TOCTTOU 风险点；</li>
 <li>按你当前运行环境（是否 NFS、内核版本、Java/Go 版本）给出可执行修复补丁。</li>
 </ul>
-<p><hr/>
-本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。</p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。</p>
   </div>
   <div class="tag-cloud">
     <p>
@@ -494,11 +486,11 @@ FS --&gt; Program: write OK (but wrote to /etc/passwd)
   <div class="related-posts">
     <h4>You might enjoy</h4>
     <ul class="related-posts">
-      <li><a href="./tips-for-vibe-coding-with-cursor-bie-rang-ai-cai-ni-de-xin-si.html">Tips for Vibe Coding with Cursor: 别让 AI 猜你的心思</a></li>
-      <li><a href="./vibe-coding-from-0-to-1.html">Vibe Coding from 0 to 1</a></li>
-      <li><a href="./yin-dan-lai-liao-ma.html">银弹来了吗?</a></li>
-      <li><a href="./spec-driven-development.html">Spec Driven Development</a></li>
-      <li><a href="./vibe-bian-cheng-de-xin-fan-shi-zai-ai-shi-dai-zhong-xin-ding-yi-ruan-jian-kai-fa.html">Vibe 编程的新范式：在 AI 时代重新定义软件开发</a></li>
+      <li><a href="./zui-tong-yong-de-6-da-yan-jiang-kuang-jia.html">最通用的 6 大演讲框架</a></li>
+      <li><a href="./bie-liao-2025.html">别了, 2025</a></li>
+      <li><a href="./ai-agent-she-ji-yu-luo-di.html">AI Agent 设计与落地</a></li>
+      <li><a href="./man-man-ren-sheng-lu.html">漫漫人生路</a></li>
+      <li><a href="./java-lao-yi-shang-neng-fan-fou.html">Java 老矣, 尚能饭否</a></li>
     </ul>
   </div>
 

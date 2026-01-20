@@ -1,0 +1,868 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="./theme/stylesheet/style.min.css">
+
+
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+          href="./theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+
+
+
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="你的 AI 回答总是不着边际？别再死磕 Prompt 了，多半是&#34;上下文&#34;没给对。本文深度解读&#34;上下文工程&#34;，剖析它与 RAG 的本质区别，并通过一个&#34;AI 面试官&#34;的完整实例，手把手教你打造一个不弱智的 Agent。" />
+<meta name="keywords" content="Context Engineering, RAG, Personal Knowledge Base, LLM, Agent">
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="Prompt 工程已死，上下文工程当立"/>
+  <meta property="og:description" content="你的 AI 回答总是不着边际？别再死磕 Prompt 了，多半是&#34;上下文&#34;没给对。本文深度解读&#34;上下文工程&#34;，剖析它与 RAG 的本质区别，并通过一个&#34;AI 面试官&#34;的完整实例，手把手教你打造一个不弱智的 Agent。"/>
+  <meta property="og:locale" content="en_US"/>
+  <meta property="og:url" content="./prompt-gong-cheng-yi-si-shang-xia-wen-gong-cheng-dang-li.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-01-16 10:00:00+08:00"/>
+  <meta property="article:modified_time" content="2026-01-16 10:00:00+08:00"/>
+  <meta property="article:author" content="./author/walter-fan.html">
+  <meta property="article:section" content="AI"/>
+  <meta property="article:tag" content="Context Engineering"/>
+  <meta property="article:tag" content="RAG"/>
+  <meta property="article:tag" content="Personal Knowledge Base"/>
+  <meta property="article:tag" content="LLM"/>
+  <meta property="article:tag" content="Agent"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; Prompt 工程已死，上下文工程当立</title>
+
+
+</head>
+<body class="light-theme">
+
+<aside>
+  <div>
+    <a href="./">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="./">Walter Fan</a>
+    </h1>
+
+    <p>手握灵珠常奋笔, 心开天籁不吹箫</p>
+
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_self" href="tao.html" >tao</a>
+          </li>
+          <li>
+            <a target="_self" href="interest.html" >interest</a>
+          </li>
+          <li>
+            <a target="_self" href="/wordpress" >notebook</a>
+          </li>
+          <li>
+            <a target="_self" href="bookmark.html" >bookmark</a>
+          </li>
+          <li>
+            <a target="_self" href="/webrtc/examples/index.html" >webrtc</a>
+          </li>
+          <li>
+            <a target="_self" href="https://github.com/walterfan" >github</a>
+          </li>
+          <li>
+            <a target="_self" href="https://www.jianshu.com/u/e0b365801f48" >技术文章</a>
+          </li>
+      </ul>
+    </nav>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="http://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+</aside>
+  <main>
+
+
+<article class="single">
+  <header>
+      
+    <h1 id="prompt-gong-cheng-yi-si-shang-xia-wen-gong-cheng-dang-li">Prompt 工程已死，上下文工程当立</h1>
+    <p>
+      Posted on Fri 16 January 2026 in <a href="./category/ai.html">AI</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <h2 id="ai">开篇：别让你的 AI "断章取义"</h2>
+<p>最近你是不是也有这种感觉：精心雕琢了半小时的 Prompt，像写咒语一样把 <code>system prompt</code> 调教得花里胡哨，结果 AI 给你的回答还是像个刚入职的实习生——有礼貌，但没用。</p>
+<p><strong>醒醒吧，Prompt 工程的红利期已经过去了。</strong> 现在是 <strong>"上下文工程 (Context Engineering)"</strong> 的天下。</p>
+<p>想象一下，你是个大厨。Prompt 是菜谱，AI 是灶台。如果你的冰箱里（Context）只有泡面，就算你是米其林三星大厨，你也做不出佛跳墙。</p>
+<p><strong>上下文工程，就是那个负责把"顶级食材"塞进 AI 嘴里的学问。</strong></p>
+<p>今天，我们来聊聊什么是上下文工程，它跟 RAG 到底是什么关系，最后用一个"<strong>AI 面试官</strong>"的完整实例（含 LangChain 代码），把这套方法论落地。</p>
+<hr>
+<h2 id="_1">一、什么是"上下文工程"？</h2>
+<p>简单说，<strong>上下文工程 (Context Engineering) = 把正确的信息，以正确的格式，在正确的时机，喂给 AI</strong>。</p>
+<p>它不仅仅是 RAG（检索增强生成），它是 RAG 的<strong>上位概念</strong>。如果把 AI Agent 比作一个去考试的学生：
+*   <strong>Prompt</strong> 是考卷上的题目。
+*   <strong>Context</strong> 是你允许他带进考场的全部"小抄"——包括教科书、笔记、计算器、甚至能打电话问场外观众。</p>
+<p><strong>上下文工程的五大核心组件：</strong></p>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>类比</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>RAG</strong></td>
+<td>外部图书馆</td>
+<td>AI 不知道的，去数据库里查</td>
+</tr>
+<tr>
+<td><strong>Memory (短期)</strong></td>
+<td>对话记录</td>
+<td>刚才聊了啥？</td>
+</tr>
+<tr>
+<td><strong>Memory (长期)</strong></td>
+<td>用户档案</td>
+<td>用户的喜好是啥？上次会议的结论是啥？</td>
+</tr>
+<tr>
+<td><strong>Tools</strong></td>
+<td>AI 的手脚</td>
+<td>不仅给信息，还能干活（查天气、发邮件、调 API）</td>
+</tr>
+<tr>
+<td><strong>Prompts</strong></td>
+<td>指挥棒</td>
+<td>告诉 AI 怎么用上面这些东西</td>
+</tr>
+</tbody>
+</table>
+<p><strong>为什么它比 Prompt 更重要？</strong>
+因为大模型本质上是一个概率预测机器。你喂给它的上下文越精准、越相关，它"猜"对下一个字的概率就越高。与其花时间教它"如何思考"，不如直接给它"思考素材"。</p>
+<hr>
+<h2 id="vs-rag">二、上下文工程 vs RAG：一个是爹，一个是儿子</h2>
+<p>很多人把"上下文工程"和"RAG"混为一谈。这就像把"烹饪"等同于"买菜"。买菜（RAG）只是烹饪（Context Engineering）的一个环节。</p>
+<h3 id="rag">RAG 只解决了一个问题：信息检索</h3>
+<p>RAG 的经典流程：</p>
+<div class="highlight"><pre><span></span><code>用户提问 -&gt; 向量化 -&gt; 从数据库检索 Top-K 相关文档 -&gt; 塞进 Prompt -&gt; LLM 生成答案
+</code></pre></div>
+
+<p><strong>RAG 的局限性</strong>：
+1.  <strong>只管"取"，不管"选"</strong>：它把检索到的 Top-K 一股脑塞给 LLM，不管这些内容是否真的有用。
+2.  <strong>没有"记忆"</strong>：每次对话都是无状态的，不知道用户是谁，不知道之前聊过什么。
+3.  <strong>不能"干活"</strong>：只能读信息，不能写信息，不能调 API。
+4.  <strong>缺乏"判断"</strong>：不会根据任务类型动态调整上下文策略。</p>
+<h3 id="rag_1">上下文工程：把 RAG 当作一个"工具"来调度</h3>
+<p>上下文工程的视角更高。它会问：
+*   这个任务需要 RAG 吗？还是只需要调用一个 API？
+*   检索出来的内容，哪些该留，哪些该丢？
+*   用户的历史偏好，要不要加进去？
+*   上下文快爆了（Context Overflow），怎么压缩？</p>
+<p><strong>用一张图说清楚</strong>：</p>
+<h2 id="_2"><img alt="context-engineering" src="../images/context_engineering.png"></h2>
+<h2 id="ai-agent">三、实战：一个"AI 面试官" Agent 的上下文工程</h2>
+<p>光说不练假把式。我们来构建一个真正有挑战性的场景：<strong>你是一家公司的招聘负责人，想做一个 AI 面试官，它能根据岗位 JD、候选人简历、公司面试题库，进行一场专业的技术面试。</strong></p>
+<p>这个场景比"聊天机器人"复杂多了。它需要：
+*   <strong>RAG</strong>：从题库里检索相关问题。
+*   <strong>Memory</strong>：记住候选人这场面试的表现、回答了哪些题。
+*   <strong>Tools</strong>：调用日程 API 安排下一轮面试、调用邮件 API 发送结果。
+*   <strong>Prompts</strong>：根据面试阶段（开场白、技术提问、追问、总结）切换不同的角色。</p>
+<h3 id="step-1">Step 1: 梳理上下文来源</h3>
+<table>
+<thead>
+<tr>
+<th>上下文类型</th>
+<th>来源</th>
+<th>时效性</th>
+<th>格式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>岗位 JD</td>
+<td>HR 系统</td>
+<td>静态</td>
+<td>JSON</td>
+</tr>
+<tr>
+<td>候选人简历</td>
+<td>ATS 系统</td>
+<td>静态</td>
+<td>Markdown/JSON</td>
+</tr>
+<tr>
+<td>面试题库</td>
+<td>内部知识库</td>
+<td>动态</td>
+<td>Elasticsearch</td>
+</tr>
+<tr>
+<td>候选人历史回答</td>
+<td>本场对话</td>
+<td>实时</td>
+<td>对话历史</td>
+</tr>
+<tr>
+<td>面试评分标准</td>
+<td>知识库</td>
+<td>静态</td>
+<td>JSON</td>
+</tr>
+</tbody>
+</table>
+<h3 id="step-2-tools">Step 2: 定义工具 (Tools)</h3>
+<div class="highlight"><pre><span></span><code><span class="n">tools</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="p">{</span>
+        <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;search_question_bank&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;从面试题库中检索与指定技能相关的面试题。返回题目、难度、参考答案要点。&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;parameters&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;skill&quot;</span><span class="p">:</span> <span class="s2">&quot;技能标签，如 &#39;Python&#39;, &#39;System Design&#39;, &#39;Kubernetes&#39;&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;difficulty&quot;</span><span class="p">:</span> <span class="s2">&quot;难度等级：easy, medium, hard&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;count&quot;</span><span class="p">:</span> <span class="s2">&quot;返回题目数量&quot;</span>
+        <span class="p">}</span>
+    <span class="p">},</span>
+    <span class="p">{</span>
+        <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;evaluate_answer&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;评估候选人的回答质量，返回得分（1-10）和简评。&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;parameters&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;question&quot;</span><span class="p">:</span> <span class="s2">&quot;原始问题&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;candidate_answer&quot;</span><span class="p">:</span> <span class="s2">&quot;候选人的回答&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;reference_points&quot;</span><span class="p">:</span> <span class="s2">&quot;参考答案要点&quot;</span>
+        <span class="p">}</span>
+    <span class="p">},</span>
+    <span class="p">{</span>
+        <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;schedule_next_round&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;为候选人安排下一轮面试。&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;parameters&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;candidate_id&quot;</span><span class="p">:</span> <span class="s2">&quot;候选人ID&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;interviewer_id&quot;</span><span class="p">:</span> <span class="s2">&quot;面试官ID&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;time_slot&quot;</span><span class="p">:</span> <span class="s2">&quot;时间段&quot;</span>
+        <span class="p">}</span>
+    <span class="p">},</span>
+    <span class="p">{</span>
+        <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;send_rejection_email&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;发送委婉的拒绝邮件。&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;parameters&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;candidate_email&quot;</span><span class="p">:</span> <span class="s2">&quot;候选人邮箱&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;feedback&quot;</span><span class="p">:</span> <span class="s2">&quot;反馈内容&quot;</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+<span class="p">]</span>
+</code></pre></div>
+
+<h3 id="step-3-memory">Step 3: 设计记忆 (Memory)</h3>
+<p><strong>长期记忆 (Long-term Memory)</strong>：存储在数据库里，跨 Session 有效。</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;candidate_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;C-2026-001&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;张三&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;position&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Senior Backend Engineer&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;skills&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;Go&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;Kubernetes&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;PostgreSQL&quot;</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;previous_interviews&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;date&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-01-10&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;round&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Phone Screen&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;result&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Pass&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;notes&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;基础扎实&quot;</span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong>短期记忆 (Short-term Memory)</strong>：本场面试的上下文。</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;session_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;S-20260116-001&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;questions_asked&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;q&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;请解释 Go 的 GMP 模型&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;a&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;score&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">8</span><span class="p">}</span>
+<span class="w">  </span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;current_phase&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;technical_deep_dive&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;overall_impression&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;沟通清晰，技术细节掌握较好&quot;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="step-4-context-assembly">Step 4: 上下文组装 (Context Assembly) —— 核心环节</h3>
+<p>这是上下文工程的精髓。不是把所有信息都塞进去，而是<strong>根据当前阶段，动态选择最相关的信息</strong>。</p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">assemble_context</span><span class="p">(</span><span class="n">session_state</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">user_message</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;动态组装上下文&quot;&quot;&quot;</span>
+    <span class="n">context_parts</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="c1"># 1. 根据阶段选择不同的 System Prompt</span>
+    <span class="k">if</span> <span class="n">session_state</span><span class="p">[</span><span class="s2">&quot;current_phase&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;opening&quot;</span><span class="p">:</span>
+        <span class="n">context_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">PROMPT_OPENING</span><span class="p">)</span>  <span class="c1"># &quot;你是友好的面试官，先做自我介绍...&quot;</span>
+    <span class="k">elif</span> <span class="n">session_state</span><span class="p">[</span><span class="s2">&quot;current_phase&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;technical_deep_dive&quot;</span><span class="p">:</span>
+        <span class="n">context_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">PROMPT_TECHNICAL</span><span class="p">)</span>  <span class="c1"># &quot;你是严谨的技术面试官，追问细节...&quot;</span>
+    <span class="k">elif</span> <span class="n">session_state</span><span class="p">[</span><span class="s2">&quot;current_phase&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;closing&quot;</span><span class="p">:</span>
+        <span class="n">context_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">PROMPT_CLOSING</span><span class="p">)</span>  <span class="c1"># &quot;总结面试，询问候选人问题...&quot;</span>
+
+    <span class="c1"># 2. 注入岗位 JD（压缩版，只保留关键要求）</span>
+    <span class="n">jd_summary</span> <span class="o">=</span> <span class="n">summarize_jd</span><span class="p">(</span><span class="n">session_state</span><span class="p">[</span><span class="s2">&quot;job_description&quot;</span><span class="p">])</span>
+    <span class="n">context_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;【岗位要求摘要】</span><span class="se">\n</span><span class="si">{</span><span class="n">jd_summary</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="c1"># 3. 注入候选人简历（重点突出匹配项）</span>
+    <span class="n">resume_highlights</span> <span class="o">=</span> <span class="n">extract_highlights</span><span class="p">(</span>
+        <span class="n">session_state</span><span class="p">[</span><span class="s2">&quot;candidate_resume&quot;</span><span class="p">],</span>
+        <span class="n">session_state</span><span class="p">[</span><span class="s2">&quot;job_description&quot;</span><span class="p">]</span>
+    <span class="p">)</span>
+    <span class="n">context_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;【候选人亮点】</span><span class="se">\n</span><span class="si">{</span><span class="n">resume_highlights</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="c1"># 4. 注入本场面试历史（只保留最近 3 轮问答，防止 Context Overflow）</span>
+    <span class="n">recent_qa</span> <span class="o">=</span> <span class="n">session_state</span><span class="p">[</span><span class="s2">&quot;questions_asked&quot;</span><span class="p">][</span><span class="o">-</span><span class="mi">3</span><span class="p">:]</span>
+    <span class="n">context_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;【本场面试记录】</span><span class="se">\n</span><span class="si">{</span><span class="n">format_qa</span><span class="p">(</span><span class="n">recent_qa</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="c1"># 5. 如果需要出新题，调用 RAG 检索题库</span>
+    <span class="k">if</span> <span class="n">should_ask_new_question</span><span class="p">(</span><span class="n">session_state</span><span class="p">,</span> <span class="n">user_message</span><span class="p">):</span>
+        <span class="n">skill_to_test</span> <span class="o">=</span> <span class="n">infer_skill_gap</span><span class="p">(</span><span class="n">session_state</span><span class="p">)</span>
+        <span class="n">questions</span> <span class="o">=</span> <span class="n">search_question_bank</span><span class="p">(</span><span class="n">skill</span><span class="o">=</span><span class="n">skill_to_test</span><span class="p">,</span> <span class="n">difficulty</span><span class="o">=</span><span class="s2">&quot;medium&quot;</span><span class="p">,</span> <span class="n">count</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+        <span class="n">context_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;【备选题目】</span><span class="se">\n</span><span class="si">{</span><span class="n">format_questions</span><span class="p">(</span><span class="n">questions</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="s2">&quot;</span><span class="se">\n\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">context_parts</span><span class="p">)</span>
+</code></pre></div>
+
+<h3 id="step-5">Step 5: 看看效果</h3>
+<p><strong>面试开场</strong>：</p>
+<div class="highlight"><pre><span></span><code>AI 面试官：你好张三，我是今天的技术面试官。看了你的简历，你在云原生领域有不少经验。
+          我们今天主要聊聊 Kubernetes 和 Go 相关的话题。准备好了吗？
+</code></pre></div>
+
+<p><strong>技术追问</strong>：</p>
+<div class="highlight"><pre><span></span><code>候选人：Go 的 GMP 模型就是 Goroutine、Machine 和 Processor...
+
+AI 面试官：[内部调用 evaluate_answer，得分 7/10，缺少对抢占式调度的描述]
+          不错的解释。我追问一下，Go 1.14 之后引入的异步抢占机制，解决了什么问题？
+
+候选人：呃...这个我不太确定...
+
+AI 面试官：[内部记录：抢占式调度-不熟悉]
+          没关系，这是一个比较深入的点。我们换个方向，聊聊你在上家公司做的 K8s 项目...
+</code></pre></div>
+
+<p><strong>面试结束</strong>：</p>
+<div class="highlight"><pre><span></span><code>AI 面试官：[内部调用：汇总得分、生成评语、决定是否进入下一轮]
+          好的张三，今天的面试就到这里。总体来说，你的基础扎实，项目经验也很匹配。
+          HR 会在三个工作日内联系你。你有什么问题想问我吗？
+
+[内部调用 schedule_next_round(...)]
+</code></pre></div>
+
+<hr>
+<h2 id="context">四、避坑指南：Context 里的那些雷</h2>
+<ol>
+<li>
+<p><strong>上下文中毒 (Context Poisoning)</strong>：
+    别以为喂得越多越好。塞进去一堆无关信息（Context Confusion），AI 会晕的。记住：<strong>"Less is More"，精准检索 &gt; 海量检索</strong>。</p>
+<p><strong>反面案例</strong>：把候选人所有历史面试记录（包括 5 年前的）都塞进去，结果 AI 说"根据你 2019 年的面试表现..."——尴尬。</p>
+</li>
+<li>
+<p><strong>工具爆炸 (Tool Explosion)</strong>：
+    别给 Agent 一百个工具。它会不知道选哪个。如果你有很多工具，请用 <strong>RAG</strong> 的方式去检索工具描述，动态挂载最相关的几个。</p>
+</li>
+<li>
+<p><strong>格式即正义 (Format Matters)</strong>：
+    给 AI 看的资料，最好是结构化的（Markdown, JSON）。别给它看 OCR 扫描出来的乱码 PDF。</p>
+</li>
+<li>
+<p><strong>上下文窗口溢出 (Context Overflow)</strong>：
+    LLM 的上下文窗口有限（即使是 Claude 的 200K 也不是无限的）。当对话很长时，需要：</p>
+<ul>
+<li><strong>压缩历史</strong>：用 LLM 把前面的对话总结成摘要。</li>
+<li><strong>滑动窗口</strong>：只保留最近 N 轮详细记录。</li>
+<li><strong>分层存储</strong>：重要信息放长期记忆（数据库），日常对话放短期记忆（内存）。</li>
+</ul>
+</li>
+</ol>
+<hr>
+<h2 id="checklist">五、上下文工程的 Checklist</h2>
+<p>在你构建下一个 AI Agent 之前，问自己这几个问题：</p>
+<ul>
+<li>[ ] <strong>信息来源识别</strong>：我的 Agent 需要哪些信息？它们在哪里？（数据库、API、用户输入）</li>
+<li>[ ] <strong>元数据设计</strong>：我的数据有没有时间戳、标签、类型等元信息，方便过滤？</li>
+<li>[ ] <strong>工具定义</strong>：我给 Agent 定义了哪些工具？描述是否清晰到 LLM 能理解？</li>
+<li>[ ] <strong>记忆策略</strong>：短期记忆怎么管理？长期记忆存在哪？如何防止"记忆泄漏"？</li>
+<li>[ ] <strong>上下文组装</strong>：我是否在根据任务类型<strong>动态</strong>组装上下文，而不是一股脑全塞？</li>
+<li>[ ] <strong>压缩策略</strong>：当上下文快爆时，我有没有摘要/滑动窗口机制？</li>
+<li>[ ] <strong>评估与监控</strong>：我能不能看到 Agent 每次实际用了哪些上下文？效果如何？</li>
+</ul>
+<hr>
+<h2 id="prompt-engineer-context-engineer">总结：从 Prompt Engineer 进阶到 Context Engineer</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>Prompt 工程</th>
+<th>上下文工程</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>关注点</strong></td>
+<td>"怎么说"</td>
+<td>"说什么"</td>
+</tr>
+<tr>
+<td><strong>核心技能</strong></td>
+<td>写好 System Prompt</td>
+<td>设计数据流、组装策略</td>
+</tr>
+<tr>
+<td><strong>解决问题</strong></td>
+<td>LLM 输出格式、角色扮演</td>
+<td>LLM 知识缺失、信息时效性、多轮对话一致性</td>
+</tr>
+<tr>
+<td><strong>复杂度</strong></td>
+<td>中</td>
+<td>高（涉及 RAG、Memory、Tools 等多个系统）</td>
+</tr>
+<tr>
+<td><strong>未来趋势</strong></td>
+<td>基本功，门槛越来越低</td>
+<td>核心竞争力，差异化来源</td>
+</tr>
+</tbody>
+</table>
+<p><strong>一句话总结</strong>：未来的 AI 开发，写 Prompt 只是基本功。真正的核心竞争力，在于你能不能<strong>构建、管理、优化 AI 的上下文</strong>。</p>
+<p>下次你的 AI 还在胡说八道时，别急着改 Prompt。去看看你的上下文管道，是不是该做次大扫除了？</p>
+<hr>
+<h2 id="langchain-ai">六、完整代码：用 LangChain 实现 AI 面试官</h2>
+<p>Talk is cheap, show me the code. 下面是一个可以直接运行的 LangChain 原型，展示了上下文工程的核心思想。</p>
+<h3 id="_3">安装依赖</h3>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>langchain<span class="w"> </span>langchain-openai<span class="w"> </span>chromadb<span class="w"> </span>pydantic
+</code></pre></div>
+
+<h3 id="_4">完整代码</h3>
+<div class="highlight"><pre><span></span><code><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">AI 面试官 Agent - 上下文工程实战</span>
+<span class="sd">展示 RAG + Memory + Tools + Dynamic Prompts 的组合使用</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Optional</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">Field</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">langchain_openai</span><span class="w"> </span><span class="kn">import</span> <span class="n">ChatOpenAI</span><span class="p">,</span> <span class="n">OpenAIEmbeddings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">langchain_core.prompts</span><span class="w"> </span><span class="kn">import</span> <span class="n">ChatPromptTemplate</span><span class="p">,</span> <span class="n">MessagesPlaceholder</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">langchain_core.messages</span><span class="w"> </span><span class="kn">import</span> <span class="n">HumanMessage</span><span class="p">,</span> <span class="n">AIMessage</span><span class="p">,</span> <span class="n">SystemMessage</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">langchain_core.tools</span><span class="w"> </span><span class="kn">import</span> <span class="n">tool</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">langchain_community.vectorstores</span><span class="w"> </span><span class="kn">import</span> <span class="n">Chroma</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">langchain.text_splitter</span><span class="w"> </span><span class="kn">import</span> <span class="n">RecursiveCharacterTextSplitter</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">langchain.agents</span><span class="w"> </span><span class="kn">import</span> <span class="n">AgentExecutor</span><span class="p">,</span> <span class="n">create_openai_tools_agent</span>
+
+<span class="c1"># ========== 1. 数据模型 ==========</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Candidate</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;候选人档案（长期记忆）&quot;&quot;&quot;</span>
+    <span class="nb">id</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">position</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">skills</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>
+    <span class="n">resume_text</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">previous_interviews</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">InterviewSession</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;面试会话（短期记忆）&quot;&quot;&quot;</span>
+    <span class="n">session_id</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">candidate</span><span class="p">:</span> <span class="n">Candidate</span>
+    <span class="n">questions_asked</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">current_phase</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;opening&quot;</span>  <span class="c1"># opening, technical, behavioral, closing</span>
+    <span class="n">scores</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+
+<span class="c1"># ========== 2. 模拟数据 ==========</span>
+<span class="c1"># 面试题库（实际项目中存在 ES 或向量数据库）</span>
+<span class="n">QUESTION_BANK</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="p">{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="s2">&quot;q1&quot;</span><span class="p">,</span> <span class="s2">&quot;skill&quot;</span><span class="p">:</span> <span class="s2">&quot;Go&quot;</span><span class="p">,</span> <span class="s2">&quot;difficulty&quot;</span><span class="p">:</span> <span class="s2">&quot;medium&quot;</span><span class="p">,</span> 
+     <span class="s2">&quot;question&quot;</span><span class="p">:</span> <span class="s2">&quot;请解释 Go 的 GMP 调度模型&quot;</span><span class="p">,</span> 
+     <span class="s2">&quot;key_points&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;Goroutine&quot;</span><span class="p">,</span> <span class="s2">&quot;Machine&quot;</span><span class="p">,</span> <span class="s2">&quot;Processor&quot;</span><span class="p">,</span> <span class="s2">&quot;work stealing&quot;</span><span class="p">]},</span>
+    <span class="p">{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="s2">&quot;q2&quot;</span><span class="p">,</span> <span class="s2">&quot;skill&quot;</span><span class="p">:</span> <span class="s2">&quot;Go&quot;</span><span class="p">,</span> <span class="s2">&quot;difficulty&quot;</span><span class="p">:</span> <span class="s2">&quot;hard&quot;</span><span class="p">,</span> 
+     <span class="s2">&quot;question&quot;</span><span class="p">:</span> <span class="s2">&quot;Go 1.14 引入的异步抢占机制解决了什么问题？&quot;</span><span class="p">,</span> 
+     <span class="s2">&quot;key_points&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;死循环&quot;</span><span class="p">,</span> <span class="s2">&quot;GC STW&quot;</span><span class="p">,</span> <span class="s2">&quot;信号抢占&quot;</span><span class="p">]},</span>
+    <span class="p">{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="s2">&quot;q3&quot;</span><span class="p">,</span> <span class="s2">&quot;skill&quot;</span><span class="p">:</span> <span class="s2">&quot;Kubernetes&quot;</span><span class="p">,</span> <span class="s2">&quot;difficulty&quot;</span><span class="p">:</span> <span class="s2">&quot;medium&quot;</span><span class="p">,</span> 
+     <span class="s2">&quot;question&quot;</span><span class="p">:</span> <span class="s2">&quot;Pod 的生命周期有哪些阶段？&quot;</span><span class="p">,</span> 
+     <span class="s2">&quot;key_points&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;Pending&quot;</span><span class="p">,</span> <span class="s2">&quot;Running&quot;</span><span class="p">,</span> <span class="s2">&quot;Succeeded&quot;</span><span class="p">,</span> <span class="s2">&quot;Failed&quot;</span><span class="p">,</span> <span class="s2">&quot;Unknown&quot;</span><span class="p">]},</span>
+    <span class="p">{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="s2">&quot;q4&quot;</span><span class="p">,</span> <span class="s2">&quot;skill&quot;</span><span class="p">:</span> <span class="s2">&quot;System Design&quot;</span><span class="p">,</span> <span class="s2">&quot;difficulty&quot;</span><span class="p">:</span> <span class="s2">&quot;hard&quot;</span><span class="p">,</span> 
+     <span class="s2">&quot;question&quot;</span><span class="p">:</span> <span class="s2">&quot;设计一个高可用的消息队列系统&quot;</span><span class="p">,</span> 
+     <span class="s2">&quot;key_points&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;持久化&quot;</span><span class="p">,</span> <span class="s2">&quot;复制&quot;</span><span class="p">,</span> <span class="s2">&quot;消费确认&quot;</span><span class="p">,</span> <span class="s2">&quot;死信队列&quot;</span><span class="p">]},</span>
+<span class="p">]</span>
+
+<span class="c1"># 模拟候选人</span>
+<span class="n">SAMPLE_CANDIDATE</span> <span class="o">=</span> <span class="n">Candidate</span><span class="p">(</span>
+    <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;C-2026-001&quot;</span><span class="p">,</span>
+    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;张三&quot;</span><span class="p">,</span>
+    <span class="n">position</span><span class="o">=</span><span class="s2">&quot;Senior Backend Engineer&quot;</span><span class="p">,</span>
+    <span class="n">skills</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;Go&quot;</span><span class="p">,</span> <span class="s2">&quot;Kubernetes&quot;</span><span class="p">,</span> <span class="s2">&quot;PostgreSQL&quot;</span><span class="p">],</span>
+    <span class="n">resume_text</span><span class="o">=</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">    张三 - 高级后端工程师</span>
+<span class="s2">    工作经验：5年</span>
+<span class="s2">    技能：Go, Kubernetes, PostgreSQL, Redis</span>
+<span class="s2">    项目经历：</span>
+<span class="s2">    1. 某大厂微服务改造项目，负责服务拆分和 K8s 迁移</span>
+<span class="s2">    2. 高并发订单系统，QPS 达到 10w+</span>
+<span class="s2">    &quot;&quot;&quot;</span>
+<span class="p">)</span>
+
+<span class="c1"># ========== 3. 定义工具 (Tools) ==========</span>
+<span class="nd">@tool</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">search_question_bank</span><span class="p">(</span><span class="n">skill</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">difficulty</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;medium&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;从面试题库中检索与指定技能相关的面试题。</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        skill: 技能标签，如 &#39;Go&#39;, &#39;Kubernetes&#39;, &#39;System Design&#39;</span>
+<span class="sd">        difficulty: 难度等级：easy, medium, hard</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="p">[</span><span class="n">q</span> <span class="k">for</span> <span class="n">q</span> <span class="ow">in</span> <span class="n">QUESTION_BANK</span> 
+               <span class="k">if</span> <span class="n">q</span><span class="p">[</span><span class="s2">&quot;skill&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="n">skill</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> 
+               <span class="ow">and</span> <span class="n">q</span><span class="p">[</span><span class="s2">&quot;difficulty&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">difficulty</span><span class="p">]</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">results</span><span class="p">:</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="p">[</span><span class="n">q</span> <span class="k">for</span> <span class="n">q</span> <span class="ow">in</span> <span class="n">QUESTION_BANK</span> <span class="k">if</span> <span class="n">q</span><span class="p">[</span><span class="s2">&quot;skill&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="n">skill</span><span class="o">.</span><span class="n">lower</span><span class="p">()]</span>
+
+    <span class="k">if</span> <span class="n">results</span><span class="p">:</span>
+        <span class="n">q</span> <span class="o">=</span> <span class="n">results</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;题目: </span><span class="si">{</span><span class="n">q</span><span class="p">[</span><span class="s1">&#39;question&#39;</span><span class="p">]</span><span class="si">}</span><span class="se">\n</span><span class="s2">参考要点: </span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">q</span><span class="p">[</span><span class="s1">&#39;key_points&#39;</span><span class="p">])</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="k">return</span> <span class="s2">&quot;未找到相关题目&quot;</span>
+
+<span class="nd">@tool</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">evaluate_answer</span><span class="p">(</span><span class="n">question</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">candidate_answer</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">key_points</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;评估候选人的回答质量，返回得分（1-10）和简评。</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        question: 原始问题</span>
+<span class="sd">        candidate_answer: 候选人的回答</span>
+<span class="sd">        key_points: 参考答案要点，逗号分隔</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># 实际项目中，这里会调用 LLM 进行评估</span>
+    <span class="c1"># 这里简化为关键词匹配</span>
+    <span class="n">points</span> <span class="o">=</span> <span class="n">key_points</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">)</span>
+    <span class="n">answer_lower</span> <span class="o">=</span> <span class="n">candidate_answer</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+    <span class="n">matched</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="mi">1</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">points</span> <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="ow">in</span> <span class="n">answer_lower</span><span class="p">)</span>
+    <span class="n">score</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">matched</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">points</span><span class="p">)</span> <span class="o">*</span> <span class="mi">10</span><span class="p">)</span> <span class="o">+</span> <span class="mi">3</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="n">score</span> <span class="o">&gt;=</span> <span class="mi">8</span><span class="p">:</span>
+        <span class="n">comment</span> <span class="o">=</span> <span class="s2">&quot;回答完整，掌握扎实&quot;</span>
+    <span class="k">elif</span> <span class="n">score</span> <span class="o">&gt;=</span> <span class="mi">6</span><span class="p">:</span>
+        <span class="n">comment</span> <span class="o">=</span> <span class="s2">&quot;基本正确，但缺少部分细节&quot;</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">comment</span> <span class="o">=</span> <span class="s2">&quot;理解不够深入，建议加强&quot;</span>
+
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;得分: </span><span class="si">{</span><span class="n">score</span><span class="si">}</span><span class="s2">/10</span><span class="se">\n</span><span class="s2">评语: </span><span class="si">{</span><span class="n">comment</span><span class="si">}</span><span class="s2">&quot;</span>
+
+<span class="nd">@tool</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">record_interview_note</span><span class="p">(</span><span class="n">note</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;记录面试笔记，用于后续评估。</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        note: 面试笔记内容</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># 实际项目中会存入数据库</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;已记录笔记: </span><span class="si">{</span><span class="n">note</span><span class="si">}</span><span class="s2">&quot;</span>
+
+<span class="nd">@tool</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">decide_next_step</span><span class="p">(</span><span class="n">average_score</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;根据平均得分决定下一步行动。</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        average_score: 候选人的平均得分（1-10）</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">average_score</span> <span class="o">&gt;=</span> <span class="mi">7</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;建议进入下一轮面试，安排与 Tech Lead 的深度技术面&quot;</span>
+    <span class="k">elif</span> <span class="n">average_score</span> <span class="o">&gt;=</span> <span class="mi">5</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;建议安排补充面试，重点考察薄弱环节&quot;</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;建议发送婉拒邮件，感谢候选人的时间&quot;</span>
+
+<span class="c1"># ========== 4. 动态 Prompt 模板 ==========</span>
+<span class="n">PROMPTS</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;opening&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;&quot;你是一位友好专业的技术面试官。现在是面试开场阶段。</span>
+
+<span class="s2">【候选人信息】</span>
+<span class="si">{candidate_info}</span>
+
+<span class="s2">【岗位要求】</span>
+<span class="si">{job_requirements}</span>
+
+<span class="s2">请先做简短的自我介绍，然后根据候选人的简历，找一个话题破冰，让候选人放松下来。</span>
+<span class="s2">注意：不要一开始就问技术难题。&quot;&quot;&quot;</span><span class="p">,</span>
+
+    <span class="s2">&quot;technical&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;&quot;你是一位严谨的技术面试官。现在进入技术深挖阶段。</span>
+
+<span class="s2">【候选人信息】</span>
+<span class="si">{candidate_info}</span>
+
+<span class="s2">【已问问题和回答】</span>
+<span class="si">{interview_history}</span>
+
+<span class="s2">【待考察技能】</span>
+<span class="si">{skills_to_test}</span>
+
+<span class="s2">请根据候选人的技能背景，使用 search_question_bank 工具检索合适的面试题。</span>
+<span class="s2">根据候选人的回答，使用 evaluate_answer 工具进行评估。</span>
+<span class="s2">如果回答不够深入，可以追问细节。&quot;&quot;&quot;</span><span class="p">,</span>
+
+    <span class="s2">&quot;closing&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;&quot;你是一位专业的面试官。现在是面试总结阶段。</span>
+
+<span class="s2">【面试记录】</span>
+<span class="si">{interview_history}</span>
+
+<span class="s2">【得分统计】</span>
+<span class="si">{score_summary}</span>
+
+<span class="s2">请：</span>
+<span class="s2">1. 使用 decide_next_step 工具根据平均得分决定下一步</span>
+<span class="s2">2. 给候选人一个简短的反馈（不透露具体分数）</span>
+<span class="s2">3. 询问候选人是否有问题要问&quot;&quot;&quot;</span>
+<span class="p">}</span>
+
+<span class="c1"># ========== 5. 上下文组装器 ==========</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ContextAssembler</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;上下文工程的核心：动态组装上下文&quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">session</span><span class="p">:</span> <span class="n">InterviewSession</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">session</span> <span class="o">=</span> <span class="n">session</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_candidate_info</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="n">c</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">candidate</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">姓名: </span><span class="si">{</span><span class="n">c</span><span class="o">.</span><span class="n">name</span><span class="si">}</span>
+<span class="s2">应聘岗位: </span><span class="si">{</span><span class="n">c</span><span class="o">.</span><span class="n">position</span><span class="si">}</span>
+<span class="s2">技能: </span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">c</span><span class="o">.</span><span class="n">skills</span><span class="p">)</span><span class="si">}</span>
+<span class="s2">简历摘要: </span><span class="si">{</span><span class="n">c</span><span class="o">.</span><span class="n">resume_text</span><span class="p">[:</span><span class="mi">500</span><span class="p">]</span><span class="si">}</span><span class="s2">...</span>
+<span class="s2">&quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_interview_history</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">questions_asked</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;暂无&quot;</span>
+
+        <span class="n">history</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">qa</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">questions_asked</span><span class="p">[</span><span class="o">-</span><span class="mi">5</span><span class="p">:],</span> <span class="mi">1</span><span class="p">):</span>  <span class="c1"># 只取最近5条</span>
+            <span class="n">history</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">. Q: </span><span class="si">{</span><span class="n">qa</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;question&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;N/A&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="n">history</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;   A: </span><span class="si">{</span><span class="n">qa</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;answer&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;N/A&#39;</span><span class="p">)[:</span><span class="mi">200</span><span class="p">]</span><span class="si">}</span><span class="s2">...&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="s1">&#39;score&#39;</span> <span class="ow">in</span> <span class="n">qa</span><span class="p">:</span>
+                <span class="n">history</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;   得分: </span><span class="si">{</span><span class="n">qa</span><span class="p">[</span><span class="s1">&#39;score&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">/10&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">history</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_score_summary</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">scores</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;暂无得分记录&quot;</span>
+        <span class="n">avg</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">scores</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">scores</span><span class="p">)</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;已评估 </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">scores</span><span class="p">)</span><span class="si">}</span><span class="s2"> 道题，平均得分: </span><span class="si">{</span><span class="n">avg</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2">/10&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">assemble</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">phase</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;根据阶段动态组装 Prompt&quot;&quot;&quot;</span>
+        <span class="n">phase</span> <span class="o">=</span> <span class="n">phase</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">current_phase</span>
+        <span class="n">template</span> <span class="o">=</span> <span class="n">PROMPTS</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">phase</span><span class="p">,</span> <span class="n">PROMPTS</span><span class="p">[</span><span class="s2">&quot;technical&quot;</span><span class="p">])</span>
+
+        <span class="k">return</span> <span class="n">template</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+            <span class="n">candidate_info</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">get_candidate_info</span><span class="p">(),</span>
+            <span class="n">job_requirements</span><span class="o">=</span><span class="s2">&quot;5年以上 Go 开发经验，熟悉 K8s，有大规模分布式系统经验&quot;</span><span class="p">,</span>
+            <span class="n">interview_history</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">get_interview_history</span><span class="p">(),</span>
+            <span class="n">skills_to_test</span><span class="o">=</span><span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">candidate</span><span class="o">.</span><span class="n">skills</span><span class="p">),</span>
+            <span class="n">score_summary</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">get_score_summary</span><span class="p">()</span>
+        <span class="p">)</span>
+
+<span class="c1"># ========== 6. 主程序 ==========</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">create_interview_agent</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;创建面试官 Agent&quot;&quot;&quot;</span>
+    <span class="n">llm</span> <span class="o">=</span> <span class="n">ChatOpenAI</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s2">&quot;gpt-4-turbo&quot;</span><span class="p">,</span> <span class="n">temperature</span><span class="o">=</span><span class="mf">0.3</span><span class="p">)</span>
+    <span class="n">tools</span> <span class="o">=</span> <span class="p">[</span><span class="n">search_question_bank</span><span class="p">,</span> <span class="n">evaluate_answer</span><span class="p">,</span> <span class="n">record_interview_note</span><span class="p">,</span> <span class="n">decide_next_step</span><span class="p">]</span>
+
+    <span class="n">prompt</span> <span class="o">=</span> <span class="n">ChatPromptTemplate</span><span class="o">.</span><span class="n">from_messages</span><span class="p">([</span>
+        <span class="p">(</span><span class="s2">&quot;system&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="si">{system_prompt}</span><span class="s2">&quot;</span><span class="p">),</span>
+        <span class="n">MessagesPlaceholder</span><span class="p">(</span><span class="n">variable_name</span><span class="o">=</span><span class="s2">&quot;chat_history&quot;</span><span class="p">),</span>
+        <span class="p">(</span><span class="s2">&quot;human&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="si">{input}</span><span class="s2">&quot;</span><span class="p">),</span>
+        <span class="n">MessagesPlaceholder</span><span class="p">(</span><span class="n">variable_name</span><span class="o">=</span><span class="s2">&quot;agent_scratchpad&quot;</span><span class="p">),</span>
+    <span class="p">])</span>
+
+    <span class="n">agent</span> <span class="o">=</span> <span class="n">create_openai_tools_agent</span><span class="p">(</span><span class="n">llm</span><span class="p">,</span> <span class="n">tools</span><span class="p">,</span> <span class="n">prompt</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">AgentExecutor</span><span class="p">(</span><span class="n">agent</span><span class="o">=</span><span class="n">agent</span><span class="p">,</span> <span class="n">tools</span><span class="o">=</span><span class="n">tools</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">run_interview</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;运行面试流程&quot;&quot;&quot;</span>
+    <span class="c1"># 初始化会话</span>
+    <span class="n">session</span> <span class="o">=</span> <span class="n">InterviewSession</span><span class="p">(</span>
+        <span class="n">session_id</span><span class="o">=</span><span class="s2">&quot;S-20260116-001&quot;</span><span class="p">,</span>
+        <span class="n">candidate</span><span class="o">=</span><span class="n">SAMPLE_CANDIDATE</span>
+    <span class="p">)</span>
+
+    <span class="c1"># 创建上下文组装器</span>
+    <span class="n">assembler</span> <span class="o">=</span> <span class="n">ContextAssembler</span><span class="p">(</span><span class="n">session</span><span class="p">)</span>
+
+    <span class="c1"># 创建 Agent</span>
+    <span class="n">agent</span> <span class="o">=</span> <span class="n">create_interview_agent</span><span class="p">()</span>
+
+    <span class="c1"># 对话历史（短期记忆）</span>
+    <span class="n">chat_history</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;=&quot;</span> <span class="o">*</span> <span class="mi">60</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;AI 面试官已就绪，输入 &#39;quit&#39; 退出，输入 &#39;next&#39; 进入下一阶段&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;=&quot;</span> <span class="o">*</span> <span class="mi">60</span><span class="p">)</span>
+
+    <span class="n">phases</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;opening&quot;</span><span class="p">,</span> <span class="s2">&quot;technical&quot;</span><span class="p">,</span> <span class="s2">&quot;closing&quot;</span><span class="p">]</span>
+    <span class="n">phase_idx</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="n">session</span><span class="o">.</span><span class="n">current_phase</span> <span class="o">=</span> <span class="n">phases</span><span class="p">[</span><span class="n">phase_idx</span><span class="p">]</span>
+        <span class="n">system_prompt</span> <span class="o">=</span> <span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">()</span>
+
+        <span class="n">user_input</span> <span class="o">=</span> <span class="nb">input</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">👤 候选人: &quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="n">user_input</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s2">&quot;quit&quot;</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">面试结束，感谢参与！&quot;</span><span class="p">)</span>
+            <span class="k">break</span>
+
+        <span class="k">if</span> <span class="n">user_input</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s2">&quot;next&quot;</span><span class="p">:</span>
+            <span class="n">phase_idx</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">phase_idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">phases</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">[系统] 进入 </span><span class="si">{</span><span class="n">phases</span><span class="p">[</span><span class="n">phase_idx</span><span class="p">]</span><span class="si">}</span><span class="s2"> 阶段&quot;</span><span class="p">)</span>
+            <span class="k">continue</span>
+
+        <span class="c1"># 调用 Agent</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">agent</span><span class="o">.</span><span class="n">invoke</span><span class="p">({</span>
+            <span class="s2">&quot;system_prompt&quot;</span><span class="p">:</span> <span class="n">system_prompt</span><span class="p">,</span>
+            <span class="s2">&quot;chat_history&quot;</span><span class="p">:</span> <span class="n">chat_history</span><span class="p">,</span>
+            <span class="s2">&quot;input&quot;</span><span class="p">:</span> <span class="n">user_input</span>
+        <span class="p">})</span>
+
+        <span class="n">response</span> <span class="o">=</span> <span class="n">result</span><span class="p">[</span><span class="s2">&quot;output&quot;</span><span class="p">]</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">🤖 面试官: </span><span class="si">{</span><span class="n">response</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="c1"># 更新对话历史</span>
+        <span class="n">chat_history</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">HumanMessage</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="n">user_input</span><span class="p">))</span>
+        <span class="n">chat_history</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">AIMessage</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="n">response</span><span class="p">))</span>
+
+        <span class="c1"># 简单模拟记录问答</span>
+        <span class="n">session</span><span class="o">.</span><span class="n">questions_asked</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+            <span class="s2">&quot;question&quot;</span><span class="p">:</span> <span class="s2">&quot;从对话中提取&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;answer&quot;</span><span class="p">:</span> <span class="n">user_input</span>
+        <span class="p">})</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="c1"># 确保设置了 OPENAI_API_KEY</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;OPENAI_API_KEY&quot;</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;请设置 OPENAI_API_KEY 环境变量&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">run_interview</span><span class="p">()</span>
+</code></pre></div>
+
+<h3 id="_5">代码亮点</h3>
+<ol>
+<li><strong>Tools 定义清晰</strong>：每个工具都有明确的 docstring，让 LLM 知道什么时候该调用。</li>
+<li><strong>Memory 分层</strong>：<code>Candidate</code> 是长期记忆（跨面试），<code>InterviewSession</code> 是短期记忆（本场面试）。</li>
+<li><strong>动态 Prompt</strong>：<code>ContextAssembler</code> 根据面试阶段（opening/technical/closing）组装不同的 System Prompt。</li>
+<li><strong>滑动窗口</strong>：<code>get_interview_history()</code> 只取最近 5 条记录，防止 Context Overflow。</li>
+</ol>
+<hr>
+<h2 id="_6">扩展阅读</h2>
+<ul>
+<li><a href="https://www.elastic.co/search-labs/blog/context-engineering-overview">Elastic Blog: What is context engineering?</a></li>
+<li><a href="https://www.dbreunig.com/2024/10/18/how-to-fix-your-context.html">How to Fix Your Context</a></li>
+<li><a href="https://12factor.net/">12-Factor Agents - Principles for building reliable LLM applications</a></li>
+<li><a href="https://langchain-ai.github.io/langgraphjs/concepts/memory/">LangGraph Memory Management</a></li>
+<li><a href="https://cognition.ai/blog/dont-build-multi-agents">Don't Build Multi-Agents</a></li>
+</ul>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。</p>
+  </div>
+  <div class="tag-cloud">
+    <p>
+      <a href="./tag/context-engineering.html">Context Engineering</a>
+      <a href="./tag/rag.html">RAG</a>
+      <a href="./tag/personal-knowledge-base.html">Personal Knowledge Base</a>
+      <a href="./tag/llm.html">LLM</a>
+      <a href="./tag/agent.html">Agent</a>
+    </p>
+  </div>
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="./cong-pdca-dao-paoeai-agent-da-nao-li-de-xun-huan.html" title="从 PDCA 到 PAOE：AI Agent 大脑里的循环">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="./c-yu-cyi-dui-fu-zi-de-jian-xing-jian-yuan.html" title="C 与 C++：一对父子的渐行渐远">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="./vibe-bian-cheng-de-xin-fan-shi-zai-ai-shi-dai-zhong-xin-ding-yi-ruan-jian-kai-fa.html">Vibe 编程的新范式：在 AI 时代重新定义软件开发</a></li>
+      <li><a href="./rag-jin-jie-zhi-nan-bie-zhi-cheng-zhao-xiang-liang-shu-ju-ku-elasticsearch-cai-shi-sao-di-seng.html">RAG 进阶指南：别只盯着向量数据库，Elasticsearch 才是扫地僧</a></li>
+      <li><a href="./cong-pdca-dao-paoeai-agent-da-nao-li-de-xun-huan.html">从 PDCA 到 PAOE：AI Agent 大脑里的循环</a></li>
+      <li><a href="./yong-eino-gou-jian-ai-agentgo-kai-fa-zhe-de-langchain-zhong-yu-lai-liao.html">用 Eino 构建 AI Agent：Go 开发者的 LangChain 终于来了</a></li>
+      <li><a href="./cursor-de-san-ban-fu-rules-commands-yu-agent-skills.html">Cursor 的三板斧：Rules, Commands 与 Agent Skills</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Disqus -->
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+    var disqus_shortname = 'wfblog';
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>
+    Please enable JavaScript to view comments.
+</noscript>
+<!-- End Disqus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : ".",
+  "image": "./images/walterfan.jpg",
+  "description": "an old programmer never die, he just branch to a new address."
+}
+</script>
+</body>
+</html>

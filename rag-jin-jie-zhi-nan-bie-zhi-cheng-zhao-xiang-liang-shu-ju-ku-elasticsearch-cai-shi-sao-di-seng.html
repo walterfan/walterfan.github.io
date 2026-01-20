@@ -1,0 +1,503 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="./theme/stylesheet/style.min.css">
+
+
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+          href="./theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+
+
+
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="你的 RAG 系统总是在胡说八道？多半是检索拖了后腿。本文基于 Medium 高赞文章，深度解析如何利用 Elasticsearch 的混合检索、函数得分等高级特性，拯救你那“弱不禁风”的 RAG。" />
+<meta name="keywords" content="RAG, Elasticsearch, Vector Search, LLM, Hybrid Search">
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="RAG 进阶指南：别只盯着向量数据库，Elasticsearch 才是扫地僧"/>
+  <meta property="og:description" content="你的 RAG 系统总是在胡说八道？多半是检索拖了后腿。本文基于 Medium 高赞文章，深度解析如何利用 Elasticsearch 的混合检索、函数得分等高级特性，拯救你那“弱不禁风”的 RAG。"/>
+  <meta property="og:locale" content="en_US"/>
+  <meta property="og:url" content="./rag-jin-jie-zhi-nan-bie-zhi-cheng-zhao-xiang-liang-shu-ju-ku-elasticsearch-cai-shi-sao-di-seng.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-01-15 10:00:00+08:00"/>
+  <meta property="article:modified_time" content="2026-01-15 10:00:00+08:00"/>
+  <meta property="article:author" content="./author/walter-fan.html">
+  <meta property="article:section" content="AI"/>
+  <meta property="article:tag" content="RAG"/>
+  <meta property="article:tag" content="Elasticsearch"/>
+  <meta property="article:tag" content="Vector Search"/>
+  <meta property="article:tag" content="LLM"/>
+  <meta property="article:tag" content="Hybrid Search"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; RAG 进阶指南：别只盯着向量数据库，Elasticsearch 才是扫地僧</title>
+
+
+</head>
+<body class="light-theme">
+
+<aside>
+  <div>
+    <a href="./">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="./">Walter Fan</a>
+    </h1>
+
+    <p>手握灵珠常奋笔, 心开天籁不吹箫</p>
+
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_self" href="tao.html" >tao</a>
+          </li>
+          <li>
+            <a target="_self" href="interest.html" >interest</a>
+          </li>
+          <li>
+            <a target="_self" href="/wordpress" >notebook</a>
+          </li>
+          <li>
+            <a target="_self" href="bookmark.html" >bookmark</a>
+          </li>
+          <li>
+            <a target="_self" href="/webrtc/examples/index.html" >webrtc</a>
+          </li>
+          <li>
+            <a target="_self" href="https://github.com/walterfan" >github</a>
+          </li>
+          <li>
+            <a target="_self" href="https://www.jianshu.com/u/e0b365801f48" >技术文章</a>
+          </li>
+      </ul>
+    </nav>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="http://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+</aside>
+  <main>
+
+
+<article class="single">
+  <header>
+      
+    <h1 id="rag-jin-jie-zhi-nan-bie-zhi-cheng-zhao-xiang-liang-shu-ju-ku-elasticsearch-cai-shi-sao-di-seng">RAG 进阶指南：别只盯着向量数据库，Elasticsearch 才是扫地僧</h1>
+    <p>
+      Posted on Thu 15 January 2026 in <a href="./category/ai.html">AI</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <h1 id="rag-elasticsearch">RAG 进阶指南：别只盯着向量数据库，Elasticsearch 才是扫地僧</h1>
+<blockquote>
+<p>“垃圾进，垃圾出。” —— 这句计算机界的至理名言，在 RAG（检索增强生成）时代依然振聋发聩。</p>
+</blockquote>
+<hr>
+<h2 id="rag">开篇：大多数 RAG 死在了检索上</h2>
+<p>最近有很多朋友问我：“老范，为什么我的 RAG 系统用了最先进的向量数据库，用了 GPT, Gemini, DeepSeek 等大模型，回答问题还是像喝了假酒一样, 迷迷糊糊常说错话？”</p>
+<p>其实，<strong>90% 的 RAG 问题都出在“检索（Retrieval）”这一步</strong>。</p>
+<p>我们太迷信“向量（Vector）”了。我们以为只要把文档变成 Embedding 扔进向量数据库，LLM 就能神奇地找到答案。</p>
+<p><strong>大错特错。</strong></p>
+<p>向量检索擅长“模糊意会”，但它是个“脸盲”。如果你搜“错误码 502”，向量可能会给你返回“服务器错误的定义”，而不是你文档里写的“502 报错排查手册”。</p>
+<p>这时候，你需要一位“扫地僧”——<strong>Elasticsearch</strong>。</p>
+<p>今天这篇文章，基于 Medium 上 <a href="https://medium.com/@hiconcep/enhancing-rag-with-elasticsearch-a-deep-dive-into-advanced-search-capabilities-2405e1599d86">Hiconcep 的高赞文章</a>，我们来聊聊如何用 Elasticsearch 的“十八般武艺”拯救你的 RAG。</p>
+<hr>
+<h2 id="_1">一、为什么纯向量检索不够用？</h2>
+<p>做 RAG 的第一天，教程都会教你：<code>Text -&gt; Embedding -&gt; Vector DB -&gt; Cosine Similarity</code>。</p>
+<p>这就好比你找对象只看“感觉”（语义相似度）。
+- <strong>优点</strong>：能懂你的言外之意。你说“我想吃点带壳的”，它能给你推荐“大闸蟹”和“皮皮虾”。
+- <strong>缺点</strong>：不精准。你说“我要吃阳澄湖大闸蟹”，它可能给你推荐“澳洲龙虾”，因为它们在向量空间里离得很近——都是高档海鲜。</p>
+<p>但在企业级应用里，用户搜“订单号 20260115”，你给我推荐“如何创建订单”，用户会想打人的。</p>
+<p>这时候，我们需要<strong>BM25（关键词检索）</strong>。它就像一个死板但精准的图书管理员，通过词频（TF-IDF）精确匹配关键词。</p>
+<p><strong>结论</strong>：<strong>小孩子才做选择，成年人全都要。</strong> 也就是 <strong>混合检索（Hybrid Search）</strong>。</p>
+<hr>
+<h2 id="elasticsearch">二、Elasticsearch 的组合拳：混合检索</h2>
+<p>Elasticsearch 最强大的地方在于，它不仅是最好的搜索引擎，现在也是一流的向量数据库。它可以让你在一个查询里同时使用 BM25 和 Vector Search。</p>
+<h3 id="1-bm25-vector">1. BM25 + Vector：左脑与右脑的配合</h3>
+<ul>
+<li><strong>BM25（左脑）</strong>：负责精确匹配。用户搜专有名词、错误码、特定ID时，它绝不含糊。</li>
+<li><strong>Vector（右脑）</strong>：负责语义理解。用户描述模糊、用词不准时，它能猜出意图。</li>
+</ul>
+<p><strong>怎么做？</strong></p>
+<p>在 Elasticsearch 中，你可以用 <code>rrf</code> (Reciprocal Rank Fusion) 来融合两者的排名。</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// 伪代码示例：混合检索</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;sub_searches&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;query&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;match&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;RAG 优化&quot;</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="c1">// BM25</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;knn&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;field&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;content_vector&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;query_vector&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="err">...</span><span class="p">]</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="c1">// Vector</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;rank&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;rrf&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{}</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="c1">// 倒数排名融合</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这就像是请了两位专家会诊，最后给出一个综合评分。</p>
+<hr>
+<h2 id="_2">三、除了检索，还要有“偏见”</h2>
+<p>很多 RAG 系统检索出来的内容是“正确但无用”的。比如你问“最新财报”，它给你找出了 2020 年的财报。从语义上讲，它确实是“财报”，但从时效性上讲，它就是废纸。</p>
+<p>Elasticsearch 提供了两个大杀器：<strong>Function Score（函数得分）</strong> 和 <strong>Field Weighting（字段加权）</strong>。</p>
+<h3 id="1-function-score">1. Function Score：给“新”内容加分</h3>
+<p>你可以告诉 ES：“如果这篇文章是最近发布的，给它的分数乘个系数。”</p>
+<p>这就解决了“时效性”问题。</p>
+<h3 id="2-field-weighting">2. Field Weighting：标题党有理</h3>
+<p>通常，出现在“标题”里的关键词，比出现在“正文”角落里的关键词更重要。</p>
+<p>你可以设置：<code>Title</code> 字段权重 2.0，<code>Content</code> 字段权重 1.0。这样，标题匹配的文档会排在更前面。</p>
+<h3 id="3">3. 复杂过滤：上下文感知</h3>
+<p>RAG 不应该是个“傻白甜”。
+- 用户是“财务部”的，就别给他看“研发部”的文档。
+- 用户问的是“2025年”的数据，就直接把其他年份过滤掉。</p>
+<p>ES 的 <code>bool</code> 查询（must, should, filter）是处理这些结构化过滤的神器。向量数据库在这方面通常比较弱。</p>
+<hr>
+<h2 id="kibana">四、数据质量的可视化：Kibana</h2>
+<p>这一点常常被忽视。你往向量数据库里塞了什么，你真的知道吗？</p>
+<p>如果你的 chunk 切分切坏了，或者 embedding 生成错了，黑盒的向量数据库很难发现。</p>
+<p>Elasticsearch 配套的 <strong>Kibana</strong> 是个好东西。你可以直接在里面看到：
+- 分词后的 token 是什么样？
+- 向量字段是不是空的？
+- 某个关键词的文档频率是多少？</p>
+<p><strong>监控你的数据质量，是 RAG 成功的隐形护城河。</strong></p>
+<hr>
+<h2 id="rag_1">五、实战：手把手教你搭建一个"不智障"的 RAG</h2>
+<p>光说不练假把式。我们来点硬菜——从零开始，用 Docker 跑起 ES，并用 Python 搭建一个支持混合检索的 RAG Demo。</p>
+<h3 id="step-1-docker-es-kibana">Step 1: 启动“扫地僧” (Docker 部署 ES + Kibana)</h3>
+<p>先把环境搭起来。别担心，不需要你手动下载压缩包，Docker 一键搞定。</p>
+<p>创建一个 <code>docker-compose.yml</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">services</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">elasticsearch</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">docker.elastic.co/elasticsearch/elasticsearch:8.11.0</span>
+<span class="w">    </span><span class="nt">container_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">es_node</span>
+<span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">discovery.type=single-node</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">xpack.security.enabled=true</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">xpack.security.http.ssl.enabled=false</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">xpack.security.transport.ssl.enabled=false</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ELASTIC_PASSWORD=${ELASTIC_PASSWORD}</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;ES_JAVA_OPTS=-Xms512m</span><span class="nv"> </span><span class="s">-Xmx512m&quot;</span>
+<span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;9200:9200&quot;</span>
+<span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">es_data:/usr/share/elasticsearch/data</span>
+<span class="w">    </span><span class="nt">networks</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">es-net</span>
+<span class="w">    </span><span class="nt">healthcheck</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">test</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;CMD-SHELL&quot;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&quot;curl</span><span class="nv"> </span><span class="s">-s</span><span class="nv"> </span><span class="s">-u</span><span class="nv"> </span><span class="s">elastic:${ELASTIC_PASSWORD}</span><span class="nv"> </span><span class="s">http://localhost:9200/_cluster/health</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">grep</span><span class="nv"> </span><span class="s">-q</span><span class="nv"> </span><span class="s">&#39;status&#39;&quot;</span><span class="p p-Indicator">]</span>
+<span class="w">      </span><span class="nt">interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10s</span>
+<span class="w">      </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10s</span>
+<span class="w">      </span><span class="nt">retries</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">120</span>
+
+<span class="w">  </span><span class="c1"># Setup container to create kibana_system user password</span>
+<span class="w">  </span><span class="nt">es_setup</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">docker.elastic.co/elasticsearch/elasticsearch:8.11.0</span>
+<span class="w">    </span><span class="nt">container_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">es_setup</span>
+<span class="w">    </span><span class="nt">depends_on</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">elasticsearch</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">condition</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">service_healthy</span>
+<span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ELASTIC_PASSWORD=${ELASTIC_PASSWORD}</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">KIBANA_PASSWORD=${KIBANA_PASSWORD}</span>
+<span class="w">    </span><span class="nt">networks</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">es-net</span>
+<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">&gt;</span>
+<span class="w">      </span><span class="no">bash -c &#39;</span>
+<span class="w">        </span><span class="no">echo &quot;Setting kibana_system password...&quot;;</span>
+<span class="w">        </span><span class="no">until curl -s -u elastic:${ELASTIC_PASSWORD} http://elasticsearch:9200 | grep -q &quot;cluster_name&quot;; do</span>
+<span class="w">          </span><span class="no">sleep 5;</span>
+<span class="w">        </span><span class="no">done;</span>
+<span class="w">        </span><span class="no">curl -s -X POST -u elastic:${ELASTIC_PASSWORD} -H &quot;Content-Type: application/json&quot; \</span>
+<span class="w">          </span><span class="no">http://elasticsearch:9200/_security/user/kibana_system/_password \</span>
+<span class="w">          </span><span class="no">-d &quot;{\&quot;password\&quot;:\&quot;${KIBANA_PASSWORD}\&quot;}&quot; | grep -q &quot;^{}&quot;;</span>
+<span class="w">        </span><span class="no">echo &quot;Done!&quot;;</span>
+<span class="w">      </span><span class="no">&#39;</span>
+
+<span class="w">  </span><span class="nt">kibana</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">docker.elastic.co/kibana/kibana:8.11.0</span>
+<span class="w">    </span><span class="nt">container_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">kibana</span>
+<span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;5601:5601&quot;</span>
+<span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ELASTICSEARCH_HOSTS=http://elasticsearch:9200</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ELASTICSEARCH_USERNAME=kibana_system</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ELASTICSEARCH_PASSWORD=${KIBANA_PASSWORD}</span>
+<span class="w">    </span><span class="nt">networks</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">es-net</span>
+<span class="w">    </span><span class="nt">depends_on</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">es_setup</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">condition</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">service_completed_successfully</span>
+
+<span class="nt">volumes</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">es_data</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">driver</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">local</span>
+
+<span class="nt">networks</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">es-net</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">driver</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bridge</span>
+</code></pre></div>
+
+<p>跑起来：</p>
+<div class="highlight"><pre><span></span><code>docker-compose<span class="w"> </span>up<span class="w"> </span>-d
+</code></pre></div>
+
+<p>cp env.example .env</p>
+<div class="highlight"><pre><span></span><code>ELASTIC_PASSWORD=changeme
+KIBANA_PASSWORD=kibana_changeme
+</code></pre></div>
+
+<p>打开浏览器访问 <code>http://localhost:5601</code>，看到 Kibana 的界面就算成功了。这一步通常只需要喝半杯咖啡的时间。</p>
+<h3 id="step-2">Step 2: 准备数据与环境</h3>
+<p>你需要安装这几个 Python 库：</p>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>elasticsearch<span class="w"> </span>langchain<span class="w"> </span>langchain-openai<span class="w"> </span>sentence-transformers
+</code></pre></div>
+
+<h3 id="step-3-mapping">Step 3: 创建索引 (Mapping)</h3>
+<p>这一步很关键。我们要告诉 ES：“请准备好，我要存向量了！”</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">elasticsearch</span><span class="w"> </span><span class="kn">import</span> <span class="n">Elasticsearch</span>
+
+<span class="c1"># 连接本地 ES</span>
+<span class="n">es</span> <span class="o">=</span> <span class="n">Elasticsearch</span><span class="p">(</span><span class="s2">&quot;http://localhost:9200&quot;</span><span class="p">)</span>
+
+<span class="c1"># 定义索引结构</span>
+<span class="n">index_mapping</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;mappings&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;title&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;text&quot;</span><span class="p">},</span>          <span class="c1"># 标题，用于 BM25 检索</span>
+            <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;text&quot;</span><span class="p">},</span>        <span class="c1"># 正文，用于 BM25 检索</span>
+            <span class="s2">&quot;embedding&quot;</span><span class="p">:</span> <span class="p">{</span>                      <span class="c1"># 向量字段</span>
+                <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;dense_vector&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;dims&quot;</span><span class="p">:</span> <span class="mi">384</span><span class="p">,</span>                    <span class="c1"># 对应 sentence-transformers/all-MiniLM-L6-v2 的维度</span>
+                <span class="s2">&quot;index&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+                <span class="s2">&quot;similarity&quot;</span><span class="p">:</span> <span class="s2">&quot;cosine&quot;</span>          <span class="c1"># 使用余弦相似度</span>
+            <span class="p">},</span>
+            <span class="s2">&quot;category&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;keyword&quot;</span><span class="p">}</span>     <span class="c1"># 分类，用于精确过滤</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="c1"># 创建索引（如果存在就先删了重建）</span>
+<span class="k">if</span> <span class="n">es</span><span class="o">.</span><span class="n">indices</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="s2">&quot;rag_docs&quot;</span><span class="p">):</span>
+    <span class="n">es</span><span class="o">.</span><span class="n">indices</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="s2">&quot;rag_docs&quot;</span><span class="p">)</span>
+<span class="n">es</span><span class="o">.</span><span class="n">indices</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="s2">&quot;rag_docs&quot;</span><span class="p">,</span> <span class="n">body</span><span class="o">=</span><span class="n">index_mapping</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;索引创建完毕！&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<h3 id="step-4-indexing">Step 4: 写入数据 (Indexing)</h3>
+<p>我们假装有几条关于“服务器运维”的文档。注意，这里我们会同时存入“文本”和“向量”。</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">sentence_transformers</span><span class="w"> </span><span class="kn">import</span> <span class="n">SentenceTransformer</span>
+
+<span class="c1"># 加载一个轻量级的开源 embedding 模型</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">SentenceTransformer</span><span class="p">(</span><span class="s1">&#39;all-MiniLM-L6-v2&#39;</span><span class="p">)</span>
+
+<span class="n">documents</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="p">{</span><span class="s2">&quot;title&quot;</span><span class="p">:</span> <span class="s2">&quot;服务器报错 502 排查&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;502 Bad Gateway 通常意味着网关错误，请检查 Nginx 配置。&quot;</span><span class="p">,</span> <span class="s2">&quot;category&quot;</span><span class="p">:</span> <span class="s2">&quot;ops&quot;</span><span class="p">},</span>
+    <span class="p">{</span><span class="s2">&quot;title&quot;</span><span class="p">:</span> <span class="s2">&quot;数据库连接超时&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;检查防火墙设置，确保 3306 端口开放，并验证账号密码。&quot;</span><span class="p">,</span> <span class="s2">&quot;category&quot;</span><span class="p">:</span> <span class="s2">&quot;db&quot;</span><span class="p">},</span>
+    <span class="p">{</span><span class="s2">&quot;title&quot;</span><span class="p">:</span> <span class="s2">&quot;员工请假流程&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;登录 OA 系统，点击人事服务，选择请假申请。&quot;</span><span class="p">,</span> <span class="s2">&quot;category&quot;</span><span class="p">:</span> <span class="s2">&quot;hr&quot;</span><span class="p">},</span>
+<span class="p">]</span>
+
+<span class="k">for</span> <span class="n">doc</span> <span class="ow">in</span> <span class="n">documents</span><span class="p">:</span>
+    <span class="c1"># 1. 生成向量</span>
+    <span class="n">embedding</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">doc</span><span class="p">[</span><span class="s2">&quot;content&quot;</span><span class="p">])</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+
+    <span class="c1"># 2. 存入 ES</span>
+    <span class="n">doc_body</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;title&quot;</span><span class="p">:</span> <span class="n">doc</span><span class="p">[</span><span class="s2">&quot;title&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="n">doc</span><span class="p">[</span><span class="s2">&quot;content&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;embedding&quot;</span><span class="p">:</span> <span class="n">embedding</span><span class="p">,</span>
+        <span class="s2">&quot;category&quot;</span><span class="p">:</span> <span class="n">doc</span><span class="p">[</span><span class="s2">&quot;category&quot;</span><span class="p">]</span>
+    <span class="p">}</span>
+    <span class="n">es</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="s2">&quot;rag_docs&quot;</span><span class="p">,</span> <span class="n">document</span><span class="o">=</span><span class="n">doc_body</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;数据灌入完毕！&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<h3 id="step-5-hybrid-search">Step 5: 见证奇迹时刻 (Hybrid Search)</h3>
+<p>现在，重头戏来了。我们要用 <strong>混合检索</strong> 来找答案。用户问：“502 怎么修？”</p>
+<div class="highlight"><pre><span></span><code><span class="n">query_text</span> <span class="o">=</span> <span class="s2">&quot;502 怎么修&quot;</span>
+<span class="n">query_vector</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">query_text</span><span class="p">)</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+
+<span class="c1"># 构造混合查询</span>
+<span class="n">search_body</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;size&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span>
+    <span class="s2">&quot;query&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;bool&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;should&quot;</span><span class="p">:</span> <span class="p">[</span>
+                <span class="c1"># 1. BM25 关键词检索 (权重 1.0)</span>
+                <span class="p">{</span>
+                    <span class="s2">&quot;multi_match&quot;</span><span class="p">:</span> <span class="p">{</span>
+                        <span class="s2">&quot;query&quot;</span><span class="p">:</span> <span class="n">query_text</span><span class="p">,</span>
+                        <span class="s2">&quot;fields&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;title^2&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">],</span> <span class="c1"># 标题权重是正文的2倍</span>
+                        <span class="s2">&quot;boost&quot;</span><span class="p">:</span> <span class="mf">1.0</span>
+                    <span class="p">}</span>
+                <span class="p">},</span>
+                <span class="c1"># 2. KNN 向量检索 (权重 2.0，语义匹配更重要)</span>
+                <span class="p">{</span>
+                    <span class="s2">&quot;knn&quot;</span><span class="p">:</span> <span class="p">{</span>
+                        <span class="s2">&quot;field&quot;</span><span class="p">:</span> <span class="s2">&quot;embedding&quot;</span><span class="p">,</span>
+                        <span class="s2">&quot;query_vector&quot;</span><span class="p">:</span> <span class="n">query_vector</span><span class="p">,</span>
+                        <span class="s2">&quot;k&quot;</span><span class="p">:</span> <span class="mi">10</span><span class="p">,</span>
+                        <span class="s2">&quot;num_candidates&quot;</span><span class="p">:</span> <span class="mi">100</span><span class="p">,</span>
+                        <span class="s2">&quot;boost&quot;</span><span class="p">:</span> <span class="mf">2.0</span> 
+                    <span class="p">}</span>
+                <span class="p">}</span>
+            <span class="p">]</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="n">response</span> <span class="o">=</span> <span class="n">es</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="s2">&quot;rag_docs&quot;</span><span class="p">,</span> <span class="n">body</span><span class="o">=</span><span class="n">search_body</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;用户提问: </span><span class="si">{</span><span class="n">query_text</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;-&quot;</span> <span class="o">*</span> <span class="mi">30</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">hit</span> <span class="ow">in</span> <span class="n">response</span><span class="p">[</span><span class="s1">&#39;hits&#39;</span><span class="p">][</span><span class="s1">&#39;hits&#39;</span><span class="p">]:</span>
+    <span class="n">score</span> <span class="o">=</span> <span class="n">hit</span><span class="p">[</span><span class="s1">&#39;_score&#39;</span><span class="p">]</span>
+    <span class="n">title</span> <span class="o">=</span> <span class="n">hit</span><span class="p">[</span><span class="s1">&#39;_source&#39;</span><span class="p">][</span><span class="s1">&#39;title&#39;</span><span class="p">]</span>
+    <span class="n">content</span> <span class="o">=</span> <span class="n">hit</span><span class="p">[</span><span class="s1">&#39;_source&#39;</span><span class="p">][</span><span class="s1">&#39;content&#39;</span><span class="p">]</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[得分: </span><span class="si">{</span><span class="n">score</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">] </span><span class="si">{</span><span class="n">title</span><span class="si">}</span><span class="s2"> </span><span class="se">\n</span><span class="s2">   -&gt; 内容: </span><span class="si">{</span><span class="n">content</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<p><strong>运行结果预期：</strong>
+你会发现，“服务器报错 502 排查”这条文档不仅因为包含了“502”被 BM25 选中，还因为语义相关被向量检索选中，得分最高，稳稳排在第一。</p>
+<p>这就避免了如果你只用向量检索，可能搜出“404 错误”等不相关但语义接近的文档；也避免了如果你只用 BM25，可能搜不到没有精确匹配关键词的相关文档。</p>
+<hr>
+<h2 id="checklist">六、实战 Checklist</h2>
+<p>读完这篇文章，如果你想优化你的 RAG，可以照着这个清单做：</p>
+<ol>
+<li><strong>引入混合检索</strong>：不要只用 Vector，加上 Keyword Search (BM25)。</li>
+<li><strong>配置 RRF</strong>：使用倒数排名融合，让两种检索方式互补。</li>
+<li><strong>设置字段权重</strong>：Title &gt; Abstract &gt; Content，让重要的字段说话。</li>
+<li><strong>加入时间衰减</strong>：用 Function Score 降低旧文档的权重。</li>
+<li><strong>结构化过滤</strong>：利用 ES 的 Filtering 能力，先过滤（权限、时间、分类），再检索。</li>
+<li><strong>可视化监控</strong>：用 Kibana 定期抽查索引里的数据质量。</li>
+</ol>
+<hr>
+<h2 id="_3">总结</h2>
+<p>RAG 的本质是 <strong>Retrive（检索）</strong> + <strong>Generate（生成）</strong>。</p>
+<p>现在 LLM 的生成能力已经很强了，瓶颈往往在检索。</p>
+<p>不要为了赶时髦去用那些纯向量数据库，<strong>Elasticsearch 这个“老家伙”，凭借着它在倒排索引多年的积累，加上新进化的向量能力，才是构建企业级 RAG 的最稳健选择。</strong></p>
+<p>它既有“眼力劲儿”（语义理解），又有“记性”（关键词匹配），还能“看人下菜碟”（排序加权）。</p>
+<p><strong>这，才是一个成熟 RAG 该有的样子。</strong></p>
+<hr>
+<h2 id="_4">扩展阅读</h2>
+<ul>
+<li><a href="https://medium.com/@hiconcep/enhancing-rag-with-elasticsearch-a-deep-dive-into-advanced-search-capabilities-2405e1599d86">Enhancing RAG with Elasticsearch: A Deep Dive into Advanced Search Capabilities</a></li>
+<li><a href="https://www.elastic.co/guide/en/elasticsearch/reference/current/knn-search.html#knn-hybrid-search">Elasticsearch Guide: Hybrid Search</a></li>
+<li><a href="https://python.langchain.com/docs/integrations/retrievers/elastic_search_bm25">RAG with Elasticsearch and LangChain</a></li>
+</ul>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。</p>
+  </div>
+  <div class="tag-cloud">
+    <p>
+      <a href="./tag/rag.html">RAG</a>
+      <a href="./tag/elasticsearch.html">Elasticsearch</a>
+      <a href="./tag/vector-search.html">Vector Search</a>
+      <a href="./tag/llm.html">LLM</a>
+      <a href="./tag/hybrid-search.html">Hybrid Search</a>
+    </p>
+  </div>
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="./yong-eino-gou-jian-ai-agentgo-kai-fa-zhe-de-langchain-zhong-yu-lai-liao.html" title="用 Eino 构建 AI Agent：Go 开发者的 LangChain 终于来了">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="./cong-pdca-dao-paoeai-agent-da-nao-li-de-xun-huan.html" title="从 PDCA 到 PAOE：AI Agent 大脑里的循环">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="./prompt-gong-cheng-yi-si-shang-xia-wen-gong-cheng-dang-li.html">Prompt 工程已死，上下文工程当立</a></li>
+      <li><a href="./cong-pdca-dao-paoeai-agent-da-nao-li-de-xun-huan.html">从 PDCA 到 PAOE：AI Agent 大脑里的循环</a></li>
+      <li><a href="./yong-eino-gou-jian-ai-agentgo-kai-fa-zhe-de-langchain-zhong-yu-lai-liao.html">用 Eino 构建 AI Agent：Go 开发者的 LangChain 终于来了</a></li>
+      <li><a href="./vibe-bian-cheng-de-xin-fan-shi-zai-ai-shi-dai-zhong-xin-ding-yi-ruan-jian-kai-fa.html">Vibe 编程的新范式：在 AI 时代重新定义软件开发</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Disqus -->
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+    var disqus_shortname = 'wfblog';
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>
+    Please enable JavaScript to view comments.
+</noscript>
+<!-- End Disqus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : ".",
+  "image": "./images/walterfan.jpg",
+  "description": "an old programmer never die, he just branch to a new address."
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,366 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="./theme/stylesheet/style.min.css">
+
+
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+          href="./theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+
+
+
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="unsafe 能绕过类型系统做“危险动作”，但代价是内存安全、可移植性和可维护性；什么时候非用不可、怎么用才不踩雷，一文说清。" />
+<meta name="keywords" content="golang, unsafe, memory-safety, best-practice">
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="为什么要尽量少用 Go 里的 unsafe"/>
+  <meta property="og:description" content="unsafe 能绕过类型系统做“危险动作”，但代价是内存安全、可移植性和可维护性；什么时候非用不可、怎么用才不踩雷，一文说清。"/>
+  <meta property="og:locale" content="en_US"/>
+  <meta property="og:url" content="./wei-shi-yao-yao-jin-liang-shao-yong-go-li-de-unsafe.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-02-11 21:45:00+08:00"/>
+  <meta property="article:modified_time" content="2026-02-11 21:45:00+08:00"/>
+  <meta property="article:author" content="./author/walter-fan.html">
+  <meta property="article:section" content="Journal"/>
+  <meta property="article:tag" content="golang"/>
+  <meta property="article:tag" content="unsafe"/>
+  <meta property="article:tag" content="memory-safety"/>
+  <meta property="article:tag" content="best-practice"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 为什么要尽量少用 Go 里的 unsafe</title>
+
+
+</head>
+<body class="light-theme">
+
+<aside>
+  <div>
+    <a href="./">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="./">Walter Fan</a>
+    </h1>
+
+    <p>手握灵珠常奋笔, 心开天籁不吹箫</p>
+
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank" href="tao.html" >tao</a>
+          </li>
+          <li>
+            <a target="_blank" href="article.html" >article</a>
+          </li>
+          <li>
+            <a target="_blank" href="manual.html" >manual</a>
+          </li>
+          <li>
+            <a target="_blank" href="interest.html" >interest</a>
+          </li>
+          <li>
+            <a target="_self" href="/wordpress" >notebook</a>
+          </li>
+          <li>
+            <a target="_blank" href="bookmark.html" >bookmark</a>
+          </li>
+          <li>
+            <a target="_self" href="/webrtc/examples/index.html" >webrtc</a>
+          </li>
+          <li>
+            <a target="_blank" href="https://github.com/walterfan" >github</a>
+          </li>
+      </ul>
+    </nav>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="http://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+</aside>
+  <main>
+
+
+<article class="single">
+  <header>
+      
+    <h1 id="wei-shi-yao-yao-jin-liang-shao-yong-go-li-de-unsafe">为什么要尽量少用 Go 里的 unsafe</h1>
+    <p>
+      Posted on Wed 11 February 2026 in <a href="./category/journal.html">Journal</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>为什么要尽量少用 Go 里的 unsafe</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Journal</td>
+</tr>
+<tr>
+<td><strong>Version</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-02-11</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">短大纲</h2>
+<ul>
+<li>用一个“改了一行 unsafe，线上崩了”的小场景开场，点出：unsafe 不是“高级技巧”，是“逃生舱”，用错就沉船</li>
+<li>unsafe 是什么、Go 为什么保留它：类型系统外的底层操作，FFI、反射实现等离不开</li>
+<li>少用的三大理由：破坏内存安全、违背 GC/栈假设、可移植性和未来兼容无保证</li>
+<li>什么时候可以考虑用：与 C 互操作、标准库级性能关键路径、且范围极小、文档和测试拉满</li>
+<li>明天就能做的 3 件事 + 适用边界 + 一个开放式问题</li>
+<li>文末附思维导图（含渲染图）</li>
+</ul>
+<h1 id="2026-02-11">2026-02-11</h1>
+<p>你见过这种事故吗：某次“小优化”里有人用 <code>unsafe.Pointer</code> 把 <code>[]byte</code> 转成 <code>string</code> 省了一次拷贝，上线跑了一阵子没事，结果某次 GC 或 runtime 升级之后，线上开始偶现诡异的 coredump 或错误数据。</p>
+<p>查到最后，往往是一行“聪明”的 unsafe 代码，在你不以为意的地方打破了 Go runtime 的假设。</p>
+<p>反直觉的一点是：<strong>unsafe 包名字就叫 unsafe，不是“不推荐”，而是官方在明说：这里没有安全网。</strong> 能用类型系统和标准库解决的事，就别往这里走。</p>
+<h2 id="unsafe-go">unsafe 是什么？Go 为什么还留着它？</h2>
+<p><code>unsafe</code> 是 Go 标准库里的一个特殊包，主要提供：</p>
+<ul>
+<li><strong><code>unsafe.Pointer</code></strong>：可以和任意指针类型互转，相当于 C 里的 <code>void*</code>，绕过 Go 的类型检查</li>
+<li><strong><code>unsafe.Sizeof</code> / <code>Offsetof</code> / <code>Alignof</code></strong>：看内存布局，做结构体内存级操作时用</li>
+</ul>
+<p>Go 的设计哲学是“内存安全 + 简单”。那为什么还要留一扇后门？</p>
+<p>因为有些事，在类型系统的“围墙”里确实做不了：</p>
+<ul>
+<li><strong>和 C 互操作</strong>：CGO 里要把 Go 的指针传给 C，或者把 C 的指针在 Go 里用，往往要经过 <code>unsafe.Pointer</code></li>
+<li><strong>标准库和 runtime 的实现</strong>：比如 <code>reflect</code>、<code>sync</code>、某些 <code>string</code>/<code>[]byte</code> 的零拷贝转换，需要在底层操作内存</li>
+<li><strong>极少数性能关键路径</strong>：在充分测量、范围极小、文档和测试都到位的前提下，有人会用来做零拷贝或自定义布局</li>
+</ul>
+<p>所以“尽量少用”不等于“永远不用”，而是：<strong>能用安全写法就用安全写法，非要用时，把使用范围、前提和风险写清楚。</strong></p>
+<h2 id="_2">少用的三大理由</h2>
+<h3 id="1-bug">1) 破坏内存安全，bug 难查</h3>
+<p>Go 帮你防的是：越界、use-after-free、类型乱用。一旦用 <code>unsafe.Pointer</code> 把指针换来换去，这些保护就都没了。</p>
+<p>你可能只是“临时”把一块 <code>[]byte</code> 的底层指针转成 <code>*string</code> 用了一下，但：</p>
+<ul>
+<li>若这块 slice 之后被 re-slice 或扩容，底层数组可能迁移，你手里还捏着旧指针，就变成 use-after-free</li>
+<li>若 goroutine、栈拷贝、逃逸分析和你想象的不一致，崩溃可能出现在完全无关的代码路径上</li>
+</ul>
+<p>这类 bug 往往难以稳定复现，排查成本高，所以<strong>除非收益明确且不可替代，否则不碰</strong>。</p>
+<h3 id="2-gc-runtime">2) 违背 GC 与 runtime 的假设</h3>
+<p>Go 的 GC 和 runtime 会移动对象、调整栈、管理内存布局。文档里写得很清楚：<strong><code>unsafe.Pointer</code> 的很多用法是“未定义行为”</strong>——今天没问题，不代表下一个 Go 版本、另一种 GC 压力下也没问题。</p>
+<p>例如：把指向栈上变量的指针传到 C 里、或者长期持有某种“内部指针”而不让 GC 感知，都可能在未来版本里暴雷。你等于是和实现细节绑死了，而不是和语言规范绑在一起。</p>
+<h3 id="3">3) 可移植性与“未来兼容”无保证</h3>
+<p><code>unsafe</code> 的文档里很少给你“跨版本、跨平台”的承诺。今天在某架构、某 Go 版本下“看起来没问题”的写法，可能下一个 minor 就崩了。</p>
+<p>所以：<strong>能放在标准库和少量底层库里、由少数人维护的，就尽量不要散落在业务代码里。</strong> 业务代码里尽量少用、最好不用。</p>
+<h2 id="_3">什么时候可以考虑用？</h2>
+<p>只有在下面几条都满足时，才值得考虑：</p>
+<ul>
+<li><strong>确实没有安全替代方案</strong>：例如必须和 C 互操作、或要实现的抽象在现有类型系统里表达不了</li>
+<li><strong>使用范围极小</strong>：集中在一两个包、少量函数里，而不是到处传 <code>unsafe.Pointer</code></li>
+<li><strong>文档和注释写清楚</strong>：为什么必须用、依赖了哪些假设、将来可能怎么被替代</li>
+<li><strong>有测试和复现路径</strong>：包括内存/race 相关测试，CI 里跑</li>
+</ul>
+<p>如果是“只是想少一次拷贝”“觉得这里用 unsafe 会更快”，先做 benchmark；多数时候，安全写法已经够快，或者可以通过更好的设计（比如少一次分配、换一种 API）达到目标。</p>
+<h2 id="_4">一个跨领域的类比</h2>
+<p>可以把类型系统想象成游泳池的救生员：他限制你不能在深水区做危险动作，但能大大降低溺水概率。<code>unsafe</code> 相当于你翻出围栏去“野泳”——也许你技术好、水域也熟，一次两次没事，但一旦环境变了（水流、体力、别人推你一把），出事的代价会由你和你的团队一起承担。</p>
+<p>所以：<strong>不是“禁止野泳”，而是“默认在池子里游；非要野泳，要有预案、有边界、有记录”。</strong></p>
+<h2 id="_5">总结</h2>
+<ul>
+<li><strong>尽量少用</strong>：因为会破坏内存安全、依赖未定义的 runtime 行为、可移植性和未来兼容无保证。</li>
+<li><strong>非用不可时</strong>：缩小范围、写清假设、补足测试和文档，并优先考虑交给标准库或少量底层库维护。</li>
+<li><strong>业务代码</strong>：能不用就不用；性能问题先测再下结论，多数场景下安全写法足够。</li>
+</ul>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F5F5F5
+    RoundCorner 8
+    Padding 8
+    FontSize 14
+  }
+  :depth(0) {
+    BackgroundColor #2C3E50
+    FontColor white
+    FontSize 16
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 14
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* 为什么要少用 Go unsafe
+** 是什么
+*** unsafe.Pointer / Sizeof / Offsetof
+*** 绕过类型系统，做底层内存操作
+** 为什么保留
+*** C 互操作（CGO）
+*** 标准库与 runtime 实现
+*** 极少数性能关键路径
+**[#FFEBEE] 少用的理由
+*** 破坏内存安全，bug 难查
+*** 违背 GC/栈假设，未定义行为
+*** 可移植性/未来兼容无保证
+**[#E8F5E9] 何时可考虑用
+*** 无安全替代、范围极小
+*** 文档与测试拉满
+*** 优先集中在底层库
+** 类比
+*** 类型系统 = 救生员
+*** unsafe = 野泳，要有预案与边界
+@endmindmap
+</code></pre></div>
+
+<p><img alt="为什么要少用 Go unsafe 思维导图" src="../images/journal_20260211_why-avoid-go-unsafe_mindmap.png"></p>
+<h2 id="3_1">明天就能做的 3 件事</h2>
+<ol>
+<li><strong>搜一遍自己负责的 Go 仓库里的 <code>unsafe</code></strong>（10 分钟）  </li>
+<li>怎么判断做得好：能列出每一处用途、调用链，以及“为什么当时用了 unsafe”。  </li>
+<li><strong>给已有的 unsafe 用法补一句注释</strong>（5 分钟/处）  </li>
+<li>写明：依赖什么假设、在什么条件下安全、将来打算如何替代或收敛。  </li>
+<li><strong>对“为了性能想用 unsafe”的地方先做 benchmark</strong>（15 分钟）  </li>
+<li>怎么判断：有数据证明安全写法确实是瓶颈，再考虑是否值得引入 unsafe；多数情况会发现不必用。</li>
+</ol>
+<h2 id="_6">什么时候该用、什么时候别用</h2>
+<p><strong>适合“考虑用”的场景</strong>：必须和 C 互操作、实现标准库级别的抽象、且范围可控、文档测试都到位。</p>
+<p><strong>不适合用的场景</strong>：业务逻辑里图方便、想“少一次拷贝”、没有证据证明是性能瓶颈、或者团队里没人能说清当前写法的前提和风险。</p>
+<p><strong>代价与权衡</strong>：用 unsafe 会提高维护成本和事故概率；只在收益明确、且无法用安全方式实现时，才接受这份代价。</p>
+<p>最后一个问题留给你：</p>
+<p>你们项目里有没有“历史遗留”的 unsafe 用法？如果有，你打算先做一次梳理和注释，还是等出一次线上问题再动刀？</p>
+<h2 id="_7">扩展阅读</h2>
+<ul>
+<li>Go 官方文档： <a href="https://pkg.go.dev/unsafe">unsafe 包</a></li>
+<li>Go 官方博客： <a href="https://go.dev/blog/laws-of-reflection">The Laws of Reflection</a>（理解 reflect 与底层表示的边界）</li>
+</ul>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。</p>
+  </div>
+  <div class="tag-cloud">
+    <p>
+      <a href="./tag/golang.html">golang</a>
+      <a href="./tag/unsafe.html">unsafe</a>
+      <a href="./tag/memory-safety.html">memory-safety</a>
+      <a href="./tag/best-practice.html">best-practice</a>
+    </p>
+  </div>
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="./zhi-chang-gong-ju-xiang-zhi-aarrr-lou-dou-wei-shi-yao-you-de-ren-zuo-de-bu-duo-que-cheng-chang-hen-kuai.html" title="职场工具箱之 AARRR 漏斗：为什么有的人做得不多，却成长很快？">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="./wei-fu-wu-de-san-da-an-quan-wei-xie.html" title="微服务的三大安全威胁">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="./bei-guan-suo-le-guan-suo-wu-suo-go-bing-fa-kong-zhi-de-san-chong-zi-shi.html">悲观锁、乐观锁、无锁：Go 并发控制的三种姿势</a></li>
+      <li><a href="./go-cheng-xu-beng-kui-fen-xi-shi-zhan-cong-coredump-dao-gen-yin-ding-wei.html">Go 程序崩溃分析实战：从 Coredump 到根因定位</a></li>
+      <li><a href="./yong-eino-gou-jian-ai-agentgo-kai-fa-zhe-de-langchain-zhong-yu-lai-liao.html">用 Eino 构建 AI Agent：Go 开发者的 LangChain 终于来了</a></li>
+      <li><a href="./jing-ti-ni-de-go-cheng-xu-zheng-zai-tou-tou-xie-lou-xiang-jie-goroutine-leak.html">警惕！你的 Go 程序正在偷偷"泄漏" —— 详解 Goroutine Leak</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Disqus -->
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+    var disqus_shortname = 'wfblog';
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>
+    Please enable JavaScript to view comments.
+</noscript>
+<!-- End Disqus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : ".",
+  "image": "./images/walterfan.jpg",
+  "description": "an old programmer never die, he just branch to a new address."
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,522 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="./theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="./theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="./theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="./theme/pygments/github.min.css">
+
+      <link href="https://fonts.googleapis.com/css?family=Merriweather:300,400|Open+Sans" rel="stylesheet">
+    <link rel="stylesheet" 
+    href="./theme/tipuesearch/tipuesearch.min.css" />
+
+
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+
+
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="IDOR 不玄学，就一句话：你用 &#34;id=123&#34; 这种直达链接访问资源时，服务端有没有确认 &#34;你就是 123 的主人&#34;。这篇文章用可抄的例子讲清楚：它怎么发生，怎么被利用，怎么在 Java/Go/Python 里修到位。" />
+<meta name="keywords" content="tech, blog, security">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "网络安全指北之 IDOR: Insecure Direct Object Reference (对象引用越权)",
+  "description": "IDOR 不玄学，就一句话：你用 &#34;id=123&#34; 这种直达链接访问资源时，服务端有没有确认 &#34;你就是 123 的主人&#34;。这篇文章用可抄的例子讲清楚：它怎么发生，怎么被利用，怎么在 Java/Go/Python 里修到位。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-03-02T22:09:00+08:00",
+  "dateModified": "2026-03-02T22:12:00+08:00",
+  "url": "./wang-luo-an-quan-zhi-bei-zhi-idor-insecure-direct-object-reference-dui-xiang-yin-yong-yue-quan.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "./wang-luo-an-quan-zhi-bei-zhi-idor-insecure-direct-object-reference-dui-xiang-yin-yong-yue-quan.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "././images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "tech, blog, security"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="网络安全指北之 IDOR: Insecure Direct Object Reference (对象引用越权)"/>
+  <meta property="og:description" content="IDOR 不玄学，就一句话：你用 &#34;id=123&#34; 这种直达链接访问资源时，服务端有没有确认 &#34;你就是 123 的主人&#34;。这篇文章用可抄的例子讲清楚：它怎么发生，怎么被利用，怎么在 Java/Go/Python 里修到位。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="./wang-luo-an-quan-zhi-bei-zhi-idor-insecure-direct-object-reference-dui-xiang-yin-yong-yue-quan.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-03-02 22:09:00+08:00"/>
+  <meta property="article:modified_time" content="2026-03-02 22:12:00+08:00"/>
+  <meta property="article:author" content="./author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="tech"/>
+  <meta property="article:tag" content="blog"/>
+  <meta property="article:tag" content="security"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 网络安全指北之 IDOR: Insecure Direct Object Reference (对象引用越权)</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="./">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="./">Walter Fan</a>
+    </h1>
+
+    <p>手握灵珠常奋笔, 心开天籁不吹箫</p>
+
+    <form class="navbar-search" action="./search.html" role="search">
+      <input type="text" name="q" id="tipue_search_input" placeholder="Search...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank" href="tao.html" >tao</a>
+          </li>
+          <li>
+            <a target="_blank" href="article.html" >article</a>
+          </li>
+          <li>
+            <a target="_blank" href="manual.html" >manual</a>
+          </li>
+          <li>
+            <a target="_blank" href="interest.html" >interest</a>
+          </li>
+          <li>
+            <a target="_self" href="/wordpress" >notebook</a>
+          </li>
+          <li>
+            <a target="_blank" href="bookmark.html" >bookmark</a>
+          </li>
+          <li>
+            <a target="_self" href="/webrtc/examples/index.html" >webrtc</a>
+          </li>
+          <li>
+            <a target="_blank" href="https://github.com/walterfan" >github</a>
+          </li>
+      </ul>
+    </nav>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+</aside>
+  <main>
+
+
+<article class="single">
+  <header>
+      
+    <h1 id="wang-luo-an-quan-zhi-bei-zhi-idor-insecure-direct-object-reference-dui-xiang-yin-yong-yue-quan">网络安全指北之 IDOR: Insecure Direct Object Reference (对象引用越权)</h1>
+    <p>
+      Posted on Mon 02 March 2026 in <a href="./category/tech.html">Tech</a>
+
+        &#8226; 2 min read
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>IDOR: Insecure Direct Object Reference (对象引用越权)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>tech note</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-03-02</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h1 id="idor-insecure-direct-object-reference">IDOR: Insecure Direct Object Reference (对象引用越权)</h1>
+<blockquote>
+<p><strong>一句话版</strong>：你以为你在"查订单"，攻击者在"换号查别人订单"。</p>
+</blockquote>
+<p>很多安全漏洞看起来像魔法，IDOR 不是。它更像你家门锁没锁：</p>
+<ul>
+<li>你把门牌号写得清清楚楚 (orderId, userId, fileId)</li>
+<li>你也确实做了登录 (Authentication)</li>
+<li>但你没做"这扇门到底归谁"的检查 (Authorization)</li>
+</ul>
+<p>于是攻击者不需要爆破、不需要注入，只要把 URL 里的 <code>id=123</code> 改成 <code>id=124</code>，你就把别人的数据端上了桌。</p>
+<p>我早期在前司做会议系统时, 就遇到过这个漏洞, 每个会议会有一个会议号, 在参会时输入这个会议号就可以加会, 这一块是做了严格的校验和权限控制的, 可是在会议详情页查看会议信息时忽略了这个, 于是攻击者可以修改会议号, 直接查看别人的会议信息, 还好, 这个是在测试环境发现的, 如果是在生产环境, 后果就严重了.</p>
+<p>🟢 <strong>问题</strong>：Authentication 和 Authorization 有啥区别？</p>
+<ul>
+<li>Authentication：你是谁 (你有没有登录)</li>
+<li>Authorization：你能干啥 (你能不能看这条数据)</li>
+</ul>
+<p>IDOR 的问题通常出在第二句。</p>
+<hr>
+<h2 id="whatidor">What：IDOR 到底是什么</h2>
+<p>IDOR (Insecure Direct Object Reference) 直译有点拗口，说人话就是：</p>
+<blockquote>
+<p><strong>当系统用"可猜的对象标识"直接定位资源时，服务端没有校验资源归属或权限，导致越权访问。</strong></p>
+</blockquote>
+<p>典型信号就两个：</p>
+<ul>
+<li>URL 或参数里出现 <code>id=...</code>、<code>/users/{id}</code>、<code>/files/{fileId}</code></li>
+<li>后端查询是 <code>SELECT * FROM ... WHERE id = ?</code> 然后直接返回，没有 <code>AND owner_id = ?</code></li>
+</ul>
+<hr>
+<h2 id="why-idor">Why：为什么 IDOR 这么常见 (而且总能漏到线上)</h2>
+<h3 id="1">1) "我都登录了，还要查权限吗？"</h3>
+<p>很多人潜意识里把"登录"当成万能通行证。可现实世界不是这样：</p>
+<p>你刷卡进大楼，不代表你能进财务室。</p>
+<h3 id="2">2) 开发时偷懒，习惯性把对象当成"公共资源"</h3>
+<ul>
+<li>"先把接口通了，权限晚点补"</li>
+<li>"反正前端不会传别人的 id"</li>
+<li>"这只是测试环境"</li>
+</ul>
+<p>你看，都是熟悉的借口。然后就熟悉地翻车。</p>
+<h3 id="3">3) 模型没建清楚，权限边界靠"约定"</h3>
+<p>如果你没把"资源归属"建模成一等公民 (owner/tenant/org)，那权限检查就只能靠人记：</p>
+<p>今天 A 记得加 <code>owner_id</code>，明天 B 忘了加，后天上线。</p>
+<p>🔵 <strong>觉醒者反思</strong>：你们现在是不是靠 code review 人肉抓 IDOR？</p>
+<p>如果是，那你们离"偶发事故"只差一次赶工。</p>
+<hr>
+<h2 id="how-idor">How：防 IDOR，盯住三件事</h2>
+<h3 id="1_1">1) 资源归属校验必须发生在服务端</h3>
+<p>一句话：<strong>任何来自客户端的 <code>id</code> 都不可信</strong>。</p>
+<p>正确姿势通常是这句：</p>
+<ul>
+<li>"给我订单 123" → "先确认 123 的 owner 是不是当前用户"</li>
+</ul>
+<h3 id="2-handler">2) 权限检查要"可复用"，别散落在每个 handler 里</h3>
+<p>你可以用：</p>
+<ul>
+<li>中间件 / 拦截器 (把 user/tenant 放进上下文)</li>
+<li>Policy (Casbin / OPA / 自己的 policy 层)</li>
+<li>Repository 层约束 (把 <code>ownerId</code> 作为查询必填参数)</li>
+</ul>
+<p>目的无他：<strong>别靠人的记性</strong>。</p>
+<h3 id="3-idor">3) 测试要能抓得住 IDOR</h3>
+<p>至少准备两类测试：</p>
+<ul>
+<li>"同一用户"访问自己资源 -&gt; 200</li>
+<li>"换一个用户"访问别人的资源 -&gt; 403 或 404</li>
+</ul>
+<p>这里的 404/403 选哪个，看你的产品策略。安全上，两者都行，但要一致。</p>
+<hr>
+<h2 id="example-javagopython">Example：三段你可以直接抄的示例 (Java/Go/Python)</h2>
+<h3 id="java-spring-boot">Java (Spring Boot)：用方法级鉴权 + 资源归属校验</h3>
+<p>核心是两步：</p>
+<ul>
+<li>从 token/session 拿到 <code>currentUserId</code></li>
+<li>查数据库时带上 <code>ownerId</code></li>
+</ul>
+<div class="highlight"><pre><span></span><code><span class="nd">@GetMapping</span><span class="p">(</span><span class="s">&quot;/api/orders/{orderId}&quot;</span><span class="p">)</span>
+<span class="kd">public</span><span class="w"> </span><span class="n">OrderResponse</span><span class="w"> </span><span class="nf">getOrder</span><span class="p">(</span><span class="nd">@PathVariable</span><span class="w"> </span><span class="kt">long</span><span class="w"> </span><span class="n">orderId</span><span class="p">,</span>
+<span class="w">                              </span><span class="nd">@AuthenticationPrincipal</span><span class="w"> </span><span class="n">AppUserPrincipal</span><span class="w"> </span><span class="n">principal</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kt">long</span><span class="w"> </span><span class="n">currentUserId</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">principal</span><span class="p">.</span><span class="na">userId</span><span class="p">();</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">orderService</span><span class="p">.</span><span class="na">getOrderForUser</span><span class="p">(</span><span class="n">orderId</span><span class="p">,</span><span class="w"> </span><span class="n">currentUserId</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="kd">public</span><span class="w"> </span><span class="n">OrderResponse</span><span class="w"> </span><span class="nf">getOrderForUser</span><span class="p">(</span><span class="kt">long</span><span class="w"> </span><span class="n">orderId</span><span class="p">,</span><span class="w"> </span><span class="kt">long</span><span class="w"> </span><span class="n">userId</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">orderRepository</span><span class="p">.</span><span class="na">findByIdAndOwnerId</span><span class="p">(</span><span class="n">orderId</span><span class="p">,</span><span class="w"> </span><span class="n">userId</span><span class="p">)</span>
+<span class="w">        </span><span class="p">.</span><span class="na">map</span><span class="p">(</span><span class="n">OrderResponse</span><span class="p">::</span><span class="n">from</span><span class="p">)</span>
+<span class="w">        </span><span class="p">.</span><span class="na">orElseThrow</span><span class="p">(()</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">ResponseStatusException</span><span class="p">(</span><span class="n">HttpStatus</span><span class="p">.</span><span class="na">NOT_FOUND</span><span class="p">));</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>🟢 <strong>问题</strong>：为什么这里用 404？</p>
+<p>因为你不想告诉对方"订单 123 存在, 只是你没权限"。这算一种"少说两句"的安全习惯。</p>
+<h3 id="go-gin-ownerid">Go (Gin)：把 ownerId 变成查询必填参数</h3>
+<div class="highlight"><pre><span></span><code><span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">s</span><span class="w"> </span><span class="o">*</span><span class="nx">Store</span><span class="p">)</span><span class="w"> </span><span class="nx">GetOrderForUser</span><span class="p">(</span><span class="nx">ctx</span><span class="w"> </span><span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span><span class="w"> </span><span class="nx">orderID</span><span class="p">,</span><span class="w"> </span><span class="nx">userID</span><span class="w"> </span><span class="kt">int64</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="o">*</span><span class="nx">Order</span><span class="p">,</span><span class="w"> </span><span class="kt">error</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="c1">// SELECT ... WHERE id=? AND owner_id=?</span>
+<span class="w">    </span><span class="c1">// 只要你把 userID 变成必填, handler 就很难漏掉它</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">s</span><span class="p">.</span><span class="nx">repo</span><span class="p">.</span><span class="nx">FindOrderByIDAndOwnerID</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">orderID</span><span class="p">,</span><span class="w"> </span><span class="nx">userID</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>配合一个统一的 auth middleware，从 JWT 里解析出 userId 存进 context，handler 只负责取：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">userID</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">MustUserID</span><span class="p">(</span><span class="nx">c</span><span class="p">)</span><span class="w"> </span><span class="c1">// 从 context 取, 不从 query/body 取</span>
+<span class="nx">orderID</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">MustOrderIDParam</span><span class="p">(</span><span class="nx">c</span><span class="p">)</span>
+<span class="nx">order</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">store</span><span class="p">.</span><span class="nx">GetOrderForUser</span><span class="p">(</span><span class="nx">c</span><span class="p">.</span><span class="nx">Request</span><span class="p">.</span><span class="nx">Context</span><span class="p">(),</span><span class="w"> </span><span class="nx">orderID</span><span class="p">,</span><span class="w"> </span><span class="nx">userID</span><span class="p">)</span>
+</code></pre></div>
+
+<h3 id="python-djangodrfget_queryset">Python (Django/DRF)：<code>get_queryset</code> 就是你的闸口</h3>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">rest_framework.viewsets</span><span class="w"> </span><span class="kn">import</span> <span class="n">ReadOnlyModelViewSet</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">Order</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.serializers</span><span class="w"> </span><span class="kn">import</span> <span class="n">OrderSerializer</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">OrderViewSet</span><span class="p">(</span><span class="n">ReadOnlyModelViewSet</span><span class="p">):</span>
+    <span class="n">serializer_class</span> <span class="o">=</span> <span class="n">OrderSerializer</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_queryset</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># 只返回当前用户自己的订单, 其余的压根查不到</span>
+        <span class="k">return</span> <span class="n">Order</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">owner_id</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">user</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
+</code></pre></div>
+
+<p>这个写法有个好处：你后面再加 list/retrieve，权限规则天然一致。</p>
+<hr>
+<h2 id="summary">Summary：你记住这句话就够了</h2>
+<p>IDOR 的核心不是"不要用 id"，而是：</p>
+<blockquote>
+<p><strong>任何对象引用都要绑定一个权限上下文 (owner/tenant)，并且在服务端强制校验。</strong></p>
+</blockquote>
+<p>你可以不做复杂的 RBAC/ABAC，但你不能不做"归属检查"。</p>
+<p>目的无他：别让"登录"变成万能钥匙。</p>
+<hr>
+<h2 id="5-checklist">明天就能做的 5 件事 (Checklist)</h2>
+<ul>
+<li>[ ] <strong>全局搜索 <code>findById(</code> / <code>WHERE id =</code></strong>：看看有没有漏掉 owner/tenant 条件</li>
+<li>[ ] <strong>挑 3 个最敏感资源</strong>：订单、发票、文件、地址，把查询改成 <code>id + ownerId</code> 组合</li>
+<li>[ ] <strong>补一条"换号访问"测试</strong>：同一条资源，A 用户 200，B 用户 403/404</li>
+<li>[ ] <strong>把 userId 的来源收口</strong>：只从 auth context 取，禁止从 request 取</li>
+<li>[ ] <strong>写一条团队红线</strong>："任何资源查询必须带 owner/tenant"，写进 review checklist</li>
+</ul>
+<hr>
+<h2 id="_1">扩展阅读</h2>
+<ul>
+<li><a href="https://owasp.org/Top10/A01_2021-Broken_Access_Control/">OWASP Top 10 2021 - A01 Broken Access Control</a> (IDOR 的大本营)</li>
+<li><a href="https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html">OWASP Cheat Sheet Series - Authorization Cheat Sheet</a> (怎么做授权不踩坑)</li>
+</ul>
+<hr>
+<h2 id="_2">思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node { BackgroundColor #FAFAFA }
+  :depth(0) { BackgroundColor #FFD700 }
+  :depth(1) { BackgroundColor #E3F2FD }
+  :depth(2) { BackgroundColor #F5F5F5 }
+}
+&lt;/style&gt;
+title IDOR (对象引用越权)
+* IDOR
+** What (是什么)
+*** 直接对象引用 (id/path)
+*** 缺少归属/权限校验
+*** 改个数字就越权
+** Why (为什么常见)
+*** 把&quot;登录&quot;当万能钥匙
+*** 先上线后补权限
+*** 资源归属没建模
+** How (怎么防)
+*** 服务端做归属校验 (id + owner/tenant)
+*** 权限逻辑可复用 (policy/middleware/repo)
+*** 测试覆盖换号访问 (200 vs 403/404)
+** Example (怎么写)
+*** Java: findByIdAndOwnerId
+*** Go: repo 强制 ownerId
+*** Python: get_queryset 过滤
+** Action Checklist
+*** 全局搜 findById/WHERE id=
+*** 敏感资源改查询条件
+*** 加换号访问测试
+*** userId 只从 auth context 取
+*** 立团队红线
+@endmindmap
+</code></pre></div>
+
+<p><img alt="IDOR - 思维导图" src="./images/tech_20260302_idor_mindmap.png"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。</p>
+  </div>
+  <div class="tag-cloud">
+    <p>
+      <a href="./tag/tech.html">tech</a>
+      <a href="./tag/blog.html">blog</a>
+      <a href="./tag/security.html">security</a>
+    </p>
+  </div>
+
+
+  <div class="center social-share" style="margin: 1.5em 0; text-align: center;">
+    <p style="margin-bottom: 0.5em; color: #888;">📤 Share this article</p>
+    <a href="https://twitter.com/intent/tweet?text=%E7%BD%91%E7%BB%9C%E5%AE%89%E5%85%A8%E6%8C%87%E5%8C%97%E4%B9%8B%20IDOR%3A%20Insecure%20Direct%20Object%20Reference%20%28%E5%AF%B9%E8%B1%A1%E5%BC%95%E7%94%A8%E8%B6%8A%E6%9D%83%29&url=./wang-luo-an-quan-zhi-bei-zhi-idor-insecure-direct-object-reference-dui-xiang-yin-yong-yue-quan.html"
+       target="_blank" rel="noopener" title="Share on Twitter/X"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#1da1f2; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      𝕏 Twitter
+    </a>
+    <a href="https://www.linkedin.com/sharing/share-offsite/?url=./wang-luo-an-quan-zhi-bei-zhi-idor-insecure-direct-object-reference-dui-xiang-yin-yong-yue-quan.html"
+       target="_blank" rel="noopener" title="Share on LinkedIn"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#0077b5; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      💼 LinkedIn
+    </a>
+    <a href="javascript:void(0);" onclick="copyLink('./wang-luo-an-quan-zhi-bei-zhi-idor-insecure-direct-object-reference-dui-xiang-yin-yong-yue-quan.html')" title="Copy link"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#666; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em; cursor:pointer;">
+      🔗 Copy Link
+    </a>
+    <script>
+    function copyLink(url) {
+      navigator.clipboard.writeText(url).then(function() {
+        alert('链接已复制！');
+      });
+    }
+    </script>
+  </div>
+
+  <div class="neighbors">
+    <a class="btn float-left" href="./wang-luo-an-quan-zhi-bei-zhi-sensitive-data-exposuremin-gan-shu-ju-bao-lu.html" title="网络安全指北之Sensitive Data Exposure：敏感数据暴露">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="./wang-luo-an-quan-zhi-bei-zhi-csrfcross-site-request-forgery-kua-zhan-qing-qiu-wei-zao.html" title="网络安全指北之 CSRF：Cross-Site Request Forgery (跨站请求伪造)">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="./wang-luo-an-quan-zhi-bei-zhi-broken-auth-and-session-managementdeng-lu-yu-hui-hua-guan-li-fan-che-zhi-nan.html">网络安全指北之 Broken Auth and Session Management：登录与会话管理翻车指南</a></li>
+      <li><a href="./wang-luo-an-quan-zhi-bei-zhi-csrfcross-site-request-forgery-kua-zhan-qing-qiu-wei-zao.html">网络安全指北之 CSRF：Cross-Site Request Forgery (跨站请求伪造)</a></li>
+      <li><a href="./wang-luo-an-quan-zhi-bei-zhi-sensitive-data-exposuremin-gan-shu-ju-bao-lu.html">网络安全指北之Sensitive Data Exposure：敏感数据暴露</a></li>
+      <li><a href="./ai-shi-dai-de-ruan-jian-gong-cheng.html">AI 时代的软件工程</a></li>
+      <li><a href="./common-identity-service.html">Common Identity Service</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="./theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : ".",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

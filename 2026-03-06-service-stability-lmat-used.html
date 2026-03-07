@@ -1,0 +1,1097 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="./theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="./theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="./theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="./theme/pygments/github.min.css">
+
+      <link href="https://fonts.googleapis.com/css?family=Merriweather:300,400|Open+Sans" rel="stylesheet">
+    <link rel="stylesheet" 
+    href="./theme/tipuesearch/tipuesearch.min.css" />
+
+
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+
+
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="隐患险于明火，防范胜于救灾，责任重于泰山。本文介绍服务稳定性的两个核心方法论：LMAT（Log, Metrics, Alert, Trace）和 USED（Usage, Saturation, Error, Delay），并结合实践经验，讲解如何构建一套系统化的服务稳定性保障体系。" />
+<meta name="keywords" content="observability, SRE, monitoring, stability, LMAT, USED">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "服务稳定性之 LMAT 和 USED",
+  "description": "隐患险于明火，防范胜于救灾，责任重于泰山。本文介绍服务稳定性的两个核心方法论：LMAT（Log, Metrics, Alert, Trace）和 USED（Usage, Saturation, Error, Delay），并结合实践经验，讲解如何构建一套系统化的服务稳定性保障体系。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-03-06T00:00:00+08:00",
+  "dateModified": "2026-03-06T00:00:00+08:00",
+  "url": "./2026-03-06-service-stability-lmat-used.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "./2026-03-06-service-stability-lmat-used.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "././images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "observability, SRE, monitoring, stability, LMAT, USED"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="服务稳定性之 LMAT 和 USED"/>
+  <meta property="og:description" content="隐患险于明火，防范胜于救灾，责任重于泰山。本文介绍服务稳定性的两个核心方法论：LMAT（Log, Metrics, Alert, Trace）和 USED（Usage, Saturation, Error, Delay），并结合实践经验，讲解如何构建一套系统化的服务稳定性保障体系。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="./2026-03-06-service-stability-lmat-used.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-03-06 00:00:00+08:00"/>
+  <meta property="article:modified_time" content=""/>
+  <meta property="article:author" content="./author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="observability"/>
+  <meta property="article:tag" content="SRE"/>
+  <meta property="article:tag" content="monitoring"/>
+  <meta property="article:tag" content="stability"/>
+  <meta property="article:tag" content="LMAT"/>
+  <meta property="article:tag" content="USED"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 服务稳定性之 LMAT 和 USED</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="./">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="./">Walter Fan</a>
+    </h1>
+
+    <p>手握灵珠常奋笔, 心开天籁不吹箫</p>
+
+    <form class="navbar-search" action="./search.html" role="search">
+      <input type="text" name="q" id="tipue_search_input" placeholder="Search...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank" href="tao.html" >tao</a>
+          </li>
+          <li>
+            <a target="_blank" href="article.html" >article</a>
+          </li>
+          <li>
+            <a target="_blank" href="manual.html" >manual</a>
+          </li>
+          <li>
+            <a target="_blank" href="interest.html" >interest</a>
+          </li>
+          <li>
+            <a target="_self" href="/wordpress" >notebook</a>
+          </li>
+          <li>
+            <a target="_blank" href="bookmark.html" >bookmark</a>
+          </li>
+          <li>
+            <a target="_self" href="/webrtc/examples/index.html" >webrtc</a>
+          </li>
+          <li>
+            <a target="_blank" href="https://github.com/walterfan" >github</a>
+          </li>
+      </ul>
+    </nav>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+</aside>
+  <main>
+
+
+<article class="single">
+  <header>
+      
+    <h1 id="2026-03-06-service-stability-lmat-used">服务稳定性之 LMAT 和 USED</h1>
+    <p>
+      Posted on Fri 06 March 2026 in <a href="./category/tech.html">Tech</a>
+
+        &#8226; 7 min read
+    </p>
+  </header>
+
+
+  <div>
+    <h1 id="lmat-used">服务稳定性之 LMAT 和 USED</h1>
+<blockquote>
+<p>隐患险于明火，防范胜于救灾，责任重于泰山。</p>
+</blockquote>
+<p>这句话用在消防安全上恰如其分，用在服务稳定性上同样贴切。</p>
+<p>线上故障就像火灾——等你看到火光（用户投诉）时，往往已经烧了一阵子了。真正的功夫不在救火，而在防火：<strong>你能不能在火苗刚起时就发现它？你有没有一套系统化的巡检机制？你的告警是不是真的能叫醒该叫醒的人？</strong></p>
+<p>本文介绍两个我在实践中反复使用的方法论框架：</p>
+<ul>
+<li><strong>LMAT</strong>：Log, Metrics, Alert, Trace —— 可观测性的四根支柱</li>
+<li><strong>USED</strong>：Usage, Saturation, Error, Delay —— 资源健康度的四个维度</li>
+</ul>
+<p>它们一个回答"用什么手段观测"，一个回答"观测什么内容"，组合起来就是一套完整的服务稳定性保障体系。</p>
+<div class="highlight"><pre><span></span><code>                    ┌─────────────────────────────────┐
+                    │        服务稳定性保障体系          │
+                    ├────────────────┬────────────────┤
+                    │   LMAT         │   USED         │
+                    │   (怎么观测)    │   (观测什么)    │
+                    ├────────────────┼────────────────┤
+                    │ Log   日志     │ Usage   用量   │
+                    │ Metrics 度量   │ Saturation 饱和│
+                    │ Alert  告警    │ Error   错误   │
+                    │ Trace  追踪    │ Delay   延迟   │
+                    └────────────────┴────────────────┘
+</code></pre></div>
+
+<hr>
+<h2 id="lmat">一、LMAT：可观测性的四根支柱</h2>
+<p>可观测性（Observability）这个词这几年被说烂了，但很多团队的实践仍然停留在"有日志就行"的阶段。LMAT 框架把可观测性拆成四个层次，每一层解决不同的问题。</p>
+<h3 id="11-log">1.1 Log（日志）—— 事后取证的第一现场</h3>
+<p>日志是最古老、最直觉的观测手段。出了问题，第一反应就是"看日志"。</p>
+<p><strong>日志的核心价值：事后分析和取证。</strong></p>
+<div class="highlight"><pre><span></span><code>[2026-03-06 10:23:45.123] ERROR [order-service] [trace_id=abc123]
+  Failed to process order #98765: PaymentGatewayTimeout
+  user_id=u_42 amount=299.00 retry=2/3
+  at com.example.OrderService.processPayment(OrderService.java:142)
+</code></pre></div>
+
+<p>一条好的日志应该包含：</p>
+<table>
+<thead>
+<tr>
+<th>要素</th>
+<th>说明</th>
+<th>示例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>时间戳</strong></td>
+<td>精确到毫秒</td>
+<td><code>2026-03-06T10:23:45.123Z</code></td>
+</tr>
+<tr>
+<td><strong>级别</strong></td>
+<td>ERROR/WARN/INFO/DEBUG</td>
+<td><code>ERROR</code></td>
+</tr>
+<tr>
+<td><strong>服务名</strong></td>
+<td>哪个服务产生的</td>
+<td><code>order-service</code></td>
+</tr>
+<tr>
+<td><strong>Trace ID</strong></td>
+<td>关联到分布式追踪</td>
+<td><code>trace_id=abc123</code></td>
+</tr>
+<tr>
+<td><strong>上下文</strong></td>
+<td>业务关键字段</td>
+<td><code>user_id</code>, <code>order_id</code>, <code>amount</code></td>
+</tr>
+<tr>
+<td><strong>错误详情</strong></td>
+<td>具体什么错</td>
+<td><code>PaymentGatewayTimeout</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>日志的常见问题：</strong></p>
+<ul>
+<li><strong>日志太多</strong>：每秒几万条，存储成本爆炸，搜索慢如蜗牛</li>
+<li><strong>日志太少</strong>：出了问题找不到关键信息，只能加日志重新部署</li>
+<li><strong>日志没结构</strong>：自由文本格式，无法聚合分析</li>
+<li><strong>日志没关联</strong>：缺少 Trace ID，无法串联一次请求的完整链路</li>
+</ul>
+<p><strong>最佳实践：</strong></p>
+<div class="highlight"><pre><span></span><code><span class="c1"># ❌ 不好的日志</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s2">&quot;something went wrong&quot;</span><span class="p">)</span>
+
+<span class="c1"># ✅ 好的日志：结构化 + 上下文</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span>
+    <span class="s2">&quot;Payment gateway timeout&quot;</span><span class="p">,</span>
+    <span class="n">extra</span><span class="o">=</span><span class="p">{</span>
+        <span class="s2">&quot;trace_id&quot;</span><span class="p">:</span> <span class="n">ctx</span><span class="o">.</span><span class="n">trace_id</span><span class="p">,</span>
+        <span class="s2">&quot;user_id&quot;</span><span class="p">:</span> <span class="n">user</span><span class="o">.</span><span class="n">id</span><span class="p">,</span>
+        <span class="s2">&quot;order_id&quot;</span><span class="p">:</span> <span class="n">order</span><span class="o">.</span><span class="n">id</span><span class="p">,</span>
+        <span class="s2">&quot;amount&quot;</span><span class="p">:</span> <span class="n">order</span><span class="o">.</span><span class="n">amount</span><span class="p">,</span>
+        <span class="s2">&quot;gateway&quot;</span><span class="p">:</span> <span class="s2">&quot;stripe&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;retry_count&quot;</span><span class="p">:</span> <span class="n">retry_count</span><span class="p">,</span>
+        <span class="s2">&quot;latency_ms&quot;</span><span class="p">:</span> <span class="n">elapsed_ms</span><span class="p">,</span>
+    <span class="p">}</span>
+<span class="p">)</span>
+</code></pre></div>
+
+<p><strong>日志分级策略：</strong></p>
+<div class="highlight"><pre><span></span><code>生产环境日志级别建议：
+
+INFO  ── 关键业务事件（订单创建、支付成功、用户登录）
+WARN  ── 可恢复的异常（重试成功、降级触发、缓存未命中）
+ERROR ── 不可恢复的错误（支付失败、数据库连接断开）
+DEBUG ── 仅在排查问题时动态开启（通过配置中心热更新）
+</code></pre></div>
+
+<h3 id="12-metrics">1.2 Metrics（度量）—— 实时体检的仪表盘</h3>
+<p>如果说日志是"病历本"，那度量就是"体检报告"。</p>
+<p><strong>度量的核心价值：实时感知系统的健康状态。</strong></p>
+<p>度量是数值型的时间序列数据，天然适合聚合、对比、告警。</p>
+<div class="highlight"><pre><span></span><code># Prometheus 格式的度量
+http_requests_total{service=&quot;order&quot;, method=&quot;POST&quot;, status=&quot;200&quot;} 12345
+http_request_duration_seconds{service=&quot;order&quot;, quantile=&quot;0.99&quot;} 0.85
+order_payment_errors_total{gateway=&quot;stripe&quot;, reason=&quot;timeout&quot;} 42
+</code></pre></div>
+
+<p><strong>四种度量类型：</strong></p>
+<table>
+<thead>
+<tr>
+<th>类型</th>
+<th>说明</th>
+<th>典型用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Counter</strong></td>
+<td>只增不减的计数器</td>
+<td>请求总数、错误总数、Token 消耗</td>
+</tr>
+<tr>
+<td><strong>Gauge</strong></td>
+<td>可增可减的瞬时值</td>
+<td>CPU 使用率、队列长度、连接数</td>
+</tr>
+<tr>
+<td><strong>Histogram</strong></td>
+<td>值的分布（分桶统计）</td>
+<td>延迟分布、请求大小分布</td>
+</tr>
+<tr>
+<td><strong>Summary</strong></td>
+<td>值的分位数（客户端计算）</td>
+<td>P50/P99 延迟</td>
+</tr>
+</tbody>
+</table>
+<p><strong>度量的黄金法则——RED 和 USE：</strong></p>
+<div class="highlight"><pre><span></span><code>面向请求的服务（API、Web）用 RED：
+  Rate    ── 每秒请求数
+  Error   ── 错误率
+  Duration ── 延迟
+
+面向资源的组件（DB、Cache、Queue）用 USE：
+  Utilization ── 利用率
+  Saturation  ── 饱和度
+  Errors      ── 错误数
+</code></pre></div>
+
+<p><strong>度量命名规范（Prometheus 风格）：</strong></p>
+<div class="highlight"><pre><span></span><code># 格式：&lt;namespace&gt;_&lt;subsystem&gt;_&lt;name&gt;_&lt;unit&gt;
+# 示例：
+http_server_requests_total          # Counter
+http_server_request_duration_seconds # Histogram
+db_pool_connections_active           # Gauge
+mq_consumer_lag_messages             # Gauge
+</code></pre></div>
+
+<h3 id="13-alert">1.3 Alert（告警）—— 把被动救火变成主动预警</h3>
+<p>度量告诉你"现在怎么样"，告警告诉你"什么时候该行动"。</p>
+<p><strong>告警的核心价值：在用户感知之前发现问题。</strong></p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Prometheus 告警规则示例</span>
+<span class="nt">groups</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">order-service-alerts</span>
+<span class="w">    </span><span class="nt">rules</span><span class="p">:</span>
+<span class="w">      </span><span class="c1"># 错误率告警</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">alert</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">HighErrorRate</span>
+<span class="w">        </span><span class="nt">expr</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<span class="w">          </span><span class="no">sum(rate(http_requests_total{service=&quot;order&quot;,status=~&quot;5..&quot;}[5m]))</span>
+<span class="w">          </span><span class="no">/ sum(rate(http_requests_total{service=&quot;order&quot;}[5m])) &gt; 0.01</span>
+<span class="w">        </span><span class="nt">for</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3m</span>
+<span class="w">        </span><span class="nt">labels</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">severity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">critical</span>
+<span class="w">        </span><span class="nt">annotations</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">summary</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;订单服务错误率</span><span class="nv"> </span><span class="s">&gt;</span><span class="nv"> </span><span class="s">1%:</span><span class="nv"> </span><span class="s">{{</span><span class="nv"> </span><span class="s">$value</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">humanizePercentage</span><span class="nv"> </span><span class="s">}}&quot;</span>
+<span class="w">          </span><span class="nt">runbook</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://wiki.example.com/runbook/order-high-error-rate&quot;</span>
+
+<span class="w">      </span><span class="c1"># 延迟告警</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">alert</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">HighLatency</span>
+<span class="w">        </span><span class="nt">expr</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<span class="w">          </span><span class="no">histogram_quantile(0.99,</span>
+<span class="w">            </span><span class="no">rate(http_request_duration_seconds_bucket{service=&quot;order&quot;}[5m])</span>
+<span class="w">          </span><span class="no">) &gt; 2.0</span>
+<span class="w">        </span><span class="nt">for</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5m</span>
+<span class="w">        </span><span class="nt">labels</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">severity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">warning</span>
+<span class="w">        </span><span class="nt">annotations</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">summary</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;订单服务</span><span class="nv"> </span><span class="s">P99</span><span class="nv"> </span><span class="s">延迟</span><span class="nv"> </span><span class="s">&gt;</span><span class="nv"> </span><span class="s">2s:</span><span class="nv"> </span><span class="s">{{</span><span class="nv"> </span><span class="s">$value</span><span class="nv"> </span><span class="s">}}s&quot;</span>
+</code></pre></div>
+
+<p><strong>告警的三大陷阱：</strong></p>
+<table>
+<thead>
+<tr>
+<th>陷阱</th>
+<th>症状</th>
+<th>解决方案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>告警风暴</strong></td>
+<td>一个故障触发几十条告警，淹没真正重要的信息</td>
+<td>告警聚合 + 抑制规则 + 分级</td>
+</tr>
+<tr>
+<td><strong>告警疲劳</strong></td>
+<td>太多误报，on-call 开始忽略告警</td>
+<td>定期清理无效告警，每条告警必须有 runbook</td>
+</tr>
+<tr>
+<td><strong>告警缺失</strong></td>
+<td>故障发生了但没有告警</td>
+<td>定期做故障演练，验证告警覆盖率</td>
+</tr>
+</tbody>
+</table>
+<p><strong>告警分级：</strong></p>
+<div class="highlight"><pre><span></span><code>P0 (Critical) ── 用户受影响，立即响应
+  例：支付成功率 &lt; 99%、核心 API 不可用
+  通知：电话 + 短信 + IM
+  响应：5 分钟内
+
+P1 (High) ── 即将影响用户，尽快处理
+  例：错误率上升、延迟恶化、资源接近饱和
+  通知：IM + 邮件
+  响应：30 分钟内
+
+P2 (Medium) ── 需要关注，工作时间处理
+  例：非核心服务异常、日志错误增多
+  通知：IM
+  响应：4 小时内
+
+P3 (Low) ── 信息性告警，下个迭代处理
+  例：证书即将过期、磁盘使用率 &gt; 70%
+  通知：邮件 / 工单
+  响应：1 周内
+</code></pre></div>
+
+<p><strong>好的告警 = 可执行的告警。</strong> 每条告警都应该附带 runbook（操作手册），告诉 on-call 工程师：这个告警意味着什么？应该怎么排查？常见的根因有哪些？</p>
+<h3 id="14-trace-x">1.4 Trace（追踪）—— 分布式系统的 X 光片</h3>
+<p>在微服务架构下，一个用户请求可能经过 5-10 个服务。出了问题，你怎么知道是哪个环节慢了、哪个环节报错了？</p>
+<p><strong>追踪的核心价值：还原一次请求的完整链路。</strong></p>
+<div class="highlight"><pre><span></span><code>Trace: abc-123-def
+│
+├── [order-service] POST /api/orders  (120ms)
+│   ├── [order-service] validate_request  (2ms)
+│   ├── [order-service] check_inventory   (15ms)
+│   │   └── [inventory-service] GET /api/stock  (12ms)
+│   ├── [order-service] process_payment   (95ms)  ⚠️ 慢！
+│   │   └── [payment-service] POST /api/charge  (90ms)
+│   │       └── [stripe-gateway] external_call  (85ms)  🔥 根因
+│   └── [order-service] send_notification  (5ms)
+│       └── [notification-service] POST /api/notify  (3ms)
+</code></pre></div>
+
+<p>一眼就能看出：支付环节耗时 95ms，其中 85ms 花在了 Stripe 外部调用上。</p>
+<p><strong>追踪的三个核心概念：</strong></p>
+<table>
+<thead>
+<tr>
+<th>概念</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Trace</strong></td>
+<td>一次完整请求的全链路，由唯一的 Trace ID 标识</td>
+</tr>
+<tr>
+<td><strong>Span</strong></td>
+<td>链路中的一个操作单元（一次函数调用、一次 RPC、一次 DB 查询）</td>
+</tr>
+<tr>
+<td><strong>Context Propagation</strong></td>
+<td>在服务间传递 Trace ID，串联所有 Span</td>
+</tr>
+</tbody>
+</table>
+<p><strong>OpenTelemetry 实现：</strong></p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">opentelemetry</span><span class="w"> </span><span class="kn">import</span> <span class="n">trace</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">opentelemetry.instrumentation.fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPIInstrumentor</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">opentelemetry.instrumentation.httpx</span><span class="w"> </span><span class="kn">import</span> <span class="n">HTTPXClientInstrumentor</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">opentelemetry.instrumentation.sqlalchemy</span><span class="w"> </span><span class="kn">import</span> <span class="n">SQLAlchemyInstrumentor</span>
+
+<span class="c1"># 自动注入：FastAPI 入口 + HTTP 客户端 + 数据库</span>
+<span class="n">FastAPIInstrumentor</span><span class="o">.</span><span class="n">instrument_app</span><span class="p">(</span><span class="n">app</span><span class="p">)</span>
+<span class="n">HTTPXClientInstrumentor</span><span class="p">()</span><span class="o">.</span><span class="n">instrument</span><span class="p">()</span>
+<span class="n">SQLAlchemyInstrumentor</span><span class="p">()</span><span class="o">.</span><span class="n">instrument</span><span class="p">(</span><span class="n">engine</span><span class="o">=</span><span class="n">engine</span><span class="p">)</span>
+
+<span class="c1"># 手动注入：业务关键路径</span>
+<span class="n">tracer</span> <span class="o">=</span> <span class="n">trace</span><span class="o">.</span><span class="n">get_tracer</span><span class="p">(</span><span class="s2">&quot;order-service&quot;</span><span class="p">)</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">process_order</span><span class="p">(</span><span class="n">order</span><span class="p">):</span>
+    <span class="k">with</span> <span class="n">tracer</span><span class="o">.</span><span class="n">start_as_current_span</span><span class="p">(</span><span class="s2">&quot;process_order&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">span</span><span class="p">:</span>
+        <span class="n">span</span><span class="o">.</span><span class="n">set_attribute</span><span class="p">(</span><span class="s2">&quot;order.id&quot;</span><span class="p">,</span> <span class="n">order</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
+        <span class="n">span</span><span class="o">.</span><span class="n">set_attribute</span><span class="p">(</span><span class="s2">&quot;order.amount&quot;</span><span class="p">,</span> <span class="n">order</span><span class="o">.</span><span class="n">amount</span><span class="p">)</span>
+
+        <span class="k">with</span> <span class="n">tracer</span><span class="o">.</span><span class="n">start_as_current_span</span><span class="p">(</span><span class="s2">&quot;check_inventory&quot;</span><span class="p">):</span>
+            <span class="k">await</span> <span class="n">inventory_client</span><span class="o">.</span><span class="n">check</span><span class="p">(</span><span class="n">order</span><span class="o">.</span><span class="n">items</span><span class="p">)</span>
+
+        <span class="k">with</span> <span class="n">tracer</span><span class="o">.</span><span class="n">start_as_current_span</span><span class="p">(</span><span class="s2">&quot;process_payment&quot;</span><span class="p">):</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">payment_client</span><span class="o">.</span><span class="n">charge</span><span class="p">(</span><span class="n">order</span><span class="p">)</span>
+            <span class="n">span</span><span class="o">.</span><span class="n">set_attribute</span><span class="p">(</span><span class="s2">&quot;payment.gateway&quot;</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">gateway</span><span class="p">)</span>
+</code></pre></div>
+
+<h3 id="15-lmat">1.5 LMAT 的协同效应</h3>
+<p>LMAT 四者不是孤立的，它们的真正威力在于<strong>关联</strong>：</p>
+<div class="highlight"><pre><span></span><code>告警触发 (Alert)
+    │
+    ▼ &quot;订单服务错误率 &gt; 1%&quot;
+查看度量 (Metrics)
+    │
+    ▼ 发现 payment 相关的 5xx 激增，从 10:15 开始
+查看追踪 (Trace)
+    │
+    ▼ 抽样几条失败请求，发现都卡在 stripe-gateway，超时 30s
+查看日志 (Log)
+    │
+    ▼ 搜索 trace_id，找到具体错误：
+      &quot;Stripe API returned 503: Service Temporarily Unavailable&quot;
+    │
+    ▼ 根因确认：Stripe 侧故障，触发降级到备用支付通道
+</code></pre></div>
+
+<p><strong>关联的关键是 Trace ID</strong>——它是串联 Log、Metrics、Trace 的纽带。</p>
+<hr>
+<h2 id="used">二、USED：资源健康度的四个维度</h2>
+<p>LMAT 回答了"用什么手段观测"，USED 回答了"观测什么内容"。</p>
+<p>USED 是我在 Brendan Gregg 的 USE Method（Utilization, Saturation, Errors）基础上扩展的版本，增加了 <strong>Delay（延迟）</strong> 维度，更适合面向用户的服务场景。</p>
+<h3 id="21-usage">2.1 Usage（用量）—— 你用了多少？</h3>
+<p>用量是最基础的度量维度：你的资源用了多少，还剩多少。</p>
+<div class="highlight"><pre><span></span><code>┌─────────────────────────────────────────────┐
+│              Usage 度量矩阵                   │
+├──────────────┬──────────────────────────────┤
+│ 资源          │ 度量指标                      │
+├──────────────┼──────────────────────────────┤
+│ CPU          │ 使用率 (%)、核数              │
+│ 内存          │ 已用/总量、RSS、堆内存        │
+│ 磁盘          │ 已用/总量、IOPS              │
+│ 网络          │ 带宽使用率、连接数            │
+│ 数据库连接池   │ 活跃连接/最大连接             │
+│ 线程池        │ 活跃线程/最大线程             │
+│ 消息队列      │ 队列深度、消费速率            │
+│ LLM API      │ Token 使用量、API 调用次数    │
+│ 存储          │ 对象数量、存储空间            │
+└──────────────┴──────────────────────────────┘
+</code></pre></div>
+
+<p><strong>用量度量的关键不是"现在用了多少"，而是"趋势"和"容量"：</strong></p>
+<div class="highlight"><pre><span></span><code><span class="c1"># 容量预测：按当前增长速率，多久会用完？</span>
+<span class="n">predict_linear</span><span class="p">(</span><span class="n">disk_used_bytes</span><span class="p">[</span><span class="mi">7</span><span class="n">d</span><span class="p">],</span> <span class="mi">30</span> <span class="o">*</span> <span class="mi">24</span> <span class="o">*</span> <span class="mi">3600</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">disk_total_bytes</span>
+<span class="c1"># 含义：按过去 7 天的趋势，30 天后磁盘会不会满？</span>
+</code></pre></div>
+
+<h3 id="22-saturation">2.2 Saturation（饱和度）—— 你还能撑多久？</h3>
+<p>饱和度比用量更进一步：不只是"用了多少"，而是"还能不能接受更多工作"。</p>
+<p><strong>用量 vs 饱和度的区别：</strong></p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>用量 (Usage)</th>
+<th>饱和度 (Saturation)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CPU</td>
+<td>使用率 80%</td>
+<td>运行队列长度 &gt; CPU 核数</td>
+</tr>
+<tr>
+<td>内存</td>
+<td>已用 12GB/16GB</td>
+<td>开始 swap，OOM kill</td>
+</tr>
+<tr>
+<td>连接池</td>
+<td>80/100 连接在用</td>
+<td>有请求在等待连接（排队）</td>
+</tr>
+<tr>
+<td>消息队列</td>
+<td>队列中有 1000 条消息</td>
+<td>消费速率 &lt; 生产速率（积压）</td>
+</tr>
+<tr>
+<td>线程池</td>
+<td>8/10 线程在忙</td>
+<td>任务队列开始堆积</td>
+</tr>
+</tbody>
+</table>
+<p><strong>饱和度是"即将出问题"的信号。</strong> 用量高不一定有问题（可能就是正常高峰），但饱和了一定有问题。</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># 饱和度告警示例</span>
+<span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">alert</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">DBConnectionPoolSaturated</span>
+<span class="w">  </span><span class="nt">expr</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<span class="w">    </span><span class="no">db_pool_pending_requests &gt; 0</span>
+<span class="w">  </span><span class="nt">for</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1m</span>
+<span class="w">  </span><span class="nt">annotations</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">summary</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;数据库连接池饱和：有请求在排队等待连接&quot;</span>
+
+<span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">alert</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">MessageQueueBacklog</span>
+<span class="w">  </span><span class="nt">expr</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<span class="w">    </span><span class="no">rate(mq_produced_total[5m]) &gt; rate(mq_consumed_total[5m]) * 1.1</span>
+<span class="w">  </span><span class="nt">for</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10m</span>
+<span class="w">  </span><span class="nt">annotations</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">summary</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;消息队列积压：生产速率持续超过消费速率&quot;</span>
+</code></pre></div>
+
+<h3 id="23-error">2.3 Error（错误）—— 什么东西坏了？</h3>
+<p>错误是最直接的健康信号。但不是所有错误都一样重要。</p>
+<p><strong>错误分类：</strong></p>
+<div class="highlight"><pre><span></span><code>错误严重程度金字塔：
+
+    ▲  数据损坏 / 数据丢失
+    │  ─────────────────────  致命
+    │  服务不可用 (503)
+    │  ─────────────────────  严重
+    │  业务逻辑错误 (500)
+    │  ─────────────────────  高
+    │  上游依赖超时 (504)
+    │  ─────────────────────  中
+    │  客户端错误 (4xx)
+    │  ─────────────────────  低
+    ▼  可重试的瞬时错误
+</code></pre></div>
+
+<p><strong>错误率 vs 错误数：</strong></p>
+<div class="highlight"><pre><span></span><code><span class="c1"># 错误数：绝对值，适合低流量场景</span>
+<span class="n">http_errors_total</span><span class="p">{</span><span class="n">status</span><span class="o">=</span><span class="s2">&quot;500&quot;</span><span class="p">}</span> <span class="o">&gt;</span> <span class="mi">10</span>  <span class="c1"># 过去 5 分钟超过 10 个 500</span>
+
+<span class="c1"># 错误率：相对值，适合高流量场景</span>
+<span class="n">rate</span><span class="p">(</span><span class="n">http_errors_total</span><span class="p">{</span><span class="n">status</span><span class="o">=~</span><span class="s2">&quot;5..&quot;</span><span class="p">}[</span><span class="mi">5</span><span class="n">m</span><span class="p">])</span>
+<span class="o">/</span> <span class="n">rate</span><span class="p">(</span><span class="n">http_requests_total</span><span class="p">[</span><span class="mi">5</span><span class="n">m</span><span class="p">])</span> <span class="o">&gt;</span> <span class="mf">0.01</span>  <span class="c1"># 错误率 &gt; 1%</span>
+</code></pre></div>
+
+<p><strong>错误预算（Error Budget）：</strong></p>
+<p>SRE 的核心理念之一——如果你的 SLO 是 99.9%，那你每月有 43 分钟的错误预算：</p>
+<div class="highlight"><pre><span></span><code>可用性 SLO    月度错误预算
+─────────    ──────────
+99%          7.3 小时
+99.9%        43.2 分钟
+99.95%       21.6 分钟
+99.99%       4.3 分钟
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="c1"># 错误预算消耗速率告警</span>
+<span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">alert</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ErrorBudgetBurnRate</span>
+<span class="w">  </span><span class="nt">expr</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<span class="w">    </span><span class="no">(</span>
+<span class="w">      </span><span class="no">1 - (</span>
+<span class="w">        </span><span class="no">sum(rate(http_requests_total{status!~&quot;5..&quot;}[1h]))</span>
+<span class="w">        </span><span class="no">/ sum(rate(http_requests_total[1h]))</span>
+<span class="w">      </span><span class="no">)</span>
+<span class="w">    </span><span class="no">) * 720 &gt; 1</span>
+<span class="w">  </span><span class="nt">annotations</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">summary</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;错误预算消耗过快：按当前速率，本月预算将提前耗尽&quot;</span>
+</code></pre></div>
+
+<h3 id="24-delay">2.4 Delay（延迟）—— 用户等了多久？</h3>
+<p>延迟是用户体验最直接的度量。一个请求即使成功了，如果等了 10 秒，用户体验也是灾难性的。</p>
+<p><strong>延迟度量的关键原则：看分位数，不看平均值。</strong></p>
+<div class="highlight"><pre><span></span><code>为什么平均值会骗人？
+
+假设 100 个请求：
+  99 个耗时 10ms
+  1 个耗时 10,000ms (10秒)
+
+平均值 = (99×10 + 1×10000) / 100 = 109ms  ← 看起来还行？
+P99    = 10,000ms                          ← 真相：1% 的用户等了 10 秒！
+</code></pre></div>
+
+<p><strong>延迟分层度量：</strong></p>
+<div class="highlight"><pre><span></span><code>用户感知延迟（端到端）
+    │
+    ├── 网络延迟（DNS + TCP + TLS）
+    │
+    ├── 网关延迟（负载均衡、WAF）
+    │
+    ├── 服务处理延迟
+    │   ├── 业务逻辑
+    │   ├── 数据库查询
+    │   ├── 缓存访问
+    │   ├── 外部 API 调用
+    │   └── 序列化/反序列化
+    │
+    └── 响应传输延迟
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="c1"># 延迟 Histogram（Prometheus）</span>
+<span class="n">http_request_duration_seconds</span> <span class="o">=</span> <span class="n">Histogram</span><span class="p">(</span>
+    <span class="s2">&quot;http_request_duration_seconds&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Request duration&quot;</span><span class="p">,</span>
+    <span class="p">[</span><span class="s2">&quot;service&quot;</span><span class="p">,</span> <span class="s2">&quot;method&quot;</span><span class="p">,</span> <span class="s2">&quot;endpoint&quot;</span><span class="p">],</span>
+    <span class="n">buckets</span><span class="o">=</span><span class="p">[</span><span class="mf">0.01</span><span class="p">,</span> <span class="mf">0.025</span><span class="p">,</span> <span class="mf">0.05</span><span class="p">,</span> <span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.25</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.5</span><span class="p">,</span> <span class="mf">5.0</span><span class="p">,</span> <span class="mf">10.0</span><span class="p">]</span>
+<span class="p">)</span>
+
+<span class="c1"># 关键 PromQL</span>
+<span class="c1"># P50 延迟</span>
+<span class="n">histogram_quantile</span><span class="p">(</span><span class="mf">0.50</span><span class="p">,</span> <span class="n">rate</span><span class="p">(</span><span class="n">http_request_duration_seconds_bucket</span><span class="p">[</span><span class="mi">5</span><span class="n">m</span><span class="p">]))</span>
+<span class="c1"># P99 延迟</span>
+<span class="n">histogram_quantile</span><span class="p">(</span><span class="mf">0.99</span><span class="p">,</span> <span class="n">rate</span><span class="p">(</span><span class="n">http_request_duration_seconds_bucket</span><span class="p">[</span><span class="mi">5</span><span class="n">m</span><span class="p">]))</span>
+<span class="c1"># Apdex 分数（满意 &lt; 0.5s，容忍 &lt; 2s）</span>
+<span class="p">(</span>
+  <span class="nb">sum</span><span class="p">(</span><span class="n">rate</span><span class="p">(</span><span class="n">http_request_duration_seconds_bucket</span><span class="p">{</span><span class="n">le</span><span class="o">=</span><span class="s2">&quot;0.5&quot;</span><span class="p">}[</span><span class="mi">5</span><span class="n">m</span><span class="p">]))</span>
+  <span class="o">+</span> <span class="nb">sum</span><span class="p">(</span><span class="n">rate</span><span class="p">(</span><span class="n">http_request_duration_seconds_bucket</span><span class="p">{</span><span class="n">le</span><span class="o">=</span><span class="s2">&quot;2.0&quot;</span><span class="p">}[</span><span class="mi">5</span><span class="n">m</span><span class="p">]))</span>
+<span class="p">)</span> <span class="o">/</span> <span class="mi">2</span> <span class="o">/</span> <span class="nb">sum</span><span class="p">(</span><span class="n">rate</span><span class="p">(</span><span class="n">http_request_duration_seconds_count</span><span class="p">[</span><span class="mi">5</span><span class="n">m</span><span class="p">]))</span>
+</code></pre></div>
+
+<hr>
+<h2 id="lmat-used_1">三、LMAT × USED：构建完整的度量矩阵</h2>
+<p>把 LMAT 和 USED 交叉组合，就得到一个完整的服务稳定性度量矩阵：</p>
+<div class="highlight"><pre><span></span><code>              │  Usage      │ Saturation  │  Error      │  Delay
+──────────────┼─────────────┼─────────────┼─────────────┼────────────
+ Log (日志)    │ 资源使用     │ 排队/等待   │ 错误堆栈    │ 慢查询日志
+              │ 变更记录     │ 限流日志    │ 异常详情    │ 超时日志
+──────────────┼─────────────┼─────────────┼─────────────┼────────────
+ Metrics(度量) │ CPU/Mem/    │ 队列深度    │ 错误率      │ P50/P99
+              │ Disk/连接数  │ 线程等待数  │ 错误数      │ TTFB/TTLB
+──────────────┼─────────────┼─────────────┼─────────────┼────────────
+ Alert (告警)  │ 容量预警     │ 饱和告警    │ 错误率告警  │ 延迟告警
+              │ 趋势预测     │ 积压告警    │ 预算消耗    │ SLO 违规
+──────────────┼─────────────┼─────────────┼─────────────┼────────────
+ Trace (追踪)  │ 调用次数     │ 排队耗时    │ 错误链路    │ 慢链路
+              │ 依赖拓扑     │ 重试次数    │ 异常传播    │ 瓶颈定位
+</code></pre></div>
+
+<p><strong>这个矩阵的使用方式：</strong></p>
+<ol>
+<li><strong>日常巡检</strong>：横向看 Metrics 行，快速扫描 USED 四个维度</li>
+<li><strong>故障排查</strong>：纵向看 Error 列，从 Alert 触发 → Metrics 定位 → Trace 追踪 → Log 取证</li>
+<li><strong>容量规划</strong>：横向看 Usage + Saturation，结合趋势预测</li>
+<li><strong>SLO 管理</strong>：聚焦 Error + Delay 两列</li>
+</ol>
+<hr>
+<h2 id="lmat-used_2">四、实战：一个服务的 LMAT × USED 落地</h2>
+<p>以一个订单服务为例，展示如何落地这套体系。</p>
+<h3 id="41">4.1 度量定义</h3>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">prometheus_client</span><span class="w"> </span><span class="kn">import</span> <span class="n">Counter</span><span class="p">,</span> <span class="n">Histogram</span><span class="p">,</span> <span class="n">Gauge</span>
+
+<span class="c1"># === Usage ===</span>
+<span class="n">db_pool_active</span> <span class="o">=</span> <span class="n">Gauge</span><span class="p">(</span>
+    <span class="s2">&quot;db_pool_active_connections&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Active database connections&quot;</span>
+<span class="p">)</span>
+<span class="n">cache_memory_bytes</span> <span class="o">=</span> <span class="n">Gauge</span><span class="p">(</span>
+    <span class="s2">&quot;cache_memory_used_bytes&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Cache memory usage&quot;</span>
+<span class="p">)</span>
+
+<span class="c1"># === Saturation ===</span>
+<span class="n">db_pool_pending</span> <span class="o">=</span> <span class="n">Gauge</span><span class="p">(</span>
+    <span class="s2">&quot;db_pool_pending_requests&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Requests waiting for a DB connection&quot;</span>
+<span class="p">)</span>
+<span class="n">thread_pool_queue_size</span> <span class="o">=</span> <span class="n">Gauge</span><span class="p">(</span>
+    <span class="s2">&quot;thread_pool_queue_size&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Tasks waiting in thread pool queue&quot;</span>
+<span class="p">)</span>
+
+<span class="c1"># === Error ===</span>
+<span class="n">http_requests_total</span> <span class="o">=</span> <span class="n">Counter</span><span class="p">(</span>
+    <span class="s2">&quot;http_requests_total&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Total HTTP requests&quot;</span><span class="p">,</span>
+    <span class="p">[</span><span class="s2">&quot;method&quot;</span><span class="p">,</span> <span class="s2">&quot;endpoint&quot;</span><span class="p">,</span> <span class="s2">&quot;status&quot;</span><span class="p">]</span>
+<span class="p">)</span>
+<span class="n">business_errors_total</span> <span class="o">=</span> <span class="n">Counter</span><span class="p">(</span>
+    <span class="s2">&quot;business_errors_total&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Business logic errors&quot;</span><span class="p">,</span>
+    <span class="p">[</span><span class="s2">&quot;error_type&quot;</span><span class="p">]</span>  <span class="c1"># payment_failed, inventory_insufficient, ...</span>
+<span class="p">)</span>
+
+<span class="c1"># === Delay ===</span>
+<span class="n">http_duration</span> <span class="o">=</span> <span class="n">Histogram</span><span class="p">(</span>
+    <span class="s2">&quot;http_request_duration_seconds&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;HTTP request duration&quot;</span><span class="p">,</span>
+    <span class="p">[</span><span class="s2">&quot;method&quot;</span><span class="p">,</span> <span class="s2">&quot;endpoint&quot;</span><span class="p">],</span>
+    <span class="n">buckets</span><span class="o">=</span><span class="p">[</span><span class="mf">0.01</span><span class="p">,</span> <span class="mf">0.05</span><span class="p">,</span> <span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.25</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.5</span><span class="p">,</span> <span class="mf">5.0</span><span class="p">,</span> <span class="mf">10.0</span><span class="p">]</span>
+<span class="p">)</span>
+<span class="n">db_query_duration</span> <span class="o">=</span> <span class="n">Histogram</span><span class="p">(</span>
+    <span class="s2">&quot;db_query_duration_seconds&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Database query duration&quot;</span><span class="p">,</span>
+    <span class="p">[</span><span class="s2">&quot;query_type&quot;</span><span class="p">],</span>  <span class="c1"># select, insert, update</span>
+    <span class="n">buckets</span><span class="o">=</span><span class="p">[</span><span class="mf">0.001</span><span class="p">,</span> <span class="mf">0.005</span><span class="p">,</span> <span class="mf">0.01</span><span class="p">,</span> <span class="mf">0.05</span><span class="p">,</span> <span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">]</span>
+<span class="p">)</span>
+<span class="n">upstream_call_duration</span> <span class="o">=</span> <span class="n">Histogram</span><span class="p">(</span>
+    <span class="s2">&quot;upstream_call_duration_seconds&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Upstream service call duration&quot;</span><span class="p">,</span>
+    <span class="p">[</span><span class="s2">&quot;service&quot;</span><span class="p">,</span> <span class="s2">&quot;method&quot;</span><span class="p">],</span>
+    <span class="n">buckets</span><span class="o">=</span><span class="p">[</span><span class="mf">0.01</span><span class="p">,</span> <span class="mf">0.05</span><span class="p">,</span> <span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">5.0</span><span class="p">,</span> <span class="mf">10.0</span><span class="p">]</span>
+<span class="p">)</span>
+</code></pre></div>
+
+<h3 id="42">4.2 告警规则</h3>
+<div class="highlight"><pre><span></span><code><span class="nt">groups</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">order-service-used</span>
+<span class="w">    </span><span class="nt">rules</span><span class="p">:</span>
+<span class="w">      </span><span class="c1"># Usage: 连接池使用率 &gt; 80%</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">alert</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">DBPoolHighUsage</span>
+<span class="w">        </span><span class="nt">expr</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">db_pool_active_connections / db_pool_max_connections &gt; 0.8</span>
+<span class="w">        </span><span class="nt">for</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5m</span>
+<span class="w">        </span><span class="nt">labels</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> severity</span><span class="p">:</span><span class="w"> </span><span class="nv">warning</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">        </span><span class="nt">annotations</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">summary</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;DB</span><span class="nv"> </span><span class="s">连接池使用率</span><span class="nv"> </span><span class="s">&gt;</span><span class="nv"> </span><span class="s">80%&quot;</span>
+<span class="w">          </span><span class="nt">runbook</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://wiki/runbook/db-pool-high-usage&quot;</span>
+
+<span class="w">      </span><span class="c1"># Saturation: 有请求在排队</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">alert</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">DBPoolSaturated</span>
+<span class="w">        </span><span class="nt">expr</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">db_pool_pending_requests &gt; 0</span>
+<span class="w">        </span><span class="nt">for</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1m</span>
+<span class="w">        </span><span class="nt">labels</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> severity</span><span class="p">:</span><span class="w"> </span><span class="nv">critical</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">        </span><span class="nt">annotations</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">summary</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;DB</span><span class="nv"> </span><span class="s">连接池饱和，请求排队中&quot;</span>
+<span class="w">          </span><span class="nt">runbook</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://wiki/runbook/db-pool-saturated&quot;</span>
+
+<span class="w">      </span><span class="c1"># Error: 5xx 错误率 &gt; 0.1%</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">alert</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">HighErrorRate</span>
+<span class="w">        </span><span class="nt">expr</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<span class="w">          </span><span class="no">sum(rate(http_requests_total{status=~&quot;5..&quot;}[5m]))</span>
+<span class="w">          </span><span class="no">/ sum(rate(http_requests_total[5m])) &gt; 0.001</span>
+<span class="w">        </span><span class="nt">for</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3m</span>
+<span class="w">        </span><span class="nt">labels</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> severity</span><span class="p">:</span><span class="w"> </span><span class="nv">critical</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">        </span><span class="nt">annotations</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">summary</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;错误率</span><span class="nv"> </span><span class="s">&gt;</span><span class="nv"> </span><span class="s">0.1%:</span><span class="nv"> </span><span class="s">{{</span><span class="nv"> </span><span class="s">$value</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">humanizePercentage</span><span class="nv"> </span><span class="s">}}&quot;</span>
+<span class="w">          </span><span class="nt">runbook</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://wiki/runbook/high-error-rate&quot;</span>
+
+<span class="w">      </span><span class="c1"># Delay: P99 &gt; 2s</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">alert</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">HighP99Latency</span>
+<span class="w">        </span><span class="nt">expr</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<span class="w">          </span><span class="no">histogram_quantile(0.99,</span>
+<span class="w">            </span><span class="no">rate(http_request_duration_seconds_bucket[5m])) &gt; 2.0</span>
+<span class="w">        </span><span class="nt">for</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5m</span>
+<span class="w">        </span><span class="nt">labels</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> severity</span><span class="p">:</span><span class="w"> </span><span class="nv">warning</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">        </span><span class="nt">annotations</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">summary</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;P99</span><span class="nv"> </span><span class="s">延迟</span><span class="nv"> </span><span class="s">&gt;</span><span class="nv"> </span><span class="s">2s:</span><span class="nv"> </span><span class="s">{{</span><span class="nv"> </span><span class="s">$value</span><span class="nv"> </span><span class="s">}}s&quot;</span>
+<span class="w">          </span><span class="nt">runbook</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://wiki/runbook/high-latency&quot;</span>
+</code></pre></div>
+
+<h3 id="43-grafana">4.3 Grafana 面板布局</h3>
+<div class="highlight"><pre><span></span><code>┌─────────────────────────────────────────────────────────┐
+│                 订单服务监控面板                            │
+├──────────┬──────────┬──────────┬────────────────────────┤
+│ QPS      │ 成功率    │ P99 延迟  │ 错误预算剩余           │
+│ 1,234/s  │ 99.95%   │ 850ms    │ 72% (31min)           │
+├──────────┴──────────┴──────────┴────────────────────────┤
+│                                                          │
+│  ┌─── Usage ──────────────┐  ┌─── Saturation ────────┐  │
+│  │ CPU / Mem / 连接池使用率 │  │ 队列深度 / 等待线程数  │  │
+│  └────────────────────────┘  └───────────────────────┘  │
+│                                                          │
+│  ┌─── Error ──────────────┐  ┌─── Delay ─────────────┐  │
+│  │ 错误率趋势 + 错误类型   │  │ P50/P95/P99 延迟趋势  │  │
+│  │ 分布 (饼图)             │  │ + 延迟分布热力图       │  │
+│  └────────────────────────┘  └───────────────────────┘  │
+│                                                          │
+│  ┌─── 依赖健康度 ─────────────────────────────────────┐  │
+│  │ payment-service: ✅ 99.9% / 120ms                  │  │
+│  │ inventory-service: ✅ 99.95% / 45ms                │  │
+│  │ notification-service: ⚠️ 99.5% / 350ms             │  │
+│  └────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────┘
+</code></pre></div>
+
+<hr>
+<h2 id="_1">五、防范胜于救灾：从被动到主动</h2>
+<p>有了 LMAT 和 USED，我们就有了"看"的能力。但光能看还不够，还要能"防"。</p>
+<h3 id="51">5.1 三道防线</h3>
+<div class="highlight"><pre><span></span><code>第一道防线：预防（防患于未然）
+├── 容量规划：基于 Usage 趋势预测，提前扩容
+├── 混沌工程：主动注入故障，验证系统韧性
+├── 变更管控：灰度发布 + 自动回滚
+└── 代码质量：静态分析 + 单元测试 + 集成测试
+
+第二道防线：发现（早发现早处理）
+├── 实时告警：基于 USED 四维度的告警规则
+├── 异常检测：基于历史基线的自动异常识别
+├── 巡检机制：定期自动化健康检查
+└── 值班制度：7×24 on-call 轮值
+
+第三道防线：恢复（快速止血）
+├── 自动恢复：熔断、降级、限流、重试
+├── 快速回滚：一键回滚到上一个稳定版本
+├── 预案执行：预定义的故障处理 SOP
+└── 事后复盘：每次故障都要写 Post-Mortem
+</code></pre></div>
+
+<h3 id="52-ooda">5.2 故障处理的 OODA 循环</h3>
+<div class="highlight"><pre><span></span><code>Observe (观察)
+    │  告警触发，查看 Metrics 面板
+    ▼
+Orient (判断)
+    │  结合 Trace + Log，定位根因
+    ▼
+Decide (决策)
+    │  选择处置方案：回滚？扩容？降级？
+    ▼
+Act (行动)
+    │  执行操作，验证恢复
+    ▼
+  回到 Observe，确认问题解决
+</code></pre></div>
+
+<h3 id="53-post-mortem">5.3 Post-Mortem 模板</h3>
+<p>每次故障都是学习的机会。一份好的 Post-Mortem 应该包含：</p>
+<div class="highlight"><pre><span></span><code><span class="gu">## 故障报告：[标题]</span>
+
+<span class="gu">### 基本信息</span>
+<span class="k">-</span><span class="w"> </span>时间：2026-03-06 10:15 ~ 10:42 (27 分钟)
+<span class="k">-</span><span class="w"> </span>影响：订单服务错误率升至 5%，约 1200 个订单受影响
+<span class="k">-</span><span class="w"> </span>严重程度：P0
+
+<span class="gu">### 时间线</span>
+<span class="k">-</span><span class="w"> </span>10:15 Stripe API 开始返回 503
+<span class="k">-</span><span class="w"> </span>10:18 告警触发：HighErrorRate
+<span class="k">-</span><span class="w"> </span>10:20 On-call 工程师确认问题
+<span class="k">-</span><span class="w"> </span>10:25 决定启用备用支付通道
+<span class="k">-</span><span class="w"> </span>10:30 备用通道上线，错误率开始下降
+<span class="k">-</span><span class="w"> </span>10:42 错误率恢复正常
+
+<span class="gu">### 根因</span>
+Stripe 侧基础设施故障，导致 API 间歇性返回 503。
+
+<span class="gu">### 改进措施</span>
+| 措施 | 负责人 | 截止日期 |
+|------|--------|---------|
+| 支付通道自动故障转移 | <span class="ni">@alice</span> | 2026-03-20 |
+| 增加 Stripe 健康检查探针 | <span class="ni">@bob</span> | 2026-03-13 |
+| 补充支付降级的告警规则 | <span class="ni">@carol</span> | 2026-03-10 |
+
+<span class="gu">### 经验教训</span>
+<span class="k">-</span><span class="w"> </span>我们的告警在 3 分钟内触发，响应及时 ✅
+<span class="k">-</span><span class="w"> </span>但备用支付通道的切换是手动的，耗时 10 分钟 ❌
+<span class="k">-</span><span class="w"> </span>需要实现自动故障转移
+</code></pre></div>
+
+<hr>
+<h2 id="_2">六、总结</h2>
+<div class="highlight"><pre><span></span><code>LMAT —— 怎么观测？
+  Log     日志    事后取证的第一现场
+  Metrics 度量    实时体检的仪表盘
+  Alert   告警    把被动救火变成主动预警
+  Trace   追踪    分布式系统的 X 光片
+
+USED —— 观测什么？
+  Usage      用量    你用了多少？趋势如何？
+  Saturation 饱和度  你还能撑多久？
+  Error      错误    什么东西坏了？多严重？
+  Delay      延迟    用户等了多久？
+
+LMAT × USED = 完整的服务稳定性度量矩阵
+</code></pre></div>
+
+<p><strong>隐患险于明火</strong>——线上的隐患（内存泄漏、连接池耗尽、磁盘缓慢增长）比突发故障更危险，因为它们不会触发告警，却会在某个深夜突然爆发。USED 中的 Usage 和 Saturation 就是用来发现这些隐患的。</p>
+<p><strong>防范胜于救灾</strong>——与其在故障发生后手忙脚乱地排查，不如提前建好 LMAT 体系，让问题在萌芽阶段就被发现。一条好的告警规则，胜过十个 on-call 工程师的通宵排查。</p>
+<p><strong>责任重于泰山</strong>——服务稳定性不是 SRE 团队的事，是每个工程师的事。写代码时埋好度量点，上线前配好告警规则，出了问题写好 Post-Mortem——这就是对用户负责，对团队负责。</p>
+<blockquote>
+<p>最好的监控系统，不是在故障发生时告诉你"出事了"，
+而是在故障发生前告诉你"要出事了"。</p>
+</blockquote>
+<hr>
+<p><em>参考资料：</em></p>
+<ul>
+<li><em>Brendan Gregg, "The USE Method" (https://www.brendangregg.com/usemethod.html)</em></li>
+<li><em>Google SRE Book, Chapter 6: Monitoring Distributed Systems</em></li>
+<li><em>OpenTelemetry Documentation (https://opentelemetry.io/docs/)</em></li>
+<li><em>Tom Wilkie, "The RED Method" (https://grafana.com/blog/2018/08/02/the-red-method-how-to-instrument-your-services/)</em></li>
+</ul>
+  </div>
+  <div class="tag-cloud">
+    <p>
+      <a href="./tag/observability.html">observability</a>
+      <a href="./tag/sre.html">SRE</a>
+      <a href="./tag/monitoring.html">monitoring</a>
+      <a href="./tag/stability.html">stability</a>
+      <a href="./tag/lmat.html">LMAT</a>
+      <a href="./tag/used.html">USED</a>
+    </p>
+  </div>
+
+
+  <div class="center social-share" style="margin: 1.5em 0; text-align: center;">
+    <p style="margin-bottom: 0.5em; color: #888;">📤 Share this article</p>
+    <a href="https://twitter.com/intent/tweet?text=%E6%9C%8D%E5%8A%A1%E7%A8%B3%E5%AE%9A%E6%80%A7%E4%B9%8B%20LMAT%20%E5%92%8C%20USED&url=./2026-03-06-service-stability-lmat-used.html"
+       target="_blank" rel="noopener" title="Share on Twitter/X"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#1da1f2; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      𝕏 Twitter
+    </a>
+    <a href="https://www.linkedin.com/sharing/share-offsite/?url=./2026-03-06-service-stability-lmat-used.html"
+       target="_blank" rel="noopener" title="Share on LinkedIn"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#0077b5; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      💼 LinkedIn
+    </a>
+    <a href="javascript:void(0);" onclick="copyLink('./2026-03-06-service-stability-lmat-used.html')" title="Copy link"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#666; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em; cursor:pointer;">
+      🔗 Copy Link
+    </a>
+    <script>
+    function copyLink(url) {
+      navigator.clipboard.writeText(url).then(function() {
+        alert('链接已复制！');
+      });
+    }
+    </script>
+  </div>
+
+  <div class="neighbors">
+    <a class="btn float-left" href="./2026-03-05-rbac-openfga-authorization.html" title="从 RBAC 到 OpenFGA：细粒度授权的架构、落地与取舍">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="./fu-wu-wen-ding-xing-zhi-lmat-he-usedbie-deng-zhao-bao-jing-xian-xue-hui-kan-bing-li.html" title="服务稳定性之 LMAT 和 USED：别等着报警, 先学会"看病历"">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="./fu-wu-wen-ding-xing-zhi-lmat-he-usedbie-deng-zhao-bao-jing-xian-xue-hui-kan-bing-li.html">服务稳定性之 LMAT 和 USED：别等着报警, 先学会"看病历"</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="./theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : ".",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

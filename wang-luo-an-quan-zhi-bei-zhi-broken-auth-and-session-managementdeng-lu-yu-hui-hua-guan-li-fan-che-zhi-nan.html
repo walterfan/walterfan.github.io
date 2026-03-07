@@ -1,0 +1,544 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="./theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="./theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="./theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="./theme/pygments/github.min.css">
+
+      <link href="https://fonts.googleapis.com/css?family=Merriweather:300,400|Open+Sans" rel="stylesheet">
+    <link rel="stylesheet" 
+    href="./theme/tipuesearch/tipuesearch.min.css" />
+
+
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+
+
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="认证翻车和会话翻车, 往往不是因为黑客太聪明, 而是我们把&#34;登录态&#34;当成了万能钥匙: cookie 没设好、token 乱放、会话不轮换、登出不失效。本文用人话拆解常见坑, 给出 Java/Go/Python 可直接抄的防护套路与自检清单。" />
+<meta name="keywords" content="tech, blog, security, auth, session">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "网络安全指北之 Broken Auth and Session Management：登录与会话管理翻车指南",
+  "description": "认证翻车和会话翻车, 往往不是因为黑客太聪明, 而是我们把&#34;登录态&#34;当成了万能钥匙: cookie 没设好、token 乱放、会话不轮换、登出不失效。本文用人话拆解常见坑, 给出 Java/Go/Python 可直接抄的防护套路与自检清单。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-03-06T22:36:00+08:00",
+  "dateModified": "2026-03-07T10:05:00+08:00",
+  "url": "./wang-luo-an-quan-zhi-bei-zhi-broken-auth-and-session-managementdeng-lu-yu-hui-hua-guan-li-fan-che-zhi-nan.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "./wang-luo-an-quan-zhi-bei-zhi-broken-auth-and-session-managementdeng-lu-yu-hui-hua-guan-li-fan-che-zhi-nan.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "././images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "tech, blog, security, auth, session"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="网络安全指北之 Broken Auth and Session Management：登录与会话管理翻车指南"/>
+  <meta property="og:description" content="认证翻车和会话翻车, 往往不是因为黑客太聪明, 而是我们把&#34;登录态&#34;当成了万能钥匙: cookie 没设好、token 乱放、会话不轮换、登出不失效。本文用人话拆解常见坑, 给出 Java/Go/Python 可直接抄的防护套路与自检清单。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="./wang-luo-an-quan-zhi-bei-zhi-broken-auth-and-session-managementdeng-lu-yu-hui-hua-guan-li-fan-che-zhi-nan.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-03-06 22:36:00+08:00"/>
+  <meta property="article:modified_time" content="2026-03-07 10:05:00+08:00"/>
+  <meta property="article:author" content="./author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="tech"/>
+  <meta property="article:tag" content="blog"/>
+  <meta property="article:tag" content="security"/>
+  <meta property="article:tag" content="auth"/>
+  <meta property="article:tag" content="session"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 网络安全指北之 Broken Auth and Session Management：登录与会话管理翻车指南</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="./">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="./">Walter Fan</a>
+    </h1>
+
+    <p>手握灵珠常奋笔, 心开天籁不吹箫</p>
+
+    <form class="navbar-search" action="./search.html" role="search">
+      <input type="text" name="q" id="tipue_search_input" placeholder="Search...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank" href="tao.html" >tao</a>
+          </li>
+          <li>
+            <a target="_blank" href="article.html" >article</a>
+          </li>
+          <li>
+            <a target="_blank" href="manual.html" >manual</a>
+          </li>
+          <li>
+            <a target="_blank" href="interest.html" >interest</a>
+          </li>
+          <li>
+            <a target="_self" href="/wordpress" >notebook</a>
+          </li>
+          <li>
+            <a target="_blank" href="bookmark.html" >bookmark</a>
+          </li>
+          <li>
+            <a target="_self" href="/webrtc/examples/index.html" >webrtc</a>
+          </li>
+          <li>
+            <a target="_blank" href="https://github.com/walterfan" >github</a>
+          </li>
+      </ul>
+    </nav>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+</aside>
+  <main>
+
+
+<article class="single">
+  <header>
+      
+    <h1 id="wang-luo-an-quan-zhi-bei-zhi-broken-auth-and-session-managementdeng-lu-yu-hui-hua-guan-li-fan-che-zhi-nan">网络安全指北之 Broken Auth and Session Management：登录与会话管理翻车指南</h1>
+    <p>
+      Posted on Fri 06 March 2026 in <a href="./category/tech.html">Tech</a>
+
+        &#8226; 2 min read
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>Broken Auth and Session Management：登录与会话管理翻车指南</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>tech note</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-03-06</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h1 id="broken-auth-and-session-management">Broken Auth and Session Management：登录与会话管理翻车指南</h1>
+<blockquote>
+<p><strong>一句话版</strong>：你以为你在"做登录", 攻击者在"捡你的登录态"。</p>
+</blockquote>
+<p>很多安全事故听起来像大片: "黑客攻破系统"、"0day 横扫全网"。但落到 Auth/Session 这摊事, 更多时候是另一种尴尬:</p>
+<ul>
+<li>你把 token 放在了最容易被偷的地方</li>
+<li>你把 cookie 当成了默认安全</li>
+<li>你把"登出"做成了心理安慰</li>
+<li>你把"短期会话"用成了"永久通行证"</li>
+</ul>
+<p>这类问题在 OWASP Top 10 里来来回回换名字: 2017 年叫 "Broken Authentication and Session Management", 2021 年合并为 A07 "Identification and Authentication Failures"。名字变了, 事故没变。</p>
+<hr>
+<h2 id="what-broken-auth-broken-session">What：到底什么算 Broken Auth / Broken Session</h2>
+<p>🟢 <strong>小白提示</strong>：先分清两个词, 不然越聊越乱。</p>
+<ul>
+<li><strong>Authentication(认证)</strong>：你是谁, 你能不能证明你是你</li>
+<li><strong>Session(会话/登录态)</strong>：你登录之后, 服务器怎么"记住你"</li>
+</ul>
+<p>所谓 Broken Auth / Broken Session, 常见是这些翻车形态:</p>
+<ul>
+<li><strong>弱口令/暴力破解</strong>：没限流、没锁定、没 MFA, 还把错误提示写得像教学视频</li>
+<li><strong>凭证泄露</strong>：token/cookie 出现在日志、前端存储、URL 参数、埋点里</li>
+<li><strong>会话固定(session fixation)</strong>：登录后不换 session id, 攻击者提前种一个 id 等你登录</li>
+<li><strong>会话不失效</strong>：登出不作废、改密码不作废、权限变化不作废、长期不旋转</li>
+<li><strong>cookie 配置不当</strong>：没 <code>HttpOnly</code>、没 <code>Secure</code>、SameSite 乱设</li>
+<li><strong>JWT 乱用</strong>：把 JWT 当 session 用, 还不设过期, 或者撤销做不起来</li>
+</ul>
+<hr>
+<h2 id="why">Why：它为什么总能翻车(而且翻得很安静)</h2>
+<h3 id="1">1) "登录"让人产生错觉</h3>
+<p>用户一登录, 开发者就容易默认: "既然登录了, 那后面应该都安全"。</p>
+<p>但登录解决的是"你是谁", 没解决的是:</p>
+<ul>
+<li>token/cookie 会不会被偷</li>
+<li>被偷了以后你能不能让它失效</li>
+<li>失效后你有没有退路(比如重新登录、二次验证)</li>
+</ul>
+<h3 id="2">2) 会话是跨边界流动的</h3>
+<p>浏览器、网关、服务端、日志、APM、第三方 SDK, 每个环节都可能"顺手记录一下"。</p>
+<p>只要其中一环把 token 当普通字符串处理, 你的登录态就变成了"可复制粘贴的钥匙"。</p>
+<h3 id="3">3) 你没把"撤销"当成一等公民</h3>
+<p>很多系统做了签发, 没做撤销。</p>
+<p>于是你只能祈祷:</p>
+<ul>
+<li>token 别泄露</li>
+<li>泄露了别被用</li>
+<li>被用了别造成损失</li>
+</ul>
+<p>这套祈祷链路, 通常不太灵。</p>
+<p>🔵 <strong>老手自查</strong>：你们能回答这三个问题吗？</p>
+<ul>
+<li>我们的 access token 泄露后, 多久能彻底失效？</li>
+<li>用户改密码/解绑 MFA/角色变化后, 旧 token 会不会立刻作废？</li>
+<li>我们能不能查到"这个 token 在哪里被用过"(IP/UA/设备指纹/trace_id)？</li>
+</ul>
+<hr>
+<h2 id="how-authsession">How：把 Auth/Session 做稳, 先记住四条底线</h2>
+<h3 id="1-token">1) token 只做两件事: "短" 和 "可撤销"</h3>
+<ul>
+<li><strong>短</strong>：access token 尽量短(分钟级), refresh token 才能长(天级)</li>
+<li><strong>可撤销</strong>：refresh token 必须可撤销(可存储、可轮换、可失效)</li>
+</ul>
+<p>🟢 <strong>小白提示</strong>：为什么 JWT 常被骂？</p>
+<p>JWT 本身没错, 错在很多人把它当"无需存储的永久会话"。你只要撤销做不好, JWT 就会变成"发出去就收不回的通行证"。</p>
+<p>🟢 <strong>小白提示</strong>：那 JWT 应该怎么做才算"能用且能收回"？</p>
+<p>把下面四件事做对, 你就把"撤销"从口号变成机制：</p>
+<ul>
+<li><strong>access token 短命</strong>(分钟级)：泄露了也只能用一小会儿</li>
+<li><strong>refresh token 可撤销</strong>：需要有状态(落库/缓存都行), 登出/改密/解绑 MFA/权限变化时直接吊销</li>
+<li><strong>refresh token 轮换(rotate)</strong>：每次刷新都换新 refresh token, 旧的立刻作废, 防止被偷后反复用</li>
+<li><strong>JWT 别当永久身份证</strong>：要有过期时间, 签名 key 要轮换</li>
+</ul>
+<h3 id="2-cookie">2) cookie 不是默认安全, 该上的属性一个都别省</h3>
+<p>如果你用 cookie 做 session:</p>
+<ul>
+<li><code>HttpOnly</code>：不让 JS 读 cookie, 防一类 XSS 直接偷 cookie</li>
+<li><code>Secure</code>：只走 HTTPS</li>
+<li><code>SameSite</code>：降低 CSRF 风险(别滥用 <code>None</code>)</li>
+</ul>
+<h3 id="3_1">3) 登录态要轮换, 尤其是关键节点</h3>
+<p>这些场景要轮换或作废会话:</p>
+<ul>
+<li>登录成功(防 session fixation)</li>
+<li>改密码 / 重置密码</li>
+<li>角色/权限变化</li>
+<li>绑定/解绑 MFA</li>
+<li>主动登出</li>
+</ul>
+<h3 id="4">4) 认证要对"撞库/暴力破解"有基本免疫力</h3>
+<p>你不一定立刻上全套风控, 但至少要:</p>
+<ul>
+<li>限流 + 失败次数限制</li>
+<li>MFA(对高价值账号/敏感动作)</li>
+<li>不要泄露过多错误信息(比如"账号存在但密码错")</li>
+</ul>
+<hr>
+<h2 id="examplejavagopython">Example：三段你可以直接抄的示例(Java/Go/Python)</h2>
+<p>下面示例都只想表达一个原则: <strong>别把"登录态"当赠品, 更别让它永久有效</strong>。</p>
+<h3 id="java-spring-security-cookie">Java (Spring Security)：会话 cookie 的三件套</h3>
+<div class="highlight"><pre><span></span><code><span class="c1">// 典型思路: 用 Spring Security 的默认能力, 别自己造轮子</span>
+<span class="c1">// 重点在 cookie 属性(具体配置方式会随版本略有差异)</span>
+<span class="c1">//</span>
+<span class="c1">// 你至少要保证:</span>
+<span class="c1">// - Secure</span>
+<span class="c1">// - HttpOnly</span>
+<span class="c1">// - SameSite=Lax/Strict (按业务取舍)</span>
+</code></pre></div>
+
+<p>给你一个<strong>“能直接抄”</strong>的例子(示意用, 不是唯一解)。</p>
+<p><strong>如果你用的是 Session Cookie</strong>，我一般会先把 cookie 三属性立规矩(尤其是测试环境也别裸奔)：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># application.yml (示例)</span>
+<span class="nt">server</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">servlet</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">session</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">cookie</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">http-only</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">        </span><span class="nt">secure</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">        </span><span class="nt">same-site</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Lax</span><span class="w"> </span><span class="c1"># 能用 Lax 就别上 None; 真跨站再评估</span>
+</code></pre></div>
+
+<p><strong>如果你用的是 JWT + Refresh Token</strong>，关键不是“JWT 发出去”，而是“refresh token 收得回来”：</p>
+<ul>
+<li>access token：10-15 分钟过期</li>
+<li>refresh token：落库/缓存保存状态(是否吊销、过期、是否已被轮换替换)</li>
+<li>登出/改密/解绑 MFA/权限变化：直接把该用户(或该设备)的 refresh token 标记为 revoked</li>
+<li>刷新时 rotate：返回新 refresh token，同时把旧的标记为 used/replaced，旧的再来刷新就直接拒绝</li>
+</ul>
+<h3 id="gorefresh-token-access-token">Go：refresh token 轮换 + 撤销(别只发 access token)</h3>
+<div class="highlight"><pre><span></span><code><span class="c1">// 思路示意:</span>
+<span class="c1">// 1) access token 短期(比如 15 分钟)</span>
+<span class="c1">// 2) refresh token 长期(比如 7 天), 存 DB, 每次刷新都轮换</span>
+<span class="c1">// 3) 登出/改密码/风控触发 -&gt; 直接 revoke refresh token</span>
+</code></pre></div>
+
+<h3 id="python-django-cookie">Python (Django)：用内置会话机制, 别手写 cookie</h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Django 自带 session + auth, 默认就比&quot;自己拼 cookie&quot;稳很多</span>
+<span class="c1"># 关键点:</span>
+<span class="c1"># - 登录后 rotate session key</span>
+<span class="c1"># - 配好 SESSION_COOKIE_SECURE / HTTPONLY / SAMESITE</span>
+</code></pre></div>
+
+<hr>
+<h2 id="7-checklist">明天就能做的 7 件事(Checklist)</h2>
+<ul>
+<li>[ ] <strong>全库搜 token/cookie 打日志</strong>：<code>Authorization</code>、<code>Set-Cookie</code>、<code>access_token</code>、<code>refresh_token</code></li>
+<li>[ ] <strong>把 access token 过期时间改短</strong>：分钟级, 并把 refresh token 轮换做起来</li>
+<li>[ ] <strong>登录成功强制换 session id</strong>：避免 session fixation</li>
+<li>[ ] <strong>登出必须让 token/session 失效</strong>：别只删前端缓存</li>
+<li>[ ] <strong>改密码/权限变化后作废所有会话</strong>：别给旧 token 留后门</li>
+<li>[ ] <strong>cookie 三属性补齐</strong>：<code>HttpOnly</code> / <code>Secure</code> / <code>SameSite</code></li>
+<li>[ ] <strong>登录加限流 + 失败次数限制</strong>：至少挡住暴力破解和撞库</li>
+</ul>
+<hr>
+<h2 id="_1">延伸思考</h2>
+<p>你们现在的"登录态"更像哪一种?</p>
+<ul>
+<li>一把"短期通行证"(短、可撤销、可轮换)</li>
+<li>还是一张"终身会员卡"(发出去就收不回)</li>
+</ul>
+<hr>
+<h2 id="_2">扩展阅读</h2>
+<ul>
+<li><a href="https://owasp.org/www-project-application-security-verification-standard/">OWASP ASVS</a> (认证与会话的系统化检查表)</li>
+<li><a href="https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html">OWASP Session Management Cheat Sheet</a> (会话管理细节)</li>
+<li><a href="https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html">OWASP Authentication Cheat Sheet</a> (认证常见坑)</li>
+</ul>
+<hr>
+<h2 id="_3">思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node { BackgroundColor #FAFAFA }
+  :depth(0) { BackgroundColor #FFD700 }
+  :depth(1) { BackgroundColor #E3F2FD }
+  :depth(2) { BackgroundColor #F5F5F5 }
+}
+&lt;/style&gt;
+title Broken Auth &amp; Session Management
+* Auth/Session 翻车
+** What(形态)
+*** 弱口令/暴破/无 MFA
+*** 凭证泄露(token/cookie/URL/log)
+*** session fixation
+*** 会话不失效(登出/改密/权限变更)
+*** cookie 属性缺失
+*** JWT 乱用(不可撤销/过期过长)
+** Why(根因)
+*** 把&quot;登录&quot;当万能钥匙
+*** 登录态跨边界流动
+*** 撤销不是一等公民
+** How(底线)
+*** token 短 + 可撤销
+*** cookie: HttpOnly/Secure/SameSite
+*** 关键节点轮换/作废
+*** 限流 + 失败次数 + MFA
+** Action Checklist
+*** 扫日志泄露
+*** access token 变短
+*** refresh token 轮换+撤销
+*** 登出/改密/权限变更作废会话
+@endmindmap
+</code></pre></div>
+
+<p><img alt="Broken Auth &amp; Session Management - 思维导图" src="../images/tech_20260306_broken_auth_session_management_mindmap.png"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。</p>
+  </div>
+  <div class="tag-cloud">
+    <p>
+      <a href="./tag/tech.html">tech</a>
+      <a href="./tag/blog.html">blog</a>
+      <a href="./tag/security.html">security</a>
+      <a href="./tag/auth.html">auth</a>
+      <a href="./tag/session.html">session</a>
+    </p>
+  </div>
+
+
+  <div class="center social-share" style="margin: 1.5em 0; text-align: center;">
+    <p style="margin-bottom: 0.5em; color: #888;">📤 Share this article</p>
+    <a href="https://twitter.com/intent/tweet?text=%E7%BD%91%E7%BB%9C%E5%AE%89%E5%85%A8%E6%8C%87%E5%8C%97%E4%B9%8B%20Broken%20Auth%20and%20Session%20Management%EF%BC%9A%E7%99%BB%E5%BD%95%E4%B8%8E%E4%BC%9A%E8%AF%9D%E7%AE%A1%E7%90%86%E7%BF%BB%E8%BD%A6%E6%8C%87%E5%8D%97&url=./wang-luo-an-quan-zhi-bei-zhi-broken-auth-and-session-managementdeng-lu-yu-hui-hua-guan-li-fan-che-zhi-nan.html"
+       target="_blank" rel="noopener" title="Share on Twitter/X"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#1da1f2; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      𝕏 Twitter
+    </a>
+    <a href="https://www.linkedin.com/sharing/share-offsite/?url=./wang-luo-an-quan-zhi-bei-zhi-broken-auth-and-session-managementdeng-lu-yu-hui-hua-guan-li-fan-che-zhi-nan.html"
+       target="_blank" rel="noopener" title="Share on LinkedIn"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#0077b5; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      💼 LinkedIn
+    </a>
+    <a href="javascript:void(0);" onclick="copyLink('./wang-luo-an-quan-zhi-bei-zhi-broken-auth-and-session-managementdeng-lu-yu-hui-hua-guan-li-fan-che-zhi-nan.html')" title="Copy link"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#666; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em; cursor:pointer;">
+      🔗 Copy Link
+    </a>
+    <script>
+    function copyLink(url) {
+      navigator.clipboard.writeText(url).then(function() {
+        alert('链接已复制！');
+      });
+    }
+    </script>
+  </div>
+
+  <div class="neighbors">
+    <a class="btn float-left" href="./fu-wu-wen-ding-xing-zhi-lmat-he-usedbie-deng-zhao-bao-jing-xian-xue-hui-kan-bing-li.html" title="服务稳定性之 LMAT 和 USED：别等着报警, 先学会"看病历"">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="./wang-luo-an-quan-zhi-bei-zhi-csrfcross-site-request-forgery-kua-zhan-qing-qiu-wei-zao.html">网络安全指北之 CSRF：Cross-Site Request Forgery (跨站请求伪造)</a></li>
+      <li><a href="./wang-luo-an-quan-zhi-bei-zhi-idor-insecure-direct-object-reference-dui-xiang-yin-yong-yue-quan.html">网络安全指北之 IDOR: Insecure Direct Object Reference (对象引用越权)</a></li>
+      <li><a href="./wang-luo-an-quan-zhi-bei-zhi-sensitive-data-exposuremin-gan-shu-ju-bao-lu.html">网络安全指北之Sensitive Data Exposure：敏感数据暴露</a></li>
+      <li><a href="./ai-shi-dai-de-ruan-jian-gong-cheng.html">AI 时代的软件工程</a></li>
+      <li><a href="./common-identity-service.html">Common Identity Service</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="./theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : ".",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

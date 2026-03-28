@@ -1,0 +1,1252 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="./theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="./theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="./theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="./theme/pygments/github.min.css">
+
+
+  <link rel="stylesheet"
+        type="text/css"
+        href="./theme/stork/stork.css" />
+
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="./theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+
+
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="数据库挂了，整个系统就瘫了——MySQL 高可用不是&#34;锦上添花&#34;，而是&#34;保命底线&#34;。本文梳理 MySQL 高可用的主流方案(主从复制、半同步、MHA、InnoDB Cluster、Galera)，对比它们的适用场景和踩坑经验，附带常见错误排查清单。" />
+<meta name="keywords" content="MySQL, 高可用, 数据库, 主从复制, InnoDB Cluster, MHA, ProxySQL">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "MySQL 高可用：从主从复制到 InnoDB Cluster，你需要知道的一切",
+  "description": "数据库挂了，整个系统就瘫了——MySQL 高可用不是&#34;锦上添花&#34;，而是&#34;保命底线&#34;。本文梳理 MySQL 高可用的主流方案(主从复制、半同步、MHA、InnoDB Cluster、Galera)，对比它们的适用场景和踩坑经验，附带常见错误排查清单。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-03-06T12:00:00+08:00",
+  "dateModified": "2026-03-07T10:09:00+08:00",
+  "url": "./2026-03-06-mysql-high-availability.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "./2026-03-06-mysql-high-availability.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "././images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "MySQL, 高可用, 数据库, 主从复制, InnoDB Cluster, MHA, ProxySQL"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="MySQL 高可用：从主从复制到 InnoDB Cluster，你需要知道的一切"/>
+  <meta property="og:description" content="数据库挂了，整个系统就瘫了——MySQL 高可用不是&#34;锦上添花&#34;，而是&#34;保命底线&#34;。本文梳理 MySQL 高可用的主流方案(主从复制、半同步、MHA、InnoDB Cluster、Galera)，对比它们的适用场景和踩坑经验，附带常见错误排查清单。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="./2026-03-06-mysql-high-availability.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-03-06 12:00:00+08:00"/>
+  <meta property="article:modified_time" content="2026-03-07 10:09:00+08:00"/>
+  <meta property="article:author" content="./author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="MySQL"/>
+  <meta property="article:tag" content="高可用"/>
+  <meta property="article:tag" content="数据库"/>
+  <meta property="article:tag" content="主从复制"/>
+  <meta property="article:tag" content="InnoDB Cluster"/>
+  <meta property="article:tag" content="MHA"/>
+  <meta property="article:tag" content="ProxySQL"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; MySQL 高可用：从主从复制到 InnoDB Cluster，你需要知道的一切</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="./">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="./">Walter Fan</a>
+    </h1>
+
+    <p>手握灵珠常奋笔, 心开天籁不吹箫</p>
+
+    <div class="stork">
+      <input class="stork-input" type="text" autocomplete="off" name="q" data-stork="sitesearch" placeholder="Search..." onclick="loadStorkIndex()"/>
+      <div class="stork-output" data-stork="sitesearch-output"></div>
+    </div>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank" href="tao.html" >tao</a>
+          </li>
+          <li>
+            <a target="_blank" href="article.html" >article</a>
+          </li>
+          <li>
+            <a target="_blank" href="manual.html" >manual</a>
+          </li>
+          <li>
+            <a target="_blank" href="interest.html" >interest</a>
+          </li>
+          <li>
+            <a target="_self" href="/wordpress" >notebook</a>
+          </li>
+          <li>
+            <a target="_blank" href="bookmark.html" >bookmark</a>
+          </li>
+          <li>
+            <a target="_self" href="/webrtc/examples/index.html" >webrtc</a>
+          </li>
+          <li>
+            <a target="_blank" href="https://github.com/walterfan" >github</a>
+          </li>
+          <li>
+            <a target="_blank" href="categories.html" >categories</a>
+          </li>
+          <li>
+            <a target="_blank" href="tags.html" >tags</a>
+          </li>
+      </ul>
+    </nav>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+</aside>
+  <main>
+
+
+<article class="single">
+  <header>
+      
+    <h1 id="2026-03-06-mysql-high-availability">MySQL 高可用：从主从复制到 InnoDB Cluster，你需要知道的一切</h1>
+    <p>
+      Posted on 五 06 3月 2026 in <a href="./category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>MySQL 高可用：从主从复制到 InnoDB Cluster</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Version</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-03-06</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<details>
+<summary>📋 大纲</summary>
+
+1. 为什么 MySQL 高可用是"保命底线"
+2. 高可用的核心指标：RTO 和 RPO
+3. 方案一览：从简单到复杂
+4. 主从复制(Replication)
+5. 半同步复制(Semi-Sync)
+6. MHA(Master High Availability)
+7. InnoDB Cluster / Group Replication
+8. Galera Cluster
+9. 代理层：ProxySQL / MySQL Router
+10. 方案对比表
+11. 常见错误与排查
+12. 最佳实践清单
+13. 思维导图
+
+</details>
+
+<hr>
+<h2 id="mysql">一、为什么 MySQL 高可用是"保命底线"</h2>
+<p>数据库是大多数系统的"心脏"。Web 服务挂了可以重启，缓存丢了可以重建，但数据库挂了——</p>
+<ul>
+<li>数据可能丢失</li>
+<li>所有依赖它的服务全部瘫痪</li>
+<li>恢复时间可能是分钟级甚至小时级</li>
+</ul>
+<p>一个没有高可用方案的 MySQL，就像一辆没有备胎的车——平时看不出区别，爆胎的时候你就知道了。</p>
+<p>更现实的一点：<strong>你以为自己在做"性能优化"，其实很多时候是在给未来的事故攒利息</strong>。等到线上真挂了，再去补 HA，就像半夜下雨了才想起来买伞。</p>
+<p>讲个我见得最多、也最“打脸”的现场：<strong>主库挂了，但就是没切到从库</strong>。</p>
+<p>告警先响的是应用端：接口 RT 飙升、错误率上来，日志里刷屏 <code>can't connect to MySQL</code>。你打开监控一看，主库已经不可达了；从库其实还活着、复制也没断，但业务照样全挂。</p>
+<p>后来一盘点，原因往往很朴素：你以为你有“主从”，但你没有“切换”。比如：</p>
+<ul>
+<li>应用连接串写死了主库 IP/DNS，没有 VIP/Proxy/服务发现，主库一挂，连接池只会一直重试</li>
+<li>以为装了 MHA/Orchestrator 就万事大吉，结果进程没跑、权限不够、脚本没演练，故障时“自动切换”静悄悄</li>
+<li>半同步/复制延迟一上来，大家怕丢数据不敢 promote，临时手工切换又没人敢拍板，RTO 直接被拖成半小时起步</li>
+</ul>
+<p>这类事故最扎心的一句话是：<strong>高可用不是“多一台机器”，而是“检测 + 决策 + 执行”的闭环</strong>。</p>
+<blockquote>
+<p><strong>小白提示</strong>：高可用(High Availability, HA)不是"永远不挂"，而是"挂了能快速恢复"。衡量标准是 <strong>RTO</strong>(恢复时间目标)和 <strong>RPO</strong>(恢复点目标，即最多丢多少数据)。</p>
+</blockquote>
+<hr>
+<h2 id="rto-rpo">二、核心指标：RTO 和 RPO</h2>
+<p>在选方案之前，先搞清楚两个关键指标：</p>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>全称</th>
+<th>含义</th>
+<th>举例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>RTO</strong></td>
+<td>Recovery Time Objective</td>
+<td>从故障到恢复服务的最长时间</td>
+<td>RTO = 30s 意味着 30 秒内必须恢复</td>
+</tr>
+<tr>
+<td><strong>RPO</strong></td>
+<td>Recovery Point Objective</td>
+<td>最多能接受丢失多少数据</td>
+<td>RPO = 0 意味着一条数据都不能丢</td>
+</tr>
+</tbody>
+</table>
+<p>不同业务对 RTO/RPO 的要求不同：</p>
+<ul>
+<li><strong>电商交易</strong>：RPO = 0，RTO &lt; 30s(一笔订单都不能丢)</li>
+<li><strong>内容管理</strong>：RPO &lt; 1min，RTO &lt; 5min(丢一分钟的草稿可以接受)</li>
+<li><strong>日志分析</strong>：RPO &lt; 1h，RTO &lt; 30min(丢一小时日志问题不大)</li>
+</ul>
+<p><strong>先定 RTO/RPO，再选方案</strong>——这是高可用设计的第一原则。</p>
+<hr>
+<h2 id="_1">三、方案一览</h2>
+<p>MySQL 高可用方案从简单到复杂，大致分这几层：</p>
+<div class="highlight"><pre><span></span><code>Level 0: 单机 + 定时备份(不算高可用)
+Level 1: 主从复制(异步)
+Level 2: 半同步复制(Semi-Sync)
+Level 3: MHA / Orchestrator(自动故障切换)
+Level 4: InnoDB Cluster / Group Replication(官方方案)
+Level 5: Galera Cluster(多主同步)
+</code></pre></div>
+
+<p>每一层解决的问题不同，复杂度和运维成本也不同。下面逐个拆解。</p>
+<p>一句话提醒：<strong>别一上来就上最复杂的方案</strong>。你先把 RTO/RPO 定清楚，再决定要不要为"秒级切换"付出"长期运维成本"。</p>
+<hr>
+<h2 id="async-replication">四、主从复制(Async Replication)</h2>
+<h3 id="_2">原理</h3>
+<div class="highlight"><pre><span></span><code>┌──────────┐    binlog     ┌──────────┐
+│  Master  │ ──────────▶  │  Slave   │
+│ (读写)   │   异步传输    │ (只读)   │
+└──────────┘              └──────────┘
+</code></pre></div>
+
+<ol>
+<li>Master 把写操作记录到 <strong>binlog</strong>(二进制日志)</li>
+<li>Slave 的 <strong>IO Thread</strong> 拉取 binlog，写入 <strong>relay log</strong></li>
+<li>Slave 的 <strong>SQL Thread</strong> 重放 relay log，应用到本地数据</li>
+</ol>
+<h3 id="_3">配置要点</h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Master my.cnf</span>
+<span class="k">[mysqld]</span>
+<span class="na">server-id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">1</span>
+<span class="na">log-bin</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">mysql-bin</span>
+<span class="na">binlog-format</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">ROW</span><span class="w">          </span><span class="c1"># 强烈推荐 ROW 格式</span>
+<span class="na">binlog-row-image</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">FULL</span>
+<span class="na">gtid-mode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">ON</span><span class="w">               </span><span class="c1"># 开启 GTID</span>
+<span class="na">enforce-gtid-consistency</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">ON</span>
+<span class="na">sync-binlog</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">1</span><span class="w">              </span><span class="c1"># 每次事务都刷盘</span>
+
+<span class="c1"># Slave my.cnf</span>
+<span class="k">[mysqld]</span>
+<span class="na">server-id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">2</span>
+<span class="na">relay-log</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">relay-bin</span>
+<span class="na">read-only</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">ON</span>
+<span class="na">gtid-mode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">ON</span>
+<span class="na">enforce-gtid-consistency</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">ON</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="c1">-- Slave 上执行</span>
+<span class="n">CHANGE</span><span class="w"> </span><span class="n">MASTER</span><span class="w"> </span><span class="k">TO</span>
+<span class="w">  </span><span class="n">MASTER_HOST</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;10.0.0.1&#39;</span><span class="p">,</span>
+<span class="w">  </span><span class="n">MASTER_USER</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;repl_user&#39;</span><span class="p">,</span>
+<span class="w">  </span><span class="n">MASTER_PASSWORD</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;repl_pass&#39;</span><span class="p">,</span>
+<span class="w">  </span><span class="n">MASTER_AUTO_POSITION</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w">   </span><span class="c1">-- 使用 GTID 自动定位</span>
+
+<span class="k">START</span><span class="w"> </span><span class="n">SLAVE</span><span class="p">;</span>
+<span class="k">SHOW</span><span class="w"> </span><span class="n">SLAVE</span><span class="w"> </span><span class="n">STATUS</span><span class="err">\</span><span class="k">G</span>
+</code></pre></div>
+
+<h3 id="_4">优缺点</h3>
+<table>
+<thead>
+<tr>
+<th>优点</th>
+<th>缺点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>配置简单，原生支持</td>
+<td>异步 = 可能丢数据(RPO &gt; 0)</td>
+</tr>
+<tr>
+<td>读写分离，提升读性能</td>
+<td>主从延迟不可控</td>
+</tr>
+<tr>
+<td>Slave 可用于备份</td>
+<td>故障切换需要手动或额外工具</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_5">适用场景</h3>
+<ul>
+<li>读多写少的业务</li>
+<li>对数据一致性要求不高(RPO &gt; 0 可接受)</li>
+<li>作为其他方案的基础</li>
+</ul>
+<blockquote>
+<p><strong>踩坑提醒</strong>：<code>binlog-format = STATEMENT</code> 在某些场景下会导致主从数据不一致(比如 <code>NOW()</code>、<code>UUID()</code> 等非确定性函数)。<strong>生产环境请用 ROW 格式</strong>。</p>
+</blockquote>
+<hr>
+<h2 id="semi-synchronous-replication">五、半同步复制(Semi-Synchronous Replication)</h2>
+<h3 id="_6">原理</h3>
+<p>异步复制的问题是：Master 提交事务后不等 Slave 确认，如果 Master 此时宕机，Slave 可能还没收到最新的 binlog。</p>
+<p>半同步复制的改进：<strong>Master 提交事务后，至少等一个 Slave 确认收到 binlog，才返回成功</strong>。</p>
+<div class="highlight"><pre><span></span><code>┌──────────┐  1. 写binlog  ┌──────────┐
+│  Master  │ ────────────▶ │  Slave   │
+│          │               │          │
+│          │ ◀──────────── │          │
+│          │  2. ACK确认    │          │
+│  3.返回  │               │          │
+│  客户端  │               │          │
+└──────────┘               └──────────┘
+</code></pre></div>
+
+<h3 id="_7">配置</h3>
+<div class="highlight"><pre><span></span><code><span class="c1">-- Master</span>
+<span class="n">INSTALL</span><span class="w"> </span><span class="n">PLUGIN</span><span class="w"> </span><span class="n">rpl_semi_sync_master</span><span class="w"> </span><span class="n">SONAME</span><span class="w"> </span><span class="s1">&#39;semisync_master.so&#39;</span><span class="p">;</span>
+<span class="k">SET</span><span class="w"> </span><span class="k">GLOBAL</span><span class="w"> </span><span class="n">rpl_semi_sync_master_enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+<span class="k">SET</span><span class="w"> </span><span class="k">GLOBAL</span><span class="w"> </span><span class="n">rpl_semi_sync_master_timeout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1000</span><span class="p">;</span><span class="w">  </span><span class="c1">-- 1秒超时，超时降级为异步</span>
+
+<span class="c1">-- Slave</span>
+<span class="n">INSTALL</span><span class="w"> </span><span class="n">PLUGIN</span><span class="w"> </span><span class="n">rpl_semi_sync_slave</span><span class="w"> </span><span class="n">SONAME</span><span class="w"> </span><span class="s1">&#39;semisync_slave.so&#39;</span><span class="p">;</span>
+<span class="k">SET</span><span class="w"> </span><span class="k">GLOBAL</span><span class="w"> </span><span class="n">rpl_semi_sync_slave_enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+<span class="n">STOP</span><span class="w"> </span><span class="n">SLAVE</span><span class="p">;</span><span class="w"> </span><span class="k">START</span><span class="w"> </span><span class="n">SLAVE</span><span class="p">;</span><span class="w">  </span><span class="c1">-- 重启复制线程生效</span>
+</code></pre></div>
+
+<h3 id="_8">关键参数</h3>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>说明</th>
+<th>建议值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>rpl_semi_sync_master_timeout</code></td>
+<td>等待 Slave ACK 的超时时间</td>
+<td>1000-3000ms</td>
+</tr>
+<tr>
+<td><code>rpl_semi_sync_master_wait_for_slave_count</code></td>
+<td>需要几个 Slave 确认</td>
+<td>1</td>
+</tr>
+<tr>
+<td><code>rpl_semi_sync_master_wait_point</code></td>
+<td>等待点</td>
+<td><code>AFTER_SYNC</code>(推荐)</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>小白提示</strong>：<code>AFTER_SYNC</code>(也叫"无损半同步")是 MySQL 5.7+ 的默认模式，它在 binlog 刷盘后、引擎提交前等待 Slave ACK。这样即使 Master 宕机，Slave 上的数据也是一致的。老版本的 <code>AFTER_COMMIT</code> 模式在极端情况下可能出现"幻读"。</p>
+</blockquote>
+<h3 id="_9">优缺点</h3>
+<table>
+<thead>
+<tr>
+<th>优点</th>
+<th>缺点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RPO ≈ 0(几乎不丢数据)</td>
+<td>写入延迟增加(多一次网络 RTT)</td>
+</tr>
+<tr>
+<td>配置相对简单</td>
+<td>超时后降级为异步，RPO 保证失效</td>
+</tr>
+<tr>
+<td>兼容异步复制架构</td>
+<td>仍需额外工具做故障切换</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="mhamaster-high-availability">六、MHA(Master High Availability)</h2>
+<h3 id="_10">是什么</h3>
+<p>MHA 是一个开源的 MySQL 高可用管理工具(by Yoshinori Matsunobu @ Facebook)，专门解决<strong>自动故障切换</strong>问题。</p>
+<div class="highlight"><pre><span></span><code>┌─────────────────────────────────┐
+│         MHA Manager             │
+│  (监控 Master，触发故障切换)      │
+└──────────┬──────────────────────┘
+           │ 监控
+    ┌──────┴──────┐
+    ▼             ▼
+┌────────┐  ┌────────┐  ┌────────┐
+│ Master │  │ Slave1 │  │ Slave2 │
+│ (挂了) │  │(提升为 │  │        │
+│        │  │ Master)│  │        │
+└────────┘  └────────┘  └────────┘
+</code></pre></div>
+
+<h3 id="_11">工作流程</h3>
+<ol>
+<li><strong>MHA Manager</strong> 持续监控 Master 的健康状态</li>
+<li>Master 宕机后，MHA 自动：</li>
+<li>从所有 Slave 中选出数据最新的</li>
+<li>补齐差异的 relay log(保证数据不丢)</li>
+<li>将该 Slave 提升为新 Master</li>
+<li>其他 Slave 指向新 Master</li>
+<li>整个过程通常在 <strong>10-30 秒</strong>内完成</li>
+</ol>
+<h3 id="_12">配置示例</h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># /etc/mha/app1.cnf</span>
+<span class="k">[server default]</span>
+<span class="na">manager_workdir</span><span class="o">=</span><span class="s">/var/log/mha/app1</span>
+<span class="na">manager_log</span><span class="o">=</span><span class="s">/var/log/mha/app1/manager.log</span>
+<span class="na">ssh_user</span><span class="o">=</span><span class="s">mysql</span>
+<span class="na">repl_user</span><span class="o">=</span><span class="s">repl_user</span>
+<span class="na">repl_password</span><span class="o">=</span><span class="s">repl_pass</span>
+
+<span class="k">[server1]</span>
+<span class="na">hostname</span><span class="o">=</span><span class="s">10.0.0.1</span>
+<span class="na">candidate_master</span><span class="o">=</span><span class="s">1</span>
+
+<span class="k">[server2]</span>
+<span class="na">hostname</span><span class="o">=</span><span class="s">10.0.0.2</span>
+<span class="na">candidate_master</span><span class="o">=</span><span class="s">1</span>
+
+<span class="k">[server3]</span>
+<span class="na">hostname</span><span class="o">=</span><span class="s">10.0.0.3</span>
+<span class="na">no_master</span><span class="o">=</span><span class="s">1</span><span class="w">    </span><span class="c1"># 这个节点永远不提升为 Master</span>
+</code></pre></div>
+
+<h3 id="_13">优缺点</h3>
+<table>
+<thead>
+<tr>
+<th>优点</th>
+<th>缺点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>自动故障切换，RTO 10-30s</td>
+<td>项目已不太活跃(最后更新 2018)</td>
+</tr>
+<tr>
+<td>尽量补齐数据，RPO ≈ 0</td>
+<td>只管故障切换，不管日常监控</td>
+</tr>
+<tr>
+<td>成熟稳定，大量生产验证</td>
+<td>需要 SSH 互信，安全性考量</td>
+</tr>
+<tr>
+<td>支持 VIP 漂移</td>
+<td>不支持多主</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>替代方案</strong>：GitHub 开源的 <strong>Orchestrator</strong> 是 MHA 的现代替代品，支持 Web UI、拓扑可视化、更灵活的故障切换策略。</p>
+</blockquote>
+<hr>
+<h2 id="innodb-cluster-group-replication">七、InnoDB Cluster / Group Replication</h2>
+<h3 id="_14">是什么</h3>
+<p>这是 MySQL 官方推出的高可用方案，由三个组件组成：</p>
+<div class="highlight"><pre><span></span><code>┌─────────────────────────────────────┐
+│           MySQL Shell               │
+│    (管理工具，创建/管理集群)          │
+└──────────────┬──────────────────────┘
+               │
+┌──────────────┴──────────────────────┐
+│          MySQL Router               │
+│   (代理层，自动路由读写请求)          │
+└──────────────┬──────────────────────┘
+               │
+    ┌──────────┼──────────┐
+    ▼          ▼          ▼
+┌────────┐ ┌────────┐ ┌────────┐
+│ Node1  │ │ Node2  │ │ Node3  │
+│Primary │ │Second. │ │Second. │
+│ (R/W)  │ │ (R/O)  │ │ (R/O)  │
+└────────┘ └────────┘ └────────┘
+     ◀── Group Replication ──▶
+</code></pre></div>
+
+<p><strong>Group Replication (GR)</strong> 是底层的复制协议，基于 <strong>Paxos</strong> 变体实现分布式一致性：</p>
+<ul>
+<li>每个事务在提交前需要获得<strong>多数节点</strong>的认证(certification)</li>
+<li>冲突检测在行级别进行</li>
+<li>支持单主模式(推荐)和多主模式</li>
+</ul>
+<h3 id="mysql-shell">配置(使用 MySQL Shell)</h3>
+<div class="highlight"><pre><span></span><code><span class="c1">// 创建集群</span>
+<span class="nx">mysqlsh</span><span class="o">&gt;</span><span class="w"> </span><span class="nx">dba</span><span class="p">.</span><span class="nx">createCluster</span><span class="p">(</span><span class="s1">&#39;myCluster&#39;</span><span class="p">)</span>
+
+<span class="c1">// 添加节点</span>
+<span class="nx">mysqlsh</span><span class="o">&gt;</span><span class="w"> </span><span class="kd">var</span><span class="w"> </span><span class="nx">cluster</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">dba</span><span class="p">.</span><span class="nx">getCluster</span><span class="p">()</span>
+<span class="nx">mysqlsh</span><span class="o">&gt;</span><span class="w"> </span><span class="nx">cluster</span><span class="p">.</span><span class="nx">addInstance</span><span class="p">(</span><span class="s1">&#39;root@10.0.0.2:3306&#39;</span><span class="p">)</span>
+<span class="nx">mysqlsh</span><span class="o">&gt;</span><span class="w"> </span><span class="nx">cluster</span><span class="p">.</span><span class="nx">addInstance</span><span class="p">(</span><span class="s1">&#39;root@10.0.0.3:3306&#39;</span><span class="p">)</span>
+
+<span class="c1">// 查看状态</span>
+<span class="nx">mysqlsh</span><span class="o">&gt;</span><span class="w"> </span><span class="nx">cluster</span><span class="p">.</span><span class="nx">status</span><span class="p">()</span>
+</code></pre></div>
+
+<h3 id="_15">关键配置参数</h3>
+<div class="highlight"><pre><span></span><code><span class="k">[mysqld]</span>
+<span class="c1"># Group Replication 基础配置</span>
+<span class="na">plugin_load_add</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&#39;group_replication.so&#39;</span>
+<span class="na">group_replication_group_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee&quot;</span>
+<span class="na">group_replication_start_on_boot</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">OFF</span>
+<span class="na">group_replication_local_address</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;10.0.0.1:33061&quot;</span>
+<span class="na">group_replication_group_seeds</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;10.0.0.1:33061,10.0.0.2:33061,10.0.0.3:33061&quot;</span>
+
+<span class="c1"># 性能调优</span>
+<span class="na">group_replication_flow_control_mode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">QUOTA</span>
+<span class="na">group_replication_flow_control_applier_threshold</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">25000</span>
+<span class="na">group_replication_transaction_size_limit</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">150000000</span><span class="w">  </span><span class="c1"># 150MB</span>
+
+<span class="c1"># 网络</span>
+<span class="na">group_replication_communication_max_message_size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">10485760</span>
+<span class="na">group_replication_member_expel_timeout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">5</span>
+</code></pre></div>
+
+<h3 id="mysql-router">MySQL Router 配置</h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># /etc/mysqlrouter/mysqlrouter.conf</span>
+<span class="k">[routing:primary]</span>
+<span class="na">bind_address</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">0.0.0.0</span>
+<span class="na">bind_port</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">6446</span>
+<span class="na">destinations</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">metadata-cache://myCluster/?role=PRIMARY</span>
+<span class="na">routing_strategy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">first-available</span>
+
+<span class="k">[routing:secondary]</span>
+<span class="na">bind_address</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">0.0.0.0</span>
+<span class="na">bind_port</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">6447</span>
+<span class="na">destinations</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">metadata-cache://myCluster/?role=SECONDARY</span>
+<span class="na">routing_strategy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">round-robin-with-fallback</span>
+</code></pre></div>
+
+<p>应用连接时：
+- <strong>写请求</strong> → 连接 <code>6446</code> 端口(路由到 Primary)
+- <strong>读请求</strong> → 连接 <code>6447</code> 端口(负载均衡到 Secondary)</p>
+<h3 id="_16">优缺点</h3>
+<table>
+<thead>
+<tr>
+<th>优点</th>
+<th>缺点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>官方方案，持续维护</td>
+<td>对网络延迟敏感(节点间 RTT &lt; 10ms)</td>
+</tr>
+<tr>
+<td>自动故障检测和切换</td>
+<td>大事务性能差(需要多数节点认证)</td>
+</tr>
+<tr>
+<td>RPO = 0(多数确认)</td>
+<td>最少 3 节点，资源成本高</td>
+</tr>
+<tr>
+<td>内置冲突检测</td>
+<td>不支持外键(多主模式下)</td>
+</tr>
+<tr>
+<td>MySQL Shell 管理方便</td>
+<td>学习曲线较陡</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="galera-cluster">八、Galera Cluster</h2>
+<h3 id="_17">是什么</h3>
+<p>Galera 是一个基于 <strong>wsrep</strong>(Write Set Replication)协议的同步多主复制方案。Percona XtraDB Cluster (PXC) 和 MariaDB Galera Cluster 都基于它。</p>
+<div class="highlight"><pre><span></span><code>┌────────┐     ┌────────┐     ┌────────┐
+│ Node1  │◀───▶│ Node2  │◀───▶│ Node3  │
+│ (R/W)  │     │ (R/W)  │     │ (R/W)  │
+└────────┘     └────────┘     └────────┘
+    ▲              ▲              ▲
+    └──── 同步复制(wsrep)────────┘
+</code></pre></div>
+
+<p><strong>每个节点都可以读写</strong>，事务在提交时同步到所有节点。</p>
+<h3 id="_18">核心特性</h3>
+<ul>
+<li><strong>真正的多主</strong>：任何节点都可以写</li>
+<li><strong>同步复制</strong>：事务提交时所有节点都有数据</li>
+<li><strong>自动成员管理</strong>：节点加入/离开自动处理</li>
+<li><strong>行级冲突检测</strong>：两个节点同时修改同一行会冲突</li>
+</ul>
+<h3 id="pxc">配置示例(PXC)</h3>
+<div class="highlight"><pre><span></span><code><span class="k">[mysqld]</span>
+<span class="na">wsrep_provider</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">/usr/lib/galera3/libgalera_smm.so</span>
+<span class="na">wsrep_cluster_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">my_pxc_cluster</span>
+<span class="na">wsrep_cluster_address</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">gcomm://10.0.0.1,10.0.0.2,10.0.0.3</span>
+<span class="na">wsrep_node_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">node1</span>
+<span class="na">wsrep_node_address</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">10.0.0.1</span>
+<span class="na">wsrep_sst_method</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">xtrabackup-v2</span>
+<span class="na">wsrep_sst_auth</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">sst_user:sst_pass</span>
+
+<span class="c1"># 性能</span>
+<span class="na">innodb_autoinc_lock_mode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">2</span><span class="w">    </span><span class="c1"># Galera 要求</span>
+<span class="na">wsrep_slave_threads</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">4</span><span class="w">         </span><span class="c1"># 并行应用线程</span>
+</code></pre></div>
+
+<h3 id="_19">优缺点</h3>
+<table>
+<thead>
+<tr>
+<th>优点</th>
+<th>缺点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>多主写入，无单点</td>
+<td>写性能受最慢节点限制</td>
+</tr>
+<tr>
+<td>强一致性，RPO = 0</td>
+<td>不支持大事务(锁冲突)</td>
+</tr>
+<tr>
+<td>自动节点管理</td>
+<td>网络分区处理复杂</td>
+</tr>
+<tr>
+<td>成熟稳定</td>
+<td>DDL 操作会阻塞整个集群</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>踩坑提醒</strong>：Galera 的 <code>innodb_autoinc_lock_mode</code> 必须设为 2，否则会导致死锁。另外，避免在 Galera 上跑大批量 <code>INSERT ... SELECT</code> 或 <code>LOAD DATA</code>，这类大事务会严重影响集群性能。</p>
+</blockquote>
+<hr>
+<h2 id="proxysql">九、代理层：ProxySQL</h2>
+<p>不管用哪种复制方案，应用层都需要一个<strong>代理</strong>来做读写分离和故障切换。ProxySQL 是最流行的选择。</p>
+<h3 id="_20">核心功能</h3>
+<div class="highlight"><pre><span></span><code>┌─────────┐
+│   App   │
+└────┬────┘
+     │
+┌────▼────┐
+│ProxySQL │  ← 读写分离、连接池、查询缓存、故障检测
+└────┬────┘
+     │
+┌────┴─────────────┐
+│                  │
+▼                  ▼
+┌────────┐    ┌────────┐
+│ Master │    │ Slave  │
+│ (写)   │    │ (读)   │
+└────────┘    └────────┘
+</code></pre></div>
+
+<h3 id="_21">配置示例</h3>
+<div class="highlight"><pre><span></span><code><span class="c1">-- 添加后端服务器</span>
+<span class="k">INSERT</span><span class="w"> </span><span class="k">INTO</span><span class="w"> </span><span class="n">mysql_servers</span><span class="w"> </span><span class="p">(</span><span class="n">hostgroup_id</span><span class="p">,</span><span class="w"> </span><span class="n">hostname</span><span class="p">,</span><span class="w"> </span><span class="n">port</span><span class="p">,</span><span class="w"> </span><span class="n">weight</span><span class="p">)</span>
+<span class="k">VALUES</span>
+<span class="w">  </span><span class="p">(</span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;10.0.0.1&#39;</span><span class="p">,</span><span class="w"> </span><span class="mi">3306</span><span class="p">,</span><span class="w"> </span><span class="mi">1000</span><span class="p">),</span><span class="w">   </span><span class="c1">-- 写组</span>
+<span class="w">  </span><span class="p">(</span><span class="mi">20</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;10.0.0.2&#39;</span><span class="p">,</span><span class="w"> </span><span class="mi">3306</span><span class="p">,</span><span class="w"> </span><span class="mi">1000</span><span class="p">),</span><span class="w">   </span><span class="c1">-- 读组</span>
+<span class="w">  </span><span class="p">(</span><span class="mi">20</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;10.0.0.3&#39;</span><span class="p">,</span><span class="w"> </span><span class="mi">3306</span><span class="p">,</span><span class="w"> </span><span class="mi">1000</span><span class="p">);</span><span class="w">   </span><span class="c1">-- 读组</span>
+
+<span class="c1">-- 读写分离规则</span>
+<span class="k">INSERT</span><span class="w"> </span><span class="k">INTO</span><span class="w"> </span><span class="n">mysql_query_rules</span><span class="w"> </span><span class="p">(</span><span class="n">rule_id</span><span class="p">,</span><span class="w"> </span><span class="n">active</span><span class="p">,</span><span class="w"> </span><span class="n">match_pattern</span><span class="p">,</span><span class="w"> </span><span class="n">destination_hostgroup</span><span class="p">)</span>
+<span class="k">VALUES</span>
+<span class="w">  </span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;^SELECT .* FOR UPDATE$&#39;</span><span class="p">,</span><span class="w"> </span><span class="mi">10</span><span class="p">),</span><span class="w">   </span><span class="c1">-- SELECT FOR UPDATE → 写组</span>
+<span class="w">  </span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;^SELECT&#39;</span><span class="p">,</span><span class="w"> </span><span class="mi">20</span><span class="p">);</span><span class="w">                   </span><span class="c1">-- 普通 SELECT → 读组</span>
+
+<span class="c1">-- 加载配置</span>
+<span class="k">LOAD</span><span class="w"> </span><span class="n">MYSQL</span><span class="w"> </span><span class="n">SERVERS</span><span class="w"> </span><span class="k">TO</span><span class="w"> </span><span class="n">RUNTIME</span><span class="p">;</span>
+<span class="k">LOAD</span><span class="w"> </span><span class="n">MYSQL</span><span class="w"> </span><span class="n">QUERY</span><span class="w"> </span><span class="n">RULES</span><span class="w"> </span><span class="k">TO</span><span class="w"> </span><span class="n">RUNTIME</span><span class="p">;</span>
+<span class="n">SAVE</span><span class="w"> </span><span class="n">MYSQL</span><span class="w"> </span><span class="n">SERVERS</span><span class="w"> </span><span class="k">TO</span><span class="w"> </span><span class="n">DISK</span><span class="p">;</span>
+<span class="n">SAVE</span><span class="w"> </span><span class="n">MYSQL</span><span class="w"> </span><span class="n">QUERY</span><span class="w"> </span><span class="n">RULES</span><span class="w"> </span><span class="k">TO</span><span class="w"> </span><span class="n">DISK</span><span class="p">;</span>
+</code></pre></div>
+
+<h3 id="proxysql_1">ProxySQL 健康检查</h3>
+<div class="highlight"><pre><span></span><code><span class="c1">-- 配置后端监控</span>
+<span class="k">UPDATE</span><span class="w"> </span><span class="n">global_variables</span><span class="w"> </span><span class="k">SET</span><span class="w"> </span><span class="n">variable_value</span><span class="o">=</span><span class="s1">&#39;monitor_user&#39;</span>
+<span class="w">  </span><span class="k">WHERE</span><span class="w"> </span><span class="n">variable_name</span><span class="o">=</span><span class="s1">&#39;mysql-monitor_username&#39;</span><span class="p">;</span>
+<span class="k">UPDATE</span><span class="w"> </span><span class="n">global_variables</span><span class="w"> </span><span class="k">SET</span><span class="w"> </span><span class="n">variable_value</span><span class="o">=</span><span class="s1">&#39;monitor_pass&#39;</span>
+<span class="w">  </span><span class="k">WHERE</span><span class="w"> </span><span class="n">variable_name</span><span class="o">=</span><span class="s1">&#39;mysql-monitor_password&#39;</span><span class="p">;</span>
+<span class="k">SET</span><span class="w"> </span><span class="n">mysql</span><span class="o">-</span><span class="n">monitor_read_only_interval</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1500</span><span class="p">;</span><span class="w">   </span><span class="c1">-- 1.5秒检查一次</span>
+<span class="k">SET</span><span class="w"> </span><span class="n">mysql</span><span class="o">-</span><span class="n">monitor_read_only_timeout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">500</span><span class="p">;</span>
+
+<span class="k">LOAD</span><span class="w"> </span><span class="n">MYSQL</span><span class="w"> </span><span class="n">VARIABLES</span><span class="w"> </span><span class="k">TO</span><span class="w"> </span><span class="n">RUNTIME</span><span class="p">;</span>
+</code></pre></div>
+
+<hr>
+<h2 id="_22">十、方案对比</h2>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>RPO</th>
+<th>RTO</th>
+<th>写性能</th>
+<th>复杂度</th>
+<th>节点数</th>
+<th>适用场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>异步复制</td>
+<td>&gt; 0</td>
+<td>手动/分钟级</td>
+<td>★★★★★</td>
+<td>★☆☆☆☆</td>
+<td>2+</td>
+<td>读多写少，容忍少量丢数据</td>
+</tr>
+<tr>
+<td>半同步复制</td>
+<td>≈ 0</td>
+<td>手动/分钟级</td>
+<td>★★★★☆</td>
+<td>★★☆☆☆</td>
+<td>2+</td>
+<td>需要数据安全，写量不大</td>
+</tr>
+<tr>
+<td>MHA</td>
+<td>≈ 0</td>
+<td>10-30s</td>
+<td>★★★★☆</td>
+<td>★★★☆☆</td>
+<td>3+</td>
+<td>成熟方案，中小规模</td>
+</tr>
+<tr>
+<td>InnoDB Cluster</td>
+<td>= 0</td>
+<td>秒级</td>
+<td>★★★☆☆</td>
+<td>★★★★☆</td>
+<td>3+</td>
+<td>官方方案，新项目首选</td>
+</tr>
+<tr>
+<td>Galera</td>
+<td>= 0</td>
+<td>秒级</td>
+<td>★★★☆☆</td>
+<td>★★★★☆</td>
+<td>3+</td>
+<td>多主写入，强一致性</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_23">怎么选？</h3>
+<div class="highlight"><pre><span></span><code>你的 RPO 要求是什么？
+├── RPO &gt; 0 可接受 → 异步复制 + ProxySQL
+├── RPO ≈ 0 → 
+│   ├── 需要自动切换？
+│   │   ├── 是 → InnoDB Cluster(新项目)或 MHA(老项目)
+│   │   └── 否 → 半同步复制
+│   └── 需要多主写入？
+│       └── 是 → Galera Cluster
+└── RPO = 0 且 RTO &lt; 5s → InnoDB Cluster 或 Galera
+</code></pre></div>
+
+<hr>
+<h2 id="_24">十一、常见错误与排查</h2>
+<h3 id="1">1. 主从复制中断</h3>
+<p><strong>症状</strong>：<code>SHOW SLAVE STATUS</code> 显示 <code>Slave_SQL_Running: No</code></p>
+<div class="highlight"><pre><span></span><code><span class="c1">-- 查看错误</span>
+<span class="k">SHOW</span><span class="w"> </span><span class="n">SLAVE</span><span class="w"> </span><span class="n">STATUS</span><span class="err">\</span><span class="k">G</span>
+<span class="c1">-- 关注这几个字段：</span>
+<span class="c1">-- Last_SQL_Error: 具体错误信息</span>
+<span class="c1">-- Last_SQL_Errno: 错误码</span>
+<span class="c1">-- Seconds_Behind_Master: 延迟秒数</span>
+</code></pre></div>
+
+<p><strong>常见原因和解决</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>错误码</th>
+<th>原因</th>
+<th>解决方案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1062</td>
+<td>主键冲突(Slave 上已有该数据)</td>
+<td><code>SET GLOBAL sql_slave_skip_counter = 1; START SLAVE;</code> 或用 GTID 跳过</td>
+</tr>
+<tr>
+<td>1032</td>
+<td>找不到要更新/删除的行</td>
+<td>检查数据一致性，可能需要重建 Slave</td>
+</tr>
+<tr>
+<td>1236</td>
+<td>binlog 位置无效</td>
+<td>Master 的 binlog 已被清理，需要重建 Slave</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>⚠️ <strong>不要随便跳过错误</strong>！<code>sql_slave_skip_counter</code> 是应急手段，跳过后主从数据可能不一致。正确做法是找到根因并修复。</p>
+</blockquote>
+<h3 id="2">2. 主从延迟过大</h3>
+<p><strong>排查步骤</strong>：</p>
+<div class="highlight"><pre><span></span><code><span class="c1">-- 1. 检查延迟</span>
+<span class="k">SHOW</span><span class="w"> </span><span class="n">SLAVE</span><span class="w"> </span><span class="n">STATUS</span><span class="err">\</span><span class="k">G</span><span class="w">  </span><span class="c1">-- 看 Seconds_Behind_Master</span>
+
+<span class="c1">-- 2. 检查是否有大事务</span>
+<span class="c1">-- Master 上</span>
+<span class="k">SHOW</span><span class="w"> </span><span class="n">PROCESSLIST</span><span class="p">;</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">information_schema</span><span class="p">.</span><span class="n">innodb_trx</span><span class="w"> </span>
+<span class="k">WHERE</span><span class="w"> </span><span class="n">trx_started</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">NOW</span><span class="p">()</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nb">INTERVAL</span><span class="w"> </span><span class="mi">60</span><span class="w"> </span><span class="k">SECOND</span><span class="p">;</span>
+
+<span class="c1">-- 3. 检查 Slave 的 IO/SQL 线程</span>
+<span class="k">SHOW</span><span class="w"> </span><span class="n">SLAVE</span><span class="w"> </span><span class="n">STATUS</span><span class="err">\</span><span class="k">G</span>
+<span class="c1">-- Slave_IO_Running: Yes  (IO线程正常)</span>
+<span class="c1">-- Slave_SQL_Running: Yes (SQL线程正常)</span>
+<span class="c1">-- Read_Master_Log_Pos vs Exec_Master_Log_Pos (差距大=SQL线程慢)</span>
+</code></pre></div>
+
+<p><strong>常见原因</strong>：</p>
+<ul>
+<li><strong>大事务</strong>：一个 <code>ALTER TABLE</code> 或大批量 <code>UPDATE</code> 会阻塞复制</li>
+<li><strong>Slave 硬件差</strong>：Slave 的 IO/CPU 跟不上 Master</li>
+<li><strong>单线程复制</strong>：MySQL 5.6 之前 SQL 线程是单线程的</li>
+</ul>
+<p><strong>解决方案</strong>：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># 开启多线程复制(MySQL 5.7+)</span>
+<span class="na">slave_parallel_type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">LOGICAL_CLOCK</span>
+<span class="na">slave_parallel_workers</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">8</span><span class="w">          </span><span class="c1"># 根据 CPU 核数调整</span>
+<span class="na">slave_preserve_commit_order</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">ON</span><span class="w">    </span><span class="c1"># 保证提交顺序</span>
+</code></pre></div>
+
+<h3 id="3">3. 半同步降级为异步</h3>
+<p><strong>症状</strong>：<code>Rpl_semi_sync_master_status = OFF</code></p>
+<div class="highlight"><pre><span></span><code><span class="c1">-- 检查半同步状态</span>
+<span class="k">SHOW</span><span class="w"> </span><span class="n">STATUS</span><span class="w"> </span><span class="k">LIKE</span><span class="w"> </span><span class="s1">&#39;Rpl_semi_sync%&#39;</span><span class="p">;</span>
+<span class="c1">-- Rpl_semi_sync_master_status: OFF  ← 已降级</span>
+<span class="c1">-- Rpl_semi_sync_master_no_tx: 123   ← 异步提交的事务数</span>
+</code></pre></div>
+
+<p><strong>原因</strong>：Slave 响应超时(网络抖动、Slave 负载高)</p>
+<p><strong>解决</strong>：
+- 检查网络延迟：<code>ping</code> 和 <code>mtr</code> 排查
+- 适当增大 <code>rpl_semi_sync_master_timeout</code>
+- 确保至少有一个 Slave 在同机房</p>
+<h3 id="4-group-replication">4. Group Replication 节点被驱逐</h3>
+<p><strong>症状</strong>：节点状态变为 <code>UNREACHABLE</code> 或 <code>ERROR</code></p>
+<div class="highlight"><pre><span></span><code><span class="c1">-- 检查 GR 状态</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">performance_schema</span><span class="p">.</span><span class="n">replication_group_members</span><span class="p">;</span>
+
+<span class="c1">-- 查看错误日志</span>
+<span class="c1">-- [ERROR] Plugin group_replication reported: </span>
+<span class="c1">-- &#39;Member was expelled from the group due to network issues&#39;</span>
+</code></pre></div>
+
+<p><strong>常见原因</strong>：
+- 网络分区或延迟过高
+- 节点负载过高，无法及时响应心跳
+- 大事务导致认证(certification)超时</p>
+<p><strong>解决</strong>：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># 增大容忍时间</span>
+<span class="na">group_replication_member_expel_timeout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">5</span><span class="w">      </span><span class="c1"># 默认 0，建议 5s</span>
+<span class="na">group_replication_unreachable_majority_timeout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">30</span>
+
+<span class="c1"># 限制事务大小</span>
+<span class="na">group_replication_transaction_size_limit</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">150000000</span>
+</code></pre></div>
+
+<h3 id="5-split-brain">5. 脑裂(Split Brain)</h3>
+<p><strong>症状</strong>：两个节点都认为自己是 Master，同时接受写入</p>
+<p>这是高可用最危险的故障。<strong>预防措施</strong>：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># InnoDB Cluster / GR：天然防脑裂(Paxos 多数派)</span>
+<span class="c1"># 至少 3 个节点，挂 1 个不影响</span>
+
+<span class="c1"># MHA：配置 fencing 脚本</span>
+<span class="c1"># 在切换前先 STONITH(Shoot The Other Node In The Head)</span>
+<span class="na">master_ip_failover_script</span><span class="o">=</span><span class="s">/usr/local/bin/master_ip_failover</span>
+<span class="na">shutdown_script</span><span class="o">=</span><span class="s">/usr/local/bin/power_manager</span>
+</code></pre></div>
+
+<h3 id="6">6. 数据不一致</h3>
+<p><strong>检测工具</strong>：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># 使用 pt-table-checksum 检测主从数据一致性</span>
+pt-table-checksum<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--host<span class="o">=</span><span class="m">10</span>.0.0.1<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--user<span class="o">=</span>checksum_user<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--password<span class="o">=</span>checksum_pass<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--databases<span class="o">=</span>mydb<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--tables<span class="o">=</span>orders
+
+<span class="c1"># 使用 pt-table-sync 修复不一致</span>
+pt-table-sync<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--execute<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--sync-to-master<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="nv">h</span><span class="o">=</span><span class="m">10</span>.0.0.2,D<span class="o">=</span>mydb,t<span class="o">=</span>orders
+</code></pre></div>
+
+<hr>
+<h2 id="_25">十二、最佳实践清单</h2>
+<h3 id="_26">基础设施</h3>
+<ul>
+<li>[ ] <strong>至少 3 个节点</strong>(1 主 2 从，或 3 节点 GR)</li>
+<li>[ ] <strong>跨机架/可用区部署</strong>(避免单点故障)</li>
+<li>[ ] <strong>专用复制网络</strong>(复制流量和业务流量分离)</li>
+<li>[ ] <strong>SSD 存储</strong>(binlog 和 redo log 放 SSD)</li>
+</ul>
+<h3 id="_27">复制配置</h3>
+<ul>
+<li>[ ] <strong>使用 GTID</strong>(比传统 binlog position 更可靠)</li>
+<li>[ ] <strong>binlog 格式用 ROW</strong>(避免非确定性函数导致不一致)</li>
+<li>[ ] <strong><code>sync_binlog = 1</code></strong>(每次事务刷盘，防止 binlog 丢失)</li>
+<li>[ ] <strong><code>innodb_flush_log_at_trx_commit = 1</code></strong>(redo log 每次事务刷盘)</li>
+<li>[ ] <strong>开启多线程复制</strong>(<code>slave_parallel_workers &gt;= 4</code>)</li>
+</ul>
+<h3 id="_28">监控告警</h3>
+<ul>
+<li>[ ] <strong>监控复制延迟</strong>(<code>Seconds_Behind_Master</code> 或 <code>heartbeat</code> 表)</li>
+<li>[ ] <strong>监控复制状态</strong>(IO/SQL 线程是否运行)</li>
+<li>[ ] <strong>监控半同步状态</strong>(是否降级为异步)</li>
+<li>[ ] <strong>定期数据一致性校验</strong>(<code>pt-table-checksum</code>，每周一次)</li>
+</ul>
+<h3 id="_29">故障切换</h3>
+<ul>
+<li>[ ] <strong>自动切换工具</strong>(MHA / Orchestrator / InnoDB Cluster)</li>
+<li>[ ] <strong>VIP 或 DNS 切换</strong>(应用不需要改连接串)</li>
+<li>[ ] <strong>切换后自动通知</strong>(钉钉/飞书/PagerDuty)</li>
+<li>[ ] <strong>定期演练</strong>(每季度至少一次故障切换演练)</li>
+</ul>
+<h3 id="_30">备份</h3>
+<ul>
+<li>[ ] <strong>从 Slave 备份</strong>(不影响 Master 性能)</li>
+<li>[ ] <strong>物理备份</strong>(<code>xtrabackup</code>，比 <code>mysqldump</code> 快 10 倍)</li>
+<li>[ ] <strong>备份验证</strong>(定期恢复到测试环境验证)</li>
+<li>[ ] <strong>binlog 保留足够长</strong>(至少 7 天，<code>expire_logs_days = 7</code>)</li>
+</ul>
+<h3 id="_31">安全</h3>
+<ul>
+<li>[ ] <strong>复制用户最小权限</strong>(只给 <code>REPLICATION SLAVE</code>)</li>
+<li>[ ] <strong>开启复制加密</strong>(<code>MASTER_SSL = 1</code>)</li>
+<li>[ ] <strong>ProxySQL 用户隔离</strong>(不同应用用不同用户)</li>
+</ul>
+<hr>
+<h2 id="_32">十三、一个生产环境的参考架构</h2>
+<div class="highlight"><pre><span></span><code>                    ┌─────────────┐
+                    │   HAProxy   │  ← VIP: 10.0.0.100
+                    │  (主备)     │
+                    └──────┬──────┘
+                           │
+                    ┌──────┴──────┐
+                    │  ProxySQL   │  ← 读写分离 + 连接池
+                    │  (主备)     │
+                    └──────┬──────┘
+                           │
+              ┌────────────┼────────────┐
+              │            │            │
+        ┌─────┴─────┐ ┌───┴───┐ ┌─────┴─────┐
+        │  MySQL     │ │MySQL  │ │  MySQL     │
+        │  Primary   │ │Second.│ │  Second.   │
+        │  (AZ-a)    │ │(AZ-b) │ │  (AZ-c)   │
+        └────────────┘ └───────┘ └────────────┘
+              │
+        ┌─────┴─────┐
+        │  Delayed   │  ← 延迟复制(1 小时)，防误操作
+        │  Slave     │
+        └────────────┘
+</code></pre></div>
+
+<p><strong>关键设计点</strong>：</p>
+<ol>
+<li><strong>ProxySQL 主备</strong>：避免代理层单点</li>
+<li><strong>3 节点 GR</strong>：跨 3 个可用区，自动故障切换</li>
+<li><strong>延迟复制 Slave</strong>：设置 1 小时延迟，用于误操作恢复</li>
+</ol>
+<div class="highlight"><pre><span></span><code><span class="c1">-- 配置延迟复制</span>
+<span class="n">CHANGE</span><span class="w"> </span><span class="n">MASTER</span><span class="w"> </span><span class="k">TO</span><span class="w"> </span><span class="n">MASTER_DELAY</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3600</span><span class="p">;</span><span class="w">  </span><span class="c1">-- 延迟 1 小时</span>
+</code></pre></div>
+
+<hr>
+<h2 id="_33">思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node { BackgroundColor #FAFAFA }
+  :depth(0) { BackgroundColor #FFD700 }
+  :depth(1) { BackgroundColor #E3F2FD }
+  :depth(2) { BackgroundColor #F5F5F5 }
+}
+&lt;/style&gt;
+* MySQL 高可用\n从主从复制到 InnoDB Cluster
+** 核心指标
+*** RTO 恢复时间
+*** RPO 数据丢失量
+*** 先定指标再选方案
+** 复制方案
+*** 异步复制(简单，可能丢数据)
+*** 半同步(几乎不丢，写延迟增加)
+*** Group Replication(Paxos，强一致)
+*** Galera(多主同步写入)
+** 故障切换
+*** MHA(经典，10-30s)
+*** Orchestrator(MHA 替代)
+*** InnoDB Cluster(官方，秒级)
+** 代理层
+*** ProxySQL(读写分离)
+*** MySQL Router(官方)
+*** HAProxy(四层代理)
+** 常见问题
+*** 复制中断(1062/1032/1236)
+*** 主从延迟(大事务/单线程)
+*** 半同步降级
+*** 脑裂(需要奇数节点)
+*** 数据不一致(pt-table-checksum)
+** 最佳实践
+*** GTID + ROW 格式
+*** sync_binlog = 1
+*** 多线程复制
+*** 定期演练
+*** 延迟复制防误操作
+@endmindmap
+</code></pre></div>
+
+<p><img alt="MySQL 高可用思维导图" src="../images/tech_20260306_mysql_high_availability_mindmap.png"></p>
+<hr>
+<h2 id="_34">扩展阅读</h2>
+<ol>
+<li><a href="https://dev.mysql.com/doc/refman/8.0/en/group-replication.html">MySQL 官方文档 - Group Replication</a></li>
+<li><a href="https://www.oreilly.com/library/view/high-performance-mysql/9781492080503/">High Performance MySQL, 4th Edition</a> — O'Reilly</li>
+<li><a href="https://proxysql.com/documentation/">ProxySQL 官方文档</a></li>
+<li><a href="https://docs.percona.com/percona-xtradb-cluster/8.0/">Percona XtraDB Cluster 文档</a></li>
+<li><a href="https://github.com/openark/orchestrator">GitHub - Orchestrator</a> — MHA 的现代替代</li>
+<li><a href="https://www.percona.com/blog/category/mysql/">MySQL High Availability - Percona Blog</a></li>
+</ol>
+<hr>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。</p>
+  </div>
+  <div class="tag-cloud">
+    <p>
+      <a href="./tag/mysql.html">MySQL</a>
+      <a href="./tag/gao-ke-yong.html">高可用</a>
+      <a href="./tag/shu-ju-ku.html">数据库</a>
+      <a href="./tag/zhu-cong-fu-zhi.html">主从复制</a>
+      <a href="./tag/innodb-cluster.html">InnoDB Cluster</a>
+      <a href="./tag/mha.html">MHA</a>
+      <a href="./tag/proxysql.html">ProxySQL</a>
+    </p>
+  </div>
+
+
+  <div class="center social-share" style="margin: 1.5em 0; text-align: center;">
+    <p style="margin-bottom: 0.5em; color: #888;">📤 Share this article</p>
+    <a href="https://twitter.com/intent/tweet?text=MySQL%20%E9%AB%98%E5%8F%AF%E7%94%A8%EF%BC%9A%E4%BB%8E%E4%B8%BB%E4%BB%8E%E5%A4%8D%E5%88%B6%E5%88%B0%20InnoDB%20Cluster%EF%BC%8C%E4%BD%A0%E9%9C%80%E8%A6%81%E7%9F%A5%E9%81%93%E7%9A%84%E4%B8%80%E5%88%87&url=./2026-03-06-mysql-high-availability.html"
+       target="_blank" rel="noopener" title="Share on Twitter/X"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#1da1f2; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      𝕏 Twitter
+    </a>
+    <a href="https://www.linkedin.com/sharing/share-offsite/?url=./2026-03-06-mysql-high-availability.html"
+       target="_blank" rel="noopener" title="Share on LinkedIn"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#0077b5; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      💼 LinkedIn
+    </a>
+    <a href="javascript:void(0);" onclick="copyLink('./2026-03-06-mysql-high-availability.html')" title="Copy link"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#666; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em; cursor:pointer;">
+      🔗 Copy Link
+    </a>
+    <script>
+    function copyLink(url) {
+      navigator.clipboard.writeText(url).then(function() {
+        alert('链接已复制！');
+      });
+    }
+    </script>
+  </div>
+
+  <div class="neighbors">
+    <a class="btn float-left" href="./2026-03-06-service-stability-lmat-used.html" title="服务稳定性之 LMAT 和 USED">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="./fu-wu-wen-ding-xing-zhi-lmat-he-usedbie-deng-zhao-bao-jing-xian-xue-hui-kan-bing-li.html" title="服务稳定性之 LMAT 和 USED：别等着报警, 先学会"看病历"">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="./theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : ".",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>  <script>
+    window.loadStorkIndex = function () {
+      stork.initialize("./theme/stork/stork.wasm")
+      stork.register("sitesearch", "./search-index.st", { showProgress: false });
+    }
+  </script>
+  <script src="./theme/stork/stork.js"></script>
+
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

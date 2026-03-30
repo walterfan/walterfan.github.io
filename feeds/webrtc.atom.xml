@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Walter Fan's Blog - webrtc</title><link href="https://www.fanyamin.com/" rel="alternate"/><link href="https://www.fanyamin.com/feeds/webrtc.atom.xml" rel="self"/><id>https://www.fanyamin.com/</id><updated>2022-03-18T10:20:00+08:00</updated><subtitle>手握灵珠常奋笔, 心开天籁不吹箫</subtitle><entry><title>基于延迟的带宽评估</title><link href="https://www.fanyamin.com/delay-based-controller.html" rel="alternate"/><published>2022-03-18T10:20:00+08:00</published><updated>2022-03-18T10:20:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2022-03-18:/delay-based-controller.html</id><summary type="html">&lt;p class="first last"&gt;Delay based controller based on kalman filter&lt;/p&gt;
+</summary><content type="html">&lt;div class="section" id="section-2"&gt;
+&lt;h2&gt;概述&lt;/h2&gt;
+&lt;p&gt;基于延迟的控制的算法主要分为四个部分：&lt;/p&gt;
+&lt;ol class="arabic simple"&gt;
+&lt;li&gt;pre-filtering 预先过滤&lt;/li&gt;
+&lt;li&gt;arrival-time filter 到达时间过滤器&lt;/li&gt;
+&lt;li&gt;over-use detector 过度使用检测器&lt;/li&gt;
+&lt;li&gt;rate-control 速率控制器&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/div&gt;
+&lt;div class="section" id="section-3"&gt;
+&lt;h2&gt;1. 到达时间模型&lt;/h2&gt;
+&lt;p&gt;两个包发送的间隔 T(i) – T(i-1) 和接收的间隔 t(i) – t(i-1) 在理想情况下是相同的，实际上会有不同.
+也就是说包的到达时间并未保持稳定的速度。 在计算的时候可以用以帧分组，对两个组的到达时间进行计算。&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;发送时间间隔与到达时间间隔之间的延时的观测公式，称为单向延迟变化&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="formula"&gt;
+&lt;i&gt;d&lt;/i&gt;(&lt;i&gt;i&lt;/i&gt;) = &lt;i&gt;t&lt;/i&gt;(&lt;i&gt;i&lt;/i&gt;)–&lt;i&gt;t&lt;/i&gt;(&lt;i&gt;i&lt;/i&gt; − 1)–(&lt;i&gt;T&lt;/i&gt;(&lt;i&gt;i&lt;/i&gt;)–&lt;i&gt;T&lt;/i&gt;(&lt;i&gt;i&lt;/i&gt; − 1))
+&lt;/div&gt;
+&lt;p&gt;还可将数据包组之间的延迟变化建模为&lt;/p&gt;
+&lt;div class="formula"&gt;
+&lt;i&gt;d&lt;/i&gt;(&lt;i&gt;i&lt;/i&gt;) = &lt;i&gt;w&lt;/i&gt;(&lt;i&gt;i&lt;/i&gt;)
+&lt;/div&gt;
+&lt;p&gt;这里的 w(i) 是一个随机过程 W 的采样，它是一个连接容量，当前交叉流量和当前比特率的函数，我们将 W 建模为一个白高斯过程。如果我们过度使用了传输通道，则 w(i) 的平均值就会增大，如果网络路径中的拥塞队列已经清空了，这个 w(i) 的平均值就会减小，否则 w(i) 的平均值为零。&lt;/p&gt;
+&lt;p&gt;由此，我们可以将w(i) 分解为它的平均值加上一个偏差&lt;/p&gt;
+&lt;div class="formula"&gt;
+&lt;i&gt;d&lt;/i&gt;(&lt;i&gt;i&lt;/i&gt;) = &lt;i&gt;m&lt;/i&gt;(&lt;i&gt;i&lt;/i&gt;) + &lt;i&gt;v&lt;/i&gt;(&lt;i&gt;i&lt;/i&gt;)
+&lt;/div&gt;
+&lt;p&gt;v(i) 表示网络抖动和其他没有被这个模型捕捉到的延迟&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="pre-filtering"&gt;
+&lt;h2&gt;2.  Pre-filtering 预先过滤&lt;/h2&gt;
+&lt;p&gt;预滤波旨在处理由信道中断引起的延迟瞬变。 在中断期间，由于与拥塞无关的原因，在网络缓冲区中排队的数据包会在中断结束时突发传送。&lt;/p&gt;
+&lt;p&gt;预过滤将突发到达的数据包组合并在一起。 如果满足以下两个条件之一，则数据包将合并到同一组中：&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;在一个 burst_time 间隔内发送的数据包序列构成一个组。&lt;/li&gt;
+&lt;li&gt;具有小于 burst_time 的到达间隔时间和小于0 的组间延迟变化d(i) 的数据包被认为是当前数据包组的一部分。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;在 RTCP Sender Report 中有成对的 NTP timstamp 和 RTP timestamp， 这样就可以把 RTP 包中的 timestamp 转换为 NTP timstamp。
+但是这个是与媒体采集和回放相关的时间戳，并不是包发送的时间，我们需要把发送时间通过 RTP 包头的扩展 abs_send_time 发到接收方去。&lt;/p&gt;
+&lt;p&gt;接收端控制器是一种基于延迟的拥塞控制算法，通过下面的公式来计算 &lt;span class="formula"&gt;&lt;i&gt;A&lt;/i&gt;&lt;sub&gt;&lt;i&gt;r&lt;/i&gt;&lt;/sub&gt;&lt;/span&gt;&lt;/p&gt;
+&lt;div class="formula"&gt;
+&lt;i&gt;A&lt;/i&gt;&lt;sub&gt;&lt;i&gt;r&lt;/i&gt;&lt;/sub&gt;(&lt;i&gt;t&lt;/i&gt;&lt;sub&gt;&lt;i&gt;i&lt;/i&gt;&lt;/sub&gt;) = &lt;span class="unknown"&gt;\cases&lt;/span&gt;&lt;i&gt;η&lt;/i&gt;&lt;i&gt;A&lt;/i&gt;&lt;sub&gt;&lt;i&gt;r&lt;/i&gt;&lt;/sub&gt;(&lt;i&gt;t&lt;/i&gt;&lt;sub&gt;&lt;i&gt;i&lt;/i&gt; − 1&lt;/sub&gt;)	&lt;span class="unknown"&gt;\rm&lt;/span&gt;&lt;i&gt;Increase&lt;/i&gt;&lt;span class="unknown"&gt;\cr&lt;/span&gt;&lt;i&gt;α&lt;/i&gt;&lt;i&gt;R&lt;/i&gt;(&lt;i&gt;t&lt;/i&gt;&lt;sub&gt;&lt;i&gt;i&lt;/i&gt;&lt;/sub&gt;)	&lt;span class="unknown"&gt;\rm&lt;/span&gt;&lt;i&gt;Decrease&lt;/i&gt;&lt;span class="unknown"&gt;\cr&lt;/span&gt;&lt;i&gt;A&lt;/i&gt;(&lt;i&gt;t&lt;/i&gt;&lt;sub&gt;&lt;i&gt;i&lt;/i&gt; − 1&lt;/sub&gt;)	&lt;span class="unknown"&gt;\rm&lt;/span&gt;&lt;i&gt;Hold&lt;/i&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="arrival-time-filter"&gt;
+&lt;h2&gt;3. 到达时间滤波器 arrival time filter&lt;/h2&gt;
+&lt;p&gt;根据到达时间模型，我们可以通过 Kalman Filter 或者 Trendline Filter 来求得网络排队延迟 &lt;cite&gt;m(i)&lt;/cite&gt;&lt;/p&gt;
+&lt;div class="formula"&gt;
+&lt;i&gt;m&lt;/i&gt;(&lt;i&gt;i&lt;/i&gt; + 1) = &lt;i&gt;m&lt;/i&gt;(&lt;i&gt;i&lt;/i&gt;) + &lt;i&gt;u&lt;/i&gt;(&lt;i&gt;i&lt;/i&gt;)
+&lt;/div&gt;
+&lt;div class="formula"&gt;
+&lt;i&gt;q&lt;/i&gt;(&lt;i&gt;i&lt;/i&gt;) = &lt;i&gt;E&lt;/i&gt;&lt;i&gt;u&lt;/i&gt;(&lt;i&gt;i&lt;/i&gt;)&lt;sup&gt;2&lt;/sup&gt;
+&lt;/div&gt;
+&lt;div class="formula"&gt;
+&lt;i&gt;d&lt;/i&gt;(&lt;i&gt;i&lt;/i&gt;) = &lt;i&gt;m&lt;/i&gt;(&lt;i&gt;i&lt;/i&gt;) + &lt;i&gt;v&lt;/i&gt;(&lt;i&gt;i&lt;/i&gt;)
+&lt;/div&gt;
+&lt;p&gt;其中&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;q(i) 为状态噪声 u(i) 方差的期望，推荐值是 10^-3&lt;/li&gt;
+&lt;li&gt;u(i) 是指状态噪声, 把它建模为具有零均值和方差的高斯统计模拟的平稳过程&lt;/li&gt;
+&lt;li&gt;v(i) 是指测量噪声，它是具有方差 &lt;cite&gt;var_v = E{v(i)^2}&lt;/cite&gt; 的零均值高斯白测量噪声&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;注:&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;中心化（又叫零均值化）：是指变量減去它的均值。其实就是一个平移的过程，平移后所有数据的中心是（0，0）&lt;/li&gt;
+&lt;li&gt;标准化（又叫归一化）： 是指數值減去均值，再除以标准差。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;GCC v1 中使用卡尔曼滤波器递归地更新这个估计值 m_hat(i)， 在 GCC v2 中则以 Trendline Filter 使用最小二乘法以线性回归来估计&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;z(i) = d(i) - m_hat(i-1)
+
+m_hat(i) = m_hat(i-1) + z(i) * k(i)
+
+                  e(i-1) + q(i)
+k(i) = ----------------------------------------
+            var_v_hat(i) + (e(i-1) + q(i))
+
+e(i) = (1 - k(i)) * (e(i-1) + q(i))
+
+var_v_hat(i) = max(alpha * var_v_hat(i-1) + (1-alpha) * z(i)^2, 1)
+
+alpha = (1-chi)^(30/(1000 * f_max))
+&lt;/pre&gt;&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="the-over-use-detector"&gt;
+&lt;h2&gt;4. 过度使用检测器 The over-use detector&lt;/h2&gt;
+&lt;p&gt;每次接收到视频帧 &lt;span class="formula"&gt;&lt;i&gt;t&lt;/i&gt;&lt;sub&gt;&lt;i&gt;i&lt;/i&gt;&lt;/sub&gt;&lt;/span&gt; 时，过度使用检测器都会产生一个信号 s，该信号基于排队延迟 &lt;span class="formula"&gt;&lt;i&gt;m&lt;/i&gt;(&lt;i&gt;t&lt;/i&gt;&lt;sub&gt;&lt;i&gt;i&lt;/i&gt;&lt;/sub&gt;)&lt;/span&gt; 和阈值 &lt;span class="formula"&gt;&lt;i&gt;γ&lt;/i&gt;&lt;/span&gt; 来驱动 FSM (下面的有限状态机) 的状态 &lt;span class="formula"&gt;&lt;i&gt;σ&lt;/i&gt;&lt;/span&gt;，算法 1 详细显示了 s 是如何生成的 ：&lt;/p&gt;
+&lt;p&gt;当 &lt;span class="formula"&gt;&lt;i&gt;m&lt;/i&gt;(&lt;i&gt;t&lt;/i&gt;&lt;sub&gt;&lt;i&gt;i&lt;/i&gt;&lt;/sub&gt;) &amp;gt; &lt;i&gt;γ&lt;/i&gt;&lt;/span&gt; 时，算法通过增加帧间隔时间 &lt;span class="formula"&gt;Δ&lt;i&gt;T&lt;/i&gt;&lt;/span&gt; 的变量 &lt;span class="formula"&gt;&lt;i&gt;t&lt;/i&gt;&lt;sub&gt;&lt;i&gt;OU&lt;/i&gt;&lt;/sub&gt;&lt;/span&gt; 来跟踪在这种情况下花费的时间。
+当 &lt;span class="formula"&gt;&lt;i&gt;t&lt;/i&gt;&lt;sub&gt;&lt;i&gt;OU&lt;/i&gt;&lt;/sub&gt;&lt;/span&gt; 达到 &lt;span class="formula"&gt;&lt;span class="embellished"&gt;&lt;sup&gt;‒&lt;/sup&gt;&lt;span class="base"&gt;&lt;i&gt;t&lt;/i&gt;&lt;/span&gt;&lt;/span&gt;&lt;sub&gt;&lt;i&gt;OU&lt;/i&gt;&lt;/sub&gt; = 100&lt;i&gt;ms&lt;/i&gt;&lt;/span&gt; 且 &lt;span class="formula"&gt;&lt;i&gt;m&lt;/i&gt;(&lt;i&gt;t&lt;/i&gt;&lt;sub&gt;&lt;i&gt;i&lt;/i&gt;&lt;/sub&gt;) &amp;gt; &lt;i&gt;m&lt;/i&gt;(&lt;i&gt;t&lt;/i&gt;&lt;sub&gt;&lt;i&gt;i&lt;/i&gt; − 1&lt;/sub&gt;)`&lt;/span&gt; 时，产生过度使用信号。&lt;/p&gt;
+&lt;p&gt;另一方面，如果 &lt;span class="formula"&gt;&lt;i&gt;m&lt;/i&gt;(&lt;i&gt;t&lt;/i&gt;&lt;sub&gt;&lt;i&gt;i&lt;/i&gt;&lt;/sub&gt;)&lt;/span&gt; 减小到 &lt;span class="formula"&gt;&lt;i&gt;γ&lt;/i&gt;&lt;/span&gt; 以下，则产生未充分利用信号，而当 &lt;span class="formula"&gt; − &lt;i&gt;γ&lt;/i&gt; ≤ &lt;i&gt;m&lt;/i&gt;(&lt;i&gt;t&lt;/i&gt;&lt;sub&gt;&lt;i&gt;i&lt;/i&gt;&lt;/sub&gt;) ≤ &lt;i&gt;γ&lt;/i&gt;&lt;/span&gt; 时触发正常信号。&lt;/p&gt;
+&lt;div class="figure align-center"&gt;
+&lt;img alt="remote rate controller finite state machine" src="./images/rate-controller-fsm.gif" /&gt;
+&lt;p class="caption"&gt;remote rate controller finite state machine&lt;/p&gt;
+&lt;/div&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;算法: Over-use Detector pseudo-code 过度使用检测器的伪代码&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="figure align-center"&gt;
+&lt;img alt="over-use detector pseudo code" src="./images/over-use-detector-pseudo-code.gif" /&gt;
+&lt;p class="caption"&gt;over-use detector pseudo code&lt;/p&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="rate-controller"&gt;
+&lt;h2&gt;5. Rate controller&lt;/h2&gt;
+&lt;p&gt;The rate control is split in two parts,&lt;/p&gt;
+&lt;ol class="arabic simple"&gt;
+&lt;li&gt;controlling the bandwidth estimate based on delay&lt;/li&gt;
+&lt;li&gt;controlling the bandwidth estimate based on loss&lt;/li&gt;
+&lt;/ol&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;The state transitions (with blank fields meaning &amp;quot;remain in state&amp;quot;)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;+----+--------+-----------+------------+--------+
+|     \ State |   Hold    |  Increase  |Decrease|
+|      \      |           |            |        |
+| Signal\     |           |            |        |
++--------+----+-----------+------------+--------+
+|  Over-use   | Decrease  |  Decrease  |        |
++-------------+-----------+------------+--------+
+|  Normal     | Increase  |            |  Hold  |
++-------------+-----------+------------+--------+
+|  Under-use  |           |   Hold     |  Hold  |
++-------------+-----------+------------+--------+
+&lt;/pre&gt;&lt;/div&gt;
+&lt;div class="section" id="parameters-settings"&gt;
+&lt;h3&gt;Parameters settings&lt;/h3&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;+-----------------+-----------------------------------+-------------+
+| Parameter       | Description                       | RECOMMENDED |
+|                 |                                   | Value       |
++-----------------+-----------------------------------+-------------+
+| burst_time      | Time limit in milliseconds        | 5 ms        |
+|                 | between packet bursts which       |             |
+|                 | identifies a group                |             |
+| q               | State noise covariance matrix     | q = 10^-3   |
+| e(0)            | Initial value of the  system      | e(0) = 0.1  |
+|                 | error covariance                  |             |
+| chi             | Coefficient used  for the         | [0.1,       |
+|                 | measured noise variance           | 0.001]      |
+| del_var_th(0)   | Initial value for the adaptive    | 12.5 ms     |
+|                 | threshold                         |             |
+| overuse_time_th | Time required to trigger an       | 10 ms       |
+|                 | overuse signal                    |             |
+| K_u             | Coefficient for the adaptive      | 0.01        |
+|                 | threshold                         |             |
+| K_d             | Coefficient for the adaptive      | 0.00018     |
+|                 | threshold                         |             |
+| T               | Time window for measuring the     | [0.5, 1] s  |
+|                 | received bitrate                  |             |
+| beta            | Decrease rate factor              | 0.85        |
++-----------------+-----------------------------------+-------------+
+
+       Table 1: RECOMMENDED values for delay based controller
+&lt;/pre&gt;&lt;/div&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="section-4"&gt;
+&lt;h2&gt;参考代码&lt;/h2&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;&lt;a class="reference external" href="https://source.chromium.org/chromium/chromium/src/+/main:third_party/webrtc/modules/congestion_controller"&gt;congestion_controller&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference external" href="https://source.chromium.org/chromium/chromium/src/+/main:third_party/webrtc/modules/remote_bitrate_estimator"&gt;remote_bitrate_estimator&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+</content><category term="webrtc"/><category term="journal"/><category term="webrtc"/></entry></feed>

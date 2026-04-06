@@ -65,7 +65,7 @@
  
 
 <meta name="author" content="Walter Fan" />
-<meta name="description" content="从一个过期证书导致的凌晨告警说起，讲清楚 PEM/JKS/P12 三种格式的本质差异、免费证书的选项与边界、以及如何用 cert-manager 或 ACME 客户端实现自动轮换。" />
+<meta name="description" content="以我自己的个人网站证书过期为引子，讲清楚 Root CA、Intermediate CA、Leaf Certificate 的职责、格式与验证过程，再把 PEM/JKS/P12 的选择和自动轮换这件事说透。" />
 <meta name="keywords" content="certificate, TLS, SSL, PEM, JKS, PKCS12, Let&#39;s Encrypt, cert-manager, security, DevOps">
 
 <script type="application/ld+json">
@@ -73,13 +73,13 @@
   "@context": "https://schema.org",
   "@type": "BlogPosting",
   "headline": "证书这活儿：PEM/JKS/P12 怎么选、免费证书哪家强、自动轮换怎么搞",
-  "description": "从一个过期证书导致的凌晨告警说起，讲清楚 PEM/JKS/P12 三种格式的本质差异、免费证书的选项与边界、以及如何用 cert-manager 或 ACME 客户端实现自动轮换。",
+  "description": "以我自己的个人网站证书过期为引子，讲清楚 Root CA、Intermediate CA、Leaf Certificate 的职责、格式与验证过程，再把 PEM/JKS/P12 的选择和自动轮换这件事说透。",
   "author": {
     "@type": "Person",
     "name": "Walter Fan"
   },
   "datePublished": "2026-03-24T20:00:00+08:00",
-  "dateModified": "2026-03-24T22:00:00+08:00",
+  "dateModified": "2026-03-31T09:30:00+08:00",
   "url": "https://www.fanyamin.com/zheng-shu-zhe-huo-er-pemjksp12-zen-yao-xuan-mian-fei-zheng-shu-na-jia-qiang-zi-dong-lun-huan-zen-yao-gao.html",
   "mainEntityOfPage": {
     "@type": "WebPage",
@@ -101,12 +101,12 @@
 
   <meta property="og:site_name" content="Walter Fan's Blog"/>
   <meta property="og:title" content="证书这活儿：PEM/JKS/P12 怎么选、免费证书哪家强、自动轮换怎么搞"/>
-  <meta property="og:description" content="从一个过期证书导致的凌晨告警说起，讲清楚 PEM/JKS/P12 三种格式的本质差异、免费证书的选项与边界、以及如何用 cert-manager 或 ACME 客户端实现自动轮换。"/>
+  <meta property="og:description" content="以我自己的个人网站证书过期为引子，讲清楚 Root CA、Intermediate CA、Leaf Certificate 的职责、格式与验证过程，再把 PEM/JKS/P12 的选择和自动轮换这件事说透。"/>
   <meta property="og:locale" content="zh_CN"/>
   <meta property="og:url" content="https://www.fanyamin.com/zheng-shu-zhe-huo-er-pemjksp12-zen-yao-xuan-mian-fei-zheng-shu-na-jia-qiang-zi-dong-lun-huan-zen-yao-gao.html"/>
   <meta property="og:type" content="article"/>
   <meta property="article:published_time" content="2026-03-24 20:00:00+08:00"/>
-  <meta property="article:modified_time" content="2026-03-24 22:00:00+08:00"/>
+  <meta property="article:modified_time" content="2026-03-31 09:30:00+08:00"/>
   <meta property="article:author" content="https://www.fanyamin.com/author/walter-fan.html">
   <meta property="article:section" content="Journal"/>
   <meta property="article:tag" content="certificate"/>
@@ -201,7 +201,7 @@
       
     <h1 id="zheng-shu-zhe-huo-er-pemjksp12-zen-yao-xuan-mian-fei-zheng-shu-na-jia-qiang-zi-dong-lun-huan-zen-yao-gao">证书这活儿：PEM/JKS/P12 怎么选、免费证书哪家强、自动轮换怎么搞</h1>
     <p>
-      Posted on Tue 24 March 2026 in <a href="https://www.fanyamin.com/category/journal.html">Journal</a>
+      Posted on 二 24 3月 2026 in <a href="https://www.fanyamin.com/category/journal.html">Journal</a>
 
     </p>
   </header>
@@ -240,30 +240,222 @@
 </table>
 <h2 id="_1">短大纲</h2>
 <ul>
-<li>从凌晨被证书过期告警叫醒讲起</li>
-<li>PEM / JKS / PKCS#12 三种格式的本质差异、适用场景与互转</li>
-<li>免费证书：Let's Encrypt 之外还有谁，边界在哪</li>
-<li>自动轮换的两条路：ACME 客户端 vs Kubernetes cert-manager</li>
-<li>一张可直接抄的检查清单</li>
+<li>先讲一个我自己犯过的蠢错：个人网站证书忘了续，结果在公司里打不开</li>
+<li>把 Root CA / Intermediate CA / Leaf Certificate 这条信任链掰开揉碎</li>
+<li>再讲 PEM / JKS / PKCS#12 三种格式，到底谁装什么、谁给谁看</li>
+<li>免费证书怎么选，自动轮换怎么做，最后给一张能照抄的检查清单</li>
 </ul>
 <hr>
-<p>凌晨三点被 PagerDuty 叫醒，打开笔记本，满屏 <code>NET::ERR_CERT_DATE_INVALID</code>。原因很快查清了：某个内部服务的 TLS 证书三个月前签发，昨天到期，没人续。</p>
-<p>这事不稀奇。做后端做久了，谁没被证书坑过？该配的忘了配，该续的忘了续，PEM 和 JKS 搞混了格式塞错地方，或者一张自签证书在测试环境待了两年，有一天被人复制到了生产。</p>
-<p>证书管理不难，难的是<strong>持续正确地做</strong>。这篇文章就聊三件事：格式怎么选、免费证书怎么拿、自动轮换怎么搞。</p>
-<h2 id="_2">先搞清楚：证书到底是个什么东西</h2>
-<p>不展开密码学原理，只说关键的几句。</p>
-<p>一张 TLS/SSL 证书的核心是三样东西：</p>
-<ol>
-<li><strong>公钥</strong>：给客户端用来加密通信或验证签名</li>
-<li><strong>身份信息</strong>：域名、组织名、有效期等</li>
-<li><strong>CA 签名</strong>：证书颁发机构(CA)用自己的私钥对上面两项做的签名，证明"这张证书是我认过的"</li>
-</ol>
-<p>客户端拿到证书后做两件事：检查 CA 签名是否可信(信任链)、检查证书是否过期或被吊销。通过了，才建立加密连接。</p>
-<p>整个信任体系像一条链：</p>
-<div class="highlight"><pre><span></span><code>Root CA → Intermediate CA → Leaf Certificate (你的服务)
+<p>前几天我在公司里想打开自己的个人网站，结果浏览器直接给我甩了一张红脸：证书校验失败，页面打不开。</p>
+<p>这事说起来挺丢人。平时给别人的服务配 TLS，讲起安全来头头是道，轮到自己的站，证书却悄悄过期了。家里电脑上偶尔还能点进去，一到公司网络环境里就不行，浏览器、代理、系统信任链，一层层都比我更较真。它们不像老朋友，不会跟你讲情面，只认日期、签名、链路和策略。</p>
+<p>这件事又一次提醒我：证书管理这活儿，看着像“抄个配置，跑个命令”，其实更像值班。平时风平浪静，大家都想不起它；一旦到期、链条断了、格式塞错了，它就会在你最不想处理的时候跳出来，给你上一课。</p>
+<p>所以这篇文章我不只想讲“怎么续期”。我想把证书这套东西里最容易糊涂的几层讲透，特别是下面这条链子：</p>
+<div class="highlight"><pre><span></span><code>Root CA → Intermediate CA → Leaf Certificate
 </code></pre></div>
 
-<p>根 CA 证书预装在操作系统和浏览器里，中间 CA 由根 CA 签发，你的证书由中间 CA 签发。链条断了，浏览器就报红。</p>
+<p>别小看这三个名字。很多证书事故，表面看是“网站打不开”，骨子里其实就三类：要么 leaf 过期了，要么 intermediate 没带全，要么客户端根本不信任你上游那条根。把这三层搞清楚，再看 PEM、JKS、P12，脑子里就不会是一锅粥。</p>
+<h2 id="_2">先搞清楚：证书到底是什么</h2>
+<p>不扯太多密码学术语，咱们先抓住最要紧的部分。</p>
+<p>一张 TLS 证书，本质上是一个 <strong>X.509 结构化文档</strong>。它不是一张“截图”，也不是“一个公钥文件那么简单”，而是一份带签名的数据结构。里面至少有四类信息：</p>
+<ol>
+<li><strong>主体信息(Subject)</strong>：这张证书是谁的。对网站来说，最重要的是域名</li>
+<li><strong>公钥(Public Key)</strong>：客户端后面要拿它来协商密钥、验证签名</li>
+<li><strong>用途与约束</strong>：这张证书能干什么，能不能签别人，能不能做服务器认证</li>
+<li><strong>签发者签名(Issuer Signature)</strong>：上一级 CA 用自己的私钥给它盖章</li>
+</ol>
+<p>所以证书不是“加密算法”，它更像一张带防伪章的介绍信。公钥是介绍信里的联系方式，Subject 是名字，签名是公证处的钢印。</p>
+<p>浏览器或操作系统拿到证书后，不是只看“锁有没有变绿”，它其实在背后做一串检查：</p>
+<ol>
+<li>这张证书是不是发给当前访问的域名</li>
+<li>现在时间是不是在有效期内</li>
+<li>这张证书是不是被一个我信任的上级签发</li>
+<li>上级自己是不是也被更上级签发</li>
+<li>整条链有没有断，有没有人拿错证书冒名顶替</li>
+<li>这张证书的用途是不是允许它拿来做 HTTPS 服务器</li>
+</ol>
+<p>只要其中一项不对，浏览器就翻脸。它不会想“这个站长平时人还不错”。机器没有人情世故。</p>
+<h2 id="root-caintermediate-caleaf-certificate">把那条链讲透：Root CA、Intermediate CA、Leaf Certificate 到底各管什么</h2>
+<p>很多人看到这几个词，脑子里有印象，可是一落到排障就开始晕。无他，这几个名字像，文件也像，打开之后还都是一坨 Base64，看久了确实容易眼花。咱们一个一个说。</p>
+<h3 id="1-root-ca">1. Root CA：信任的起点，但不是天天拿出来抛头露面</h3>
+<p>Root CA 是整条证书链的祖师爷。</p>
+<p>它有几个关键特征：</p>
+<ul>
+<li><strong>通常是自签名(self-signed)</strong>：也就是 <code>Subject == Issuer</code></li>
+<li><strong>长期存在</strong>：有效期往往是十几年到几十年</li>
+<li><strong>不会轻易直接签网站证书</strong></li>
+<li><strong>预装在系统、浏览器或企业信任仓库里</strong></li>
+</ul>
+<p>Root CA 证书里最关键的不是域名，而是“我有资格当 CA”。这通常体现在扩展字段里，比如：</p>
+<ul>
+<li><code>Basic Constraints: CA:TRUE</code></li>
+<li><code>Key Usage: Certificate Sign, CRL Sign</code></li>
+</ul>
+<p>它像银行总行的总印章。平时不拿出来盖每一份业务单据，因为一旦根私钥泄露，整个体系都得翻车。所以现实世界里，Root CA 很少直接签你的网站证书。</p>
+<p>Root CA 常见的存在位置：</p>
+<ul>
+<li>操作系统 trust store</li>
+<li>浏览器自己的信任库</li>
+<li>Java cacerts</li>
+<li>企业内网设备或代理注入的自定义根证书</li>
+</ul>
+<p>这也解释了一个现象：为什么同一个站，在家里能开，在公司里不一定能开。公司网络里如果有 HTTPS inspection、中间代理、或者额外的企业根证书策略，验证路径和你家里的浏览器就不是同一套了。</p>
+<h3 id="2-intermediate-ca">2. Intermediate CA：真正天天干活的那层</h3>
+<p>Intermediate CA 是中间 CA，也叫中级 CA。它是 Root CA 签发出来的“代理掌门”。</p>
+<p>它的职责是：</p>
+<ul>
+<li>替 Root CA 干活，去签发大量业务证书</li>
+<li>把 Root CA 私钥和日常签发操作隔离开</li>
+<li>允许 CA 做更细的分层和权限控制</li>
+</ul>
+<p>Intermediate CA 的证书长这样理解就行：</p>
+<div class="highlight"><pre><span></span><code>Subject: R3
+Issuer: ISRG Root X1
+Basic Constraints: CA:TRUE
+Key Usage: Certificate Sign, CRL Sign
+Authority Key Identifier: 指向 Root CA
+Subject Key Identifier: 自己的 key 指纹
+</code></pre></div>
+
+<p>你会发现它和 Root CA 一样，也有 <code>CA:TRUE</code>，因为它也能签别人。区别在于：</p>
+<ul>
+<li>Root 是信任锚(trust anchor)</li>
+<li>Intermediate 是被 Root 授权出来干活的</li>
+</ul>
+<p>这层非常关键。很多线上事故并不是 leaf 证书错了，而是部署的时候只放了 leaf，没把 intermediate 一起带上。浏览器有时靠缓存还能“脑补”出来，<code>curl</code>、移动端 SDK、某些企业代理就没那么好说话了，当场报错。</p>
+<h3 id="3-leaf-certificate">3. Leaf Certificate：真正挂在你网站门口那张牌子</h3>
+<p>Leaf Certificate 就是服务器证书，也叫终端证书、站点证书。它是给最终服务用的，不再拿去签别的证书。</p>
+<p>它的典型特征：</p>
+<ul>
+<li><code>Basic Constraints: CA:FALSE</code></li>
+<li><code>Extended Key Usage: TLS Web Server Authentication</code></li>
+<li><code>Subject Alternative Name (SAN)</code> 里放域名</li>
+<li>有较短有效期，比如 90 天</li>
+</ul>
+<p>举个例子，我的个人网站证书如果是发给 <code>www.fanyamin.com</code>，那 Leaf Certificate 里你最关心的是：</p>
+<div class="highlight"><pre><span></span><code>Subject Alternative Name:
+  DNS:www.fanyamin.com
+  DNS:fanyamin.com
+
+Issuer:
+  Let&#39;s Encrypt R3
+
+Not Before / Not After:
+  2026-01-01 ... 2026-03-31
+</code></pre></div>
+
+<p>注意，现在浏览器对域名校验几乎都看 <code>SAN</code>，而不是老式 <code>CN(Common Name)</code>。所以如果证书里没把域名写进 SAN，哪怕别的字段都漂亮，也照样不认。</p>
+<h3 id="4">4. 这三层在文件里通常长什么样</h3>
+<p>很多人的第二个困惑是：名字懂了，可文件看着还是乱。</p>
+<p>拿 PEM 来说，三层证书本质上都是同一种 X.509 证书，只是角色不同。它们在磁盘上经常长这样：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">-----BEGIN CERTIFICATE-----</span>
+<span class="s">...</span><span class="w"> </span><span class="s">Leaf</span><span class="w"> </span><span class="s">Certificate</span><span class="w"> </span><span class="s">...</span>
+<span class="gh">-----END CERTIFICATE-----</span>
+
+<span class="gh">-----BEGIN CERTIFICATE-----</span>
+<span class="s">...</span><span class="w"> </span><span class="s">Intermediate</span><span class="w"> </span><span class="s">CA</span><span class="w"> </span><span class="s">...</span>
+<span class="gh">-----END CERTIFICATE-----</span>
+</code></pre></div>
+
+<p>Root CA 往往<strong>不由服务器发送</strong>，因为客户端本地已经有了。服务器通常发的是：</p>
+<ul>
+<li>自己的 leaf cert</li>
+<li>一个或多个 intermediate cert</li>
+</ul>
+<p>也就是大家常说的 <code>fullchain.pem</code>。如果你只部署 <code>cert.pem</code>，而没部署 <code>fullchain.pem</code>，浏览器就可能告诉你：“你这封介绍信像是真的，但你上面那个公证处我没接上。”</p>
+<h3 id="5">5. 客户端到底怎么验证这条链</h3>
+<p>这部分是最容易被“一句话带过”的，可真出了事，恰恰要靠它排查。</p>
+<p>客户端在握手时，大体会按这个顺序检查：</p>
+<h4 id="_3">第一步：拿到服务器送来的证书链</h4>
+<p>服务器通常会在 TLS 握手时送出：</p>
+<ul>
+<li>leaf certificate</li>
+<li>intermediate certificate(s)</li>
+</ul>
+<p>如果只送 leaf，不送 intermediate，很多客户端就拼不出完整路径。</p>
+<h4 id="leaf">第二步：验证 leaf 的基本合法性</h4>
+<p>客户端先看 leaf 本身：</p>
+<ul>
+<li>有效期是否包含当前时间</li>
+<li>SAN 里有没有当前访问域名</li>
+<li>签名算法是否还能接受</li>
+<li>Key Usage / Extended Key Usage 是否允许做服务器证书</li>
+<li><code>CA:FALSE</code> 是否合理</li>
+</ul>
+<p>像我这次个人网站在公司里打不开，最直白的原因就是 leaf 过期了。到期这件事其实没什么讨论空间，<code>Not After</code> 一过，后面全免谈。</p>
+<h4 id="leaf-issuer-intermediate">第三步：拿 leaf 的 Issuer 去找上一级 intermediate</h4>
+<p>Leaf 上会写：</p>
+<ul>
+<li><code>Issuer</code></li>
+<li><code>Authority Key Identifier</code></li>
+</ul>
+<p>客户端会拿这些信息去跟服务器送来的 intermediate 对上，看是不是这位“师父”签的。</p>
+<p>然后它会做数学验签：拿 intermediate 的公钥，验证 leaf 上的签名是不是对的。</p>
+<p>这一步如果失败，常见原因有：</p>
+<ul>
+<li>链接错 intermediate 了</li>
+<li>证书文件顺序不对</li>
+<li>证书被截断或损坏</li>
+</ul>
+<h4 id="root">第四步：继续往上追到 Root</h4>
+<p>Intermediate 也不是凭空可信。客户端还会继续验证：</p>
+<ul>
+<li>intermediate 是不是被某个 root 签的</li>
+<li>这个 root 是不是在本机信任库里</li>
+</ul>
+<p>到这里，链子才算闭环。要是走到头发现根不在 trust store 里，那浏览器照样不认。</p>
+<p>所以“证书没问题”这句话，往往只说对了一半。你那张 leaf 没问题，不代表整条链就没问题。</p>
+<h4 id="_4">第五步：检查约束条件是不是一路都合法</h4>
+<p>不是说签名对上就完事。客户端还要检查每一层的“权限”：</p>
+<ul>
+<li>上级是不是 <code>CA:TRUE</code></li>
+<li>上级是不是有 <code>keyCertSign</code></li>
+<li>path length constraint 有没有超</li>
+<li>leaf 有没有 <code>serverAuth</code></li>
+</ul>
+<p>这就像公司盖章流程。不是说印泥颜色对了就算通过，还得看这个人有没有审批权。</p>
+<h4 id="_5">第六步：看吊销状态和额外安全策略</h4>
+<p>更严格的客户端还会继续看：</p>
+<ul>
+<li>CRL / OCSP 吊销状态</li>
+<li>CT Log / SCT</li>
+<li>企业网关自己的安全策略</li>
+</ul>
+<p>这一步也是为什么“在我电脑上能开”的经验，经常没有普适性。你家里浏览器和公司代理的策略，可能压根不是同一套。</p>
+<h3 id="6">6. 一张图把链路串起来</h3>
+<div class="highlight"><pre><span></span><code>[Leaf Certificate: www.fanyamin.com]
+    signed by
+[Intermediate CA: Let&#39;s Encrypt R3]
+    signed by
+[Root CA: ISRG Root X1]
+    trusted by
+[OS / Browser / Company Trust Store]
+</code></pre></div>
+
+<p>这条链只要有一段断掉，结果都一样：你的网站在用户眼里不是“有一点小毛病”，而是“不可信”。</p>
+<h3 id="7-openssl">7. 用 <code>openssl</code> 看这三层，最靠谱</h3>
+<p>纸上谈兵不如直接看证书。</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># 看 leaf 证书内容</span>
+openssl<span class="w"> </span>x509<span class="w"> </span>-in<span class="w"> </span>cert.pem<span class="w"> </span>-text<span class="w"> </span>-noout
+
+<span class="c1"># 看 fullchain 里到底塞了几张证书</span>
+openssl<span class="w"> </span>crl2pkcs7<span class="w"> </span>-nocrl<span class="w"> </span>-certfile<span class="w"> </span>fullchain.pem<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="se">\</span>
+openssl<span class="w"> </span>pkcs7<span class="w"> </span>-print_certs<span class="w"> </span>-text<span class="w"> </span>-noout
+
+<span class="c1"># 直接连线上服务，看看服务端到底送了什么链</span>
+openssl<span class="w"> </span>s_client<span class="w"> </span>-connect<span class="w"> </span>www.fanyamin.com:443<span class="w"> </span>-servername<span class="w"> </span>www.fanyamin.com<span class="w"> </span>-showcerts
+</code></pre></div>
+
+<p>重点看这些字段：</p>
+<ul>
+<li><code>Subject</code></li>
+<li><code>Issuer</code></li>
+<li><code>Not Before / Not After</code></li>
+<li><code>Basic Constraints</code></li>
+<li><code>Key Usage</code></li>
+<li><code>Extended Key Usage</code></li>
+<li><code>Subject Alternative Name</code></li>
+</ul>
+<p>你把这几个字段看顺了，证书问题起码能查明白七八成。</p>
 <h2 id="pem-jks-pkcs12">PEM / JKS / PKCS#12：三种格式到底差在哪</h2>
 <p>这是我见过最容易搞混的地方。很多人被 <code>.pem</code>、<code>.crt</code>、<code>.key</code>、<code>.jks</code>、<code>.p12</code>、<code>.pfx</code> 这些后缀搞得头大，其实理清楚只需要记住三个"容器"。</p>
 <h3 id="pemunix">PEM：文本格式，Unix 世界的通用语</h3>
@@ -301,7 +493,7 @@ MIIDdzCCAl+gAwIBAgIEAgAAuTANBgkqhki...
 <li>是 Java 9+ 默认推荐的 keystore 格式</li>
 </ul>
 <p>PKCS#12 像一个"加密的压缩包"，把你需要的东西都塞进一个文件。搬运方便，但调试不如 PEM 透明。</p>
-<h3 id="_3">三者对比</h3>
+<h3 id="_6">三者对比</h3>
 <table>
 <thead>
 <tr>
@@ -357,7 +549,7 @@ MIIDdzCCAl+gAwIBAgIEAgAAuTANBgkqhki...
 </tbody>
 </table>
 <p><strong>一句话选型建议</strong>：Web 服务器和云原生场景用 PEM；纯 Java 栈用 PKCS#12(别再用 JKS 了)；需要把私钥和证书打包给人的时候用 PKCS#12。</p>
-<h3 id="_4">格式互转速查</h3>
+<h3 id="_7">格式互转速查</h3>
 <p>工作中最常见的转换需求，<code>openssl</code> 和 <code>keytool</code> 基本能搞定：</p>
 <div class="highlight"><pre><span></span><code><span class="c1"># PEM → PKCS#12</span>
 openssl<span class="w"> </span>pkcs12<span class="w"> </span>-export<span class="w"> </span><span class="se">\</span>
@@ -421,7 +613,7 @@ keytool<span class="w"> </span>-importkeystore<span class="w"> </span><span clas
 <li>客户端不会自动信任，需要手动导入 CA 证书</li>
 <li>工具：<code>openssl</code>、<code>mkcert</code>(本地开发推荐)、<code>cfssl</code></li>
 </ul>
-<h3 id="_5">选型边界</h3>
+<h3 id="_8">选型边界</h3>
 <table>
 <thead>
 <tr>
@@ -453,7 +645,7 @@ keytool<span class="w"> </span>-importkeystore<span class="w"> </span><span clas
 </tbody>
 </table>
 <p>免费证书有一个共同限制：<strong>只做 DV(域名验证)</strong>。需要 OV(组织验证)或 EV(扩展验证)证书的，还是得找商业 CA 付钱。不过老实说，对绝大多数服务来说，DV 够了。</p>
-<h2 id="_6">自动轮换：别再靠日历提醒了</h2>
+<h2 id="_9">自动轮换：别再靠日历提醒了</h2>
 <p>证书过期是最蠢但最常见的生产事故之一。手工续期有两个问题：人会忘，流程会断。</p>
 <p>自动轮换有两条主流路径。</p>
 <h3 id="acme">路径一：ACME 客户端</h3>
@@ -568,7 +760,7 @@ end note
 </code></pre></div>
 
 <p>cert-manager 的好处是<strong>声明式</strong>：你只管定义"我要一张什么证书"，它负责签发、续期、更新 Secret。Ingress Controller 监听到 Secret 变化，自动重载。整条链路不需要人介入。</p>
-<h3 id="_7">两条路径怎么选</h3>
+<h3 id="_10">两条路径怎么选</h3>
 <table>
 <thead>
 <tr>
@@ -599,14 +791,14 @@ end note
 </tr>
 </tbody>
 </table>
-<h2 id="_8">几个实操层面容易踩的坑</h2>
+<h2 id="_11">几个实操层面容易踩的坑</h2>
 <h3 id="leaf-cert">坑一：只部署了 leaf cert，没带中间证书</h3>
 <p>浏览器可能缓存了中间 CA 所以能打开，但 curl、SDK、移动端就报错。解决办法：部署 <strong>fullchain</strong> 而不是单张证书。用 <code>openssl s_client</code> 验证：</p>
 <div class="highlight"><pre><span></span><code>openssl<span class="w"> </span>s_client<span class="w"> </span>-connect<span class="w"> </span>example.com:443<span class="w"> </span>-showcerts
 </code></pre></div>
 
 <p>看输出里有没有完整的证书链。</p>
-<h3 id="_9">坑二：证书和私钥不匹配</h3>
+<h3 id="_12">坑二：证书和私钥不匹配</h3>
 <p>换证书的时候用了旧的私钥，或者反过来。快速检查：</p>
 <div class="highlight"><pre><span></span><code><span class="c1"># 两个 md5 必须一致</span>
 openssl<span class="w"> </span>x509<span class="w"> </span>-noout<span class="w"> </span>-modulus<span class="w"> </span>-in<span class="w"> </span>cert.pem<span class="w"> </span><span class="p">|</span><span class="w"> </span>openssl<span class="w"> </span>md5
@@ -618,12 +810,12 @@ openssl<span class="w"> </span>rsa<span class="w"> </span>-noout<span class="w">
 <div class="highlight"><pre><span></span><code>https://acme-staging-v02.api.letsencrypt.org/directory
 </code></pre></div>
 
-<h3 id="_10">坑四：自动续期配了但没验证</h3>
+<h3 id="_13">坑四：自动续期配了但没验证</h3>
 <p>cron job 加了，从来没跑过。或者跑了但 DNS 验证失败，续期静默失败，直到证书过期才发现。</p>
 <p><strong>建议</strong>：监控证书剩余天数。Prometheus 有 <code>ssl_certificate_expiry_time_seconds</code> 这个 metric，Blackbox Exporter 也能探测。低于 14 天就报警。</p>
 <h3 id="ca">坑五：内部服务用公共 CA 证书</h3>
 <p>内部 <code>api.internal.company.com</code> 也去 Let's Encrypt 签一张？能行，但暴露了内部域名结构(CT Log 里全是公开的)。内部服务建议自建 CA 或者用 SPIFFE/SPIRE 做 mTLS。</p>
-<h2 id="_11">证书管理的生命周期</h2>
+<h2 id="_14">证书管理的生命周期</h2>
 <p>把上面的点串起来，证书管理不是"签一张就完了"，而是一个持续循环：</p>
 <div class="highlight"><pre><span></span><code>@startuml
 !theme plain
@@ -659,7 +851,7 @@ stop
 </code></pre></div>
 
 <p><img alt="证书管理生命周期" src="../images/journal_20260324_cert_management_lifecycle.png"></p>
-<h2 id="_12">明天就能做的检查清单</h2>
+<h2 id="_15">明天就能做的检查清单</h2>
 <ul>
 <li>[ ] 盘点所有 TLS 证书：域名、格式、到期时间、存放位置</li>
 <li>[ ] 确认每个服务部署的是 fullchain 而不是单张 leaf cert</li>
@@ -671,7 +863,7 @@ stop
 <li>[ ] 私钥文件权限收紧到 <code>600</code>，不要提交到 Git</li>
 <li>[ ] 做一次"证书突然过期"的演练，看恢复流程要多久</li>
 </ul>
-<h2 id="_13">总结</h2>
+<h2 id="_16">总结</h2>
 <p>证书管理不是什么高深的活儿，但它有个讨厌的特点：<strong>平时不出事，出事就是凌晨三点。</strong> 大部分证书事故的根因都不是技术不行，而是流程断了——该续的没续，该监控的没监控，该自动化的还在靠人。</p>
 <p>格式上，PEM 最透明，PKCS#12 最通用，JKS 正在退场。免费证书领域，Let's Encrypt 已经是基础设施级别的存在，90 天有效期逼着你做自动化，这是件好事。自动轮换，传统环境用 acme.sh 或 certbot，Kubernetes 用 cert-manager，都是成熟方案。</p>
 <p>一句话：<strong>证书管理的最高境界，是你忘了它的存在。</strong> 因为该自动的都自动了，该告警的都告警了，你只需要在续签成功的日志里偶尔看到一行 <code>Certificate renewed successfully</code>，然后继续睡觉。</p>
@@ -712,7 +904,7 @@ skinparam backgroundColor #FEFEFE
 </code></pre></div>
 
 <p><img alt="证书管理思维导图" src="../images/journal_20260324_cert_management_mindmap.png"></p>
-<h2 id="_14">扩展阅读</h2>
+<h2 id="_17">扩展阅读</h2>
 <ul>
 <li>Let's Encrypt 官方文档: https://letsencrypt.org/docs/</li>
 <li>ACME 协议 RFC 8555: https://datatracker.ietf.org/doc/html/rfc8555</li>
@@ -781,9 +973,9 @@ skinparam backgroundColor #FEFEFE
     <ul class="related-posts">
       <li><a href="https://www.fanyamin.com/go-cryptotls-configclone-session-resumption-pitfalls-cve-2025-68121.html">Go crypto/tls Config.Clone session resumption pitfalls (CVE-2025-68121)</a></li>
       <li><a href="https://www.fanyamin.com/claude-code-ping-ti-opencode-deepseekqwen.html">claude code 平替: opencode + deepseek/qwen</a></li>
+      <li><a href="https://www.fanyamin.com/2026-04-01-axios-supply-chain-attack.html">Axios 被投毒：一场教科书级的供应链攻击复盘</a></li>
       <li><a href="https://www.fanyamin.com/litellm-supply-chain-attack-secrets-security.html">从 LiteLLM 供应链投毒事件聊聊密钥安全</a></li>
       <li><a href="https://www.fanyamin.com/workload-identitybie-zai-ba-yun-shang-shen-fen-sai-jin-secret-li-liao.html">Workload Identity：别再把云上身份塞进 Secret 里了</a></li>
-      <li><a href="https://www.fanyamin.com/wang-luo-an-quan-zhi-bei-zhi-broken-auth-and-session-managementdeng-lu-yu-hui-hua-guan-li-fan-che-zhi-nan.html">网络安全指北之 Broken Auth and Session Management：登录与会话管理翻车指南</a></li>
     </ul>
   </div>
 

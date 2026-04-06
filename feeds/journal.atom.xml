@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom"><title>Walter Fan's Blog - Journal</title><link href="https://www.fanyamin.com/" rel="alternate"/><link href="https://www.fanyamin.com/feeds/journal.atom.xml" rel="self"/><id>https://www.fanyamin.com/</id><updated>2026-03-24T22:00:00+08:00</updated><subtitle>手握灵珠常奋笔, 心开天籁不吹箫</subtitle><entry><title>证书这活儿：PEM/JKS/P12 怎么选、免费证书哪家强、自动轮换怎么搞</title><link href="https://www.fanyamin.com/zheng-shu-zhe-huo-er-pemjksp12-zen-yao-xuan-mian-fei-zheng-shu-na-jia-qiang-zi-dong-lun-huan-zen-yao-gao.html" rel="alternate"/><published>2026-03-24T20:00:00+08:00</published><updated>2026-03-24T22:00:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-03-24:/zheng-shu-zhe-huo-er-pemjksp12-zen-yao-xuan-mian-fei-zheng-shu-na-jia-qiang-zi-dong-lun-huan-zen-yao-gao.html</id><summary type="html">&lt;p&gt;从一个过期证书导致的凌晨告警说起，讲清楚 PEM/JKS/P12 三种格式的本质差异、免费证书的选项与边界、以及如何用 cert-manager 或 ACME 客户端实现自动轮换。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Walter Fan's Blog - Journal</title><link href="https://www.fanyamin.com/" rel="alternate"/><link href="https://www.fanyamin.com/feeds/journal.atom.xml" rel="self"/><id>https://www.fanyamin.com/</id><updated>2026-03-31T11:15:00+08:00</updated><subtitle>手握灵珠常奋笔, 心开天籁不吹箫</subtitle><entry><title>证书这活儿：PEM/JKS/P12 怎么选、免费证书哪家强、自动轮换怎么搞</title><link href="https://www.fanyamin.com/zheng-shu-zhe-huo-er-pemjksp12-zen-yao-xuan-mian-fei-zheng-shu-na-jia-qiang-zi-dong-lun-huan-zen-yao-gao.html" rel="alternate"/><published>2026-03-24T20:00:00+08:00</published><updated>2026-03-31T09:30:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-03-24:/zheng-shu-zhe-huo-er-pemjksp12-zen-yao-xuan-mian-fei-zheng-shu-na-jia-qiang-zi-dong-lun-huan-zen-yao-gao.html</id><summary type="html">&lt;p&gt;以我自己的个人网站证书过期为引子，讲清楚 Root CA、Intermediate CA、Leaf Certificate 的职责、格式与验证过程，再把 PEM/JKS/P12 的选择和自动轮换这件事说透。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
 &lt;thead&gt;
 &lt;tr&gt;
 &lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
@@ -31,30 +31,222 @@
 &lt;/table&gt;
 &lt;h2 id="_1"&gt;短大纲&lt;/h2&gt;
 &lt;ul&gt;
-&lt;li&gt;从凌晨被证书过期告警叫醒讲起&lt;/li&gt;
-&lt;li&gt;PEM / JKS / PKCS#12 三种格式的本质差异、适用场景与互转&lt;/li&gt;
-&lt;li&gt;免费证书：Let's Encrypt 之外还有谁，边界在哪&lt;/li&gt;
-&lt;li&gt;自动轮换的两条路：ACME 客户端 vs Kubernetes cert-manager&lt;/li&gt;
-&lt;li&gt;一张可直接抄的检查清单&lt;/li&gt;
+&lt;li&gt;先讲一个我自己犯过的蠢错：个人网站证书忘了续，结果在公司里打不开&lt;/li&gt;
+&lt;li&gt;把 Root CA / Intermediate CA / Leaf Certificate 这条信任链掰开揉碎&lt;/li&gt;
+&lt;li&gt;再讲 PEM / JKS / PKCS#12 三种格式，到底谁装什么、谁给谁看&lt;/li&gt;
+&lt;li&gt;免费证书怎么选，自动轮换怎么做，最后给一张能照抄的检查清单&lt;/li&gt;
 &lt;/ul&gt;
 &lt;hr&gt;
-&lt;p&gt;凌晨三点被 PagerDuty 叫醒，打开笔记本，满屏 &lt;code&gt;NET::ERR_CERT_DATE_INVALID&lt;/code&gt;。原因很快查清了：某个内部服务的 TLS 证书三个月前签发，昨天到期，没人续。&lt;/p&gt;
-&lt;p&gt;这事不稀奇。做后端做久了，谁没被证书坑过？该配的忘了配，该续的忘了续，PEM 和 JKS 搞混了格式塞错地方，或者一张自签证书在测试环境待了两年，有一天被人复制到了生产。&lt;/p&gt;
-&lt;p&gt;证书管理不难，难的是&lt;strong&gt;持续正确地做&lt;/strong&gt;。这篇文章就聊三件事：格式怎么选、免费证书怎么拿、自动轮换怎么搞。&lt;/p&gt;
-&lt;h2 id="_2"&gt;先搞清楚：证书到底是个什么东西&lt;/h2&gt;
-&lt;p&gt;不展开密码学原理，只说关键的几句。&lt;/p&gt;
-&lt;p&gt;一张 TLS/SSL 证书的核心是三样东西：&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;&lt;strong&gt;公钥&lt;/strong&gt;：给客户端用来加密通信或验证签名&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;身份信息&lt;/strong&gt;：域名、组织名、有效期等&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;CA 签名&lt;/strong&gt;：证书颁发机构(CA)用自己的私钥对上面两项做的签名，证明"这张证书是我认过的"&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;客户端拿到证书后做两件事：检查 CA 签名是否可信(信任链)、检查证书是否过期或被吊销。通过了，才建立加密连接。&lt;/p&gt;
-&lt;p&gt;整个信任体系像一条链：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;Root CA → Intermediate CA → Leaf Certificate (你的服务)
+&lt;p&gt;前几天我在公司里想打开自己的个人网站，结果浏览器直接给我甩了一张红脸：证书校验失败，页面打不开。&lt;/p&gt;
+&lt;p&gt;这事说起来挺丢人。平时给别人的服务配 TLS，讲起安全来头头是道，轮到自己的站，证书却悄悄过期了。家里电脑上偶尔还能点进去，一到公司网络环境里就不行，浏览器、代理、系统信任链，一层层都比我更较真。它们不像老朋友，不会跟你讲情面，只认日期、签名、链路和策略。&lt;/p&gt;
+&lt;p&gt;这件事又一次提醒我：证书管理这活儿，看着像“抄个配置，跑个命令”，其实更像值班。平时风平浪静，大家都想不起它；一旦到期、链条断了、格式塞错了，它就会在你最不想处理的时候跳出来，给你上一课。&lt;/p&gt;
+&lt;p&gt;所以这篇文章我不只想讲“怎么续期”。我想把证书这套东西里最容易糊涂的几层讲透，特别是下面这条链子：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;Root CA → Intermediate CA → Leaf Certificate
 &lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 
-&lt;p&gt;根 CA 证书预装在操作系统和浏览器里，中间 CA 由根 CA 签发，你的证书由中间 CA 签发。链条断了，浏览器就报红。&lt;/p&gt;
+&lt;p&gt;别小看这三个名字。很多证书事故，表面看是“网站打不开”，骨子里其实就三类：要么 leaf 过期了，要么 intermediate 没带全，要么客户端根本不信任你上游那条根。把这三层搞清楚，再看 PEM、JKS、P12，脑子里就不会是一锅粥。&lt;/p&gt;
+&lt;h2 id="_2"&gt;先搞清楚：证书到底是什么&lt;/h2&gt;
+&lt;p&gt;不扯太多密码学术语，咱们先抓住最要紧的部分。&lt;/p&gt;
+&lt;p&gt;一张 TLS 证书，本质上是一个 &lt;strong&gt;X.509 结构化文档&lt;/strong&gt;。它不是一张“截图”，也不是“一个公钥文件那么简单”，而是一份带签名的数据结构。里面至少有四类信息：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;主体信息(Subject)&lt;/strong&gt;：这张证书是谁的。对网站来说，最重要的是域名&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;公钥(Public Key)&lt;/strong&gt;：客户端后面要拿它来协商密钥、验证签名&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;用途与约束&lt;/strong&gt;：这张证书能干什么，能不能签别人，能不能做服务器认证&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;签发者签名(Issuer Signature)&lt;/strong&gt;：上一级 CA 用自己的私钥给它盖章&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;所以证书不是“加密算法”，它更像一张带防伪章的介绍信。公钥是介绍信里的联系方式，Subject 是名字，签名是公证处的钢印。&lt;/p&gt;
+&lt;p&gt;浏览器或操作系统拿到证书后，不是只看“锁有没有变绿”，它其实在背后做一串检查：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;这张证书是不是发给当前访问的域名&lt;/li&gt;
+&lt;li&gt;现在时间是不是在有效期内&lt;/li&gt;
+&lt;li&gt;这张证书是不是被一个我信任的上级签发&lt;/li&gt;
+&lt;li&gt;上级自己是不是也被更上级签发&lt;/li&gt;
+&lt;li&gt;整条链有没有断，有没有人拿错证书冒名顶替&lt;/li&gt;
+&lt;li&gt;这张证书的用途是不是允许它拿来做 HTTPS 服务器&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;只要其中一项不对，浏览器就翻脸。它不会想“这个站长平时人还不错”。机器没有人情世故。&lt;/p&gt;
+&lt;h2 id="root-caintermediate-caleaf-certificate"&gt;把那条链讲透：Root CA、Intermediate CA、Leaf Certificate 到底各管什么&lt;/h2&gt;
+&lt;p&gt;很多人看到这几个词，脑子里有印象，可是一落到排障就开始晕。无他，这几个名字像，文件也像，打开之后还都是一坨 Base64，看久了确实容易眼花。咱们一个一个说。&lt;/p&gt;
+&lt;h3 id="1-root-ca"&gt;1. Root CA：信任的起点，但不是天天拿出来抛头露面&lt;/h3&gt;
+&lt;p&gt;Root CA 是整条证书链的祖师爷。&lt;/p&gt;
+&lt;p&gt;它有几个关键特征：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;通常是自签名(self-signed)&lt;/strong&gt;：也就是 &lt;code&gt;Subject == Issuer&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;长期存在&lt;/strong&gt;：有效期往往是十几年到几十年&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;不会轻易直接签网站证书&lt;/strong&gt;&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;预装在系统、浏览器或企业信任仓库里&lt;/strong&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Root CA 证书里最关键的不是域名，而是“我有资格当 CA”。这通常体现在扩展字段里，比如：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;Basic Constraints: CA:TRUE&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;Key Usage: Certificate Sign, CRL Sign&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;它像银行总行的总印章。平时不拿出来盖每一份业务单据，因为一旦根私钥泄露，整个体系都得翻车。所以现实世界里，Root CA 很少直接签你的网站证书。&lt;/p&gt;
+&lt;p&gt;Root CA 常见的存在位置：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;操作系统 trust store&lt;/li&gt;
+&lt;li&gt;浏览器自己的信任库&lt;/li&gt;
+&lt;li&gt;Java cacerts&lt;/li&gt;
+&lt;li&gt;企业内网设备或代理注入的自定义根证书&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这也解释了一个现象：为什么同一个站，在家里能开，在公司里不一定能开。公司网络里如果有 HTTPS inspection、中间代理、或者额外的企业根证书策略，验证路径和你家里的浏览器就不是同一套了。&lt;/p&gt;
+&lt;h3 id="2-intermediate-ca"&gt;2. Intermediate CA：真正天天干活的那层&lt;/h3&gt;
+&lt;p&gt;Intermediate CA 是中间 CA，也叫中级 CA。它是 Root CA 签发出来的“代理掌门”。&lt;/p&gt;
+&lt;p&gt;它的职责是：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;替 Root CA 干活，去签发大量业务证书&lt;/li&gt;
+&lt;li&gt;把 Root CA 私钥和日常签发操作隔离开&lt;/li&gt;
+&lt;li&gt;允许 CA 做更细的分层和权限控制&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Intermediate CA 的证书长这样理解就行：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;Subject: R3
+Issuer: ISRG Root X1
+Basic Constraints: CA:TRUE
+Key Usage: Certificate Sign, CRL Sign
+Authority Key Identifier: 指向 Root CA
+Subject Key Identifier: 自己的 key 指纹
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;你会发现它和 Root CA 一样，也有 &lt;code&gt;CA:TRUE&lt;/code&gt;，因为它也能签别人。区别在于：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Root 是信任锚(trust anchor)&lt;/li&gt;
+&lt;li&gt;Intermediate 是被 Root 授权出来干活的&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这层非常关键。很多线上事故并不是 leaf 证书错了，而是部署的时候只放了 leaf，没把 intermediate 一起带上。浏览器有时靠缓存还能“脑补”出来，&lt;code&gt;curl&lt;/code&gt;、移动端 SDK、某些企业代理就没那么好说话了，当场报错。&lt;/p&gt;
+&lt;h3 id="3-leaf-certificate"&gt;3. Leaf Certificate：真正挂在你网站门口那张牌子&lt;/h3&gt;
+&lt;p&gt;Leaf Certificate 就是服务器证书，也叫终端证书、站点证书。它是给最终服务用的，不再拿去签别的证书。&lt;/p&gt;
+&lt;p&gt;它的典型特征：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;Basic Constraints: CA:FALSE&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;Extended Key Usage: TLS Web Server Authentication&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;Subject Alternative Name (SAN)&lt;/code&gt; 里放域名&lt;/li&gt;
+&lt;li&gt;有较短有效期，比如 90 天&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;举个例子，我的个人网站证书如果是发给 &lt;code&gt;www.fanyamin.com&lt;/code&gt;，那 Leaf Certificate 里你最关心的是：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;Subject Alternative Name:
+  DNS:www.fanyamin.com
+  DNS:fanyamin.com
+
+Issuer:
+  Let&amp;#39;s Encrypt R3
+
+Not Before / Not After:
+  2026-01-01 ... 2026-03-31
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;注意，现在浏览器对域名校验几乎都看 &lt;code&gt;SAN&lt;/code&gt;，而不是老式 &lt;code&gt;CN(Common Name)&lt;/code&gt;。所以如果证书里没把域名写进 SAN，哪怕别的字段都漂亮，也照样不认。&lt;/p&gt;
+&lt;h3 id="4"&gt;4. 这三层在文件里通常长什么样&lt;/h3&gt;
+&lt;p&gt;很多人的第二个困惑是：名字懂了，可文件看着还是乱。&lt;/p&gt;
+&lt;p&gt;拿 PEM 来说，三层证书本质上都是同一种 X.509 证书，只是角色不同。它们在磁盘上经常长这样：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="gh"&gt;-----BEGIN CERTIFICATE-----&lt;/span&gt;
+&lt;span class="s"&gt;...&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;Leaf&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;Certificate&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;...&lt;/span&gt;
+&lt;span class="gh"&gt;-----END CERTIFICATE-----&lt;/span&gt;
+
+&lt;span class="gh"&gt;-----BEGIN CERTIFICATE-----&lt;/span&gt;
+&lt;span class="s"&gt;...&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;Intermediate&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;CA&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;...&lt;/span&gt;
+&lt;span class="gh"&gt;-----END CERTIFICATE-----&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;Root CA 往往&lt;strong&gt;不由服务器发送&lt;/strong&gt;，因为客户端本地已经有了。服务器通常发的是：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;自己的 leaf cert&lt;/li&gt;
+&lt;li&gt;一个或多个 intermediate cert&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;也就是大家常说的 &lt;code&gt;fullchain.pem&lt;/code&gt;。如果你只部署 &lt;code&gt;cert.pem&lt;/code&gt;，而没部署 &lt;code&gt;fullchain.pem&lt;/code&gt;，浏览器就可能告诉你：“你这封介绍信像是真的，但你上面那个公证处我没接上。”&lt;/p&gt;
+&lt;h3 id="5"&gt;5. 客户端到底怎么验证这条链&lt;/h3&gt;
+&lt;p&gt;这部分是最容易被“一句话带过”的，可真出了事，恰恰要靠它排查。&lt;/p&gt;
+&lt;p&gt;客户端在握手时，大体会按这个顺序检查：&lt;/p&gt;
+&lt;h4 id="_3"&gt;第一步：拿到服务器送来的证书链&lt;/h4&gt;
+&lt;p&gt;服务器通常会在 TLS 握手时送出：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;leaf certificate&lt;/li&gt;
+&lt;li&gt;intermediate certificate(s)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;如果只送 leaf，不送 intermediate，很多客户端就拼不出完整路径。&lt;/p&gt;
+&lt;h4 id="leaf"&gt;第二步：验证 leaf 的基本合法性&lt;/h4&gt;
+&lt;p&gt;客户端先看 leaf 本身：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;有效期是否包含当前时间&lt;/li&gt;
+&lt;li&gt;SAN 里有没有当前访问域名&lt;/li&gt;
+&lt;li&gt;签名算法是否还能接受&lt;/li&gt;
+&lt;li&gt;Key Usage / Extended Key Usage 是否允许做服务器证书&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;CA:FALSE&lt;/code&gt; 是否合理&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;像我这次个人网站在公司里打不开，最直白的原因就是 leaf 过期了。到期这件事其实没什么讨论空间，&lt;code&gt;Not After&lt;/code&gt; 一过，后面全免谈。&lt;/p&gt;
+&lt;h4 id="leaf-issuer-intermediate"&gt;第三步：拿 leaf 的 Issuer 去找上一级 intermediate&lt;/h4&gt;
+&lt;p&gt;Leaf 上会写：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;Issuer&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;Authority Key Identifier&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;客户端会拿这些信息去跟服务器送来的 intermediate 对上，看是不是这位“师父”签的。&lt;/p&gt;
+&lt;p&gt;然后它会做数学验签：拿 intermediate 的公钥，验证 leaf 上的签名是不是对的。&lt;/p&gt;
+&lt;p&gt;这一步如果失败，常见原因有：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;链接错 intermediate 了&lt;/li&gt;
+&lt;li&gt;证书文件顺序不对&lt;/li&gt;
+&lt;li&gt;证书被截断或损坏&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h4 id="root"&gt;第四步：继续往上追到 Root&lt;/h4&gt;
+&lt;p&gt;Intermediate 也不是凭空可信。客户端还会继续验证：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;intermediate 是不是被某个 root 签的&lt;/li&gt;
+&lt;li&gt;这个 root 是不是在本机信任库里&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;到这里，链子才算闭环。要是走到头发现根不在 trust store 里，那浏览器照样不认。&lt;/p&gt;
+&lt;p&gt;所以“证书没问题”这句话，往往只说对了一半。你那张 leaf 没问题，不代表整条链就没问题。&lt;/p&gt;
+&lt;h4 id="_4"&gt;第五步：检查约束条件是不是一路都合法&lt;/h4&gt;
+&lt;p&gt;不是说签名对上就完事。客户端还要检查每一层的“权限”：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;上级是不是 &lt;code&gt;CA:TRUE&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;上级是不是有 &lt;code&gt;keyCertSign&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;path length constraint 有没有超&lt;/li&gt;
+&lt;li&gt;leaf 有没有 &lt;code&gt;serverAuth&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这就像公司盖章流程。不是说印泥颜色对了就算通过，还得看这个人有没有审批权。&lt;/p&gt;
+&lt;h4 id="_5"&gt;第六步：看吊销状态和额外安全策略&lt;/h4&gt;
+&lt;p&gt;更严格的客户端还会继续看：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;CRL / OCSP 吊销状态&lt;/li&gt;
+&lt;li&gt;CT Log / SCT&lt;/li&gt;
+&lt;li&gt;企业网关自己的安全策略&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这一步也是为什么“在我电脑上能开”的经验，经常没有普适性。你家里浏览器和公司代理的策略，可能压根不是同一套。&lt;/p&gt;
+&lt;h3 id="6"&gt;6. 一张图把链路串起来&lt;/h3&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;[Leaf Certificate: www.fanyamin.com]
+    signed by
+[Intermediate CA: Let&amp;#39;s Encrypt R3]
+    signed by
+[Root CA: ISRG Root X1]
+    trusted by
+[OS / Browser / Company Trust Store]
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这条链只要有一段断掉，结果都一样：你的网站在用户眼里不是“有一点小毛病”，而是“不可信”。&lt;/p&gt;
+&lt;h3 id="7-openssl"&gt;7. 用 &lt;code&gt;openssl&lt;/code&gt; 看这三层，最靠谱&lt;/h3&gt;
+&lt;p&gt;纸上谈兵不如直接看证书。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# 看 leaf 证书内容&lt;/span&gt;
+openssl&lt;span class="w"&gt; &lt;/span&gt;x509&lt;span class="w"&gt; &lt;/span&gt;-in&lt;span class="w"&gt; &lt;/span&gt;cert.pem&lt;span class="w"&gt; &lt;/span&gt;-text&lt;span class="w"&gt; &lt;/span&gt;-noout
+
+&lt;span class="c1"&gt;# 看 fullchain 里到底塞了几张证书&lt;/span&gt;
+openssl&lt;span class="w"&gt; &lt;/span&gt;crl2pkcs7&lt;span class="w"&gt; &lt;/span&gt;-nocrl&lt;span class="w"&gt; &lt;/span&gt;-certfile&lt;span class="w"&gt; &lt;/span&gt;fullchain.pem&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;|&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="se"&gt;\&lt;/span&gt;
+openssl&lt;span class="w"&gt; &lt;/span&gt;pkcs7&lt;span class="w"&gt; &lt;/span&gt;-print_certs&lt;span class="w"&gt; &lt;/span&gt;-text&lt;span class="w"&gt; &lt;/span&gt;-noout
+
+&lt;span class="c1"&gt;# 直接连线上服务，看看服务端到底送了什么链&lt;/span&gt;
+openssl&lt;span class="w"&gt; &lt;/span&gt;s_client&lt;span class="w"&gt; &lt;/span&gt;-connect&lt;span class="w"&gt; &lt;/span&gt;www.fanyamin.com:443&lt;span class="w"&gt; &lt;/span&gt;-servername&lt;span class="w"&gt; &lt;/span&gt;www.fanyamin.com&lt;span class="w"&gt; &lt;/span&gt;-showcerts
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;重点看这些字段：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;Subject&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;Issuer&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;Not Before / Not After&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;Basic Constraints&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;Key Usage&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;Extended Key Usage&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;Subject Alternative Name&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;你把这几个字段看顺了，证书问题起码能查明白七八成。&lt;/p&gt;
 &lt;h2 id="pem-jks-pkcs12"&gt;PEM / JKS / PKCS#12：三种格式到底差在哪&lt;/h2&gt;
 &lt;p&gt;这是我见过最容易搞混的地方。很多人被 &lt;code&gt;.pem&lt;/code&gt;、&lt;code&gt;.crt&lt;/code&gt;、&lt;code&gt;.key&lt;/code&gt;、&lt;code&gt;.jks&lt;/code&gt;、&lt;code&gt;.p12&lt;/code&gt;、&lt;code&gt;.pfx&lt;/code&gt; 这些后缀搞得头大，其实理清楚只需要记住三个"容器"。&lt;/p&gt;
 &lt;h3 id="pemunix"&gt;PEM：文本格式，Unix 世界的通用语&lt;/h3&gt;
@@ -92,7 +284,7 @@ MIIDdzCCAl+gAwIBAgIEAgAAuTANBgkqhki...
 &lt;li&gt;是 Java 9+ 默认推荐的 keystore 格式&lt;/li&gt;
 &lt;/ul&gt;
 &lt;p&gt;PKCS#12 像一个"加密的压缩包"，把你需要的东西都塞进一个文件。搬运方便，但调试不如 PEM 透明。&lt;/p&gt;
-&lt;h3 id="_3"&gt;三者对比&lt;/h3&gt;
+&lt;h3 id="_6"&gt;三者对比&lt;/h3&gt;
 &lt;table&gt;
 &lt;thead&gt;
 &lt;tr&gt;
@@ -148,7 +340,7 @@ MIIDdzCCAl+gAwIBAgIEAgAAuTANBgkqhki...
 &lt;/tbody&gt;
 &lt;/table&gt;
 &lt;p&gt;&lt;strong&gt;一句话选型建议&lt;/strong&gt;：Web 服务器和云原生场景用 PEM；纯 Java 栈用 PKCS#12(别再用 JKS 了)；需要把私钥和证书打包给人的时候用 PKCS#12。&lt;/p&gt;
-&lt;h3 id="_4"&gt;格式互转速查&lt;/h3&gt;
+&lt;h3 id="_7"&gt;格式互转速查&lt;/h3&gt;
 &lt;p&gt;工作中最常见的转换需求，&lt;code&gt;openssl&lt;/code&gt; 和 &lt;code&gt;keytool&lt;/code&gt; 基本能搞定：&lt;/p&gt;
 &lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# PEM → PKCS#12&lt;/span&gt;
 openssl&lt;span class="w"&gt; &lt;/span&gt;pkcs12&lt;span class="w"&gt; &lt;/span&gt;-export&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="se"&gt;\&lt;/span&gt;
@@ -212,7 +404,7 @@ keytool&lt;span class="w"&gt; &lt;/span&gt;-importkeystore&lt;span class="w"&gt;
 &lt;li&gt;客户端不会自动信任，需要手动导入 CA 证书&lt;/li&gt;
 &lt;li&gt;工具：&lt;code&gt;openssl&lt;/code&gt;、&lt;code&gt;mkcert&lt;/code&gt;(本地开发推荐)、&lt;code&gt;cfssl&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;
-&lt;h3 id="_5"&gt;选型边界&lt;/h3&gt;
+&lt;h3 id="_8"&gt;选型边界&lt;/h3&gt;
 &lt;table&gt;
 &lt;thead&gt;
 &lt;tr&gt;
@@ -244,7 +436,7 @@ keytool&lt;span class="w"&gt; &lt;/span&gt;-importkeystore&lt;span class="w"&gt;
 &lt;/tbody&gt;
 &lt;/table&gt;
 &lt;p&gt;免费证书有一个共同限制：&lt;strong&gt;只做 DV(域名验证)&lt;/strong&gt;。需要 OV(组织验证)或 EV(扩展验证)证书的，还是得找商业 CA 付钱。不过老实说，对绝大多数服务来说，DV 够了。&lt;/p&gt;
-&lt;h2 id="_6"&gt;自动轮换：别再靠日历提醒了&lt;/h2&gt;
+&lt;h2 id="_9"&gt;自动轮换：别再靠日历提醒了&lt;/h2&gt;
 &lt;p&gt;证书过期是最蠢但最常见的生产事故之一。手工续期有两个问题：人会忘，流程会断。&lt;/p&gt;
 &lt;p&gt;自动轮换有两条主流路径。&lt;/p&gt;
 &lt;h3 id="acme"&gt;路径一：ACME 客户端&lt;/h3&gt;
@@ -359,7 +551,7 @@ end note
 &lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 
 &lt;p&gt;cert-manager 的好处是&lt;strong&gt;声明式&lt;/strong&gt;：你只管定义"我要一张什么证书"，它负责签发、续期、更新 Secret。Ingress Controller 监听到 Secret 变化，自动重载。整条链路不需要人介入。&lt;/p&gt;
-&lt;h3 id="_7"&gt;两条路径怎么选&lt;/h3&gt;
+&lt;h3 id="_10"&gt;两条路径怎么选&lt;/h3&gt;
 &lt;table&gt;
 &lt;thead&gt;
 &lt;tr&gt;
@@ -390,14 +582,14 @@ end note
 &lt;/tr&gt;
 &lt;/tbody&gt;
 &lt;/table&gt;
-&lt;h2 id="_8"&gt;几个实操层面容易踩的坑&lt;/h2&gt;
+&lt;h2 id="_11"&gt;几个实操层面容易踩的坑&lt;/h2&gt;
 &lt;h3 id="leaf-cert"&gt;坑一：只部署了 leaf cert，没带中间证书&lt;/h3&gt;
 &lt;p&gt;浏览器可能缓存了中间 CA 所以能打开，但 curl、SDK、移动端就报错。解决办法：部署 &lt;strong&gt;fullchain&lt;/strong&gt; 而不是单张证书。用 &lt;code&gt;openssl s_client&lt;/code&gt; 验证：&lt;/p&gt;
 &lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;openssl&lt;span class="w"&gt; &lt;/span&gt;s_client&lt;span class="w"&gt; &lt;/span&gt;-connect&lt;span class="w"&gt; &lt;/span&gt;example.com:443&lt;span class="w"&gt; &lt;/span&gt;-showcerts
 &lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 
 &lt;p&gt;看输出里有没有完整的证书链。&lt;/p&gt;
-&lt;h3 id="_9"&gt;坑二：证书和私钥不匹配&lt;/h3&gt;
+&lt;h3 id="_12"&gt;坑二：证书和私钥不匹配&lt;/h3&gt;
 &lt;p&gt;换证书的时候用了旧的私钥，或者反过来。快速检查：&lt;/p&gt;
 &lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# 两个 md5 必须一致&lt;/span&gt;
 openssl&lt;span class="w"&gt; &lt;/span&gt;x509&lt;span class="w"&gt; &lt;/span&gt;-noout&lt;span class="w"&gt; &lt;/span&gt;-modulus&lt;span class="w"&gt; &lt;/span&gt;-in&lt;span class="w"&gt; &lt;/span&gt;cert.pem&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;|&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;openssl&lt;span class="w"&gt; &lt;/span&gt;md5
@@ -409,12 +601,12 @@ openssl&lt;span class="w"&gt; &lt;/span&gt;rsa&lt;span class="w"&gt; &lt;/span&g
 &lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;https://acme-staging-v02.api.letsencrypt.org/directory
 &lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 
-&lt;h3 id="_10"&gt;坑四：自动续期配了但没验证&lt;/h3&gt;
+&lt;h3 id="_13"&gt;坑四：自动续期配了但没验证&lt;/h3&gt;
 &lt;p&gt;cron job 加了，从来没跑过。或者跑了但 DNS 验证失败，续期静默失败，直到证书过期才发现。&lt;/p&gt;
 &lt;p&gt;&lt;strong&gt;建议&lt;/strong&gt;：监控证书剩余天数。Prometheus 有 &lt;code&gt;ssl_certificate_expiry_time_seconds&lt;/code&gt; 这个 metric，Blackbox Exporter 也能探测。低于 14 天就报警。&lt;/p&gt;
 &lt;h3 id="ca"&gt;坑五：内部服务用公共 CA 证书&lt;/h3&gt;
 &lt;p&gt;内部 &lt;code&gt;api.internal.company.com&lt;/code&gt; 也去 Let's Encrypt 签一张？能行，但暴露了内部域名结构(CT Log 里全是公开的)。内部服务建议自建 CA 或者用 SPIFFE/SPIRE 做 mTLS。&lt;/p&gt;
-&lt;h2 id="_11"&gt;证书管理的生命周期&lt;/h2&gt;
+&lt;h2 id="_14"&gt;证书管理的生命周期&lt;/h2&gt;
 &lt;p&gt;把上面的点串起来，证书管理不是"签一张就完了"，而是一个持续循环：&lt;/p&gt;
 &lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startuml
 !theme plain
@@ -450,7 +642,7 @@ stop
 &lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 
 &lt;p&gt;&lt;img alt="证书管理生命周期" src="../images/journal_20260324_cert_management_lifecycle.png"&gt;&lt;/p&gt;
-&lt;h2 id="_12"&gt;明天就能做的检查清单&lt;/h2&gt;
+&lt;h2 id="_15"&gt;明天就能做的检查清单&lt;/h2&gt;
 &lt;ul&gt;
 &lt;li&gt;[ ] 盘点所有 TLS 证书：域名、格式、到期时间、存放位置&lt;/li&gt;
 &lt;li&gt;[ ] 确认每个服务部署的是 fullchain 而不是单张 leaf cert&lt;/li&gt;
@@ -462,7 +654,7 @@ stop
 &lt;li&gt;[ ] 私钥文件权限收紧到 &lt;code&gt;600&lt;/code&gt;，不要提交到 Git&lt;/li&gt;
 &lt;li&gt;[ ] 做一次"证书突然过期"的演练，看恢复流程要多久&lt;/li&gt;
 &lt;/ul&gt;
-&lt;h2 id="_13"&gt;总结&lt;/h2&gt;
+&lt;h2 id="_16"&gt;总结&lt;/h2&gt;
 &lt;p&gt;证书管理不是什么高深的活儿，但它有个讨厌的特点：&lt;strong&gt;平时不出事，出事就是凌晨三点。&lt;/strong&gt; 大部分证书事故的根因都不是技术不行，而是流程断了——该续的没续，该监控的没监控，该自动化的还在靠人。&lt;/p&gt;
 &lt;p&gt;格式上，PEM 最透明，PKCS#12 最通用，JKS 正在退场。免费证书领域，Let's Encrypt 已经是基础设施级别的存在，90 天有效期逼着你做自动化，这是件好事。自动轮换，传统环境用 acme.sh 或 certbot，Kubernetes 用 cert-manager，都是成熟方案。&lt;/p&gt;
 &lt;p&gt;一句话：&lt;strong&gt;证书管理的最高境界，是你忘了它的存在。&lt;/strong&gt; 因为该自动的都自动了，该告警的都告警了，你只需要在续签成功的日志里偶尔看到一行 &lt;code&gt;Certificate renewed successfully&lt;/code&gt;，然后继续睡觉。&lt;/p&gt;
@@ -503,7 +695,7 @@ skinparam backgroundColor #FEFEFE
 &lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 
 &lt;p&gt;&lt;img alt="证书管理思维导图" src="../images/journal_20260324_cert_management_mindmap.png"&gt;&lt;/p&gt;
-&lt;h2 id="_14"&gt;扩展阅读&lt;/h2&gt;
+&lt;h2 id="_17"&gt;扩展阅读&lt;/h2&gt;
 &lt;ul&gt;
 &lt;li&gt;Let's Encrypt 官方文档: https://letsencrypt.org/docs/&lt;/li&gt;
 &lt;li&gt;ACME 协议 RFC 8555: https://datatracker.ietf.org/doc/html/rfc8555&lt;/li&gt;
@@ -515,11 +707,11 @@ skinparam backgroundColor #FEFEFE
 &lt;li&gt;ZeroSSL: https://zerossl.com/&lt;/li&gt;
 &lt;/ul&gt;
 &lt;hr/&gt;
-&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Journal"/><category term="certificate"/><category term="TLS"/><category term="SSL"/><category term="PEM"/><category term="JKS"/><category term="PKCS12"/><category term="Let's Encrypt"/><category term="cert-manager"/><category term="security"/><category term="DevOps"/></entry><entry><title>Agent Loop 拆解：从 OpenClaw 到 nanobot 再到 PicoClaw</title><link href="https://www.fanyamin.com/agent-loop-chai-jie-cong-openclaw-dao-nanobot-zai-dao-picoclaw.html" rel="alternate"/><published>2026-03-19T20:00:00+08:00</published><updated>2026-03-19T22:00:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-03-19:/agent-loop-chai-jie-cong-openclaw-dao-nanobot-zai-dao-picoclaw.html</id><summary type="html">&lt;p&gt;深入分析三个开源 AI Agent 框架中 Agent Loop 的设计与实现，横向对比 OpenClaw (TypeScript)、nanobot (Python)、PicoClaw (Go) 的核心编排逻辑&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Journal"/><category term="certificate"/><category term="TLS"/><category term="SSL"/><category term="PEM"/><category term="JKS"/><category term="PKCS12"/><category term="Let's Encrypt"/><category term="cert-manager"/><category term="security"/><category term="DevOps"/></entry><entry><title>AI Agent Loop 讲透：以一个会自己写博客的 Python Demo 为例</title><link href="https://www.fanyamin.com/ai-agent-loop-jiang-tou-yi-yi-ge-hui-zi-ji-xie-bo-ke-de-python-demo-wei-li.html" rel="alternate"/><published>2026-03-19T20:00:00+08:00</published><updated>2026-03-31T11:15:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-03-19:/ai-agent-loop-jiang-tou-yi-yi-ge-hui-zi-ji-xie-bo-ke-de-python-demo-wei-li.html</id><summary type="html">&lt;p&gt;以 lazy-rabbit-agent 里的 agent_loop_demo.py 为例，讲清楚 AI Agent Loop 的本质：它不是玄学，而是由规划、记忆、工具调用、观察回流、格式约束与失败恢复组成的一台小发动机。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
 &lt;thead&gt;
 &lt;tr&gt;
 &lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
-&lt;th&gt;Agent Loop 拆解：从 OpenClaw 到 nanobot 再到 PicoClaw&lt;/th&gt;
+&lt;th&gt;AI Agent Loop 讲透：以一个会自己写博客的 Python Demo 为例&lt;/th&gt;
 &lt;/tr&gt;
 &lt;/thead&gt;
 &lt;tbody&gt;
@@ -537,7 +729,7 @@ skinparam backgroundColor #FEFEFE
 &lt;/tr&gt;
 &lt;tr&gt;
 &lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;2026-03-19&lt;/td&gt;
+&lt;td&gt;2026-03-31&lt;/td&gt;
 &lt;/tr&gt;
 &lt;tr&gt;
 &lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
@@ -545,547 +737,616 @@ skinparam backgroundColor #FEFEFE
 &lt;/tr&gt;
 &lt;/tbody&gt;
 &lt;/table&gt;
-&lt;h2 id="ai-agent"&gt;你有没有想过，一个 AI Agent 到底怎么"转"起来的？&lt;/h2&gt;
-&lt;p&gt;大多数人用 ChatGPT、Claude 的体验是：输入一句话，等几秒，拿到答案。但如果你要让 AI 自己读文件、跑命令、搜网页、甚至调度子任务——光一个"问答"接口远远不够。&lt;/p&gt;
-&lt;p&gt;这背后需要一个&lt;strong&gt;循环引擎&lt;/strong&gt;：不断地"想 → 做 → 看结果 → 再想 → 再做"，直到任务完成。这个引擎，在 AI Agent 领域有个专门的名字：&lt;strong&gt;Agent Loop&lt;/strong&gt;。&lt;/p&gt;
-&lt;p&gt;最近我研究了三个开源 AI Agent 框架——&lt;a href="https://github.com/openclaw/openclaw"&gt;OpenClaw&lt;/a&gt;（TypeScript）、&lt;a href="https://github.com/HKUDS/nanobot"&gt;nanobot&lt;/a&gt;（Python）、&lt;a href="https://github.com/sipeed/picoclaw"&gt;PicoClaw&lt;/a&gt;（Go）——它们的 Agent Loop 设计各有千秋，但核心范式惊人地一致。今天就来拆解一下这个"对话操作系统内核"。&lt;/p&gt;
-&lt;h2 id="agent-loop"&gt;Agent Loop 到底是什么？&lt;/h2&gt;
-&lt;p&gt;先给一个直觉：Agent Loop 不是一个"函数调用"，而更像是一个&lt;strong&gt;事件驱动的操作系统内核&lt;/strong&gt;。它的职责可以概括为六层：&lt;/p&gt;
+&lt;h2 id="ai"&gt;这回我不是让 AI 回答问题，我是让它自己去干活&lt;/h2&gt;
+&lt;p&gt;前几天我做了个小实验，用 &lt;code&gt;lazy-rabbit-agent&lt;/code&gt; 目录里的 &lt;code&gt;agent_loop_demo.py&lt;/code&gt;，直接给它下了这么一条命令：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;python&lt;span class="w"&gt; &lt;/span&gt;agent_loop_demo.py&lt;span class="w"&gt; &lt;/span&gt;--task&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;please write a blog in chinese to introduce ai agent loop, use agent_loop_demo.py as example, explain how does an ai agent work, please write the markdown file into current folder, the markdown file gent_loop_demo.md should contain a mindmap script (plantuml) to summarize the blog&amp;quot;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;结果它还真就在当前目录里写出了一个 &lt;a href="https://github.com/walterfan/lazy-rabbit-agent/blob/master/example/agent_loop_demo.py"&gt;&lt;code&gt;agent_loop_demo.md&lt;/code&gt;&lt;/a&gt;。&lt;/p&gt;
+&lt;p&gt;这件事挺有意思。因为从用户视角看，你只说了一句话；可从程序视角看，这已经不是普通的“一问一答”了。它得先理解任务，再判断要不要看文件，要不要列目录，要不要写文件，写完之后还得确认结果在不在，最后才能宣布“活干完了”。&lt;/p&gt;
+&lt;p&gt;这中间那台不停运转的小机器，就是 &lt;strong&gt;Agent Loop&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;很多文章一说 Agent，就容易把话说得玄乎，仿佛它突然有了自主意识。其实没那么神。大多数 Agent Loop，本质上就是一套受控的循环：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;理解任务 → 生成动作 → 调工具 → 看结果 → 更新上下文 → 再决定下一步
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;说白了，它像一个肯动手的实习生，但这个实习生有几个特点：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;脑子是 LLM&lt;/li&gt;
+&lt;li&gt;手脚是工具&lt;/li&gt;
+&lt;li&gt;短期记忆和长期记忆负责“别转头就忘”&lt;/li&gt;
+&lt;li&gt;规则系统负责“别把家里煤气点着”&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这篇文章我不打算讲泛泛而谈的概念。我想就着这个真实脚本，把 AI Agent Loop 从头拆到尾，看看一个 Agent 到底是怎么转起来的，它为什么能写文件，为什么会犯傻，又为什么必须被管起来。&lt;/p&gt;
+&lt;h2 id="agent"&gt;先把底牌翻开：Agent 不是“会思考的聊天框”，而是“带工具的循环体”&lt;/h2&gt;
+&lt;p&gt;普通 LLM 调用，大多是这样：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;用户输入 → 模型生成 → 返回答案
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这像你问路，别人给你指个方向。说完就完了。&lt;/p&gt;
+&lt;p&gt;Agent 不一样。Agent 的活儿不是“回答”，而是“完成任务”。只要任务没有完成，它就不能停在第一轮。&lt;/p&gt;
+&lt;p&gt;比如这次我的任务不是“解释一下 Agent Loop”，而是：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;用中文写博客&lt;/li&gt;
+&lt;li&gt;以 &lt;code&gt;agent_loop_demo.py&lt;/code&gt; 为例&lt;/li&gt;
+&lt;li&gt;写入当前目录&lt;/li&gt;
+&lt;li&gt;文件名叫 &lt;code&gt;gent_loop_demo.md&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;里面还得带 PlantUML 思维导图&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这不是一句话能直接吐干净的。它得拆。&lt;/p&gt;
+&lt;p&gt;所以 Agent Loop 的第一原则不是“回答得漂亮”，而是：&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;先判断下一步该做什么。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;这就引出了一个关键点：Agent 的核心，不是模型本身，而是这个循环。&lt;/p&gt;
+&lt;p&gt;模型只负责出主意。真正把主意变成结果的，是 Loop。&lt;/p&gt;
+&lt;h2 id="demo-agent-loop"&gt;用这支 demo 来看，Agent Loop 其实就是一台小发动机&lt;/h2&gt;
+&lt;p&gt;&lt;a href="https://github.com/walterfan/lazy-rabbit-agent/blob/master/example/agent_loop_demo.py"&gt;&lt;code&gt;agent_loop_demo.py&lt;/code&gt;&lt;/a&gt; 这个脚本并不大，但骨架很完整。它里面最关键的几块，我给它翻译成人话，大概是这样：&lt;/p&gt;
 &lt;table&gt;
 &lt;thead&gt;
 &lt;tr&gt;
-&lt;th&gt;层次&lt;/th&gt;
-&lt;th&gt;职责&lt;/th&gt;
+&lt;th&gt;组件&lt;/th&gt;
+&lt;th&gt;作用&lt;/th&gt;
 &lt;th&gt;类比&lt;/th&gt;
 &lt;/tr&gt;
 &lt;/thead&gt;
 &lt;tbody&gt;
 &lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;接入层&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;从消息总线消费入站消息&lt;/td&gt;
-&lt;td&gt;操作系统的中断处理&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;LLMClient&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;负责向模型发问&lt;/td&gt;
+&lt;td&gt;大脑接口&lt;/td&gt;
 &lt;/tr&gt;
 &lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;路由层&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;根据 channel/peer/metadata 选择 agent 和 session&lt;/td&gt;
-&lt;td&gt;进程调度器&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;AgentTools&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;负责列目录、读文件、写文件、追加文件、取时间&lt;/td&gt;
+&lt;td&gt;手脚&lt;/td&gt;
 &lt;/tr&gt;
 &lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;推理层&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;构造上下文、调用 LLM、多轮迭代&lt;/td&gt;
-&lt;td&gt;CPU 执行指令&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;ShortTermMemory&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;保存最近几轮对话和工具结果&lt;/td&gt;
+&lt;td&gt;工作台上的便签纸&lt;/td&gt;
 &lt;/tr&gt;
 &lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;工具层&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;并行执行 tool call、区分用户可见和模型可见的结果&lt;/td&gt;
-&lt;td&gt;系统调用&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;LongTermMemory&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;持久化记忆，跨运行保留一些东西&lt;/td&gt;
+&lt;td&gt;抽屉里的笔记本&lt;/td&gt;
 &lt;/tr&gt;
 &lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;记忆层&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;维护 session 历史、summary、压缩与持久化&lt;/td&gt;
-&lt;td&gt;内存管理 + 磁盘 I/O&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;Action&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;模型每轮做出的决策&lt;/td&gt;
+&lt;td&gt;工单&lt;/td&gt;
 &lt;/tr&gt;
 &lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;运维层&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;热重载、fallback、超时重试、资源清理&lt;/td&gt;
-&lt;td&gt;看门狗 + 故障恢复&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;AgentLoopDemo.run_task()&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;整个循环的总调度&lt;/td&gt;
+&lt;td&gt;发动机曲轴&lt;/td&gt;
 &lt;/tr&gt;
 &lt;/tbody&gt;
 &lt;/table&gt;
-&lt;p&gt;如果用一句话总结：&lt;strong&gt;Agent Loop 是一个把路由、模型调用、工具执行、异步回流、记忆压缩和容错策略串成闭环的持续运行系统。&lt;/strong&gt;&lt;/p&gt;
-&lt;h2 id="agent-loop_1"&gt;三个框架的 Agent Loop 概览&lt;/h2&gt;
-&lt;p&gt;在横向对比之前，先看看三个项目的基本定位：&lt;/p&gt;
-&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;特性&lt;/th&gt;
-&lt;th&gt;OpenClaw&lt;/th&gt;
-&lt;th&gt;nanobot&lt;/th&gt;
-&lt;th&gt;PicoClaw&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;语言&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;TypeScript (Node.js)&lt;/td&gt;
-&lt;td&gt;Python (asyncio)&lt;/td&gt;
-&lt;td&gt;Go&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;定位&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;全功能自托管网关&lt;/td&gt;
-&lt;td&gt;超轻量个人助手框架&lt;/td&gt;
-&lt;td&gt;超低资源嵌入式 Agent&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;代码规模&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;大型，模块化&lt;/td&gt;
-&lt;td&gt;精简，&amp;lt;500 行核心&lt;/td&gt;
-&lt;td&gt;中等，单文件主循环&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;核心文件&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;&lt;code&gt;pi-embedded-runner/run.ts&lt;/code&gt; + &lt;code&gt;attempt.ts&lt;/code&gt;&lt;/td&gt;
-&lt;td&gt;&lt;code&gt;agent/loop.py&lt;/code&gt;&lt;/td&gt;
-&lt;td&gt;&lt;code&gt;pkg/agent/loop.go&lt;/code&gt;&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;最大迭代&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;可配置&lt;/td&gt;
-&lt;td&gt;40 (默认)&lt;/td&gt;
-&lt;td&gt;50 (默认, 0 时 fallback 到 20)&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;内存目标&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;无特殊限制&lt;/td&gt;
-&lt;td&gt;无特殊限制&lt;/td&gt;
-&lt;td&gt;&amp;lt;10 MB RSS&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;多 Agent&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;支持，隔离 workspace&lt;/td&gt;
-&lt;td&gt;单 Agent&lt;/td&gt;
-&lt;td&gt;支持，AgentRegistry&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;工具系统&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;6 层策略级联&lt;/td&gt;
-&lt;td&gt;ToolRegistry + MCP&lt;/td&gt;
-&lt;td&gt;ToolRegistry + MCP&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Context 压缩&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;自动 compaction (60% 阈值)&lt;/td&gt;
-&lt;td&gt;memory_window 触发 consolidation&lt;/td&gt;
-&lt;td&gt;summarization + forceCompression&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Fallback&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;多模型 fallback chain&lt;/td&gt;
-&lt;td&gt;单 provider&lt;/td&gt;
-&lt;td&gt;FallbackChain 带 cooldown&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;p&gt;三者虽然语言和规模不同，但 Agent Loop 的骨架几乎是同构的。下面我们逐层拆解。&lt;/p&gt;
-&lt;h2 id="agent-loop_2"&gt;架构：Agent Loop 的组件关系&lt;/h2&gt;
-&lt;p&gt;三个框架的 Agent Loop 都遵循相似的组件架构。以 PicoClaw 为参考（因为它的结构最清晰），核心组件关系如下：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startuml
-!theme plain
-skinparam backgroundColor #FEFEFE
-skinparam componentStyle rectangle
-skinparam defaultFontSize 13
-
-package &amp;quot;Agent Loop 通用架构&amp;quot; {
-
-  [MessageBus] as MB #LightBlue
-  note right of MB
-    异步消息队列
-    InboundMessage / OutboundMessage
-  end note
-
-  [AgentLoop] as AL #LightGreen
-  note bottom of AL
-    核心编排器
-    Run() → processMessage()
-    → runAgentLoop() → runLLMIteration()
-  end note
-
-  [ContextBuilder] as CB #LightYellow
-  note right of CB
-    上下文组装
-    SystemPrompt + History
-    + Skills + Memory
-  end note
-
-  [LLM Provider] as LLM #Orange
-  note right of LLM
-    模型调用
-    支持 Fallback Chain
-    多 Provider 路由
-  end note
-
-  [ToolRegistry] as TR #LightCoral
-  note right of TR
-    工具注册与执行
-    内置 + MCP 扩展
-    安全沙箱策略
-  end note
-
-  [SessionManager] as SM #Plum
-  note right of SM
-    会话持久化
-    JSONL 格式
-    Summary/Compaction
-  end note
-
-  [ChannelManager] as CM #LightSkyBlue
-  note left of CM
-    多通道管理
-    Telegram/Discord
-    Slack/CLI/...
-  end note
-
-  [AgentRegistry] as AR #Wheat
-  note left of AR
-    多 Agent 路由
-    隔离 Workspace
-    独立 Session
-  end note
-}
-
-CM --&amp;gt; MB : 发布入站消息
-MB --&amp;gt; AL : 消费消息
-AL --&amp;gt; AR : 路由到 Agent
-AL --&amp;gt; CB : 组装上下文
-AL --&amp;gt; LLM : 调用模型
-LLM --&amp;gt; AL : 返回响应/ToolCalls
-AL --&amp;gt; TR : 执行工具
-TR --&amp;gt; AL : 返回工具结果
-AL --&amp;gt; SM : 持久化会话
-AL --&amp;gt; MB : 发布出站消息
-MB --&amp;gt; CM : 路由到通道
-
-@enduml
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;&lt;img alt="Agent Loop 通用架构" src="../images/journal_20260319_agent_loop_architecture.png"&gt;&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;三个框架的关键差异体现在"层的厚度"上：&lt;/strong&gt;&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;OpenClaw&lt;/strong&gt; 的工具策略最复杂（6 层级联 allow/deny），Context Compaction 有独立的 token budget 管理，还支持 Block Reply Chunking（分段流式返回）。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;nanobot&lt;/strong&gt; 最精简，AgentLoop 核心不到 500 行 Python，但该有的都有：MessageBus、ToolRegistry、SessionManager、ContextBuilder、SubagentManager。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;PicoClaw&lt;/strong&gt; 在 Go 里用 &lt;code&gt;atomic.Bool&lt;/code&gt; + &lt;code&gt;sync.Map&lt;/code&gt; 实现并发控制，还内置了硬件工具（I2C/SPI），目标是跑在 $10 的 RISC-V 开发板上。&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h2 id="_1"&gt;时序：一条消息的完整旅程&lt;/h2&gt;
-&lt;p&gt;当用户在 Telegram 里发一句"帮我查一下今天的天气"，这条消息经历了什么？用 PicoClaw 的实现来画一个完整的时序图：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startuml
-!theme plain
-skinparam backgroundColor #FEFEFE
-skinparam sequenceMessageAlign center
-skinparam defaultFontSize 12
-
-actor User as U
-participant &amp;quot;Channel\n(Telegram)&amp;quot; as CH
-participant &amp;quot;MessageBus&amp;quot; as MB
-participant &amp;quot;AgentLoop\nRun()&amp;quot; as AL
-participant &amp;quot;processMessage()&amp;quot; as PM
-participant &amp;quot;runAgentLoop()&amp;quot; as RAL
-participant &amp;quot;ContextBuilder&amp;quot; as CB
-participant &amp;quot;runLLMIteration()&amp;quot; as RLI
-participant &amp;quot;LLM Provider&amp;quot; as LLM
-participant &amp;quot;ToolRegistry&amp;quot; as TR
-participant &amp;quot;SessionManager&amp;quot; as SM
-
-== 1. 消息接入 ==
-U -&amp;gt; CH : 发送消息
-CH -&amp;gt; MB : PublishInbound(\nInboundMessage)
-MB -&amp;gt; AL : ConsumeInbound()
-
-== 2. 路由与预处理 ==
-AL -&amp;gt; PM : processMessage(ctx, msg)
-PM -&amp;gt; PM : 语音转写 (如有)
-PM -&amp;gt; PM : 检查是否命令 (/new, /help...)
-PM -&amp;gt; PM : resolveMessageRoute()\n选择 Agent + SessionKey
-
-== 3. 上下文组装 ==
-PM -&amp;gt; RAL : runAgentLoop(agent, msg, opts)
-RAL -&amp;gt; SM : 加载 session 历史
-RAL -&amp;gt; CB : BuildMessages()\n组装 System Prompt\n+ History + Skills + Memory
-RAL -&amp;gt; SM : 保存 user 消息
-
-== 4. LLM 推理循环 (iteration 1) ==
-RAL -&amp;gt; RLI : runLLMIteration(messages)
-RLI -&amp;gt; LLM : Chat(messages, tools)
-LLM --&amp;gt; RLI : Response(tool_calls:\n[web_search(&amp;quot;今天天气&amp;quot;)])
-
-== 5. 工具执行 ==
-RLI -&amp;gt; RLI : 追加 assistant 消息到 history
-RLI -&amp;gt; TR : Execute(&amp;quot;web_search&amp;quot;,\n{&amp;quot;query&amp;quot;: &amp;quot;今天天气&amp;quot;})
-TR --&amp;gt; RLI : ToolResult{ForLLM: &amp;quot;...&amp;quot;,\nForUser: &amp;quot;正在搜索...&amp;quot;}
-RLI -&amp;gt; MB : PublishOutbound(ForUser)\n即时反馈
-RLI -&amp;gt; RLI : 追加 tool result 到 history
-
-== 6. LLM 推理循环 (iteration 2) ==
-RLI -&amp;gt; LLM : Chat(messages + tool_result)
-LLM --&amp;gt; RLI : Response(content:\n&amp;quot;今天天气晴, 25°C...&amp;quot;)
-RLI --&amp;gt; RAL : 返回 finalContent
-
-== 7. 保存与响应 ==
-RAL -&amp;gt; SM : 保存 assistant 消息
-RAL -&amp;gt; SM : 检查是否需要 summarization
-RAL --&amp;gt; PM : 返回响应文本
-PM --&amp;gt; AL : 返回响应
-AL -&amp;gt; MB : PublishOutbound(response)
-MB -&amp;gt; CH : 路由到 Telegram
-CH -&amp;gt; U : 显示回复
-
-@enduml
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;&lt;img alt="消息处理时序图" src="../images/journal_20260319_agent_loop_sequence.png"&gt;&lt;/p&gt;
-&lt;p&gt;这个流程在三个框架中几乎一致，区别在于具体实现细节：&lt;/p&gt;
-&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;阶段&lt;/th&gt;
-&lt;th&gt;OpenClaw&lt;/th&gt;
-&lt;th&gt;nanobot&lt;/th&gt;
-&lt;th&gt;PicoClaw&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;消息消费&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;WebSocket RPC 事件&lt;/td&gt;
-&lt;td&gt;&lt;code&gt;bus.consume_inbound()&lt;/code&gt; (asyncio)&lt;/td&gt;
-&lt;td&gt;&lt;code&gt;bus.ConsumeInbound()&lt;/code&gt; (blocking)&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;并发控制&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;隐含在 Pi Agent 运行时中&lt;/td&gt;
-&lt;td&gt;&lt;code&gt;asyncio.Lock&lt;/code&gt; 串行化&lt;/td&gt;
-&lt;td&gt;&lt;code&gt;atomic.Bool&lt;/code&gt; + &lt;code&gt;sync.Map&lt;/code&gt;&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;工具执行&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;支持并行 + async callback&lt;/td&gt;
-&lt;td&gt;顺序执行&lt;/td&gt;
-&lt;td&gt;顺序 + AsyncTool interface&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;中间反馈&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;Block Reply Chunking&lt;/td&gt;
-&lt;td&gt;&lt;code&gt;on_progress&lt;/code&gt; callback&lt;/td&gt;
-&lt;td&gt;&lt;code&gt;ForUser&lt;/code&gt; 即时发送&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;错误重试&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;Fallback chain + compaction retry&lt;/td&gt;
-&lt;td&gt;直接报错&lt;/td&gt;
-&lt;td&gt;&lt;code&gt;maxRetries=2&lt;/code&gt; + forceCompression&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;h2 id="runllmiteration"&gt;活动：runLLMIteration 的决策流程&lt;/h2&gt;
-&lt;p&gt;Agent Loop 最核心的逻辑在 &lt;code&gt;runLLMIteration&lt;/code&gt;——这个方法决定了"模型说要做什么"和"实际去做什么"之间的桥梁。用活动图来展示：&lt;/p&gt;
+&lt;p&gt;你看这几个名字，已经把味道说明白了：它不是一个“大而全的框架”，而是一台最小可运行的 Agent。&lt;/p&gt;
+&lt;p&gt;目的无他，就是证明一件事：&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Agent Loop 不一定非得很复杂，关键是闭环要完整。&lt;/strong&gt;&lt;/p&gt;
+&lt;h2 id="_1"&gt;这条命令真正发生了什么&lt;/h2&gt;
+&lt;p&gt;咱们先别急着看代码，先从运行过程倒推。&lt;/p&gt;
+&lt;p&gt;当我把那条 &lt;code&gt;--task&lt;/code&gt; 命令扔给脚本之后，程序大致经历了下面这几步：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;把用户任务记下来&lt;/li&gt;
+&lt;li&gt;先让模型做一个简短计划&lt;/li&gt;
+&lt;li&gt;把系统提示词、工作区路径、短期记忆、长期记忆、计划一起打包成 prompt&lt;/li&gt;
+&lt;li&gt;调 LLM，请它返回一个 &lt;strong&gt;严格 JSON 动作&lt;/strong&gt;&lt;/li&gt;
+&lt;li&gt;如果动作是 &lt;code&gt;tool&lt;/code&gt;，就执行工具&lt;/li&gt;
+&lt;li&gt;把工具结果塞回上下文&lt;/li&gt;
+&lt;li&gt;再问模型下一步&lt;/li&gt;
+&lt;li&gt;如果模型返回 &lt;code&gt;final&lt;/code&gt;，还要检查目标文件是否真的写出来了&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;注意，这里最重要的一点是：&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;模型不是直接生成最终博客，而是在多轮里一步一步把事情做完。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;这和普通 Prompt 的差别，就像“动嘴指挥”和“自己下场搬砖”的差别。&lt;/p&gt;
+&lt;p&gt;如果把 &lt;code&gt;agent_loop_demo.py&lt;/code&gt; 的主循环抽成一张 UML 活动图，大概就是这个样子：&lt;/p&gt;
 &lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startuml
 !theme plain
 skinparam backgroundColor #FEFEFE
 skinparam activityFontSize 13
 skinparam defaultFontSize 12
 
-title Agent Loop - runLLMIteration 活动图
-
 start
 
-:初始化 iteration = 0;
-:选择模型候选 (主模型/轻量模型);
-:固定本轮 tier (防止中途换模型);
+:接收 --task;
+:初始化 LLMClient / AgentTools / Memory;
+:记录 user task;
+:推断 expected output paths;
+:调用 _create_plan();
 
 repeat
+  :build prompt messages;
+  :调用 LLM;
 
-  :iteration++;
-
-  if (iteration &amp;gt; MaxIterations?) then (yes)
-    :返回 &amp;quot;达到最大迭代次数&amp;quot;;
-    stop
-  endif
-
-  :调用 LLM Provider.Chat(messages, tools);
-
-  if (调用出错?) then (yes)
-    if (是 Context Window 溢出?) then (yes)
-      :forceCompression()\n丢弃最旧一半历史\n插入压缩说明;
-      if (重试次数 &amp;lt; maxRetries?) then (yes)
-        :重试 LLM 调用;
-      else (no)
-        :返回错误;
+  if (解析出合法 JSON Action?) then (yes)
+    if (action == final?) then (yes)
+      if (expected output 已存在?) then (yes)
+        :保存 task result;
         stop
+      else (no)
+        :追加&amp;quot;文件缺失, 继续执行&amp;quot;提示;
+      endif
+    else (tool)
+      :执行工具;
+      :写入 messages;
+      :更新 short/long memory;
+    endif
+  else (no)
+    :尝试 recover_action_from_text();
+    if (可恢复为 final?) then (yes)
+      if (expected output 已存在?) then (yes)
+        :保存 task result;
+        stop
+      else (no)
+        :要求模型重试;
       endif
     else (no)
-      if (有 Fallback 模型?) then (yes)
-        :切换到下一个 Fallback 模型;
-      else (no)
-        :返回错误;
-        stop
-      endif
+      :要求模型返回严格 JSON;
     endif
   endif
 
-  :解析 LLM 响应;
+repeat while (iteration &amp;lt; max_iterations)
 
-  if (response 包含 tool_calls?) then (no)
-    :finalContent = response.content;
-    :跳出循环;
-  else (yes)
-    :将 assistant + tool_calls\n追加到消息历史;
-
-    partition &amp;quot;工具执行 (可并行)&amp;quot; {
-      :遍历每个 tool_call;
-      :调用 ToolRegistry.Execute(name, args);
-
-      if (工具返回 ForUser?) then (yes)
-        :即时发送给用户\n(中间反馈);
-      endif
-
-      :将 ForLLM 结果\n作为 tool message 追加;
-    }
-  endif
-
-repeat while (还有 tool_calls 且未超过 MaxIterations)
-
-:保存 assistant 最终回复到 session;
-
-if (session 消息数 &amp;gt; 阈值?) then (yes)
-  :异步触发 summarization\n(不阻塞响应);
-endif
-
-:返回 finalContent;
-
+:返回 reached max iterations;
 stop
-
 @enduml
 &lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 
-&lt;p&gt;&lt;img alt="runLLMIteration 活动图" src="../images/journal_20260319_agent_loop_activity.png"&gt;&lt;/p&gt;
-&lt;p&gt;这个流程里有几个值得深挖的设计决策：&lt;/p&gt;
-&lt;h3 id="1-tier"&gt;1. 为什么要固定"模型 tier"？&lt;/h3&gt;
-&lt;p&gt;PicoClaw 在进入迭代前会选定模型候选，一旦选定就不再切换。原因很实际：&lt;strong&gt;防止工具链中途换模型导致行为漂移&lt;/strong&gt;。比如你用 Claude 调了一个工具，中间换成了 GPT，GPT 可能不认前面的 tool result 格式，整个对话就崩了。&lt;/p&gt;
-&lt;h3 id="2-context-window"&gt;2. Context Window 溢出的紧急压缩&lt;/h3&gt;
-&lt;p&gt;三个框架都有类似的逻辑：当 LLM 返回"上下文太长"错误时，不是直接报错，而是&lt;strong&gt;砍掉最旧一半历史，插入一条系统消息说明"部分历史已被压缩"&lt;/strong&gt;，然后重试。这就像操作系统的 OOM killer——粗暴但有效。&lt;/p&gt;
-&lt;p&gt;OpenClaw 做得更精细，它有一个 token budget 概念：目标是压缩到 context window 的 70%，而且会把压缩摘要写入 &lt;code&gt;MEMORY.md&lt;/code&gt; 做持久化。&lt;/p&gt;
-&lt;h3 id="3-foruser-vs-forllm"&gt;3. ForUser vs ForLLM 的分离&lt;/h3&gt;
-&lt;p&gt;工具执行的结果分两路：
-- &lt;strong&gt;ForUser&lt;/strong&gt;：即时展示给用户的中间信息，比如"正在搜索..."
-- &lt;strong&gt;ForLLM&lt;/strong&gt;：喂回模型的结构化结果，作为下一轮推理的输入&lt;/p&gt;
-&lt;p&gt;这个设计让用户不用干等模型跑完所有工具，可以实时看到进度——体验上差别很大。&lt;/p&gt;
-&lt;h2 id="_2"&gt;三者对比：设计哲学&lt;/h2&gt;
-&lt;p&gt;从 Agent Loop 的实现可以窥见三个项目截然不同的设计哲学：&lt;/p&gt;
-&lt;h3 id="openclaw"&gt;OpenClaw：企业级的"瑞士军刀"&lt;/h3&gt;
-&lt;p&gt;OpenClaw 的 Agent Loop 是三者中最复杂的。它的亮点：&lt;/p&gt;
+&lt;p&gt;&lt;img alt="agent_loop_demo.py UML 流程图" src="../images/journal_20260319_agent_loop_flow.png"&gt;&lt;/p&gt;
+&lt;h2 id="agent-loop"&gt;Agent Loop 的第一层：先做计划，但计划不是圣旨&lt;/h2&gt;
+&lt;p&gt;这个 demo 里有一个挺有意思的小细节：它不是一上来就让主循环瞎跑，而是先调用 &lt;code&gt;_create_plan()&lt;/code&gt;。&lt;/p&gt;
+&lt;p&gt;计划提示词也很朴素，大意是：&lt;/p&gt;
 &lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;6 层工具策略级联&lt;/strong&gt;：Profile → Provider → Global → Agent → Group → Sandbox，颗粒度细到可以按 agent + provider + 群组组合来控制工具权限&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Block Reply Chunking&lt;/strong&gt;：长回复按段落/句子/换行切分，逐块流式推送&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Prompt Modes&lt;/strong&gt;：&lt;code&gt;full&lt;/code&gt; / &lt;code&gt;minimal&lt;/code&gt; / &lt;code&gt;none&lt;/code&gt; 三档，subagent 用 minimal 避免 token 浪费&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Compaction + Memory Flush&lt;/strong&gt;：压缩摘要可以写入 MEMORY.md 做跨 session 记忆&lt;/li&gt;
+&lt;li&gt;任务是什么&lt;/li&gt;
+&lt;li&gt;预期输出文件是什么&lt;/li&gt;
+&lt;li&gt;请给我 3 到 8 条简短执行步骤&lt;/li&gt;
+&lt;li&gt;重点写工具使用和验证步骤&lt;/li&gt;
 &lt;/ul&gt;
-&lt;p&gt;代价是——代码量大，配置项多。光 system prompt 就有 16 个分段，从 Tooling 到 Voice TTS 到 Reply Tags。&lt;/p&gt;
-&lt;h3 id="nanobot-python"&gt;nanobot：极简主义的 Python 力量&lt;/h3&gt;
-&lt;p&gt;nanobot 的核心 &lt;code&gt;AgentLoop&lt;/code&gt; 不到 500 行。它的策略是：&lt;/p&gt;
+&lt;p&gt;这件事看起来像“多此一举”，其实很值。&lt;/p&gt;
+&lt;p&gt;因为 LLM 直接干活时，最常见的问题不是不会写，而是容易乱：&lt;/p&gt;
 &lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;asyncio.Lock 串行化&lt;/strong&gt;：所有消息处理都走同一把锁，简单暴力地避免竞态&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;memory_window 阈值&lt;/strong&gt;：超过 100 条未归档消息就触发 consolidation&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;process_direct()&lt;/strong&gt;：CLI 和 Cron 的快捷入口，绕过 MessageBus 直接调用&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;WeakValueDictionary&lt;/strong&gt; 管理 consolidation lock：自动 GC，不泄漏&lt;/li&gt;
+&lt;li&gt;该先读文件的时候直接写&lt;/li&gt;
+&lt;li&gt;该验证输出的时候提前宣布完成&lt;/li&gt;
+&lt;li&gt;写长文件时一口气塞太多，导致工具 payload 爆掉&lt;/li&gt;
 &lt;/ul&gt;
-&lt;p&gt;nanobot 证明了一个观点：&lt;strong&gt;500 行 Python 够了&lt;/strong&gt;。但它的代价是功能天花板较低——没有多模型 fallback，没有细粒度权限控制。&lt;/p&gt;
-&lt;h3 id="picoclaw-10"&gt;PicoClaw：面向 $10 硬件的极限工程&lt;/h3&gt;
-&lt;p&gt;PicoClaw 的设计目标是跑在 &amp;lt;10 MB RAM 的 RISC-V 板子上。它的独特之处：&lt;/p&gt;
+&lt;p&gt;先做计划，相当于先在脑子里打一个草稿。当然，这个计划不是编排器自己能理解的 AST，也不是任务图引擎里的 DAG，它只是普通文本。可就算只是普通文本，也足够给后面几轮推理“定个调”。&lt;/p&gt;
+&lt;p&gt;换句话说，这个计划更像开工前在白板上写下的几行字，不是法律条文，但能让人别一上来就跑偏。&lt;/p&gt;
+&lt;h2 id="_2"&gt;第二层：系统提示词才是“规矩”，不是装饰&lt;/h2&gt;
+&lt;p&gt;这个 demo 的 &lt;code&gt;SYSTEM_PROMPT&lt;/code&gt; 写得很实在，我挺喜欢这种风格。它没有摆一堆“你是世界上最聪明的 AI 助手”这种排场，而是直接讲规矩：&lt;/p&gt;
 &lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;Go 的 goroutine 天然并发&lt;/strong&gt;：summarization 用 &lt;code&gt;go func()&lt;/code&gt; 异步启动，不阻塞响应&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;内置硬件工具&lt;/strong&gt;：I2C/SPI 工具在 Linux 上可直接操控传感器&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;FallbackChain 带 cooldown&lt;/strong&gt;：失败的 provider 会被冷却一段时间再重试&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;原子操作&lt;/strong&gt;：&lt;code&gt;atomic.Bool&lt;/code&gt; 控制运行状态，比锁更轻量&lt;/li&gt;
+&lt;li&gt;有哪些工具可用&lt;/li&gt;
+&lt;li&gt;路径必须相对工作区&lt;/li&gt;
+&lt;li&gt;写博客任务要把完整 markdown 写到目标文件&lt;/li&gt;
+&lt;li&gt;长内容不要一次性全写，要 &lt;code&gt;write_file&lt;/code&gt; + 多次 &lt;code&gt;append_file&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;回答必须是严格 JSON&lt;/li&gt;
+&lt;li&gt;不要在 JSON 前后废话&lt;/li&gt;
 &lt;/ul&gt;
-&lt;p&gt;PicoClaw 的 95% 代码都是 AI 自动生成的——这本身就是对 Agent Loop 能力的最佳证明。&lt;/p&gt;
-&lt;h2 id="agent-loop_3"&gt;共性模式：Agent Loop 的设计公式&lt;/h2&gt;
-&lt;p&gt;抛开实现差异，三个框架的 Agent Loop 有一套共通的设计公式：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;while (running) {
-    msg = bus.consume()                    // 1. 接入
-    agent, session = route(msg)            // 2. 路由
-    context = build(history + prompt + skills) // 3. 上下文
-
-    while (iteration &amp;lt; max) {              // 4. 推理循环
-        response = llm.chat(context, tools)
-        if (no tool_calls) break
-
-        for (tc in tool_calls) {           // 5. 工具执行
-            result = tools.execute(tc)
-            if (result.forUser) send(result)
-            context.append(result.forLLM)
-        }
-    }
-
-    session.save(context)                  // 6. 持久化
-    if (shouldSummarize) async { summarize() }  // 7. 记忆压缩
-    bus.publish(response)                  // 8. 响应
-}
+&lt;p&gt;这段提示词，其实就是 Agent Loop 的“交通法规”。&lt;/p&gt;
+&lt;p&gt;很多人刚做 Agent 时，容易把注意力全放在模型上，比如选 GPT 还是 Claude，温度调多少。固然模型重要，可真正决定系统是否稳定的，往往是这些硬邦邦的约束。&lt;/p&gt;
+&lt;p&gt;因为模型最大的毛病，不是不聪明，而是太爱自由发挥。&lt;/p&gt;
+&lt;p&gt;不给规矩，它就会：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;在 JSON 外头多说两句解释&lt;/li&gt;
+&lt;li&gt;工具参数名写错&lt;/li&gt;
+&lt;li&gt;明明该分块写文件，却一口气吐几万字&lt;/li&gt;
+&lt;li&gt;文件还没写成功，就抢着说“任务完成”&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;所以做 Agent，提示词不是文案，是协议。&lt;/p&gt;
+&lt;h2 id="action"&gt;第三层：Action 是整个系统的“指令集”&lt;/h2&gt;
+&lt;p&gt;这个 demo 把 LLM 的输出收束成两种动作：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;action&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;tool&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;tool_name&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;read_file&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;tool_args&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:{&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;path&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;input.md&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;}}&lt;/span&gt;
 &lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 
-&lt;p&gt;这个模式可以提炼出几条通用原则：&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;&lt;strong&gt;消息驱动，不是轮询&lt;/strong&gt;：用 MessageBus 解耦通道和处理逻辑&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;有界迭代&lt;/strong&gt;：MaxIterations 防止无限循环（模型幻觉可能无止境地调工具）&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;先写后读&lt;/strong&gt;：工具结果先写入 history，下一轮 LLM 才能看到&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;异步压缩&lt;/strong&gt;：记忆管理不应阻塞用户响应&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;优雅降级&lt;/strong&gt;：Context 溢出 → 压缩重试 → Fallback 模型 → 报错（最后一道防线）&lt;/li&gt;
-&lt;/ol&gt;
-&lt;h2 id="_3"&gt;总结&lt;/h2&gt;
+&lt;p&gt;或者：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;action&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;final&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;final_text&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;Completed. Wrote output to gent_loop_demo.md&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;你可以把它理解成一个极简版 CPU 指令集。它不让模型天马行空地输出任意格式，而是只许干两件事：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;要么调工具&lt;/li&gt;
+&lt;li&gt;要么宣布完成&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这一步特别关键。&lt;/p&gt;
+&lt;p&gt;因为只要动作空间收窄了，系统的可控性就会大幅提升。模型再聪明，也得按这个门进，按那个门出。&lt;/p&gt;
+&lt;p&gt;这也是很多 Agent 走向工程化的分水岭：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Demo 阶段：模型说啥都行&lt;/li&gt;
+&lt;li&gt;工程阶段：模型只能在一个有限动作集合里活动&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;无他，动作越有限，系统越可测，越能 debug，越能兜底。&lt;/p&gt;
+&lt;h2 id="agent_1"&gt;第四层：工具不是“外挂”，工具就是 Agent 的四肢&lt;/h2&gt;
+&lt;p&gt;在这支 demo 里，工具很少，只有五个：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;list_dir&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;read_file&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;write_file&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;append_file&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;get_current_datetime&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;看上去朴素得很，可这正好说明问题。&lt;/p&gt;
+&lt;p&gt;一个 Agent 能不能干活，不在于它能背多少术语，而在于它能不能碰到环境、改变环境。&lt;/p&gt;
+&lt;p&gt;没有工具的 Agent，像个只会纸上谈兵的谋士。能分析半天，真要写个文件，还是得你自己来。&lt;/p&gt;
+&lt;p&gt;这也是为什么我说 Agent 和聊天机器人不是一回事。聊天机器人负责“解释”；Agent 负责“落地”。&lt;/p&gt;
+&lt;h3 id="_3"&gt;工具设计里最容易被忽略的，是边界&lt;/h3&gt;
+&lt;p&gt;&lt;code&gt;AgentTools&lt;/code&gt; 里有个 &lt;code&gt;_safe_path()&lt;/code&gt;，这段代码看着不花哨，实际非常要命：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;_safe_path&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;raw_path&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;Path&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;candidate&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;workspace&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt; &lt;span class="n"&gt;raw_path&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;resolve&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="ow"&gt;not&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;candidate&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;startswith&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;workspace&lt;/span&gt;&lt;span class="p"&gt;)):&lt;/span&gt;
+        &lt;span class="k"&gt;raise&lt;/span&gt; &lt;span class="ne"&gt;ValueError&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+            &lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;Path escapes workspace: &lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;raw_path&lt;/span&gt;&lt;span class="si"&gt;!r}&lt;/span&gt;&lt;span class="s2"&gt;. Workspace=&lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;workspace&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;
+        &lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;candidate&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这是什么意思？&lt;/p&gt;
+&lt;p&gt;就是说，无论模型多有创意，它都不能借着 &lt;code&gt;../../&lt;/code&gt; 这种路径越狱，跑去读你工作区外头的文件。&lt;/p&gt;
+&lt;p&gt;这就是 Agent 工程里一个很现实的真相：&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;工具能力越强，边界就越要硬。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;否则你辛辛苦苦做出来的，不是助手，是内鬼。&lt;/p&gt;
+&lt;h2 id="_4"&gt;第五层：短期记忆和长期记忆，不是锦上添花，而是防止失忆&lt;/h2&gt;
+&lt;p&gt;这个脚本里有两套 memory：&lt;/p&gt;
+&lt;h3 id="1-shorttermmemory"&gt;1. ShortTermMemory&lt;/h3&gt;
+&lt;p&gt;短期记忆像工作台上的便签，存最近几轮：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;用户任务&lt;/li&gt;
+&lt;li&gt;模型刚才做了什么决定&lt;/li&gt;
+&lt;li&gt;工具返回了什么观察结果&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;它是滚动窗口，有上限，旧的会被裁掉。原因也简单：上下文不是无限的，模型窗口再大也不能拿它当垃圾场。&lt;/p&gt;
+&lt;h3 id="2-longtermmemory"&gt;2. LongTermMemory&lt;/h3&gt;
+&lt;p&gt;长期记忆存在 &lt;code&gt;memory/long_term_memory.json&lt;/code&gt; 里，会跨运行保留一些条目，比如：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;上次写过哪些文件&lt;/li&gt;
+&lt;li&gt;某个任务最后结果是什么&lt;/li&gt;
+&lt;li&gt;某些常见内容片段&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;它的 &lt;code&gt;recall()&lt;/code&gt; 不是向量检索，也不是什么 fancy 的 RAG，就只是一个基于词匹配的简单召回。可这反而挺说明问题：&lt;/p&gt;
+&lt;p&gt;Agent 不一定非得一上来就上最重的架构。很多时候，一个简单能用的 recall，已经能解决“完全失忆”这个问题。&lt;/p&gt;
+&lt;p&gt;咱们做系统，最怕的不是不高级，最怕的是还没站稳就想飞。&lt;/p&gt;
+&lt;h2 id="loop-run_task"&gt;第六层：真正的 Loop 在 &lt;code&gt;run_task()&lt;/code&gt; 里&lt;/h2&gt;
+&lt;p&gt;这支 demo 的灵魂，在 &lt;code&gt;AgentLoopDemo.run_task()&lt;/code&gt;。&lt;/p&gt;
+&lt;p&gt;把细节折叠掉之后，它大概就是这么个意思：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;iteration&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="nb"&gt;range&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;max_iterations&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+    &lt;span class="n"&gt;llm_messages&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;_build_llm_messages&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+    &lt;span class="n"&gt;raw&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;llm&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;complete_with_options&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;llm_messages&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="n"&gt;payload&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;extract_json_object&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;raw&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="n"&gt;action&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;_normalize_action&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;payload&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;action&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;kind&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;final&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;校验输出文件是否真的存在&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;final_text&lt;/span&gt;
+
+    &lt;span class="n"&gt;result&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;_execute_tool&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;action&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;tool_name&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;action&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;tool_args&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;messages&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;append&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;tool_result&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;short_memory&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;add&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="o"&gt;...&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;看着很像 while-loop，对吧？是的，本质上就是。&lt;/p&gt;
+&lt;p&gt;可它不是死循环，而是一个带边界、带反馈、带失败恢复的循环。&lt;/p&gt;
+&lt;p&gt;Agent Loop 的味道，全在这里：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;不是一次调用&lt;/li&gt;
+&lt;li&gt;不是固定流程&lt;/li&gt;
+&lt;li&gt;是“看结果再决定下一步”&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这点像写程序时的 &lt;code&gt;REPL&lt;/code&gt;，也像老师傅修机器：先看症状，再拧一刀，再听动静，再判断要不要继续拆。&lt;/p&gt;
+&lt;h2 id="_5"&gt;第七层：为什么工具结果还要再喂回模型&lt;/h2&gt;
+&lt;p&gt;很多初学者会有个疑问：工具执行完了，程序自己不是已经知道结果了吗，为什么还要把结果写回 &lt;code&gt;self.messages&lt;/code&gt; 和 memory 里，再喂给模型？&lt;/p&gt;
+&lt;p&gt;因为模型不会自动读你的 Python 变量。&lt;/p&gt;
+&lt;p&gt;它只能看到你放进上下文里的文本。&lt;/p&gt;
+&lt;p&gt;在这个 demo 里，工具执行后会塞回一条类似这样的观察：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;Tool result from the previous step.
+Tool: read_file
+Observation:
+... 文件内容 ...
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这一步很关键。没有 observation 回流，Loop 就断了。&lt;/p&gt;
+&lt;p&gt;你可以把整个 Agent Loop 理解成一个不断追加“外部世界观察”的认知链：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;任务 → 行动 → 观察 → 新上下文 → 新行动
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;如果没有“观察”这一步，Agent 就会像闭着眼睛修表，一直拧，一直拧，直到把螺丝拧飞。&lt;/p&gt;
+&lt;h2 id="_6"&gt;第八层：真正像工程系统的地方，在失败恢复&lt;/h2&gt;
+&lt;p&gt;这份 demo 我觉得最有价值的，不是能写博客，而是它已经开始认真对待“模型不听话”这件事。&lt;/p&gt;
+&lt;h3 id="1-json"&gt;1. 模型不返回合法 JSON，怎么办&lt;/h3&gt;
+&lt;p&gt;现实里的模型，经常会犯这种毛病：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;外面套一层 markdown fence&lt;/li&gt;
+&lt;li&gt;连着吐两个 JSON&lt;/li&gt;
+&lt;li&gt;先说一段废话，再给 JSON&lt;/li&gt;
+&lt;li&gt;甚至直接输出 &lt;code&gt;TOOL_RESULT::write_file&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;所以脚本里做了两层兜底：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;extract_json_object(raw)&lt;/code&gt; 先尽量从混乱输出里捞 JSON&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;recover_action_from_text(raw, workspace)&lt;/code&gt; 再做一次 best-effort 恢复&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这就很像生产系统里的容错解析器。因为你不能把希望全压在“模型这次一定听话”上。&lt;/p&gt;
+&lt;h3 id="2"&gt;2. 模型说完成了，但文件其实没写出来，怎么办&lt;/h3&gt;
+&lt;p&gt;这个 demo 更狠的一点，是它不相信模型的嘴。&lt;/p&gt;
+&lt;p&gt;如果任务里推断出了预期输出文件，比如 &lt;code&gt;gent_loop_demo.md&lt;/code&gt;，那么模型就算返回：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;action&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;final&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;final_text&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;done&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;程序也不会立刻信。它会先去工作区里检查这个文件是否真的存在。&lt;/p&gt;
+&lt;p&gt;这个设计我很喜欢。因为它把“完成”的定义，从语言层，拉回到了事实层。&lt;/p&gt;
+&lt;p&gt;说得再漂亮，文件没落地，就是没做完。&lt;/p&gt;
+&lt;p&gt;这也是 Agent 系统和普通聊天系统最重要的一条分界线：&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;聊天系统以措辞为准，Agent 系统以外部世界状态为准。&lt;/strong&gt;&lt;/p&gt;
+&lt;h3 id="3-max_iterations"&gt;3. 为什么要有 &lt;code&gt;max_iterations&lt;/code&gt;&lt;/h3&gt;
+&lt;p&gt;再聪明的模型，也会偶尔钻牛角尖。&lt;/p&gt;
+&lt;p&gt;比如：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;一直重复 &lt;code&gt;list_dir&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;文件已经在了，还反复 &lt;code&gt;read_file&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;写了一半后忘了收尾&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;所以 &lt;code&gt;max_iterations&lt;/code&gt; 本质上是保险丝。它防止 Loop 因为模型幻觉变成永动机。&lt;/p&gt;
+&lt;p&gt;很多人第一次做 Agent，总想追求“让它一直跑到成功”。可一个能停下来的系统，往往比一个号称永不停止的系统更成熟。&lt;/p&gt;
+&lt;h2 id="_7"&gt;把这次“自动写博客”任务拆给你看&lt;/h2&gt;
+&lt;p&gt;回到这次实验。这个任务能成功，大概依赖下面这条链：&lt;/p&gt;
+&lt;h3 id="_8"&gt;第一段：模型先理解任务的约束&lt;/h3&gt;
+&lt;p&gt;它得知道：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;这是写博客，不是回答一段话&lt;/li&gt;
+&lt;li&gt;输出要落地成 markdown 文件&lt;/li&gt;
+&lt;li&gt;文件必须写到当前目录&lt;/li&gt;
+&lt;li&gt;还得包含 PlantUML mindmap&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id="final"&gt;第二段：模型决定先不急着 final&lt;/h3&gt;
+&lt;p&gt;只要它脑子还清楚，就不会第一轮就说“已完成”，而是先走工具：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;也许先 &lt;code&gt;list_dir&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;也许直接 &lt;code&gt;write_file(gent_loop_demo.md, first_chunk)&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;然后多次 &lt;code&gt;append_file&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id="_9"&gt;第三段：工具把文本真正写到磁盘&lt;/h3&gt;
+&lt;p&gt;这个动作很重要，因为“博客存在于文件系统里”这件事，只有工具能完成，模型自己做不到。&lt;/p&gt;
+&lt;h3 id="_10"&gt;第四段：程序核实结果&lt;/h3&gt;
+&lt;p&gt;当模型最后返回 &lt;code&gt;final&lt;/code&gt; 时，Loop 会去检查 &lt;code&gt;gent_loop_demo.md&lt;/code&gt; 是否真的在工作区。&lt;/p&gt;
+&lt;p&gt;这才叫闭环。&lt;/p&gt;
+&lt;p&gt;所以你看到的是“AI 自己把文章写出来了”，可程序内部其实发生的是：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;任务理解
+→ 计划草拟
+→ 结构化决策
+→ 文件写入
+→ 结果回读
+→ 完成校验
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这比“问模型要一篇文章”扎实得多。&lt;/p&gt;
+&lt;h2 id="agent-loop_1"&gt;Agent Loop 到底难在哪里&lt;/h2&gt;
+&lt;p&gt;讲到这里，很多人会觉得：原来 Agent Loop 也没什么，不就是一个 for-loop 加几个工具嘛。&lt;/p&gt;
+&lt;p&gt;这话对一半。&lt;/p&gt;
+&lt;p&gt;骨架确实不复杂。复杂的是，骨架一旦碰上现实，就会长出很多刺。&lt;/p&gt;
+&lt;h3 id="_11"&gt;第一个难点：模型输出不稳定&lt;/h3&gt;
+&lt;p&gt;你让它返回 JSON，它偏要先写一段抒情散文。你让它调用 &lt;code&gt;write_file&lt;/code&gt;，它可能给你拼成 &lt;code&gt;writefile&lt;/code&gt;。这不是少数情况，这是常态。&lt;/p&gt;
+&lt;h3 id="_12"&gt;第二个难点：上下文会越来越脏&lt;/h3&gt;
+&lt;p&gt;每跑一轮，history 就变长一点。工具结果、错误提示、修正指令、重试信息，全都往里塞。时间一长，模型上下文像没整理过的桌面，越找越乱。&lt;/p&gt;
+&lt;h3 id="_13"&gt;第三个难点：工具结果是文本，不是世界本身&lt;/h3&gt;
+&lt;p&gt;模型不是直接看到了文件系统，它看到的是“程序转述给它的世界”。这个转述如果不准、不全、太长、太短，都会影响判断。&lt;/p&gt;
+&lt;h3 id="_14"&gt;第四个难点：完成条件很难定义&lt;/h3&gt;
+&lt;p&gt;“写完一篇博客”算完成吗？&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;文件存在就行？&lt;/li&gt;
+&lt;li&gt;内容不能是空的？&lt;/li&gt;
+&lt;li&gt;结构要完整？&lt;/li&gt;
+&lt;li&gt;PlantUML 代码块必须有？&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;很多 Agent 系统最后翻车，不是因为不会调用工具，而是因为完成条件太模糊。&lt;/p&gt;
+&lt;h2 id="agent-loop_2"&gt;如果把 Agent Loop 再抽象一层，我会这样理解&lt;/h2&gt;
+&lt;p&gt;讲到最后，咱们可以把 Agent Loop 抽象成一个四件套：&lt;/p&gt;
+&lt;h3 id="1-state"&gt;1. State&lt;/h3&gt;
+&lt;p&gt;当前任务、历史消息、短期记忆、长期记忆、已写文件路径。&lt;/p&gt;
+&lt;h3 id="2-policy"&gt;2. Policy&lt;/h3&gt;
+&lt;p&gt;系统提示词、动作格式、工具权限、最大迭代次数、恢复策略。&lt;/p&gt;
+&lt;h3 id="3-actuator"&gt;3. Actuator&lt;/h3&gt;
+&lt;p&gt;工具层。它决定 Agent 能不能碰到外部世界。&lt;/p&gt;
+&lt;h3 id="4-evaluator"&gt;4. Evaluator&lt;/h3&gt;
+&lt;p&gt;校验逻辑。它决定什么叫“真的完成了”。&lt;/p&gt;
+&lt;p&gt;把这四样放在一起，Loop 才不是一个空转的脑袋，而是一台能落地的机器。&lt;/p&gt;
+&lt;p&gt;从这个角度看，Agent 不是什么新物种，它更像：&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;LLM + 状态机 + 工具系统 + 反馈回路。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;只不过以前这些零件散着放，现在被拼成了一台能跑的机器。&lt;/p&gt;
+&lt;h2 id="_15"&gt;一个不太中听但很实用的结论&lt;/h2&gt;
+&lt;p&gt;很多人讨论 AI Agent 时，容易把重点放在“智能”上。可真到工程里，最吃力的地方常常不是 intelligence，而是 discipline。&lt;/p&gt;
+&lt;p&gt;也就是：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;约束输出&lt;/li&gt;
+&lt;li&gt;限制路径&lt;/li&gt;
+&lt;li&gt;核实结果&lt;/li&gt;
+&lt;li&gt;控制迭代&lt;/li&gt;
+&lt;li&gt;处理失败&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这些事听上去不性感，可没有它们，Agent Loop 就是一个会一本正经胡说八道的执行器。&lt;/p&gt;
+&lt;p&gt;就好比带徒弟。光聪明没用，还得守规矩，干完活还得回来说“师傅，我真拧紧了”，而不是站在那儿一脸诚恳地说“我感觉已经拧紧了”。&lt;/p&gt;
+&lt;h2 id="reacttoolformerplan-and-execute"&gt;从工程再抬头看一眼：ReAct、Toolformer、Plan-and-Execute 分别在解决什么&lt;/h2&gt;
+&lt;p&gt;写到这里，咱们可以把视角再往上提半层。&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;agent_loop_demo.py&lt;/code&gt; 当然不是照着哪一篇论文原样翻出来的，可它背后的思路，并不是天上掉下来的。过去几年，Agent 领域里有几条特别关键的线，今天工程里常见的做法，多少都能在里面找到影子。&lt;/p&gt;
+&lt;h3 id="react"&gt;ReAct：边想边做，别把推理和行动拆成两张皮&lt;/h3&gt;
+&lt;p&gt;ReAct 这个名字，来自 &lt;strong&gt;Reason + Act&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;它最有价值的地方，是把“推理”和“行动”放进了同一个闭环，而不是先在脑子里想完一切，再出去碰世界。&lt;/p&gt;
+&lt;p&gt;它的基本节奏是：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;Thought → Action → Observation → Thought → Action → Observation
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这套东西解决的，是传统 Chain-of-Thought 的一个老毛病：模型能想很多，可它想出来的东西没法立刻去验证。ReAct 让模型一边想，一边查，一边修正。&lt;/p&gt;
+&lt;p&gt;如果你回头看这篇里的 demo，会发现味道其实很像：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;根据当前上下文决定下一步动作&lt;/li&gt;
+&lt;li&gt;调工具&lt;/li&gt;
+&lt;li&gt;把 observation 塞回去&lt;/li&gt;
+&lt;li&gt;再做下一轮决策&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;区别只在于，这个 demo 为了工程稳定，没有把 &lt;code&gt;Thought&lt;/code&gt; 明文打印出来，而是把“想什么”压缩成了结构化 JSON Action。论文表达更显式，工程实现更克制，但骨架是一家的。&lt;/p&gt;
+&lt;p&gt;论文链接：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;ReAct: Synergizing Reasoning and Acting in Language Models
+  https://arxiv.org/abs/2210.03629&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id="toolformer"&gt;Toolformer：重点不在循环本身，而在模型怎么学会用工具&lt;/h3&gt;
+&lt;p&gt;如果说 ReAct 更像是在讲“流程怎么走”，那 Toolformer 更像是在讲“工具意识怎么长出来”。&lt;/p&gt;
+&lt;p&gt;Toolformer 关心的问题是：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;什么时候该调用工具&lt;/li&gt;
+&lt;li&gt;调哪个工具&lt;/li&gt;
+&lt;li&gt;参数怎么填&lt;/li&gt;
+&lt;li&gt;返回结果怎么并回后续生成&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;它的价值，不只是告诉你“可以加工具”，而是进一步问：&lt;strong&gt;模型能不能学会主动、合适地使用工具。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;放回这支 demo 里看，工具集合是我们手工定义的，调用协议也是提示词硬规定的，所以它更像“框架教模型做事”；而 Toolformer 代表的是另一个方向：让模型在训练过程中逐渐形成用工具的习惯。&lt;/p&gt;
+&lt;p&gt;这两条路并不冲突。工程里常见的做法，通常是先靠框架约束把系统跑稳，再慢慢往更强的工具选择能力演进。&lt;/p&gt;
+&lt;p&gt;论文链接：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Toolformer: Language Models Can Teach Themselves to Use Tools
+  https://arxiv.org/abs/2302.04761&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id="plan-and-execute"&gt;Plan-and-Execute：任务太长时，先列施工单，再动手&lt;/h3&gt;
+&lt;p&gt;工程界常说的 &lt;code&gt;Plan-and-Execute&lt;/code&gt;，核心意思很简单：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;先单独做一轮 planning&lt;/li&gt;
+&lt;li&gt;把大任务拆成几步&lt;/li&gt;
+&lt;li&gt;再进入执行循环&lt;/li&gt;
+&lt;li&gt;必要时边执行边修计划&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;它和 ReAct 的区别，不是谁更高级，而是“计划”放在什么位置。&lt;/p&gt;
+&lt;p&gt;ReAct 更像老师傅现场修机器，边看边拧。&lt;/p&gt;
+&lt;p&gt;Plan-and-Execute 更像先在白板上写施工步骤，再开工。它更适合这类任务：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;写长文档&lt;/li&gt;
+&lt;li&gt;多文件修改&lt;/li&gt;
+&lt;li&gt;先调研、再生成、再验证&lt;/li&gt;
+&lt;li&gt;目标明确，但过程较长&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;你再看 &lt;code&gt;agent_loop_demo.py&lt;/code&gt; 里的 &lt;code&gt;_create_plan()&lt;/code&gt;，就会发现这个 demo 其实已经踩进这条路了。它没有把 planner 和 executor 分成两套大系统，但“先做计划，再进入循环”这个味道是很清楚的。&lt;/p&gt;
+&lt;p&gt;这里我顺手说一个容易混淆的小点：&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;&lt;code&gt;Plan-and-Execute&lt;/code&gt; 更常见于工程实践和框架命名；如果你想找更直接的论文脉络，学术上最接近的是 &lt;code&gt;Plan-and-Solve Prompting&lt;/code&gt;。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;Plan-and-Solve 的关键思想也是：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;先把问题拆成子问题&lt;/li&gt;
+&lt;li&gt;再按计划逐步求解&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;它原本更偏 reasoning prompt，不是完整 agent 框架，但理论指向非常清楚：复杂任务不要一口吞，先规划，再执行。&lt;/p&gt;
+&lt;p&gt;论文链接：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Plan-and-Solve Prompting: Improving Zero-Shot Chain-of-Thought Reasoning by Large Language Models
+  https://arxiv.org/abs/2305.04091&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id="_16"&gt;把三者放在一起看，就比较不容易乱&lt;/h3&gt;
+&lt;p&gt;如果硬要一句话记住这三条路，我会这么分：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;模式&lt;/th&gt;
+&lt;th&gt;最关心的问题&lt;/th&gt;
+&lt;th&gt;关键词&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;ReAct&lt;/td&gt;
+&lt;td&gt;推理和行动怎么闭环&lt;/td&gt;
+&lt;td&gt;Thought / Action / Observation&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Toolformer&lt;/td&gt;
+&lt;td&gt;模型怎么学会使用工具&lt;/td&gt;
+&lt;td&gt;API selection / tool use&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Plan-and-Execute&lt;/td&gt;
+&lt;td&gt;长任务怎么先拆再做&lt;/td&gt;
+&lt;td&gt;planning first / staged execution&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;说得再白一点：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;ReAct&lt;/strong&gt; 像边开车边看路&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Toolformer&lt;/strong&gt; 像学会什么时候该看导航、什么时候该掏计算器&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Plan-and-Execute&lt;/strong&gt; 像出发前先把路线画在纸上&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;今天很多工程里的 Agent，其实不是三选一，而是三者混着来：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;外层先做 planning&lt;/li&gt;
+&lt;li&gt;内层按 ReAct 风格循环执行&lt;/li&gt;
+&lt;li&gt;工具调用能力则往 Toolformer 那个方向继续长&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;所以 &lt;code&gt;agent_loop_demo.py&lt;/code&gt; 这种小脚本，别看体量不大，它身上其实已经能看到今天 Agent 理论和工程实践汇流的影子。&lt;/p&gt;
+&lt;h2 id="_17"&gt;明天就能用上的设计清单&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;[ ] 把模型输出收束成有限动作，不要让它自由发挥整套协议&lt;/li&gt;
+&lt;li&gt;[ ] 工具层一定做边界检查，尤其是文件系统和命令执行&lt;/li&gt;
+&lt;li&gt;[ ] 工具结果要回流到上下文，否则 Loop 是断的&lt;/li&gt;
+&lt;li&gt;[ ] 完成条件要落到外部事实，不要只信模型嘴里的“done”&lt;/li&gt;
+&lt;li&gt;[ ] 给长任务加 &lt;code&gt;max_iterations&lt;/code&gt;，别把系统做成永动机&lt;/li&gt;
+&lt;li&gt;[ ] 为非法 JSON、半截输出、重复工具调用准备恢复策略&lt;/li&gt;
+&lt;li&gt;[ ] 先做一个简单能跑的 memory，再考虑更重的 RAG 和向量检索&lt;/li&gt;
+&lt;li&gt;[ ] 写大文件时强制分块写入，不要指望模型一次吐完还不出错&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id="_18"&gt;收个尾&lt;/h2&gt;
+&lt;p&gt;这次 &lt;code&gt;agent_loop_demo.py&lt;/code&gt; 自己把 &lt;code&gt;output.md&lt;/code&gt; 写出来，表面上像是 AI 很能干；可我真正觉得有意思的，不是“它写出了一篇博客”，而是咱们终于能比较清楚地看到，Agent 是怎么从“会说”走到“会做”的。&lt;/p&gt;
+&lt;p&gt;它不是突然觉醒了。&lt;/p&gt;
+&lt;p&gt;它只是被放进了一个循环里，有了手脚，有了记忆，有了规矩，也有了刹车。&lt;/p&gt;
+&lt;p&gt;一句话收尾：&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;AI Agent Loop，不是魔法，它是一台被约束出来的发动机。模型负责点火，工具负责传动，记忆负责别熄火，规则负责别把车开沟里。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;如果你也在做自己的 Agent，别急着一上来堆框架、堆术语、堆功能。先把最小闭环做出来。能读、能写、能验证、能停下。做到这一步，你的 Agent 才算真的开始上路。&lt;/p&gt;
 &lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap
 !theme plain
 skinparam backgroundColor #FEFEFE
 
-* Agent Loop 拆解
-** 是什么
-*** 对话操作系统内核
-*** 六层架构: 接入/路由/推理/工具/记忆/运维
-*** &amp;quot;想 → 做 → 看 → 再想&amp;quot; 循环
-** 三个框架
-*** OpenClaw (TS)
-**** 企业级，6 层工具策略
-**** Block Reply Chunking
-**** Compaction + Memory Flush
-*** nanobot (Python)
-**** 极简 &amp;lt;500 行核心
-**** asyncio.Lock 串行化
-**** memory_window 阈值归档
-*** PicoClaw (Go)
-**** &amp;lt;10MB 嵌入式目标
-**** goroutine 异步
-**** 硬件工具 I2C/SPI
-** 核心流程
-*** Run() 主循环
-*** processMessage() 路由
-*** runAgentLoop() 上下文
-*** runLLMIteration() 推理+工具
-** 关键设计
-*** 有界迭代 (MaxIterations)
-*** ForUser vs ForLLM 分离
-*** Context 溢出紧急压缩
-*** 模型 tier 固定不漂移
-*** 异步 Summarization
-** 通用公式
-*** 消息驱动 + 有界循环
-*** 先写后读 + 异步压缩
-*** 优雅降级链
+* AI Agent Loop
+** 本质
+*** 不是聊天框
+*** 是带工具的循环体
+*** 理解任务 → 行动 → 观察 → 再行动
+** 示例脚本
+*** agent_loop_demo.py
+*** 输出严格 JSON Action
+*** 工具受 workspace 边界约束
+** 核心组件
+*** LLMClient
+*** AgentTools
+*** ShortTermMemory
+*** LongTermMemory
+*** Action
+*** run_task()
+** 关键流程
+*** 先生成计划
+*** 组装 prompt
+*** 模型返回 tool/final
+*** 执行工具
+*** 结果回流
+*** 校验输出文件
+** 工程难点
+*** JSON 不稳定
+*** 上下文变脏
+*** 工具观察不完整
+*** 完成条件难定义
+** 保护措施
+*** safe_path
+*** max_iterations
+*** 非法 JSON 恢复
+*** expected output 校验
+** 一句话
+*** Agent = LLM + 状态机 + 工具系统 + 反馈回路
 
 @endmindmap
 &lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 
-&lt;p&gt;&lt;img alt="Agent Loop 拆解思维导图" src="../images/journal_20260319_agent_loop_mindmap.png"&gt;&lt;/p&gt;
-&lt;h3 id="_4"&gt;可执行清单&lt;/h3&gt;
-&lt;p&gt;如果你也想设计自己的 Agent Loop，这几条可以直接照着做：&lt;/p&gt;
+&lt;p&gt;&lt;img alt="AI Agent Loop 思维导图" src="../images/journal_20260319_agent_loop_mindmap.png"&gt;&lt;/p&gt;
+&lt;h2 id="_19"&gt;扩展阅读&lt;/h2&gt;
 &lt;ul&gt;
-&lt;li&gt;[ ] &lt;strong&gt;定义迭代上限&lt;/strong&gt;：建议 20-50，看你的 token 预算&lt;/li&gt;
-&lt;li&gt;[ ] &lt;strong&gt;实现 ForUser/ForLLM 分离&lt;/strong&gt;：别让用户干等，工具执行中就给反馈&lt;/li&gt;
-&lt;li&gt;[ ] &lt;strong&gt;准备 Context 溢出方案&lt;/strong&gt;：至少做"砍一半重试"，高级一点做 summarization&lt;/li&gt;
-&lt;li&gt;[ ] &lt;strong&gt;MessageBus 解耦&lt;/strong&gt;：通道和处理逻辑不要直接耦合&lt;/li&gt;
-&lt;li&gt;[ ] &lt;strong&gt;Session 持久化用 JSONL&lt;/strong&gt;：追加写入，性能好，出错也只丢最后一条&lt;/li&gt;
-&lt;li&gt;[ ] &lt;strong&gt;Fallback 模型链&lt;/strong&gt;：主模型挂了有 plan B，别让用户看到 500 错误&lt;/li&gt;
-&lt;li&gt;[ ] &lt;strong&gt;异步记忆压缩&lt;/strong&gt;：summarization 放后台跑，不阻塞当前响应&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;你在设计自己的 Agent Loop 时，最头疼的问题是什么？是工具编排、记忆管理，还是多模型路由？欢迎留言讨论。&lt;/p&gt;
-&lt;h2 id="_5"&gt;扩展阅读&lt;/h2&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://deepwiki.com/openclaw/openclaw"&gt;OpenClaw Deep Wiki&lt;/a&gt; - OpenClaw 完整架构文档&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://deepwiki.com/HKUDS/nanobot"&gt;nanobot Deep Wiki&lt;/a&gt; - nanobot 系统文档&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://deepwiki.com/sipeed/picoclaw"&gt;PicoClaw Deep Wiki&lt;/a&gt; - PicoClaw 架构文档&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://deepwiki.com/openclaw/openclaw/3.1-agent-execution-pipeline"&gt;OpenClaw Agent Execution Pipeline&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://deepwiki.com/HKUDS/nanobot/4.1-agent-loop"&gt;nanobot Agent Loop&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://deepwiki.com/sipeed/picoclaw/3.2-agent-processing-loop"&gt;PicoClaw Agent Processing Loop&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;lazy-rabbit-agent/example/agent_loop_demo.py&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;lazy-rabbit-agent/example/output.md&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;ReAct: https://arxiv.org/abs/2210.03629&lt;/li&gt;
+&lt;li&gt;Toolformer: https://arxiv.org/abs/2302.04761&lt;/li&gt;
+&lt;li&gt;Plan-and-Solve Prompting（可视作 Plan-and-Execute 的重要理论近亲）: https://arxiv.org/abs/2305.04091&lt;/li&gt;
+&lt;li&gt;OpenAI function/tool calling 设计文档&lt;/li&gt;
 &lt;/ul&gt;
 &lt;hr/&gt;
-&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Journal"/><category term="agent"/><category term="agent-loop"/><category term="openclaw"/><category term="nanobot"/><category term="picoclaw"/><category term="LLM"/><category term="AI"/><category term="architecture"/></entry><entry><title>演讲的认知科学：别再浪费彼此的时间了</title><link href="https://www.fanyamin.com/2026-03-19-presentation-cognitive-science.html" rel="alternate"/><published>2026-03-19T10:00:00+08:00</published><updated>2026-03-19T10:00:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-03-19:/2026-03-19-presentation-cognitive-science.html</id><summary type="html">&lt;p&gt;你精心准备了 40 页 PPT，讲了 45 分钟，台下却只记住了你那句"下一页"。问题不在你的内容不好，而在你忽视了一件事：人脑不是硬盘，它有带宽限制、有注意力衰减曲线、有情绪开关。本文从认知科学的角度，拆解演讲中"听懂"这件事的底层逻辑，给你一套可落地的演讲清单。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Journal"/><category term="agent"/><category term="agent-loop"/><category term="AI"/><category term="LLM"/><category term="python"/><category term="tool-calling"/><category term="memory"/><category term="planning"/></entry><entry><title>演讲的认知科学：别再浪费彼此的时间了</title><link href="https://www.fanyamin.com/2026-03-19-presentation-cognitive-science.html" rel="alternate"/><published>2026-03-19T10:00:00+08:00</published><updated>2026-03-19T10:00:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-03-19:/2026-03-19-presentation-cognitive-science.html</id><summary type="html">&lt;p&gt;你精心准备了 40 页 PPT，讲了 45 分钟，台下却只记住了你那句"下一页"。问题不在你的内容不好，而在你忽视了一件事：人脑不是硬盘，它有带宽限制、有注意力衰减曲线、有情绪开关。本文从认知科学的角度，拆解演讲中"听懂"这件事的底层逻辑，给你一套可落地的演讲清单。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
 &lt;thead&gt;
 &lt;tr&gt;
 &lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;

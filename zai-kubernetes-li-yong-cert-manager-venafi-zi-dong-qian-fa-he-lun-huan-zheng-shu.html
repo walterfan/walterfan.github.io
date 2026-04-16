@@ -1,0 +1,654 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'G-VZL08BHDPP', 'auto');
+  ga('send', 'pageview');
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="很多团队把 TLS 证书当成一次性配置，直到某个周五晚上证书快过期了，才想起这件事不能靠日历提醒。本文以 Kubernetes 服务为例，讲清楚怎么把 cert-manager 当执行层，把 Venafi 当策略和 CA 门卫，做到声明式签发、自动续期、私钥轮转，以及应用侧平滑 reload。" />
+<meta name="keywords" content="Kubernetes, cert-manager, Venafi, TLS, certificate, security, DevOps">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "在 Kubernetes 里用 cert-manager + Venafi 自动签发和轮换证书",
+  "description": "很多团队把 TLS 证书当成一次性配置，直到某个周五晚上证书快过期了，才想起这件事不能靠日历提醒。本文以 Kubernetes 服务为例，讲清楚怎么把 cert-manager 当执行层，把 Venafi 当策略和 CA 门卫，做到声明式签发、自动续期、私钥轮转，以及应用侧平滑 reload。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-04-15T20:00:00+08:00",
+  "dateModified": "2026-04-15T20:00:00+08:00",
+  "url": "https://www.fanyamin.com/zai-kubernetes-li-yong-cert-manager-venafi-zi-dong-qian-fa-he-lun-huan-zheng-shu.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/zai-kubernetes-li-yong-cert-manager-venafi-zi-dong-qian-fa-he-lun-huan-zheng-shu.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "Kubernetes, cert-manager, Venafi, TLS, certificate, security, DevOps"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="在 Kubernetes 里用 cert-manager + Venafi 自动签发和轮换证书"/>
+  <meta property="og:description" content="很多团队把 TLS 证书当成一次性配置，直到某个周五晚上证书快过期了，才想起这件事不能靠日历提醒。本文以 Kubernetes 服务为例，讲清楚怎么把 cert-manager 当执行层，把 Venafi 当策略和 CA 门卫，做到声明式签发、自动续期、私钥轮转，以及应用侧平滑 reload。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/zai-kubernetes-li-yong-cert-manager-venafi-zi-dong-qian-fa-he-lun-huan-zheng-shu.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-04-15 20:00:00+08:00"/>
+  <meta property="article:modified_time" content="2026-04-15 20:00:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/author/walter-fan.html">
+  <meta property="article:section" content="Journal"/>
+  <meta property="article:tag" content="Kubernetes"/>
+  <meta property="article:tag" content="cert-manager"/>
+  <meta property="article:tag" content="Venafi"/>
+  <meta property="article:tag" content="TLS"/>
+  <meta property="article:tag" content="certificate"/>
+  <meta property="article:tag" content="security"/>
+  <meta property="article:tag" content="DevOps"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 在 Kubernetes 里用 cert-manager + Venafi 自动签发和轮换证书</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/">Walter Fan</a>
+    </h1>
+
+    <p>手握灵珠常奋笔, 心开天籁不吹箫</p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/search.html" role="search">
+      <input type="text" name="q" id="tipue_search_input" placeholder="Search...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank" href="tao.html" >tao</a>
+          </li>
+          <li>
+            <a target="_blank" href="article.html" >article</a>
+          </li>
+          <li>
+            <a target="_blank" href="manual.html" >manual</a>
+          </li>
+          <li>
+            <a target="_blank" href="interest.html" >interest</a>
+          </li>
+          <li>
+            <a target="_self" href="/wordpress" >notebook</a>
+          </li>
+          <li>
+            <a target="_blank" href="bookmark.html" >bookmark</a>
+          </li>
+          <li>
+            <a target="_self" href="/webrtc/examples/index.html" >webrtc</a>
+          </li>
+          <li>
+            <a target="_blank" href="https://github.com/walterfan" >github</a>
+          </li>
+          <li>
+            <a target="_blank" href="categories.html" >categories</a>
+          </li>
+          <li>
+            <a target="_blank" href="tags.html" >tags</a>
+          </li>
+      </ul>
+    </nav>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+</aside>
+  <main>
+
+
+<article class="single">
+  <header>
+      
+    <h1 id="zai-kubernetes-li-yong-cert-manager-venafi-zi-dong-qian-fa-he-lun-huan-zheng-shu">在 Kubernetes 里用 cert-manager + Venafi 自动签发和轮换证书</h1>
+    <p>
+      Posted on 三 15 4月 2026 in <a href="https://www.fanyamin.com/category/journal.html">Journal</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>在 Kubernetes 里用 cert-manager + Venafi 自动签发和轮换证书</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Journal</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-04-15</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h1 id="kubernetes-cert-manager-venafi">在 Kubernetes 里用 cert-manager + Venafi 自动签发和轮换证书</h1>
+<h2 id="_1">短大纲</h2>
+<ul>
+<li>手工换证书在 Kubernetes 里为什么迟早翻车</li>
+<li>cert-manager 和 Venafi 各管什么，别把锅甩错对象</li>
+<li>一套最小可用配置：<code>ClusterIssuer</code>、<code>Certificate</code>、<code>Secret</code>、<code>Ingress</code></li>
+<li>自动续期和私钥轮转真正的边界：证书会变，应用未必会跟着变</li>
+<li>最后给一张思维导图和一份能照抄的上线检查清单</li>
+</ul>
+<hr>
+<h2 id="_2">正文</h2>
+<h3 id="_3">证书这活儿，最怕“差不多就行”</h3>
+<p>很多团队对 TLS 证书的态度，像对消防演练。平时嫌麻烦，真响警报时才想起来楼道里还堆着纸箱。服务一旦跑进 Kubernetes，这事又多了几层：<code>Secret</code> 怎么更新，<code>Ingress</code> 怎么引用，应用进程到底会不会 reload。要是还靠手工申请、手工导入、手工替换 <code>tls.crt</code>，迟早会在某个周五晚上把值班同学从床上薅起来。</p>
+<p>这也是 <code>cert-manager</code> 和 <code>Venafi</code> 这对搭档存在的意义。前者负责在集群里把证书生命周期跑起来，后者负责企业 PKI 的策略、审批、审计和签发。一个像施工队，一个像门卫兼档案管理员。只靠其中一个，都容易把事情做成半拉子工程。</p>
+<p>顺手说一句，Venafi 后来并入了 CyberArk，所以有些新文档已经写成 CyberArk Certificate Manager。不过在 cert-manager 这边，字段名还是 <code>spec.venafi</code>。这不是我手滑，也不是你 YAML 写错了，只是产品名变了，接口名还没跟着折腾。</p>
+<h3 id="_4">先把角色分工说清楚</h3>
+<p>很多人第一次配这套东西，脑子里就一个问号：到底是谁向 CA 要证书？谁把证书塞进 <code>Secret</code>？谁来让服务切到新证书？把分工拆开，事情就清爽了。</p>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>它负责什么</th>
+<th>你最该盯什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cert-manager controller</code></td>
+<td>监听 <code>Certificate</code>，生成 CSR，请求签发，更新 <code>Secret</code>，到期前续期</td>
+<td>能不能成功签发，续期时间算得对不对</td>
+</tr>
+<tr>
+<td><code>Venafi</code> zone / policy</td>
+<td>决定谁能签、签多久、字段怎么约束、归属到哪个应用</td>
+<td>策略、审批、审计、模板</td>
+</tr>
+<tr>
+<td><code>Issuer</code> / <code>ClusterIssuer</code></td>
+<td>把 cert-manager 和某个 Venafi zone 连起来</td>
+<td>凭据、namespace、zone 有没有配错</td>
+</tr>
+<tr>
+<td><code>Certificate</code></td>
+<td>声明我要什么域名、多长有效期、提前多久续、是否轮换私钥</td>
+<td><code>dnsNames</code>、<code>renewBefore</code>、<code>privateKey.rotationPolicy</code></td>
+</tr>
+<tr>
+<td><code>Secret</code></td>
+<td>真正落地的 <code>tls.crt</code> / <code>tls.key</code></td>
+<td>有没有被正确引用</td>
+</tr>
+<tr>
+<td><code>Ingress</code> / 应用进程</td>
+<td>消费证书并对外提供 TLS</td>
+<td>Secret 变化后会不会 reload</td>
+</tr>
+</tbody>
+</table>
+<p>一句话：<code>cert-manager</code> 负责“把流程跑起来”，<code>Venafi</code> 负责“按什么规矩签”，你的服务负责“吃到新证书后别装死”。</p>
+<div class="highlight"><pre><span></span><code>@startuml
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam defaultFontSize 12
+skinparam componentStyle rectangle
+
+actor &quot;Developer / GitOps&quot; as Dev
+cloud &quot;Venafi / CyberArk\nZone + Policy&quot; as Ven
+
+rectangle &quot;Kubernetes Cluster&quot; {
+  component &quot;Certificate CR&quot; as Cert
+  component &quot;cert-manager\ncontroller&quot; as CM
+  database &quot;Secret\n(tls.crt / tls.key)&quot; as Sec
+  component &quot;Ingress / Service&quot; as Svc
+}
+
+Dev --&gt; Cert : apply YAML
+Cert --&gt; CM : watch
+CM --&gt; Ven : request CSR / renew
+Ven --&gt; CM : signed cert chain
+CM --&gt; Sec : write tls.crt + tls.key
+Svc --&gt; Sec : mount or reference
+
+CM --&gt; CM : renew before expiry
+CM --&gt; Sec : rotate key if needed
+Svc --&gt; Svc : reload or restart
+
+@enduml
+</code></pre></div>
+
+<p><img alt="cert-manager + Venafi 签发与轮换链路" src="../images/journal_20260415_k8s-cert-manager-venafi-certificate-rotation_flow.png"></p>
+<h3 id="_5">先跑通一张最小可用的证书</h3>
+<p>文章不是为了把 YAML 贴满屏，而是为了先跑通一张能签发、能续期、能轮换的证书。下面这套配置，够你从 0 走到 1。</p>
+<h4 id="1-cert-manager">1. 装好 cert-manager</h4>
+<p>如果集群里还没有 cert-manager，先把它装上去：</p>
+<div class="highlight"><pre><span></span><code>helm<span class="w"> </span>repo<span class="w"> </span>add<span class="w"> </span>jetstack<span class="w"> </span>https://charts.jetstack.io
+helm<span class="w"> </span>repo<span class="w"> </span>update
+
+helm<span class="w"> </span>upgrade<span class="w"> </span>--install<span class="w"> </span>cert-manager<span class="w"> </span>jetstack/cert-manager<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--namespace<span class="w"> </span>cert-manager<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--create-namespace<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--set<span class="w"> </span>crds.enabled<span class="o">=</span><span class="nb">true</span>
+</code></pre></div>
+
+<p>如果你们公司要求从 CyberArk / Venafi 提供的 OCI registry 拉镜像，就按对应文档换镜像源。核心点不在安装姿势，而在于 <code>controller</code>、<code>webhook</code>、<code>cainjector</code> 这些组件得齐，别装了个壳子就以为万事大吉。</p>
+<h4 id="2-venafi">2. 准备 Venafi 凭据</h4>
+<p>这里先用 Venafi SaaS / Control Plane 那条路径来举例，因为它最顺手。先把 API key 做成一个 Secret：</p>
+<div class="highlight"><pre><span></span><code>kubectl<span class="w"> </span>create<span class="w"> </span>secret<span class="w"> </span>generic<span class="w"> </span>venafi-vaas<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-n<span class="w"> </span>cert-manager<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--from-literal<span class="o">=</span><span class="nv">apikey</span><span class="o">=</span><span class="s1">&#39;YOUR_VENAFI_API_KEY&#39;</span>
+</code></pre></div>
+
+<p>如果你后面打算用的是 <code>ClusterIssuer</code>，这个 Secret 默认就该放在 <code>cert-manager</code> namespace。很多人第一坑就踩在这里：<code>ClusterIssuer</code> 创建得挺开心，结果 cert-manager 根本找不到凭据。</p>
+<h4 id="3-clusterissuer">3. 建一个 <code>ClusterIssuer</code></h4>
+<p>接着创建一个连到 Venafi zone 的 <code>ClusterIssuer</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">cert-manager.io/v1</span>
+<span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ClusterIssuer</span>
+<span class="nt">metadata</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">venafi-platform</span>
+<span class="nt">spec</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">venafi</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">zone</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;Platform\Kubernetes&#39;</span>
+<span class="w">    </span><span class="nt">cloud</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">apiTokenSecretRef</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">venafi-vaas</span>
+<span class="w">        </span><span class="nt">key</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">apikey</span>
+</code></pre></div>
+
+<p>这里有个很容易被忽略的点：<strong>一个 Venafi <code>Issuer</code> 对应一个 zone。</strong> 不同业务线、不同审批策略、不同所有权边界，最好老老实实拆成不同的 <code>Issuer</code> 或 <code>ClusterIssuer</code>。别想着一个配置打天下，到头来不是权限过大，就是审计说不清。</p>
+<h4 id="4-certificate">4. 声明一张 <code>Certificate</code></h4>
+<p>然后让 cert-manager 去申请证书：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">cert-manager.io/v1</span>
+<span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Certificate</span>
+<span class="nt">metadata</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">hello-api-tls</span>
+<span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">demo</span>
+<span class="nt">spec</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">secretName</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">hello-api-tls</span>
+<span class="w">  </span><span class="nt">issuerRef</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">venafi-platform</span>
+<span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ClusterIssuer</span>
+<span class="w">  </span><span class="nt">dnsNames</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">api.demo.example.com</span>
+<span class="w">  </span><span class="nt">duration</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2160h</span><span class="w"> </span><span class="c1"># 90d</span>
+<span class="w">  </span><span class="nt">renewBeforePercentage</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">25</span>
+<span class="w">  </span><span class="nt">privateKey</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">algorithm</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">RSA</span>
+<span class="w">    </span><span class="nt">size</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2048</span>
+<span class="w">    </span><span class="nt">rotationPolicy</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Always</span>
+</code></pre></div>
+
+<p>这里我建议盯住三件事：</p>
+<ul>
+<li><code>dnsNames</code> 才是你真正要守住的字段。现在别再迷信 <code>commonName</code> 了，终端证书的域名匹配主要看这里。</li>
+<li><code>renewBeforePercentage: 25</code> 表示在证书剩下 25% 生命周期时就开始续期。这个写法比死写 <code>renewBefore: 360h</code> 更稳妥，因为有些 CA 实际发下来的有效期会比你想象的略短。</li>
+<li><code>rotationPolicy: Always</code> 我建议写死，不要靠“我记得某个版本默认已经是这样”来混日子。配置文件要写给半年后的自己看，不是写给今天的记忆力看。</li>
+</ul>
+<p>有些版本较老的 cert-manager 还不支持 <code>renewBeforePercentage</code>，那就退一步写成：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">renewBefore</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">360h</span><span class="w"> </span><span class="c1"># 15d</span>
+</code></pre></div>
+
+<p>签发成功之后，目标 Secret 里通常会有 <code>tls.crt</code> 和 <code>tls.key</code>。如果 CA 链信息可得，还可能带上 <code>ca.crt</code>。不过 <code>tls.crt</code> 里不会把 root cert 也一股脑塞进去，这不是 cert-manager 偷懒，而是正常设计。</p>
+<h4 id="5">5. 让服务真正吃到这张证书</h4>
+<p>如果你的 TLS 终止点在 Ingress，那事情相对简单，直接引用这个 Secret：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">networking.k8s.io/v1</span>
+<span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Ingress</span>
+<span class="nt">metadata</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">hello-api</span>
+<span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">demo</span>
+<span class="nt">spec</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">ingressClassName</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">nginx</span>
+<span class="w">  </span><span class="nt">tls</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">hosts</span><span class="p">:</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">api.demo.example.com</span>
+<span class="w">      </span><span class="nt">secretName</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">hello-api-tls</span>
+<span class="w">  </span><span class="nt">rules</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">api.demo.example.com</span>
+<span class="w">      </span><span class="nt">http</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">paths</span><span class="p">:</span>
+<span class="w">          </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/</span>
+<span class="w">            </span><span class="nt">pathType</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Prefix</span>
+<span class="w">            </span><span class="nt">backend</span><span class="p">:</span>
+<span class="w">              </span><span class="nt">service</span><span class="p">:</span>
+<span class="w">                </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">hello-api</span>
+<span class="w">                </span><span class="nt">port</span><span class="p">:</span>
+<span class="w">                  </span><span class="nt">number</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">8080</span>
+</code></pre></div>
+
+<p>到这里，证书就完成了从 Venafi 到 Kubernetes Secret，再到入口流量的闭环。很多 Ingress Controller 对 Secret 变化的处理都比较成熟，证书更新后能比较平滑地切过去。</p>
+<p>如果 TLS 是你的应用自己终止，不是在 Ingress 上，那就把 Secret 通过 volume mount 挂进去，并让进程支持文件变化后的 reload。别把证书塞进环境变量里，这条路和“自动轮转”基本是相看两厌。</p>
+<h4 id="6-tpp-saas">6. 如果你用的是 TPP，不是 SaaS</h4>
+<p>如果你的 Venafi 是 TPP，那配置只是换个认证块，骨架并没有变：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">cert-manager.io/v1</span>
+<span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ClusterIssuer</span>
+<span class="nt">metadata</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">venafi-tpp</span>
+<span class="nt">spec</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">venafi</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">zone</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;\VED\Policy\devops\k8s&#39;</span>
+<span class="w">    </span><span class="nt">tpp</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://tpp.example.com/vedsdk</span>
+<span class="w">      </span><span class="nt">credentialsRef</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">venafi-tpp-credentials</span>
+</code></pre></div>
+
+<p>这里要额外记住两件事：</p>
+<ul>
+<li><code>ClusterIssuer</code> 用到的 credentials Secret，默认同样要放在 <code>cert-manager</code> namespace。</li>
+<li>TPP policy 最好允许 <strong>User Provided CSR</strong>。不然你在 <code>Certificate</code> 里写的 key algorithm、key size 等字段，要么被策略覆盖，要么干脆签发失败。到那时你盯着 YAML 看半天，也只是对空气生气。</li>
+</ul>
+<p>如果你的 TPP 用的是自签 CA 或公司内网 CA，还得补上 <code>caBundle</code> 或 <code>caBundleSecretRef</code>，不然 cert-manager 和 TPP 自己都握不成手。</p>
+<h3 id="_6">轮转到底轮了什么</h3>
+<p>很多文章写到“自动轮转”就一句带过，仿佛配完 YAML 之后世界和平。现实没那么诗意，真正要弄明白的是：到底是<strong>哪一层</strong>在自动，哪一层还得你自己兜底。</p>
+<p><code>cert-manager</code> 会根据证书实际有效期和你的 <code>renewBefore</code> / <code>renewBeforePercentage</code> 来安排续期。如果你什么都不写，它默认会在证书生命周期走到大约三分之二时尝试续签。也就是说，它确实会替你记日子，这一点比人靠谱。</p>
+<p>如果你显式配置了 <code>privateKey.rotationPolicy: Always</code>，那么每次重签时都会生成新的私钥。这个做法更稳妥，一来减少旧私钥长期复用的风险，二来也能尽早暴露“应用是否真的支持换 key”这个现实问题。平时不演练，出事时就只能演砸。</p>
+<p>还有一个细节很重要：cert-manager 在拿到新签名证书之前，不会贸然覆盖 Secret 里的 <code>tls.key</code>。这一点是为了尽量减少中间态带来的宕机风险。可即便如此，<strong>Secret 更新了，不等于业务进程已经切到新证书</strong>。</p>
+<p>很多 Ingress Controller 会监听 Secret 变化并 reload；你自己写的 Go、Java、Python 服务，就不一定了。如果进程只在启动时读一次证书文件，那新证书只会安安静静躺在磁盘上，业务继续拿旧证书对外服务。碰到这种应用，要么自己实现文件变更监听和优雅 reload，要么在 Secret 变化后做一次 <code>rollout restart</code>，或者上一个专门盯 Secret 变化的重启控制器。</p>
+<p>手工演练时，我建议至少看三样东西：</p>
+<div class="highlight"><pre><span></span><code>kubectl<span class="w"> </span>describe<span class="w"> </span>certificate<span class="w"> </span>hello-api-tls<span class="w"> </span>-n<span class="w"> </span>demo
+kubectl<span class="w"> </span>get<span class="w"> </span>certificaterequest<span class="w"> </span>-n<span class="w"> </span>demo
+cmctl<span class="w"> </span>renew<span class="w"> </span>hello-api-tls<span class="w"> </span>-n<span class="w"> </span>demo
+</code></pre></div>
+
+<p>重点不是把命令背下来，而是看清楚几个状态：证书是不是 <code>Ready=True</code>，有没有反复 <code>Issuing</code>，续期时间是不是符合预期。想手工触发续签，用 <code>cmctl renew</code>。不要靠“删掉 Secret 试试看”这种方式碰运气，那不是自动化，是拉老虎机。</p>
+<h3 id="_7">几个最容易踩的坑</h3>
+<h4 id="clusterissuer">坑一：<code>ClusterIssuer</code> 能看到证书，看不到凭据</h4>
+<p>这是最常见的低级错误。<code>ClusterIssuer</code> 是集群级资源，但它找凭据 Secret 时，默认会去 cert-manager 的 cluster resource namespace，也就是 <code>cert-manager</code>。你把 Secret 放到业务 namespace，表面看资源都在，实际 cert-manager 两手一摊：我也想签，可我没钥匙。</p>
+<h4 id="zone">坑二：一个 zone 想管所有业务</h4>
+<p>Venafi 的 zone 不只是路径，它其实承载了策略、审批和归属关系。把所有场景都压到同一个 zone 里，前期看着省事，后面审计、权限、模板一变，大家一起遭殃。平台类服务、外网服务、内网服务，最好拆开。</p>
+<h4 id="_8">坑三：证书续了，进程没换</h4>
+<p>这类问题特别像“表面一切正常”。<code>Certificate</code> 是绿的，<code>Secret</code> 也更新了，可线上扫出来还是旧证书。问题不在 Venafi，也不在 cert-manager，而在应用进程没 reload。机器没有读心术，文件变了不代表它会自己刷新内存。</p>
+<h4 id="_9">坑四：舍不得换私钥</h4>
+<p>不少团队对私钥有一种莫名其妙的感情，好像“沿用老 key 更稳”。其实很多企业级 issuer 本来就不鼓励，甚至不允许重复使用旧私钥。把 <code>rotationPolicy: Always</code> 写明白，省得以后靠猜版本默认值。</p>
+<h4 id="_10">坑五：把续期窗口写得过于激进</h4>
+<p><code>renewBefore</code> 不是写得越早越保险。你要是把它贴得离 <code>duration</code> 太近，就可能把自己卷进 renewal loop。新版能用 <code>renewBeforePercentage</code> 的话，我更建议直接用百分比，让 cert-manager 按实际签下来的证书时长去算。</p>
+<h4 id="cert-manager">坑六：把问题都怪到 cert-manager 头上</h4>
+<p>有时签发失败真不是 cert-manager 的锅，而是 Venafi policy 卡住了。比如 zone 配错了，审批策略没过，TPP policy 不接受你提交的 CSR，或者自签 CA 的 trust bundle 没带上。工具链里一共有好几环，别一出错就逮着最前台那个控制器骂。</p>
+<hr>
+<h2 id="_11">总结</h2>
+<ul>
+<li><code>cert-manager</code> 适合当 Kubernetes 里的执行层：监听 <code>Certificate</code>、生成 CSR、续期、更新 Secret。</li>
+<li><code>Venafi</code> 适合当企业 PKI 的策略层：管 zone、模板、审批、审计和归属。</li>
+<li>真正的自动轮转，不只是“证书能签下来”，还包括“私钥能换”“应用能 reload”“出故障时你知道去哪一层排查”。</li>
+<li>配置上我最想强调三件小事：<code>ClusterIssuer</code> 的凭据放对 namespace，<code>Certificate</code> 显式写 <code>rotationPolicy: Always</code>，应用侧提前演练 reload。</li>
+</ul>
+<p>思维导图（源码见下节 PlantUML，以下为渲染图）：</p>
+<p><img alt="Kubernetes cert-manager + Venafi 思维导图" src="../images/journal_20260415_k8s-cert-manager-venafi-certificate-rotation_mindmap.png"></p>
+<div class="highlight"><pre><span></span><code>@startmindmap
+* K8s cert-manager + Venafi
+** 分工
+*** cert-manager: 申请、续期、写 Secret
+*** Venafi: 策略、审批、审计、签发
+*** Service/Ingress: reload 新证书
+** 最小配置
+*** Secret: API key / credentials
+*** ClusterIssuer: 绑定 zone
+*** Certificate: dnsNames + 生命周期
+*** Secret: tls.crt / tls.key
+** 轮转
+*** renewBefore / renewBeforePercentage
+*** privateKey.rotationPolicy = Always
+*** cmctl renew 手工演练
+*** 证书更新 != 进程已 reload
+** TPP 注意项
+*** policy folder 单独规划
+*** credentials Secret 放对 namespace
+*** User Provided CSR 要允许
+*** 自签 CA 需要 caBundle
+** 常见坑
+*** Secret 放错 namespace
+*** 一个 zone 想管所有业务
+*** renewal loop
+*** 应用不支持热更新
+*** 误删 Secret 碰运气
+@endmindmap
+</code></pre></div>
+
+<h3 id="checklist">可执行 CheckList</h3>
+<ul>
+<li>[ ] 确认 cert-manager 版本，能用 <code>renewBeforePercentage</code> 就优先用它</li>
+<li>[ ] <code>ClusterIssuer</code> 的 credentials Secret 放在 <code>cert-manager</code> namespace</li>
+<li>[ ] 不同业务和不同策略拆成不同 Venafi zone，不要混成一锅</li>
+<li>[ ] 每张 <code>Certificate</code> 显式写 <code>privateKey.rotationPolicy: Always</code></li>
+<li>[ ] 服务通过 Secret volume 消费证书，并验证 reload 逻辑</li>
+<li>[ ] 做一次 <code>cmctl renew</code> 演练，确认业务侧能平滑切证书</li>
+<li>[ ] 监控 <code>Certificate</code> 的到期时间和签发失败事件</li>
+</ul>
+<hr>
+<h2 id="_12">扩展阅读</h2>
+<ul>
+<li>cert-manager <code>Certificate</code> 文档：<a href="https://cert-manager.io/docs/usage/certificate/">https://cert-manager.io/docs/usage/certificate/</a></li>
+<li>cert-manager 的 Venafi 配置文档：<a href="https://cert-manager.io/v1.16-docs/configuration/venafi/">https://cert-manager.io/v1.16-docs/configuration/venafi/</a></li>
+<li>CyberArk / Venafi 的 cert-manager 安装说明：<a href="https://docs.venafi.cloud/vaas/k8s-components/t-certmanager-install/">https://docs.venafi.cloud/vaas/k8s-components/t-certmanager-install/</a></li>
+</ul>
+<hr>
+<hr/>
+
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。</p>
+  </div>
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/tag/kubernetes.html">Kubernetes</a>
+      <a href="https://www.fanyamin.com/tag/cert-manager.html">cert-manager</a>
+      <a href="https://www.fanyamin.com/tag/venafi.html">Venafi</a>
+      <a href="https://www.fanyamin.com/tag/tls.html">TLS</a>
+      <a href="https://www.fanyamin.com/tag/certificate.html">certificate</a>
+      <a href="https://www.fanyamin.com/tag/security.html">security</a>
+      <a href="https://www.fanyamin.com/tag/devops.html">DevOps</a>
+    </p>
+  </div>
+
+
+  <div class="center social-share" style="margin: 1.5em 0; text-align: center;">
+    <p style="margin-bottom: 0.5em; color: #888;">📤 Share this article</p>
+    <a href="https://twitter.com/intent/tweet?text=%E5%9C%A8%20Kubernetes%20%E9%87%8C%E7%94%A8%20cert-manager%20%2B%20Venafi%20%E8%87%AA%E5%8A%A8%E7%AD%BE%E5%8F%91%E5%92%8C%E8%BD%AE%E6%8D%A2%E8%AF%81%E4%B9%A6&url=https://www.fanyamin.com/zai-kubernetes-li-yong-cert-manager-venafi-zi-dong-qian-fa-he-lun-huan-zheng-shu.html"
+       target="_blank" rel="noopener" title="Share on Twitter/X"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#1da1f2; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      𝕏 Twitter
+    </a>
+    <a href="https://www.linkedin.com/sharing/share-offsite/?url=https://www.fanyamin.com/zai-kubernetes-li-yong-cert-manager-venafi-zi-dong-qian-fa-he-lun-huan-zheng-shu.html"
+       target="_blank" rel="noopener" title="Share on LinkedIn"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#0077b5; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      💼 LinkedIn
+    </a>
+    <a href="javascript:void(0);" onclick="copyLink('https://www.fanyamin.com/zai-kubernetes-li-yong-cert-manager-venafi-zi-dong-qian-fa-he-lun-huan-zheng-shu.html')" title="Copy link"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#666; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em; cursor:pointer;">
+      🔗 Copy Link
+    </a>
+    <script>
+    function copyLink(url) {
+      navigator.clipboard.writeText(url).then(function() {
+        alert('链接已复制！');
+      });
+    }
+    </script>
+  </div>
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/obsidian-jia-llmge-ren-zhi-shi-ku-de-zheng-que-da-kai-fang-shi.html" title="Obsidian 加 LLM，个人知识库的正确打开方式">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/yong-promptfoo-gei-ai-skill-zuo-ti-jian-ping-gu-ce-shi-zhi-liang-yu-an-quan-ba-guan.html" title="用 Promptfoo 给 AI skill 做体检：评估、测试、质量与安全把关">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/zheng-shu-zhe-huo-er-pemjksp12-zen-yao-xuan-mian-fei-zheng-shu-na-jia-qiang-zi-dong-lun-huan-zen-yao-gao.html">证书这活儿：PEM/JKS/P12 怎么选、免费证书哪家强、自动轮换怎么搞</a></li>
+      <li><a href="https://www.fanyamin.com/workload-identitybie-zai-ba-yun-shang-shen-fen-sai-jin-secret-li-liao.html">Workload Identity：别再把云上身份塞进 Secret 里了</a></li>
+      <li><a href="https://www.fanyamin.com/2026-01-27-coding-ops.html">从过程式、命令式到声明式：编程与运维的一次“权力转移”</a></li>
+      <li><a href="https://www.fanyamin.com/2026-01-25-eks-pod-iam-role.html">在 EKS 上给 Pod 绑 IAM Role：IRSA（ServiceAccount + OIDC）到底怎么回事</a></li>
+      <li><a href="https://www.fanyamin.com/go-cryptotls-configclone-session-resumption-pitfalls-cve-2025-68121.html">Go crypto/tls Config.Clone session resumption pitfalls (CVE-2025-68121)</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

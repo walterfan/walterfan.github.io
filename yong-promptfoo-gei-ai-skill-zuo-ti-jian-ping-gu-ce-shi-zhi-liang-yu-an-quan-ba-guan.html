@@ -242,9 +242,11 @@
 <ul>
 <li><code>promptfoo</code> 到底是什么，为什么它不只是一个“测 prompt 的工具”</li>
 <li>AI skill 为什么比普通 LLM 输出更难测</li>
+<li>用 JUnit 的方式去理解 AI skill 测试，把熟悉的概念一一对上</li>
 <li>用 <code>promptfoo eval</code>、<code>assertions</code>、<code>trajectory</code> 先把质量尺子立起来</li>
 <li>再用 <code>redteam</code>、<code>policy</code>、<code>harmbench</code>、MCP 安全测试把风险摸出来</li>
 <li>最后把这些检查接进 CI/CD，别把发版当抽奖</li>
+<li>横向比较：LLM-as-a-Judge 综述、DeepEval / Ragas / TruLens、PyRIT / Garak、GAIA / BFCL / SWE-bench 这些理论、框架、基准在生态里各占什么位置</li>
 </ul>
 <hr>
 <h2 id="_2">正文</h2>
@@ -280,6 +282,167 @@
 <p>这中间任何一步走偏，最终答案都可能“表面过关，骨子里有病”。就像两个同事都给出了正确结论，一个翻了 3 个文件，另一个扫了 30 个文件、跑了 5 次命令、顺手还读了不该读的目录。你只看最后一句话，是看不出差别的。</p>
 <p>Promptfoo 官方在讲 coding agents 时提得很直接：<strong>你评估的不是模型本身，而是整个系统。</strong> 这话很重要。因为一个 plain LLM 和一个被 agent harness 包起来、能读文件、能跑工具、能保留状态的模型，行为边界完全不是一回事。</p>
 <p>所以，测 AI skill，至少要拆成下面这几层。</p>
+<h3 id="junit-ai-skill">先用 JUnit 的方式理解 AI Skill 测试</h3>
+<p>讲到这里，很多后端同学还是会嘀咕：道理我都懂，可 AI skill 这玩意到底怎么"测"？我每天写 Java，写一个方法，配一个 <code>@Test</code>，断言相等就完了。AI skill 这种"输入一句话，输出一段话"的东西，怎么写测试？</p>
+<p>其实你完全可以照着 JUnit 的思路来理解。Promptfoo 在做的事，就是 AI skill 世界里的 JUnit + Mockito + JaCoCo + OWASP ZAP 的合体。咱们一项一项对：</p>
+<table>
+<thead>
+<tr>
+<th>JUnit / Java 测试</th>
+<th>Promptfoo / AI skill 测试</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>被测方法 <code>UserService.hash(pwd)</code></td>
+<td>被测 skill <code>knowledge-qa</code></td>
+<td>测试对象</td>
+</tr>
+<tr>
+<td><code>@Test</code> 方法</td>
+<td><code>tests:</code> 下的一条 case</td>
+<td>一个测试用例</td>
+</tr>
+<tr>
+<td><code>@ParameterizedTest</code> + <code>@CsvSource</code></td>
+<td><code>tests</code> 配多组 <code>vars</code></td>
+<td>数据驱动测试</td>
+</tr>
+<tr>
+<td><code>@BeforeEach</code> 准备数据</td>
+<td><code>vars</code> 渲染到 prompt 模板</td>
+<td>准备输入</td>
+</tr>
+<tr>
+<td>调用方法 <code>service.hash("abc")</code></td>
+<td>provider 发请求给 skill</td>
+<td>触发执行</td>
+</tr>
+<tr>
+<td><code>assertEquals("xxx", result)</code></td>
+<td><code>equals</code> / <code>contains</code> / <code>contains-json</code></td>
+<td>严格断言</td>
+</tr>
+<tr>
+<td><code>assertTrue(result.matches(...))</code></td>
+<td><code>regex</code> / <code>javascript</code> 断言</td>
+<td>结构断言</td>
+</tr>
+<tr>
+<td><code>assertThat(result).isCloseTo(...)</code></td>
+<td><code>similar</code> / <code>llm-rubric</code></td>
+<td>语义断言（这是 AI 测试独有的）</td>
+</tr>
+<tr>
+<td>Mockito mock 依赖</td>
+<td>mock provider / 录制的 fixture</td>
+<td>隔离外部依赖</td>
+</tr>
+<tr>
+<td>JaCoCo 覆盖率</td>
+<td><code>trajectory</code> 覆盖工具调用路径</td>
+<td>覆盖度量</td>
+</tr>
+<tr>
+<td>性能测试 / JMH</td>
+<td><code>cost</code> / <code>latency</code> 断言</td>
+<td>非功能指标</td>
+</tr>
+<tr>
+<td>Flaky test 重跑</td>
+<td><code>--repeat 3</code> 多次跑</td>
+<td>处理非确定性</td>
+</tr>
+<tr>
+<td>OWASP / SpotBugs</td>
+<td><code>redteam</code> + <code>policy</code> + <code>harmbench</code></td>
+<td>安全扫描</td>
+</tr>
+<tr>
+<td>Maven Surefire 报告</td>
+<td><code>promptfoo view</code> 报告</td>
+<td>测试报告</td>
+</tr>
+<tr>
+<td>CI 跑 <code>mvn test</code></td>
+<td>CI 跑 <code>promptfoo eval</code></td>
+<td>持续集成</td>
+</tr>
+</tbody>
+</table>
+<p>把这张表摆在面前，你就会发现：<strong>AI skill 的测试，并没有发明什么新概念，它只是把 JUnit 的那一套，搬到了"输出是自然语言"的世界里。</strong></p>
+<p>举个最直白的例子。假设你写了一个 Java 方法：</p>
+<div class="highlight"><pre><span></span><code><span class="kd">public</span><span class="w"> </span><span class="kd">class</span> <span class="nc">PasswordService</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kd">public</span><span class="w"> </span><span class="n">String</span><span class="w"> </span><span class="nf">hash</span><span class="p">(</span><span class="n">String</span><span class="w"> </span><span class="n">pwd</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">BCrypt</span><span class="p">.</span><span class="na">hashpw</span><span class="p">(</span><span class="n">pwd</span><span class="p">,</span><span class="w"> </span><span class="n">BCrypt</span><span class="p">.</span><span class="na">gensalt</span><span class="p">());</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>你会怎么测？大概是这样：</p>
+<div class="highlight"><pre><span></span><code><span class="nd">@Test</span>
+<span class="kt">void</span><span class="w"> </span><span class="nf">hash_should_return_bcrypt_format</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">String</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">service</span><span class="p">.</span><span class="na">hash</span><span class="p">(</span><span class="s">&quot;hello&quot;</span><span class="p">);</span>
+
+<span class="w">    </span><span class="n">assertThat</span><span class="p">(</span><span class="n">result</span><span class="p">).</span><span class="na">startsWith</span><span class="p">(</span><span class="s">&quot;$2a$&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="n">assertThat</span><span class="p">(</span><span class="n">result</span><span class="p">).</span><span class="na">hasSize</span><span class="p">(</span><span class="mi">60</span><span class="p">);</span>
+<span class="w">    </span><span class="n">assertTrue</span><span class="p">(</span><span class="n">BCrypt</span><span class="p">.</span><span class="na">checkpw</span><span class="p">(</span><span class="s">&quot;hello&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">result</span><span class="p">));</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>注意，你做了三件事：</p>
+<ol>
+<li><strong>格式断言</strong>：以 <code>$2a$</code> 开头，长度 60。</li>
+<li><strong>结构断言</strong>：是合法的 BCrypt 串。</li>
+<li><strong>语义断言</strong>：原密码能验证通过。</li>
+</ol>
+<p>现在把同样的思路搬到 AI skill 上。假设你的 skill 是"知识库问答"：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">tests</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">vars</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">question</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;什么是</span><span class="nv"> </span><span class="s">promptfoo？&quot;</span>
+<span class="w">    </span><span class="nt">assert</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">contains-json</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">javascript</span>
+<span class="w">        </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<span class="w">          </span><span class="no">const r = JSON.parse(output.match(/\{[\s\S]*\}/)[0]);</span>
+<span class="w">          </span><span class="no">return Array.isArray(r.citations) &amp;&amp; r.citations.length &gt; 0;</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">llm-rubric</span>
+<span class="w">        </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;回答是否准确说明了</span><span class="nv"> </span><span class="s">promptfoo</span><span class="nv"> </span><span class="s">是</span><span class="nv"> </span><span class="s">LLM</span><span class="nv"> </span><span class="s">eval</span><span class="nv"> </span><span class="s">和</span><span class="nv"> </span><span class="s">red</span><span class="nv"> </span><span class="s">teaming</span><span class="nv"> </span><span class="s">工具？&quot;</span>
+<span class="w">        </span><span class="nt">threshold</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.8</span>
+</code></pre></div>
+
+<p>对照看，是不是一一对应？</p>
+<ol>
+<li><strong>格式断言</strong>：<code>contains-json</code> —— 必须返回 JSON。对应 <code>startsWith("$2a$")</code>。</li>
+<li><strong>结构断言</strong>：<code>javascript</code> —— 字段必须是数组且非空。对应 <code>hasSize(60)</code>。</li>
+<li><strong>语义断言</strong>：<code>llm-rubric</code> —— 内容上必须答对。对应 <code>BCrypt.checkpw</code>。</li>
+</ol>
+<p>唯一新的东西，是第三条。BCrypt 验证是确定的，输入相同，输出是布尔值。但"这段话有没有正确介绍 promptfoo"，没法用 <code>assertEquals</code> 比，只能让另一个模型当判官，给一个 0~1 的分数。这就是 <code>llm-rubric</code> 存在的理由 —— 它是 AI 测试的 <code>assertEquals</code>。</p>
+<p>再往上一层，JUnit 里你会写 <code>@ParameterizedTest</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="nd">@ParameterizedTest</span>
+<span class="nd">@CsvSource</span><span class="p">({</span>
+<span class="w">    </span><span class="s">&quot;hello, true&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="s">&quot;world, true&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="s">&quot;&#39;&#39;,    false&quot;</span>
+<span class="p">})</span>
+<span class="kt">void</span><span class="w"> </span><span class="nf">hash_param</span><span class="p">(</span><span class="n">String</span><span class="w"> </span><span class="n">input</span><span class="p">,</span><span class="w"> </span><span class="kt">boolean</span><span class="w"> </span><span class="n">shouldPass</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">...</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+
+<p>到了 Promptfoo 里，就是 <code>tests</code> 配多组 <code>vars</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">tests</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">vars</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> question</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;什么是</span><span class="nv"> </span><span class="s">promptfoo？&quot;</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="nt">assert</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">...</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">vars</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> question</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;promptfoo</span><span class="nv"> </span><span class="s">怎么做红队？&quot;</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="nt">assert</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">...</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">vars</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> question</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&quot;</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="nt">assert</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">javascript</span>
+<span class="w">        </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;return</span><span class="nv"> </span><span class="s">output.includes(&#39;请输入有效问题&#39;);&quot;</span>
+</code></pre></div>
+
+<p>JUnit 里有 Mockito 隔离数据库依赖，Promptfoo 里有 mock provider 隔离上游模型；JUnit 里跑 JaCoCo 看哪些分支没覆盖，Promptfoo 里用 <code>trajectory</code> 看哪些工具路径没走过；JUnit 里 flaky test 让人头大，Promptfoo 里 <code>--repeat 3</code> 也是同一个治法。</p>
+<p>把这层窗户纸捅破之后，再回头看后面的"五层评估"、"红队"、"CI/CD 门禁"，你会觉得熟悉得多 —— 那其实就是把 Java 工程里大家熟悉的"单元测试 + 集成测试 + 性能测试 + 安全扫描 + 流水线"，重新落到 AI skill 上而已。</p>
 <h3 id="ai-skill_1">AI skill 评估的五层模型</h3>
 <p>我自己会把 AI skill 的评估，拆成五层。你可以把它当成一张体检单。</p>
 <table>
@@ -606,7 +769,183 @@ Fix --&gt; Cases : add regression tests
 <h4 id="_10">误区五：把红队当一次性项目</h4>
 <p>Promptfoo 文档里有句话我挺认同：真正的“magic moment”往往发生在团队建立了持续测量 AI 风险的机制之后。说白了，就是你开始按节奏量，而不是偶尔想起来量。</p>
 <hr>
-<h2 id="_11">总结</h2>
+<h2 id="ai-skill_2">横向比较：AI Skill 测试还有哪些理论、方法和工具</h2>
+<p>光讲 Promptfoo 容易让人以为这是唯一选项。其实这两年学术界和工业界在 AI skill / agent 评估这件事上下的功夫不少，光知道一个工具，视野容易窄。下面这一节，我把它当成一张"扩展阅读地图"来写，方便你按需挑用。</p>
+<h3 id="_11">一、底层理论：评估方法论</h3>
+<p>这部分回答的是"到底什么叫'评估对了'"。</p>
+<p><strong>LLM-as-a-Judge</strong>。这是最近两年最重要的方法论转向。代表性综述是 <em>A Survey on LLM-as-a-Judge</em>（arXiv:2411.15594，2025 年持续更新）和 <em>LLMs-as-Judges: A Comprehensive Survey on LLM-based Evaluation Methods</em>（arXiv:2412.05579）。这两篇把"用模型评模型"这件事系统化了：怎么减少偏见（位置偏见、长度偏见、自我偏好）、怎么提高一致性、怎么做 meta-evaluation（评判官本身）。Promptfoo 的 <code>llm-rubric</code> 就是这套思想的工程实现。</p>
+<p><strong>G-Eval / GPTScore</strong>。LLM-as-a-Judge 的早期具体方法。G-Eval 用 chain-of-thought 让评判模型先列评分维度再打分，GPTScore 直接用条件概率打分。这两个名字在论文里出现频率很高，但工程上更多被 <code>llm-rubric</code> 这种"声明式 rubric"吸收掉了。</p>
+<p><strong>Agent-as-a-Judge</strong>。比 LLM-as-a-Judge 更进一步，用一个完整 agent（带工具、带记忆）去评另一个 agent。Mind2Web 2 这套基准就是典型，专门用来评长程 web 任务的"答案是否正确 + 引用是否有据"。这个思路其实更接近"代码评审找一个高级工程师，而不是只让编译器看一眼"。</p>
+<p><strong>Reliability Science</strong>。最近一个新趋势：把 AI 评估从"pass@1 跑一次"升级成"可靠性度量"。研究发现，agent 的可靠性会随任务时长<strong>超线性下降</strong>——任务越长，单步小错越容易雪崩。AgencyBench（arXiv:2601.11044，2026）就在这个方向上，用 1M token、90 次工具调用的真实场景测 agent。这件事的工程含义是：<strong>只跑一次的 eval 不算 eval，至少要跑 N 次看 pass rate 的方差。</strong></p>
+<h3 id="_12">二、主流评估框架横向对比</h3>
+<p>工程层面，开源界目前有四个常被提到的框架。我把它们和 Promptfoo 摆在一起对比：</p>
+<table>
+<thead>
+<tr>
+<th>框架</th>
+<th>定位</th>
+<th>强项</th>
+<th>弱项</th>
+<th>适合场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Promptfoo</strong></td>
+<td>YAML + CLI 的 eval &amp; red team</td>
+<td>red team、多模型对比、声明式配置、CI 友好</td>
+<td>不是为 RAG 深度指标设计</td>
+<td>业务 skill 的端到端测试 + 安全</td>
+</tr>
+<tr>
+<td><strong>DeepEval</strong></td>
+<td>Python + pytest 风格，号称 50+ 指标</td>
+<td>和 pytest 无缝集成、agent / RAG / 多轮都覆盖、指标多</td>
+<td>YAML 派会觉得偏重</td>
+<td>后端团队、想把 eval 当 unit test 写</td>
+</tr>
+<tr>
+<td><strong>Ragas</strong></td>
+<td>专攻 RAG</td>
+<td>faithfulness、answer relevancy、context precision/recall 四大指标</td>
+<td>只管 RAG，工具调用不管</td>
+<td>你做的就是 RAG 问答</td>
+</tr>
+<tr>
+<td><strong>TruLens</strong></td>
+<td>评估 + tracing 一体</td>
+<td>OpenTelemetry span，能看到每一步 feedback</td>
+<td>学习曲线略陡</td>
+<td>想把"评估"和"可观测性"合成一件事</td>
+</tr>
+<tr>
+<td><strong>LangSmith / Braintrust / Langfuse</strong></td>
+<td>商业化 eval + observability 平台</td>
+<td>UI 好、协作友好、和 LangChain / OpenTelemetry 紧</td>
+<td>有云依赖、有付费墙</td>
+<td>团队大、需要 dashboard 和审阅工作流</td>
+</tr>
+</tbody>
+</table>
+<p>挑哪个，其实不需要纠结。三条经验：</p>
+<ol>
+<li><strong>你做的是 RAG 问答</strong>：Ragas 是最快上手的，四个指标拿来就用。</li>
+<li><strong>你做的是会调工具的 agent / skill</strong>：Promptfoo 或 DeepEval。Promptfoo 红队更强，DeepEval 和 pytest 更亲。</li>
+<li><strong>你需要团队协作和 dashboard</strong>：上一个商业平台，省下自己搭基建的时间。</li>
+</ol>
+<p>这几个工具不是互斥的。我见过的成熟团队，常常是 Ragas 跑 RAG 子模块、Promptfoo 跑端到端和红队、再接一个 Langfuse 收 trace。各管一段，反而比硬塞进一个工具里更清爽。</p>
+<h3 id="agent-benchmark">三、Agent 能力基准（Benchmark）</h3>
+<p>光有框架还不够，你得知道<strong>自己的 skill 在行业里大概什么水平</strong>。这就要看公开 benchmark：</p>
+<table>
+<thead>
+<tr>
+<th>基准</th>
+<th>测什么</th>
+<th>谁该关心</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>GAIA</strong></td>
+<td>466 道多步真实任务，三个难度档</td>
+<td>做通用助手类 skill</td>
+</tr>
+<tr>
+<td><strong>WebArena / VisualWebArena</strong></td>
+<td>真实网站（电商、论坛、GitLab）上的 812 个任务</td>
+<td>做浏览器 / 网页操作 agent</td>
+</tr>
+<tr>
+<td><strong>BFCL V4</strong>（Berkeley Function Calling Leaderboard）</td>
+<td>函数调用准确率，2000+ 题，含并行调用、多轮</td>
+<td>做工具调用类 skill，必看</td>
+</tr>
+<tr>
+<td><strong>τ-bench / Tau2-Bench</strong></td>
+<td>客服场景下的 API 工具使用 + 政策合规</td>
+<td>做客服 / 业务流程 agent</td>
+</tr>
+<tr>
+<td><strong>SWE-bench / SWE-bench Verified</strong></td>
+<td>真实 GitHub issue 修复</td>
+<td>做 coding agent</td>
+</tr>
+<tr>
+<td><strong>AgentBench / AgentBoard</strong></td>
+<td>跨 web、tool、embodied、game 多场景，强调"过程进度率"而不只看终态</td>
+<td>做综合性 agent 想做归因分析</td>
+</tr>
+<tr>
+<td><strong>Mind2Web 2</strong></td>
+<td>长程信息合成 + 引用归因，Agent-as-Judge</td>
+<td>做 deep research / 综合检索 skill</td>
+</tr>
+<tr>
+<td><strong>HarmBench</strong></td>
+<td>400 类有害行为安全基准</td>
+<td>所有上线 skill</td>
+</tr>
+</tbody>
+</table>
+<p>这些 benchmark 本身的价值，不是让你在排行榜上刷分，而是给你提供<strong>现成的对照组</strong>。比如你做 function calling 的 skill，跑一遍 BFCL 子集，比起自己拍脑袋造 20 条用例，更能暴露 corner case。</p>
+<h3 id="promptfoo_1">四、红队工具：不止 Promptfoo</h3>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>出品方</th>
+<th>特点</th>
+<th>适合场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Promptfoo redteam</strong></td>
+<td>Promptfoo</td>
+<td>声明式 plugin（pii、bola、bfla、mcp、policy、harmbench），和 eval 同源</td>
+<td>工程团队、想和 eval 在同一套配置里</td>
+</tr>
+<tr>
+<td><strong>PyRIT</strong></td>
+<td>Microsoft</td>
+<td>编排式框架，强在多轮攻击（PAIR、TAP）、可组合 orchestrator / target / scorer</td>
+<td>安全团队做体系化攻防</td>
+</tr>
+<tr>
+<td><strong>Garak</strong></td>
+<td>NVIDIA</td>
+<td>100+ 内置 probe，扫描快</td>
+<td>第一轮快速摸底</td>
+</tr>
+<tr>
+<td><strong>HarmBench</strong></td>
+<td>Berkeley / DeepMind / CAIS</td>
+<td>标准化的有害行为基准库</td>
+<td>给上述工具当弹药库</td>
+</tr>
+</tbody>
+</table>
+<p>业界比较成熟的搭法是：<strong>Garak 做初筛 → PyRIT 做多轮深攻 → HarmBench 做覆盖度衡量</strong>。Promptfoo 的优势是把这些关键能力压成了一份 YAML，让普通工程团队不用养一个红队也能跑起来。如果你团队规模够大、有专门 AI security，PyRIT + HarmBench 的组合上限更高。</p>
+<h3 id="trajectory">五、Trajectory / 行为路径评估</h3>
+<p>这一类是 agent 评估里最难的一块——<strong>不光评结果，还要评过程</strong>。</p>
+<ul>
+<li><strong>AgentRewardBench</strong>（arXiv:2504.08942）：1302 条 web agent trajectory + 专家标注，专门用来评"评判官"靠不靠谱。结论也很有意思：rule-based 评估容易低估 agent 成功率，而单一 LLM judge 也不够稳。</li>
+<li><strong>AgentBoard 的 progress rate</strong>：不再只看 final success，而是看"完成度走到了百分之多少"。对长链任务尤其有用。</li>
+<li><strong>WebGraphEval</strong>：把多个 trajectory 抽象成统一加权动作图，方便发现"卡点"和"低效路径"，跳出二元成败。</li>
+<li>工程对应：Promptfoo 的 <code>trajectory:tool-used</code> / <code>tool-sequence</code> / <code>step-count</code> / <code>goal-success</code> 是这套理论的轻量落地，OpenTelemetry trace 是更通用的底座。</li>
+</ul>
+<h3 id="promptfoo_2">Promptfoo 的位置</h3>
+<p>把这张地图摊开看，Promptfoo 不是"全村最好的工具"，它的位置更像是：</p>
+<ul>
+<li><strong>理论层</strong>：吃了 LLM-as-a-Judge 的红利，做成了 <code>llm-rubric</code>。</li>
+<li><strong>框架层</strong>：在 Ragas（深 RAG）和 DeepEval（深 pytest）之间，走的是"声明式 + 红队一体化"路线。</li>
+<li><strong>基准层</strong>：自己不造 benchmark，但能挂 HarmBench 等数据集进来跑。</li>
+<li><strong>红队层</strong>：把 PyRIT / Garak 那一套能力工程化、平民化，让普通后端团队也能用。</li>
+<li><strong>可观测层</strong>：靠 OpenTelemetry 和外部 trace 系统对接，不重复造轮子。</li>
+</ul>
+<p>一句话：<strong>它不是终极解，而是一个工程实用主义的整合者。</strong> 你完全可以在它之外再叠一层 DeepEval 跑回归、挂一个 Langfuse 看线上、按季度跑一次 PyRIT 深度攻防。这才是成熟 AI skill 测试体系该有的样子——一把尺子量不全所有事。</p>
+<hr>
+<h2 id="_13">总结</h2>
 <ul>
 <li><code>promptfoo</code> 的价值，不在于它能不能帮你“挑一个更好的 prompt”，而在于它把 AI skill 的测试从手工体验，拉回到工程化、可重复、可量化的轨道上。</li>
 <li>测 AI skill，至少要看五层：结果质量、行为轨迹、工程代价、稳定性波动、安全边界。只看第一层，容易自我感动。</li>
@@ -626,6 +965,14 @@ Fix --&gt; Cases : add regression tests
 *** 工具调用
 *** 路径比答案更重要
 *** 非确定性层层放大
+** 类比 JUnit
+*** @Test → tests case
+*** assertEquals → equals/contains
+*** llm-rubric → 语义版 assertEquals
+*** @ParameterizedTest → 多组 vars
+*** Mockito → mock provider
+*** JaCoCo → trajectory 覆盖
+*** OWASP → redteam
 ** 五层评估
 *** 结果质量
 **** contains-json
@@ -655,6 +1002,31 @@ Fix --&gt; Cases : add regression tests
 *** 把 eval 当截图
 *** 只做质量不做安全
 *** 把红队当一次性项目
+** 生态地图
+*** 理论
+**** LLM-as-a-Judge 综述
+**** Agent-as-a-Judge
+**** Reliability Science
+*** 框架
+**** DeepEval (pytest)
+**** Ragas (RAG 专用)
+**** TruLens (eval+trace)
+**** Langfuse / Braintrust
+*** Benchmark
+**** GAIA
+**** WebArena
+**** BFCL
+**** τ-bench
+**** SWE-bench
+**** AgentBoard
+*** 红队
+**** PyRIT (Microsoft)
+**** Garak (NVIDIA)
+**** HarmBench
+*** Trajectory
+**** AgentRewardBench
+**** progress rate
+**** WebGraphEval
 @endmindmap
 </code></pre></div>
 
@@ -668,7 +1040,7 @@ Fix --&gt; Cases : add regression tests
 <li>把轻量 eval 放进 PR，把重型红队放进定时任务，让测试跟着版本走，而不是跟着情绪走。</li>
 </ol>
 <hr>
-<h2 id="_12">扩展阅读</h2>
+<h2 id="_14">扩展阅读</h2>
 <ul>
 <li>Promptfoo GitHub 仓库：<a href="https://github.com/promptfoo/promptfoo">https://github.com/promptfoo/promptfoo</a></li>
 <li>Promptfoo Intro：<a href="https://www.promptfoo.dev/docs/intro/">https://www.promptfoo.dev/docs/intro/</a></li>
@@ -679,6 +1051,38 @@ Fix --&gt; Cases : add regression tests
 <li>MCP Security Testing Guide：<a href="https://promptfoo.dev/docs/red-team/mcp-security-testing">https://promptfoo.dev/docs/red-team/mcp-security-testing</a></li>
 <li>CI/CD Integration：<a href="https://www.promptfoo.dev/docs/integrations/ci-cd/">https://www.promptfoo.dev/docs/integrations/ci-cd/</a></li>
 <li>HarmBench with Promptfoo：<a href="https://promptfoo.dev/docs/guides/evaling-with-harmbench/">https://promptfoo.dev/docs/guides/evaling-with-harmbench/</a></li>
+</ul>
+<h3 id="_15">学术综述</h3>
+<ul>
+<li>A Survey on LLM-as-a-Judge：<a href="https://arxiv.org/abs/2411.15594">https://arxiv.org/abs/2411.15594</a></li>
+<li>LLMs-as-Judges: A Comprehensive Survey on LLM-based Evaluation Methods：<a href="https://arxiv.org/abs/2412.05579">https://arxiv.org/abs/2412.05579</a></li>
+<li>Evaluation of LLM-based Agents (Survey)：<a href="https://arxiv.org/abs/2503.16416">https://arxiv.org/abs/2503.16416</a></li>
+<li>AgencyBench (1M-token, 90 tool calls)：<a href="https://arxiv.org/abs/2601.11044">https://arxiv.org/abs/2601.11044</a></li>
+<li>AgentRewardBench (web agent trajectory judges)：<a href="https://arxiv.org/abs/2504.08942">https://arxiv.org/abs/2504.08942</a></li>
+<li>AgentBoard: Analytical Evaluation of Multi-turn Agents：<a href="https://arxiv.org/abs/2401.13178">https://arxiv.org/abs/2401.13178</a></li>
+<li>Mind2Web 2 (Agent-as-a-Judge)：<a href="https://osu-nlp-group.github.io/Mind2Web-2/">https://osu-nlp-group.github.io/Mind2Web-2/</a></li>
+</ul>
+<h3 id="_16">框架与平台</h3>
+<ul>
+<li>DeepEval：<a href="https://github.com/confident-ai/deepeval">https://github.com/confident-ai/deepeval</a></li>
+<li>Ragas：<a href="https://github.com/explodinggradients/ragas">https://github.com/explodinggradients/ragas</a></li>
+<li>TruLens：<a href="https://github.com/truera/trulens">https://github.com/truera/trulens</a></li>
+<li>Langfuse：<a href="https://github.com/langfuse/langfuse">https://github.com/langfuse/langfuse</a></li>
+<li>Braintrust：<a href="https://www.braintrust.dev/">https://www.braintrust.dev/</a></li>
+</ul>
+<h3 id="_17">行业基准</h3>
+<ul>
+<li>GAIA：<a href="https://huggingface.co/datasets/gaia-benchmark/GAIA">https://huggingface.co/datasets/gaia-benchmark/GAIA</a></li>
+<li>WebArena：<a href="https://webarena.dev/">https://webarena.dev/</a></li>
+<li>BFCL (Berkeley Function Calling Leaderboard)：<a href="https://gorilla.cs.berkeley.edu/leaderboard.html">https://gorilla.cs.berkeley.edu/leaderboard.html</a></li>
+<li>τ-bench：<a href="https://github.com/sierra-research/tau-bench">https://github.com/sierra-research/tau-bench</a></li>
+<li>SWE-bench：<a href="https://www.swebench.com/">https://www.swebench.com/</a></li>
+</ul>
+<h3 id="_18">红队工具</h3>
+<ul>
+<li>PyRIT (Microsoft)：<a href="https://github.com/Azure/PyRIT">https://github.com/Azure/PyRIT</a></li>
+<li>Garak (NVIDIA)：<a href="https://github.com/NVIDIA/garak">https://github.com/NVIDIA/garak</a></li>
+<li>HarmBench：<a href="https://github.com/centerforaisafety/HarmBench">https://github.com/centerforaisafety/HarmBench</a></li>
 </ul>
 <hr>
 <hr/>
@@ -740,8 +1144,8 @@ Fix --&gt; Cases : add regression tests
       <li><a href="https://www.fanyamin.com/2026-04-05-distillation-in-ai.html">蒸馏：AI 世界里的"吸星大法"</a></li>
       <li><a href="https://www.fanyamin.com/ai-agent-loop-jiang-tou-yi-yi-ge-hui-zi-ji-xie-bo-ke-de-python-demo-wei-li.html">AI Agent Loop 讲透：以一个会自己写博客的 Python Demo 为例</a></li>
       <li><a href="https://www.fanyamin.com/2026-03-17-ai-skill-writing.html">如何写好一个 AI Skill：让 AI Agent 从"什么都会"变成"真的能干活"</a></li>
+      <li><a href="https://www.fanyamin.com/2026-04-20-test-ai-skill-for-coding-agents.html">给 Cursor、Codex、Claude Code 用的 AI Skill，到底该怎么测</a></li>
       <li><a href="https://www.fanyamin.com/obsidian-jia-llmge-ren-zhi-shi-ku-de-zheng-que-da-kai-fang-shi.html">Obsidian 加 LLM，个人知识库的正确打开方式</a></li>
-      <li><a href="https://www.fanyamin.com/2026-04-05-ai-agent-future-human-like.html">AI Agent 会越来越像人吗？从 Tool、Skill、Memory 到 Soul 和 Rules</a></li>
     </ul>
   </div>
 

@@ -1,0 +1,756 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'G-VZL08BHDPP', 'auto');
+  ga('send', 'pageview');
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="RRF（Reciprocal Rank Fusion）是 RAG 检索里一个长得土、却几乎没人舍得换掉的小公式。不需要训练，不挑分数尺度，一行代码就能把 BM25 和向量检索揉到一起。本文把公式拆开，给一个手算例子，再聊聊它什么时候好用、什么时候该让位给 reranker。" />
+<meta name="keywords" content="RAG, RRF, Reciprocal Rank Fusion, BM25, Vector Search, Hybrid Search, Reranker, Retrieval">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "RRF 倒数排名融合：RAG 里那个看起来土、却一直没被换掉的小公式",
+  "description": "RRF（Reciprocal Rank Fusion）是 RAG 检索里一个长得土、却几乎没人舍得换掉的小公式。不需要训练，不挑分数尺度，一行代码就能把 BM25 和向量检索揉到一起。本文把公式拆开，给一个手算例子，再聊聊它什么时候好用、什么时候该让位给 reranker。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-04-19T22:30:00+08:00",
+  "dateModified": "2026-04-20T00:15:00+08:00",
+  "url": "https://www.fanyamin.com/rrf-dao-shu-pai-ming-rong-he-rag-li-na-ge-kan-qi-lai-tu-que-yi-zhi-mei-bei-huan-diao-de-xiao-gong-shi.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/rrf-dao-shu-pai-ming-rong-he-rag-li-na-ge-kan-qi-lai-tu-que-yi-zhi-mei-bei-huan-diao-de-xiao-gong-shi.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "RAG, RRF, Reciprocal Rank Fusion, BM25, Vector Search, Hybrid Search, Reranker, Retrieval"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="RRF 倒数排名融合：RAG 里那个看起来土、却一直没被换掉的小公式"/>
+  <meta property="og:description" content="RRF（Reciprocal Rank Fusion）是 RAG 检索里一个长得土、却几乎没人舍得换掉的小公式。不需要训练，不挑分数尺度，一行代码就能把 BM25 和向量检索揉到一起。本文把公式拆开，给一个手算例子，再聊聊它什么时候好用、什么时候该让位给 reranker。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/rrf-dao-shu-pai-ming-rong-he-rag-li-na-ge-kan-qi-lai-tu-que-yi-zhi-mei-bei-huan-diao-de-xiao-gong-shi.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-04-19 22:30:00+08:00"/>
+  <meta property="article:modified_time" content="2026-04-20 00:15:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/author/walter-fan.html">
+  <meta property="article:section" content="Journal"/>
+  <meta property="article:tag" content="RAG"/>
+  <meta property="article:tag" content="RRF"/>
+  <meta property="article:tag" content="Reciprocal Rank Fusion"/>
+  <meta property="article:tag" content="BM25"/>
+  <meta property="article:tag" content="Vector Search"/>
+  <meta property="article:tag" content="Hybrid Search"/>
+  <meta property="article:tag" content="Reranker"/>
+  <meta property="article:tag" content="Retrieval"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; RRF 倒数排名融合：RAG 里那个看起来土、却一直没被换掉的小公式</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/">Walter Fan</a>
+    </h1>
+
+    <p>手握灵珠常奋笔, 心开天籁不吹箫</p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/search.html" role="search">
+      <input type="text" name="q" id="tipue_search_input" placeholder="Search...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank" href="tao.html" >tao</a>
+          </li>
+          <li>
+            <a target="_blank" href="article.html" >article</a>
+          </li>
+          <li>
+            <a target="_blank" href="manual.html" >manual</a>
+          </li>
+          <li>
+            <a target="_blank" href="interest.html" >interest</a>
+          </li>
+          <li>
+            <a target="_self" href="/wordpress" >notebook</a>
+          </li>
+          <li>
+            <a target="_blank" href="bookmark.html" >bookmark</a>
+          </li>
+          <li>
+            <a target="_self" href="/webrtc/examples/index.html" >webrtc</a>
+          </li>
+          <li>
+            <a target="_blank" href="https://github.com/walterfan" >github</a>
+          </li>
+          <li>
+            <a target="_blank" href="categories.html" >categories</a>
+          </li>
+          <li>
+            <a target="_blank" href="tags.html" >tags</a>
+          </li>
+      </ul>
+    </nav>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+</aside>
+  <main>
+
+
+<article class="single">
+  <header>
+      
+    <h1 id="rrf-dao-shu-pai-ming-rong-he-rag-li-na-ge-kan-qi-lai-tu-que-yi-zhi-mei-bei-huan-diao-de-xiao-gong-shi">RRF 倒数排名融合：RAG 里那个看起来土、却一直没被换掉的小公式</h1>
+    <p>
+      Posted on 日 19 4月 2026 in <a href="https://www.fanyamin.com/category/journal.html">Journal</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>RRF 倒数排名融合：RAG 里那个看起来土、却一直没被换掉的小公式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Journal / RAG 方法论</td>
+</tr>
+<tr>
+<td><strong>Version</strong></td>
+<td>v1.1</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-04-20</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h1 id="rrf">RRF 倒数排名融合</h1>
+<h2 id="rag">一、一个尴尬的 RAG 现场</h2>
+<p>先说个咱们这行都见过的场景。</p>
+<p>某天晚上十点，产品群里冒出来一条吐槽：</p>
+<blockquote>
+<p>"搜 <code>OAuth refresh token 过期处理</code>，返回的第一条是《JWT access token 的过期与续期设计》。我要的是 refresh，它给我的是 access，这知识库还能用吗？"</p>
+</blockquote>
+<p>打开日志一看，问题不新鲜：</p>
+<ul>
+<li>走 <strong>BM25</strong>（关键词检索）：那篇《JWT access token 的过期与续期设计》里 "token"  "过期"  "续期" 三个词密集出现，TF-IDF 算出来分数贼高，排第一。但它讲的是 access token，不是 refresh token。</li>
+<li>走 <strong>向量检索</strong>（embedding）：排第一的是一篇讲 OAuth 授权码流程的总览文，语义上跟 "OAuth" 沾亲带故，却几乎没提 refresh token 到底怎么续。</li>
+<li>两边各自都错得很有道理——BM25 被关键词骗，向量被"大主题"骗——合起来却没人说得清该信哪一边。</li>
+</ul>
+<p>这种时候，你会很自然地想问一句：</p>
+<blockquote>
+<p>有没有一个不需要我调一堆权重、也不用再训一个模型的办法，把这两个列表揉到一起？</p>
+</blockquote>
+<p>有的。RRF。</p>
+<p>一个长得像数学作业题、却已经默默在 Elasticsearch、Weaviate、LangChain、LlamaIndex 里跑了好几年的算法。</p>
+<hr>
+<h2 id="rrf_1">二、RRF 到底在干什么</h2>
+<p>RRF 全称 <strong>Reciprocal Rank Fusion</strong>，中文通常译作 "倒数排名融合" 。</p>
+<p>先顺手把这个翻译澄清一下，省得有人望文生义。 <strong>"倒数"不是"倒着数"，是数学意义上的 reciprocal，也就是 (1/x)</strong> ——一个数的倒数就是 1 除以它。3 的倒数是 (1/3) ，排名第 5 的倒数就是 (1/5) 。所以 "倒数排名融合" 的意思是 <strong>"用排名的倒数作为分数来做融合"</strong> ，不是把排名反过来——那是另一码事。英文单词 reciprocal 比中文 "倒数" 清楚，可惜约定俗成就这么译了，咱们记个正确意思就行。</p>
+<p>一句话说清楚它干啥：</p>
+<blockquote>
+<p><strong>不管各路检索器给的分数是多少，只看它们把文档排在第几名，然后把每个排名取倒数 (\frac{1}{rank})（再加个小调料 (k)）加起来。</strong></p>
+</blockquote>
+<p>公式长这样：</p>
+<p>[
+score(d) = \sum_{i=1}^{n} \frac{1}{k + rank_i(d)}
+]</p>
+<p>字母不多，一个个拆：</p>
+<ul>
+<li>( d )：某一篇文档。</li>
+<li>( i )：第 ( i ) 个检索器，比如 BM25 一个，向量检索一个。</li>
+<li>( rank_i(d) )：这篇文档在第 ( i ) 个检索器里的排名，从 1 开始。没出现就当它不在。</li>
+<li>( k )：一个平滑常数，原论文给的是 60，基本没人动过。</li>
+</ul>
+<p>核心就两条直觉：</p>
+<ul>
+<li><strong>排第 1 的比排第 10 的值钱</strong>，但<strong>没值钱到十倍</strong>。加个 (k) 把曲线压平，不让第一名独吞分数。</li>
+<li><strong>在多个列表里都露过脸的文档</strong>，加起来自然就高。一个检索器说它好是偶然，两个都说它好，大概率是真的好。</li>
+</ul>
+<p>就这么点东西。没有训练，没有超参调优，没有 "需要 GPU 才能跑" 的前置条件。</p>
+<hr>
+<h2 id="_1">三、手算一遍：看它到底怎么 "投票"</h2>
+<p>光看公式没感觉，咱算一遍。</p>
+<p>假设两个检索器，各返回 Top 3：</p>
+<table>
+<thead>
+<tr>
+<th>排名</th>
+<th>BM25</th>
+<th>向量检索</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Doc A</td>
+<td>Doc B</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Doc B</td>
+<td>Doc D</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Doc C</td>
+<td>Doc A</td>
+</tr>
+</tbody>
+</table>
+<p>取 ( k = 60 )，一个个文档算：</p>
+<ul>
+<li><strong>Doc A</strong>：BM25 第 1，向量第 3 → ( \frac{1}{60+1} + \frac{1}{60+3} = 0.01639 + 0.01587 = 0.03226 )</li>
+<li><strong>Doc B</strong>：BM25 第 2，向量第 1 → ( \frac{1}{60+2} + \frac{1}{60+1} = 0.01613 + 0.01639 = 0.03252 )</li>
+<li><strong>Doc C</strong>：只在 BM25 出现，第 3 → ( \frac{1}{60+3} = 0.01587 )</li>
+<li><strong>Doc D</strong>：只在向量出现，第 2 → ( \frac{1}{60+2} = 0.01613 )</li>
+</ul>
+<p>融合之后排序：</p>
+<ol>
+<li><strong>Doc B</strong>（0.03252）—— 两边都上榜，而且一边是第 1，妥妥的黑马。</li>
+<li><strong>Doc A</strong>（0.03226）—— 两边都上榜，差一点点。</li>
+<li><strong>Doc D</strong>（0.01613）—— 向量看见了。</li>
+<li><strong>Doc C</strong>（0.01587）—— BM25 看见了。</li>
+</ol>
+<p>注意看 Doc B 这一行：它在 BM25 里只是老二，但在向量里是老大；反过来 Doc A 是 BM25 老大、向量老三。RRF 给出的结论是—— <strong>"两边都认你" 比 "一边最认你" 更稳</strong>。这在真实检索里，往往就是对的那条。</p>
+<p>用代码跑一下，一屏能放下的量：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">defaultdict</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Hashable</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">,</span> <span class="n">Tuple</span>
+
+
+<span class="k">def</span> <span class="nf">rrf_fusion</span><span class="p">(</span>
+    <span class="n">ranked_lists</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Sequence</span><span class="p">[</span><span class="n">Hashable</span><span class="p">]],</span>
+    <span class="n">k</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">60</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="n">Hashable</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Reciprocal Rank Fusion.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        ranked_lists: 多个检索器返回的结果，每个列表按 &quot;相关性从高到低&quot; 排好序。</span>
+<span class="sd">                      例如 [[\&quot;docA\&quot;, \&quot;docB\&quot;], [\&quot;docB\&quot;, \&quot;docC\&quot;]]。</span>
+<span class="sd">        k: 平滑常数，常用 60。</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        按融合分数从高到低的 [(doc_id, score), ...]。</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">scores</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="n">Hashable</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">ranked</span> <span class="ow">in</span> <span class="n">ranked_lists</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">rank</span><span class="p">,</span> <span class="n">doc_id</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">ranked</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+            <span class="n">scores</span><span class="p">[</span><span class="n">doc_id</span><span class="p">]</span> <span class="o">+=</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="p">(</span><span class="n">k</span> <span class="o">+</span> <span class="n">rank</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">scores</span><span class="o">.</span><span class="n">items</span><span class="p">(),</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">reverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">bm25</span>   <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;docA&quot;</span><span class="p">,</span> <span class="s2">&quot;docB&quot;</span><span class="p">,</span> <span class="s2">&quot;docC&quot;</span><span class="p">,</span> <span class="s2">&quot;docE&quot;</span><span class="p">]</span>
+    <span class="n">vector</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;docB&quot;</span><span class="p">,</span> <span class="s2">&quot;docD&quot;</span><span class="p">,</span> <span class="s2">&quot;docA&quot;</span><span class="p">,</span> <span class="s2">&quot;docF&quot;</span><span class="p">]</span>
+    <span class="n">title</span>  <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;docB&quot;</span><span class="p">,</span> <span class="s2">&quot;docA&quot;</span><span class="p">,</span> <span class="s2">&quot;docG&quot;</span><span class="p">]</span>
+
+    <span class="k">for</span> <span class="n">doc_id</span><span class="p">,</span> <span class="n">score</span> <span class="ow">in</span> <span class="n">rrf_fusion</span><span class="p">([</span><span class="n">bm25</span><span class="p">,</span> <span class="n">vector</span><span class="p">,</span> <span class="n">title</span><span class="p">],</span> <span class="n">k</span><span class="o">=</span><span class="mi">60</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">doc_id</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">score</span><span class="si">:</span><span class="s2">.6f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<p>跑出来大致是这样：</p>
+<div class="highlight"><pre><span></span><code>docB: 0.048916   # 三个列表都有它，且都排得靠前
+docA: 0.048395   # 三个列表也都有，略差一点
+docD: 0.016129
+docC: 0.015873
+docG: 0.015873
+docE: 0.015625
+docF: 0.015625
+</code></pre></div>
+
+<p><code>docB</code> 稳稳排第一， <strong>不是因为它在任何一路拿到最高分，而是因为三路都认它</strong> 。这就是 RRF 核心的那点朴素哲学——多数票比单边冠军更可信。</p>
+<p>几条代码层面的小讲究：</p>
+<ul>
+<li><strong><code>defaultdict(float)</code> 省事</strong>：同一份文档在多个列表里出现时，直接 <code>+=</code> 累加，省掉 <code>get(doc_id, 0.0)</code> 那类模板代码。</li>
+<li><strong><code>enumerate(..., start=1)</code> 不能省</strong>：RRF 的 rank <strong>从 1 开始</strong> ，改成 0 会让第一名变成 <code>1/k</code>——行为微妙漂移，下游所有人都会被坑。</li>
+<li><strong><code>Hashable</code> 类型提示</strong>：文档 id 既可以是字符串也可以是 tuple（比如 <code>(doc_id, chunk_id)</code>），<code>Hashable</code> 比写死 <code>str</code> 灵活。</li>
+<li><strong><code>sorted(...)</code> 稳定排序</strong>：分数相同的文档相对顺序保持不变，debug 时好定位。</li>
+</ul>
+<p>一个晚上就能接到线上，不骗你。</p>
+<hr>
+<h2 id="_2">四、为什么偏偏是它，一直没被换掉</h2>
+<p>RAG 这几年卷得厉害，从 BM25 到 ColBERT，从 cross-encoder 到 LLM-as-a-reranker，新花样一茬接一茬。可到融合这一步，大家回头一看，用的还是 RRF。原因其实很朴素。</p>
+<p><strong>第一，它不挑分数尺度。</strong></p>
+<p>BM25 的分数可能是 18.7，embedding 的余弦相似度是 0.83，有的 reranker 直接吐 logits。你要是直接加权平均，就得先 min-max 归一化、再调权重，再写一堆 "某一路分数异常大时别让它吃掉整场" 的兜底逻辑。RRF 直接一句 "我不看分数，只看排名"，这些麻烦全绕开了。</p>
+<p><strong>第二，它对噪声抗揍。</strong></p>
+<p>加权平均最怕一件事：某条路突然给一篇无关文档打了超高分。一颗老鼠屎能毁一锅汤。RRF 只看排名，哪怕这篇文档分数爆表，它在那一路也就是第 1，多算一个 ( \frac{1}{61} )，翻不了天。</p>
+<p><strong>第三，它对 "多路召回" 天然友好。</strong></p>
+<p>BM25、向量、多查询扩展（multi-query）、HyDE、元数据过滤……只要你能排出个顺序，都能丢进 RRF 里投票。加一路检索，不用重调权重，只要把 rank list 接进来就行。工程上这个优点，怎么夸都不过分。</p>
+<p><strong>第四，它不用训练。</strong></p>
+<p>对比一下 Learning to Rank：要标注数据，要训练，要随着数据漂移而重训，还要搞一套离线评估。而 RRF 就是一个函数，确定性输出，没状态。</p>
+<p>把这几条摆在一起，你大概就明白为什么老项目不换、新项目照用——<strong>它不是最优的，但它是『默认就不会出大错』的那个</strong>。</p>
+<hr>
+<h2 id="k-1rank">五、那个 <code>k</code> 到底是来干嘛的？—— 为什么不是 <code>1/rank</code></h2>
+<p>这是每次讲 RRF 都会被人追问的问题：既然是 "排名的倒数" ，为什么不直接 <code>1/rank</code> 一了百了，非要多塞一个 <code>k</code> 进去？</p>
+<p>直接算给你看。假设不加 (k)，直接 <code>1/rank</code>：</p>
+<table>
+<thead>
+<tr>
+<th>排名</th>
+<th><code>1 / rank</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>2</td>
+<td>0.500</td>
+</tr>
+<tr>
+<td>3</td>
+<td>0.333</td>
+</tr>
+<tr>
+<td>10</td>
+<td>0.100</td>
+</tr>
+<tr>
+<td>100</td>
+<td>0.010</td>
+</tr>
+</tbody>
+</table>
+<p>第一名直接比第二名大一倍， <strong>整个融合几乎被"每一路的第一名"主导</strong> 。某一路检索器抽风把无关文档排第一，这颗雷立刻就炸到最终结果里。</p>
+<p>再看一下 ( k=60 ) 时的曲线：</p>
+<table>
+<thead>
+<tr>
+<th>排名</th>
+<th><code>1 / (60 + rank)</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>0.01639</td>
+</tr>
+<tr>
+<td>2</td>
+<td>0.01613</td>
+</tr>
+<tr>
+<td>3</td>
+<td>0.01587</td>
+</tr>
+<tr>
+<td>10</td>
+<td>0.01429</td>
+</tr>
+<tr>
+<td>100</td>
+<td>0.00625</td>
+</tr>
+</tbody>
+</table>
+<p>第一名和第二名的差距从 "翻倍" 压到 "差 1.6%" 。整条曲线被 (k) 按得很平。</p>
+<p>这样带来三个显而易见的好处：</p>
+<ul>
+<li><strong>削弱单路第一名的霸权</strong> 。没人能仅凭 "我把它排第一" 一票决定融合结果，必须要其他路也承认。</li>
+<li><strong>更强调"跨列表重复"</strong> 。同一个文档在两路都排第 3，合起来就是 (2 \times 0.01587 = 0.03174) ，直接超过 "只在一路排第一" 的 (0.01639) 。 <strong>投两张第三名的票，比一张第一名的票更值钱</strong> ——这正是 RRF 想要的。</li>
+<li><strong>抗噪</strong> 。某一路被关键词骗，把一篇"隔壁主题"的文档送到第 1 名（比如前面 BM25 把 access token 误判成 refresh token），它贡献的那点 (1/61) 很容易被其他路合力压下去。</li>
+</ul>
+<p>至于 (k) 为什么非得是 60？原论文跑了一圈，60 在他们的数据集上表现最稳，就这么定下来了。后来大家一用也没啥毛病，就没人动。 <strong>这是工程上那种"默认值恰好够好就别动它"的典型案例</strong> 。真要动，也先去看数据，别把它当超参数调优的主战场。</p>
+<hr>
+<h2 id="rag_1">六、一张图把它放进 RAG 的全景里</h2>
+<p>光说 RRF 本身有点抽象。它在 RAG 流水线里大概是这个位置：</p>
+<div class="highlight"><pre><span></span><code>@startuml
+skinparam defaultFontName &quot;PingFang SC&quot;
+skinparam ranksep 25
+skinparam nodesep 30
+left to right direction
+
+rectangle &quot;用户问题&quot; as Q
+rectangle &quot;查询改写 / 多路展开&quot; as MQ
+rectangle &quot;BM25 检索&quot; as BM25
+rectangle &quot;向量检索&quot; as VEC
+rectangle &quot;元数据过滤&quot; as META
+rectangle &quot;RRF 融合\n(粗排汇总)&quot; as RRF
+rectangle &quot;可选: Reranker\n(cross-encoder / LLM)&quot; as RR
+rectangle &quot;上下文拼装&quot; as CTX
+rectangle &quot;LLM 生成&quot; as LLM
+rectangle &quot;回答&quot; as ANS
+
+Q --&gt; MQ
+MQ --&gt; BM25
+MQ --&gt; VEC
+MQ --&gt; META
+BM25 --&gt; RRF : Top N 排名
+VEC  --&gt; RRF : Top N 排名
+META --&gt; RRF : Top N 排名
+RRF --&gt; RR
+RR --&gt; CTX
+CTX --&gt; LLM
+LLM --&gt; ANS
+@enduml
+</code></pre></div>
+
+<p><img alt="RRF 在 RAG 流水线中的位置" src="../images/journal_20260419_rrf_reciprocal_rank_fusion_pipeline.png"></p>
+<p>注意两点：</p>
+<ul>
+<li>RRF 不是 RAG 的 "终审"，它是 <strong>"粗排汇总"</strong>。后面通常还会接一个更贵、更准的 reranker（cross-encoder、LLM rerank），只对前 Top 20~50 做精排。</li>
+<li>RRF 的上游越 "多样"（关键词 + 语义 + 元数据），它的作用越明显。如果你只有一路检索，RRF 等于没用。</li>
+</ul>
+<hr>
+<h2 id="rrf_2">七、什么时候该用 RRF，什么时候别用</h2>
+<p>咱这行有句老话，工具没有好坏，只有合不合适。RRF 也一样。</p>
+<p><strong>适合上 RRF 的场景：</strong></p>
+<ul>
+<li>你已经有两路或更多检索（典型是 BM25 + 向量）。</li>
+<li>各路检索器的分数尺度不一样、又不想花力气调权重。</li>
+<li>数据在变、查询在变，你想要一个 "不用频繁重训" 的融合层。</li>
+<li>项目早期，先把召回稳住，再谈精排。</li>
+</ul>
+<p><strong>不建议只靠 RRF 的场景：</strong></p>
+<ul>
+<li><strong>只有一路检索。</strong> 那就没有 "融合" 可言，RRF 等同于 identity。</li>
+<li><strong>追求极致精度的排序。</strong> 比如法律、医学、合规这类，用户只看第 1 条。这时 RRF 只能当粗排，后面必须接 reranker。</li>
+<li><strong>用户意图高度依赖语义细粒度。</strong> 比如 "不是 X 而是 Y" 这种否定/对比查询，BM25 会被关键词骗得很惨，RRF 把它请进来反而拖后腿，得先在单路做清洗。</li>
+<li><strong>文档数量极小。</strong> 几十篇的知识库，怎么排都差不多，上 RRF 是过度工程。</li>
+</ul>
+<p>一句话，<strong>RRF 是『把多路召回合并得体面』的工具，不是『让答案变准』的银弹</strong>。想让答案更准，还是得靠更好的 embedding、更干净的分块、更聪明的 reranker。</p>
+<hr>
+<h2 id="_3">八、几个容易踩的坑</h2>
+<p>真上线过就知道，RRF 公式简单，工程上还是有几块石头。</p>
+<ul>
+<li><strong>rank 从 0 开始还是从 1 开始？</strong> 原论文是从 1 开始。从 0 开始会让第一名拿到 ( \frac{1}{k} )，相对第二名的优势被放大，行为会微妙漂移。统一用 1-based，不要混。</li>
+<li><strong>Top N 截断位置。</strong> 每一路 Top 取多少，直接决定 "谁有资格投票"。取太小会漏召，取太大又让噪声进场。经验值 50~100 起步，再看线上。</li>
+<li><strong>重复文档 id。</strong> 多路检索经常返回同一份文档的不同 chunk，要先在 chunk 层还是 doc 层融合？通常先在 chunk 层融合，再按 doc 聚合，效果更稳。</li>
+<li><strong>( k ) 真的不用调吗？</strong> 大部分时候不用。真要动，也先去看数据：是不是某一路明显比另一路可信？那该做的是在上游调，不是在 ( k ) 上找补。</li>
+<li><strong>Reranker 之后别再套 RRF。</strong> 见过有人在 reranker 之后又来一次 RRF，美其名曰 "再融合一次"。reranker 输出的就是精排序，再 RRF 等于把精排的信息又抹平回去，得不偿失。</li>
+</ul>
+<hr>
+<h2 id="_4">九、教学模式：把每一票都打出来给你看</h2>
+<p>如果你要给团队讲一次 RRF，或者自己想看清楚每个文档是怎么一步步拿到分数的，下面这个版本比上面的生产版更适合——它把每条投票都打出来：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">defaultdict</span>
+
+
+<span class="k">def</span> <span class="nf">rrf_fusion_trace</span><span class="p">(</span><span class="n">ranked_lists</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">60</span><span class="p">):</span>
+    <span class="n">scores</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">list_idx</span><span class="p">,</span> <span class="n">ranked</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">ranked_lists</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;--- list </span><span class="si">{</span><span class="n">list_idx</span><span class="si">}</span><span class="s2"> ---&quot;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">rank</span><span class="p">,</span> <span class="n">doc_id</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">ranked</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+            <span class="n">contrib</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="p">(</span><span class="n">k</span> <span class="o">+</span> <span class="n">rank</span><span class="p">)</span>
+            <span class="n">scores</span><span class="p">[</span><span class="n">doc_id</span><span class="p">]</span> <span class="o">+=</span> <span class="n">contrib</span>
+            <span class="nb">print</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;  </span><span class="si">{</span><span class="n">doc_id</span><span class="si">}</span><span class="s2">  rank=</span><span class="si">{</span><span class="n">rank</span><span class="si">}</span><span class="s2">  &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;contrib=</span><span class="si">{</span><span class="n">contrib</span><span class="si">:</span><span class="s2">.6f</span><span class="si">}</span><span class="s2">  total=</span><span class="si">{</span><span class="n">scores</span><span class="p">[</span><span class="n">doc_id</span><span class="p">]</span><span class="si">:</span><span class="s2">.6f</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+    <span class="k">return</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">scores</span><span class="o">.</span><span class="n">items</span><span class="p">(),</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">reverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">bm25</span>   <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;B&quot;</span><span class="p">,</span> <span class="s2">&quot;C&quot;</span><span class="p">]</span>
+    <span class="n">vector</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;B&quot;</span><span class="p">,</span> <span class="s2">&quot;D&quot;</span><span class="p">,</span> <span class="s2">&quot;A&quot;</span><span class="p">]</span>
+    <span class="k">for</span> <span class="n">doc_id</span><span class="p">,</span> <span class="n">score</span> <span class="ow">in</span> <span class="n">rrf_fusion_trace</span><span class="p">([</span><span class="n">bm25</span><span class="p">,</span> <span class="n">vector</span><span class="p">],</span> <span class="n">k</span><span class="o">=</span><span class="mi">60</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">doc_id</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">score</span><span class="si">:</span><span class="s2">.6f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<p>跑出来你会看到类似：</p>
+<div class="highlight"><pre><span></span><code>--- list 1 ---
+  A  rank=1  contrib=0.016393  total=0.016393
+  B  rank=2  contrib=0.016129  total=0.016129
+  C  rank=3  contrib=0.015873  total=0.015873
+--- list 2 ---
+  B  rank=1  contrib=0.016393  total=0.032522
+  D  rank=2  contrib=0.016129  total=0.016129
+  A  rank=3  contrib=0.015873  total=0.032266
+B: 0.032522
+A: 0.032266
+D: 0.016129
+C: 0.015873
+</code></pre></div>
+
+<p>一眼看明白两件事：</p>
+<ul>
+<li>B 和 A 都是 "两路都露过脸" 的文档，所以它们的分数<strong>几乎翻倍</strong>（两条 (1/(k+r)) 加起来），直接把只出现一次的 C 和 D 甩开一个身位。</li>
+<li>B 胜出 A 的差距来自 "谁在那一路排得更靠前" —— B 在第二路是第 1，A 在第二路是第 3，就这点细微差别把 B 顶到冠军。</li>
+</ul>
+<p><strong>把这 7 行输出放大给同事看一遍，比你讲半小时 PPT 还管用</strong> 。RRF 不是什么黑魔法，它就是一种 "投票 + 讲信用" 的打分方式，越拆越觉得朴素。</p>
+<hr>
+<h2 id="_5">十、一句话总结 + 思维导图</h2>
+<p><strong>RRF 不是最优解，但它是 RAG 里『默认该放的那块拼图』</strong>：让多路召回在没人调权重的情况下，体面地合在一起。你想做得更准，是在它前面放更好的检索器，在它后面放更强的 reranker，而不是把它换掉。</p>
+<div class="highlight"><pre><span></span><code>@startmindmap
+* RRF 倒数排名融合
+** 它是什么
+*** 多路检索结果融合算法
+*** 只看排名 不看分数
+*** 公式: sum(1/(k+rank))
+*** k 常用 60
+** 为什么好用
+*** 不挑分数尺度
+*** 抗噪声
+*** 多路召回天然友好
+*** 不用训练 确定性
+** 为什么加 k
+*** 不加: 1/rank 头部差太大
+*** 加 60: 第 1 vs 第 2 差 1.6%
+*** 削弱单路第一名霸权
+*** 两张第三票 &gt; 一张第一票
+** 在 RAG 里的位置
+*** 粗排汇总层
+*** 上游: BM25 + 向量 + 元数据
+*** 下游: reranker + LLM
+** 什么时候用
+*** 两路或更多检索
+*** 分数尺度不一致
+*** 项目早期 稳召回
+** 什么时候别用
+*** 只有一路检索
+*** 极致精度场景
+*** 否定/对比类查询
+*** 知识库极小
+** 工程坑
+*** rank 从 1 开始
+*** Top N 截断位置
+*** chunk 层还是 doc 层
+*** reranker 后别再 RRF
+@endmindmap
+</code></pre></div>
+
+<p><img alt="RRF 思维导图" src="../images/journal_20260419_rrf_reciprocal_rank_fusion_mindmap.png"></p>
+<hr>
+<h2 id="_6">十一、扩展阅读</h2>
+<ul>
+<li>原论文：Cormack, Clarke, Büttcher. <em>Reciprocal Rank Fusion outperforms Condorcet and individual Rank Learning Methods</em>. SIGIR 2009. <a href="https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf">https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf</a></li>
+<li>Elasticsearch 官方文档里的 RRF 章节：<a href="https://www.elastic.co/guide/en/elasticsearch/reference/current/rrf.html">https://www.elastic.co/guide/en/elasticsearch/reference/current/rrf.html</a></li>
+<li>LangChain 的 EnsembleRetriever 实现：<a href="https://python.langchain.com/docs/integrations/retrievers/ensemble">https://python.langchain.com/docs/integrations/retrievers/ensemble</a></li>
+<li>给代码仓库造一个 DeepWiki：<a href="../journal/journal_20260416_codekg_rag_deepwiki.html">Tree-sitter + Embedding + 图谱 + LLM 的方法论</a></li>
+</ul>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。</p>
+  </div>
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/tag/rag.html">RAG</a>
+      <a href="https://www.fanyamin.com/tag/rrf.html">RRF</a>
+      <a href="https://www.fanyamin.com/tag/reciprocal-rank-fusion.html">Reciprocal Rank Fusion</a>
+      <a href="https://www.fanyamin.com/tag/bm25.html">BM25</a>
+      <a href="https://www.fanyamin.com/tag/vector-search.html">Vector Search</a>
+      <a href="https://www.fanyamin.com/tag/hybrid-search.html">Hybrid Search</a>
+      <a href="https://www.fanyamin.com/tag/reranker.html">Reranker</a>
+      <a href="https://www.fanyamin.com/tag/retrieval.html">Retrieval</a>
+    </p>
+  </div>
+
+
+  <div class="center social-share" style="margin: 1.5em 0; text-align: center;">
+    <p style="margin-bottom: 0.5em; color: #888;">📤 Share this article</p>
+    <a href="https://twitter.com/intent/tweet?text=RRF%20%E5%80%92%E6%95%B0%E6%8E%92%E5%90%8D%E8%9E%8D%E5%90%88%EF%BC%9ARAG%20%E9%87%8C%E9%82%A3%E4%B8%AA%E7%9C%8B%E8%B5%B7%E6%9D%A5%E5%9C%9F%E3%80%81%E5%8D%B4%E4%B8%80%E7%9B%B4%E6%B2%A1%E8%A2%AB%E6%8D%A2%E6%8E%89%E7%9A%84%E5%B0%8F%E5%85%AC%E5%BC%8F&url=https://www.fanyamin.com/rrf-dao-shu-pai-ming-rong-he-rag-li-na-ge-kan-qi-lai-tu-que-yi-zhi-mei-bei-huan-diao-de-xiao-gong-shi.html"
+       target="_blank" rel="noopener" title="Share on Twitter/X"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#1da1f2; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      𝕏 Twitter
+    </a>
+    <a href="https://www.linkedin.com/sharing/share-offsite/?url=https://www.fanyamin.com/rrf-dao-shu-pai-ming-rong-he-rag-li-na-ge-kan-qi-lai-tu-que-yi-zhi-mei-bei-huan-diao-de-xiao-gong-shi.html"
+       target="_blank" rel="noopener" title="Share on LinkedIn"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#0077b5; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      💼 LinkedIn
+    </a>
+    <a href="javascript:void(0);" onclick="copyLink('https://www.fanyamin.com/rrf-dao-shu-pai-ming-rong-he-rag-li-na-ge-kan-qi-lai-tu-que-yi-zhi-mei-bei-huan-diao-de-xiao-gong-shi.html')" title="Copy link"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#666; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em; cursor:pointer;">
+      🔗 Copy Link
+    </a>
+    <script>
+    function copyLink(url) {
+      navigator.clipboard.writeText(url).then(function() {
+        alert('链接已复制！');
+      });
+    }
+    </script>
+  </div>
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/gei-dai-ma-cang-ku-zao-yi-ge-deepwikitree-sitter-embedding-tu-pu-llm-de-fang-fa-lun.html" title="给代码仓库造一个 DeepWiki：Tree-sitter + Embedding + 图谱 + LLM 的方法论">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/2026-04-20-test-ai-skill-for-coding-agents.html" title="给 Cursor、Codex、Claude Code 用的 AI Skill，到底该怎么测">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/2026-01-15-rag-elasticsearch-database.html">RAG 进阶指南：别只盯着向量数据库，Elasticsearch 才是扫地僧</a></li>
+      <li><a href="https://www.fanyamin.com/2026-03-10-pgvector-rag.html">用 pgvector 做 RAG：别急着上 Pinecone，你的 PostgreSQL 就够了</a></li>
+      <li><a href="https://www.fanyamin.com/gei-dai-ma-cang-ku-zao-yi-ge-deepwikitree-sitter-embedding-tu-pu-llm-de-fang-fa-lun.html">给代码仓库造一个 DeepWiki：Tree-sitter + Embedding + 图谱 + LLM 的方法论</a></li>
+      <li><a href="https://www.fanyamin.com/obsidian-jia-llmge-ren-zhi-shi-ku-de-zheng-que-da-kai-fang-shi.html">Obsidian 加 LLM，个人知识库的正确打开方式</a></li>
+      <li><a href="https://www.fanyamin.com/2026-02-05-rag-claude-skill-knowledge-base.html">如何打造个人与项目知识库：从全文搜索到 RAG，再到 Claude Skill</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

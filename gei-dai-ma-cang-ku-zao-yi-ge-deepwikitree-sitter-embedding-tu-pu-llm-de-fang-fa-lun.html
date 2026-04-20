@@ -79,7 +79,7 @@
     "name": "Walter Fan"
   },
   "datePublished": "2026-04-16T23:40:00+08:00",
-  "dateModified": "2026-04-17T01:10:00+08:00",
+  "dateModified": "2026-04-20T01:30:00+08:00",
   "url": "https://www.fanyamin.com/gei-dai-ma-cang-ku-zao-yi-ge-deepwikitree-sitter-embedding-tu-pu-llm-de-fang-fa-lun.html",
   "mainEntityOfPage": {
     "@type": "WebPage",
@@ -106,7 +106,7 @@
   <meta property="og:url" content="https://www.fanyamin.com/gei-dai-ma-cang-ku-zao-yi-ge-deepwikitree-sitter-embedding-tu-pu-llm-de-fang-fa-lun.html"/>
   <meta property="og:type" content="article"/>
   <meta property="article:published_time" content="2026-04-16 23:40:00+08:00"/>
-  <meta property="article:modified_time" content="2026-04-17 01:10:00+08:00"/>
+  <meta property="article:modified_time" content="2026-04-20 01:30:00+08:00"/>
   <meta property="article:author" content="https://www.fanyamin.com/author/walter-fan.html">
   <meta property="article:section" content="Journal"/>
   <meta property="article:tag" content="RAG"/>
@@ -226,11 +226,11 @@
 </tr>
 <tr>
 <td><strong>Version</strong></td>
-<td>v1.2</td>
+<td>v1.6</td>
 </tr>
 <tr>
 <td><strong>Updated</strong></td>
-<td>2026-04-17</td>
+<td>2026-04-20</td>
 </tr>
 <tr>
 <td><strong>License</strong></td>
@@ -248,32 +248,32 @@
 <blockquote>
 <p>"你自己看下代码嘛，很简单的。"</p>
 </blockquote>
-<p>简单个头。一个"成熟"的项目，动辄几十万行、几百个文件、依赖一堆内部库。新人不是不想看，是根本不知道该从哪个文件开始。README 基本是摆设，架构图是两年前的，注释是写给编译器看的。</p>
-<p>然后大家把希望寄托在 AI 上：<strong>"把整个仓库丢给 Cursor / ChatGPT 不就行了吗？"</strong></p>
-<p>你试过就知道：上下文一爆，LLM 直接幻觉。它会自信地编造一个 <code>SyncManager.run()</code> 给你，文件路径都对得上格式，就是项目里根本没这个类。</p>
+<p>简单个头。一个"成熟"的项目，动辄几十万行、几百个文件、依赖一堆内部库。新人不是不想看，是根本不知道从哪个文件开始。README 停在两年前，架构图早就对不上，注释是写给编译器看的不是给人看的。</p>
+<p>老同事这时候通常会掏出新玩具：<strong>"把整个仓库丢给 Cursor / ChatGPT 不就行了吗？"</strong></p>
+<p>你试过就知道，上下文一爆，LLM 直接开始编。它会一脸自信地写出一个 <code>SyncManager.run()</code>，文件路径格式都对，就是项目里压根没这个类。你把这份答案转给新人，新人再去问老同事，三个回合下来，大家一起怀疑人生。</p>
 <p>所以 DeepWiki、Sourcegraph Cody、Cursor 的 Codebase Indexing 这些产品火起来，背后不是因为模型变聪明了，而是因为他们想明白了一件事：</p>
 <blockquote>
 <p><strong>代码库不是文档，不能按字符切块；代码的灵魂在 AST 和调用关系里，而不是字面意思。</strong></p>
 </blockquote>
-<p>这篇不讲具体实现，只聊方法论——折腾出来一个能在本地跑起来的、麻雀虽小的 DeepWiki 平替，背后是四件套：</p>
+<p>我自己折腾过一个麻雀虽小的 DeepWiki 平替，本地就能跑。写下来不讲具体代码，只聊方法论，背后就四件套：</p>
 <p><strong>Tree-sitter 解析 + Embedding 向量 + 图数据库 + LLM 生成</strong>。</p>
-<p>读完你能抄走：整体流程、每一层的取舍、几个容易踩的坑，以及一份可执行的落地 CheckList。</p>
+<p>读完你能抄走：整体流程、每一层的取舍、几个真踩过的坑，末尾一份 CheckList。</p>
 <hr>
-<h2 id="_2">二、为什么"代码不是散文"？—— 先把错误做法过一遍</h2>
-<p>先劝退一种常见的"Demo 级做法"：</p>
+<h2 id="_2">二、为什么"代码不是文稿"</h2>
+<p>先劝退一下最常见的 Demo 级做法：</p>
 <ol>
 <li>读所有文件</li>
 <li>用 <code>RecursiveCharacterTextSplitter</code> 每 1000 字符切一段</li>
 <li>丢进 FAISS / Chroma</li>
-<li>拿问题 embed 一下，取 Top-5，扔给 LLM</li>
+<li>query embed 一下取 Top-5，扔给 LLM</li>
 </ol>
-<p>这套做法在写博客文章、PDF 手册上还凑合，在代码库上基本废掉。原因有三：</p>
-<ol>
-<li><strong>切块破坏语义</strong>。一个函数可能刚好卡在 1000 字符的边缘被劈成两半。Embedding 看到的半段函数，语义跟完整函数差出十万八千里。</li>
-<li><strong>缺少结构化过滤</strong>。你想问"所有 <code>Handle*</code> 开头的 HTTP handler"，向量检索做不到——它只会给你"语义相似"的东西，而不是"类型=函数且名字以 Handle 开头"。</li>
-<li><strong>丢失调用关系</strong>。代码的灵魂是<strong>谁调用谁、谁实现了谁、谁 import 了谁</strong>。纯向量检索能找到"相似代码"，但找不到"<code>runSync</code> 到底被谁触发的"。</li>
-</ol>
-<p>所以要做对，得先把一段代码<strong>解析成带结构的实体</strong>，而不是字符串块。</p>
+<p>这套流程在 PDF 手册、博客文章上还凑合，在代码库上基本废掉。毛病就三条：</p>
+<ul>
+<li><strong>切块破坏语义</strong>。一个函数刚好卡在 1000 字符边缘被劈成两半，embedding 看到的半截函数，语义跟完整函数差出十万八千里。就像把一篇议论文从中间咔嚓一刀，上半截看起来在喊口号，下半截看起来在讲段子，合起来才是原意。</li>
+<li><strong>缺少结构化过滤</strong>。你想问 "所有 <code>Handle*</code> 开头的 HTTP handler"，向量检索给不出来——它只会吐 "语义相似" 的东西，而不是 "类型=函数且名字以 Handle 开头" 。</li>
+<li><strong>丢失调用关系</strong>。代码的灵魂是 <strong>谁调用谁、谁实现了谁、谁 import 了谁</strong> ，纯向量检索能找到 "长得像的代码" ，找不到 " <code>runSync</code> 是被谁触发的" 。</li>
+</ul>
+<p><strong>代码是系统，不是文稿</strong>。要做对，先把一段代码解析成带结构的实体，而不是字符串块。</p>
 <hr>
 <h2 id="_3">三、整体架构：四件套各司其职</h2>
 <p>先上一张总图，后面每一节对应图里的一块：</p>
@@ -305,15 +305,64 @@
     end
 </code></pre></div>
 
-<p>里面有三条关键思路，先点出来，后面逐层展开：</p>
+<p>图看起来零件不少，其实就三条主干，先点出来，后面逐层展开：</p>
 <ul>
-<li><strong>双栈存储</strong>：向量库解决"模糊语义匹配"，图数据库解决"精确结构关系"，谁都替代不了谁。</li>
-<li><strong>Entity 是一等公民</strong>：不是 chunk，不是文件，是"函数/类/文件"这种有类型、有位置的东西。</li>
-<li><strong>增量同步</strong>：Git diff 决定只重算变更部分。全量跑一次 10 分钟，增量可以压到几秒。</li>
+<li><strong>双栈存储</strong>：向量库管 "模糊语义匹配" ，图数据库管 "精确结构关系" ，谁都替代不了谁。硬用一个干两件事，得一个四不像。</li>
+<li><strong>Entity 是一等公民</strong>：不是 chunk，不是文件，是 "函数/类/文件" 这种有类型、有位置、有边界的东西。拿 chunk 当单位就像拿页码编索引，永远定位不到 "哪一行的那句话" 。</li>
+<li><strong>增量同步</strong>：Git diff 决定只重算变更部分。全量跑一次 10 分钟，增量能压到几秒——从"每次改完代码去喝杯咖啡再回来"到"保存即刷新"，工程师体感直接换挡。</li>
 </ul>
-<h3 id="uml">核心数据模型（UML）</h3>
-<p>整套系统能不能跑起来，先看模型对不对。模型错了，后面全歪。</p>
-<p><img alt="代码库 RAG 数据模型" src="../images/journal_20260416_codekg_rag_deepwiki_model.png"></p>
+<blockquote>
+<p>这种分工不是我拍脑袋定的。Yu 等人 2023 年那篇 <em>LLMs for Knowledge Graph Construction and Reasoning</em> 跑了八个数据集，结论很扎心： <strong>LLM 更适合当"推理助手"，而不是"少样本抽取器"</strong> 。翻译成人话就是，别指望 LLM 替你抽实体、建边，那是脏活累活；让它在已经结构化好的图上做推理和回答，才是它擅长的。双栈存储里，图和向量干的就是"抽取和整理"那一半，LLM 只负责最后"说人话"那一段。各司其职。</p>
+</blockquote>
+<h3 id="_4">核心数据模型</h3>
+<p>模型错了后面全歪，所以先把骨架定下来。整套系统其实只要五张"表"——详细 UML 放在下面折叠块里，正文只讲设计取舍：</p>
+<table>
+<thead>
+<tr>
+<th>表</th>
+<th>关键字段</th>
+<th>干啥的</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Repository</strong></td>
+<td><code>id / branch / last_successful_commit</code></td>
+<td>每个仓库一行，记住"上次同步到哪了"</td>
+</tr>
+<tr>
+<td><strong>Entity</strong></td>
+<td><code>id / type / name / file_path / start_line / end_line / signature / doc</code></td>
+<td>一等公民：函数、类、文件</td>
+</tr>
+<tr>
+<td><strong>EmbeddingVector</strong></td>
+<td><code>entity_id → vector[dim]</code></td>
+<td>和 Entity 一对一，向量库单独存</td>
+</tr>
+<tr>
+<td><strong>Relation</strong></td>
+<td><code>source_id → target_id (type, weight)</code></td>
+<td><code>CALLS / CONTAINS / IMPORTS</code> 等，入图库</td>
+</tr>
+<tr>
+<td><strong>KnowledgeDoc</strong></td>
+<td><code>repo_id / doc_type / content</code></td>
+<td>生成出来的 Overview、Repo Map 等</td>
+</tr>
+</tbody>
+</table>
+<p>三条不起眼但决定生死的设计规则：</p>
+<ul>
+<li><strong>Entity ID 必须是内容 hash</strong>（例如 <code>sha256(repo + path + type + name + start_line)</code> 前 8 字节）。 <strong>不可变、可重现</strong> 是增量同步的前提——自增 ID 一上量就撞车。</li>
+<li><strong>向量表和 Entity 解耦</strong> 。换 sqlite-vec 还是 pgvector，Entity 本体不该感知到。</li>
+<li><strong>Relation 进图库、不进主库</strong> 。一个函数既被 CONTAIN、又 CALL 别人，关系表一张根本扛不住，图库天生就是干这个的。</li>
+</ul>
+<details><summary>完整 UML（点开看）</summary>
+
+![代码库 RAG 数据模型](../images/journal_20260416_codekg_rag_deepwiki_model.png)
+
+
 <div class="highlight"><pre><span></span><code>@startuml
 skinparam backgroundColor #FAFAFA
 
@@ -376,12 +425,10 @@ Repository &quot;1&quot; --&gt; &quot;*&quot; KnowledgeDoc
 @enduml
 </code></pre></div>
 
-<p>三条说明：</p>
-<ul>
-<li><strong>Entity ID 用内容 hash</strong>（如 <code>sha256(repo + path + type + name + start_line)</code> 前 8 字节），<strong>不可变、可重现</strong>。增量同步 upsert 时才不会重复。</li>
-<li><strong>EmbeddingVector 单独表</strong>：向量库和主库解耦，换 sqlite-vec 还是 pgvector 都不影响 Entity 本身。</li>
-<li><strong>Relation 独立于 Entity</strong>：一个函数可以同时是"被 CONTAINS"和"CALLS 别人"，一张 Entity 表扛不住这么多维度，图库来担。</li>
-</ul>
+
+
+</details>
+
 <hr>
 <h2 id="tree-sitter">四、解析层：Tree-sitter 才是切块的正确姿势</h2>
 <h3 id="tree-sitter_1">为什么是 Tree-sitter</h3>
@@ -392,7 +439,7 @@ Repository &quot;1&quot; --&gt; &quot;*&quot; KnowledgeDoc
 <li>对"烂代码"容错——半截代码、语法错误也能解析出能用的 AST</li>
 <li>有现成的 Go / Python / Java / JS / C++ grammar</li>
 </ul>
-<h3 id="_4">解析要吐出什么？</h3>
+<h3 id="_5">解析要吐出什么？</h3>
 <p>解析器的目标不是"把代码读一遍"，而是<strong>吐出一份语言无关的中间表示</strong>。每个文件输出一个结构体，大致长这样：</p>
 <div class="highlight"><pre><span></span><code>CodeMetadata {
     file_path:  relative path
@@ -405,21 +452,24 @@ Repository &quot;1&quot; --&gt; &quot;*&quot; KnowledgeDoc
 </code></pre></div>
 
 <p>然后把这份中间表示转成统一的 <code>Entity</code> 列表，扔进主存储。<strong>所有语言到这一层就被抹平了</strong>——下游的向量化、建图、检索，完全不用关心底层是 Go 还是 Python。</p>
-<h3 id="_5">三个关键细节</h3>
+<h3 id="_6">三个关键细节</h3>
 <ul>
 <li><strong>保留行号</strong>：<code>start_line / end_line</code> 一定要透传到最后。生成回答时才能精确指给用户"去看 <code>xxx.go:123-145</code>"，幻觉空间压到最小。</li>
 <li><strong>Body 截断</strong>：单个函数体截到 3000–4000 字符够用。超过这个长度往往是"God function"，本身就该重构，硬塞进 embedding 意义不大。</li>
 <li><strong>跳过二进制与无关目录</strong>：<code>vendor/</code>、<code>node_modules/</code>、<code>__pycache__/</code>、<code>dist/</code>、<code>build/</code>、<code>.git/</code> 一定要在遍历时就 skip，否则你会 embed 几万个第三方库函数，账单炸穿。</li>
 </ul>
-<h3 id="_6">容易踩的坑</h3>
+<h3 id="_7">容易踩的坑</h3>
 <ul>
 <li>Tree-sitter 的 <code>tree.Close()</code> 要记得释放，不然大仓库扫下来能吃掉几 G 内存。</li>
 <li>闭包、匿名函数拿不到稳定 identifier，直接丢弃，不要硬塞一个 <code>anonymous_42</code> 进去。</li>
 <li>多语言 grammar 的节点名不一样（Go 是 <code>function_declaration</code>，Python 是 <code>function_definition</code>），<strong>每种语言写一个薄 visitor</strong>，不要试图写一个大而全的"通用访问器"。</li>
 </ul>
+<blockquote>
+<p><strong>这一层的底线</strong>：吐出来的 Entity 必须 <strong>语言无关、带精确位置、可重入</strong> 。做到这三件，下游每一层都省事；做不到，后面怎么补都补不回来。</p>
+</blockquote>
 <hr>
 <h2 id="embedding">五、向量层：Embedding 不是"把代码丢进去"那么简单</h2>
-<h3 id="_7">结构化输入才是关键</h3>
+<h3 id="_8">结构化输入才是关键</h3>
 <p>很多人第一次做代码向量化，直接把函数源码丢进 embedding。能用，但召回质量差。原因是 embedding 模型训练时主要看的是<strong>自然语言 + 少量代码</strong>，你扔一整段代码进去，它能抓的"概念信号"被符号稀释了。</p>
 <p>正确做法是<strong>结构化输入模板</strong>，只喂"高浓缩信号"：</p>
 <div class="highlight"><pre><span></span><code>Language: Go
@@ -431,9 +481,9 @@ Doc: runSync performs a full repository scan, parses all code files,
      TriggerSync when no incremental diff is available.
 </code></pre></div>
 
-<p>效果提升很明显：名字、签名、文档字符串这三个东西<strong>语义密度最高</strong>，embedding 模型一看就懂。函数体反而是噪音——把噪音留给全文检索或者图检索去处理。</p>
+<p>别看这几行模板土，效果差别很大：名字、签名、doc string 这三个东西 <strong>语义密度最高</strong> ，embedding 一看就懂。函数体反而是噪音——把噪音留给全文检索或图检索去啃。</p>
 <blockquote>
-<p>经验法则：<strong>Embedding 吃"高浓缩信号"，关键字/图吃"完整细节"</strong>。不要让一个工具干所有事。</p>
+<p>经验法则：<strong>Embedding 吃"高浓缩信号"，关键字/图吃"完整细节"</strong>。一个工具别指望它干所有活，就像让架构师去接电话一样不合理。</p>
 </blockquote>
 <h3 id="sqlite-vec-vs-pgvector">sqlite-vec vs pgvector：真的要选吗？</h3>
 <p>两个都值得了解，但选型判断并不复杂：</p>
@@ -464,21 +514,24 @@ Doc: runSync performs a full repository scan, parses all code files,
 </tbody>
 </table>
 <p><strong>sqlite-vec 一个被忽视的好处</strong>：它是 SQLite 的虚拟表扩展，检索结果可以直接和普通 SQL <code>JOIN</code>。你拿 <code>entity_id</code> 回捞 Entity 元数据——<strong>语义检索 + 关系型过滤，一条 SQL 搞定</strong>，完全不需要单独维护一个向量数据库实例。</p>
-<h3 id="_8">批量、重试、限流：工程化三件套</h3>
+<h3 id="_9">批量、重试、限流：工程化三件套</h3>
 <p>Embedding API 很容易被你"打爆"。上生产前，下面三件事必须到位：</p>
 <ul>
 <li><strong>批量</strong>：一次 50 条一起发，省 token 也省 RTT。</li>
 <li><strong>指数退避重试</strong>：第 N 次重试等 <code>base * 2^N</code> 毫秒，避免雪崩。</li>
 <li><strong>速率限制</strong>：按 RPM（每分钟请求数）算最小间隔，尤其对自建 BGE / Qwen-Embedding 的团队。</li>
 </ul>
-<p>看起来像八股，但真上生产缺一不可。</p>
+<p>看起来像八股，真上生产缺一不可。</p>
+<blockquote>
+<p><strong>这一层的底线</strong> ： <strong>向量只吃高浓缩信号，绝不吃整段函数体</strong> 。做对了，Top-K 召回质量直接翻倍；做错了，后面怎么调 K 都救不回来。</p>
+</blockquote>
 <hr>
-<h2 id="_9">六、图层：为什么代码非得有图不可</h2>
-<h3 id="_10">一个具体场景</h3>
+<h2 id="_10">六、图层：为什么代码非得有图不可</h2>
+<h3 id="_11">一个具体场景</h3>
 <p>回到开头那个问题："<code>runSync</code> 从哪里被调用？"</p>
 <p>纯向量检索会给你一堆"看起来跟 sync 有关"的函数。对，但没用——新人要的是<strong>精确的调用链</strong>：谁触发的、里面又调了谁、失败了走哪条路。</p>
 <p>这就是图数据库出场的理由。推荐用 Memgraph（跟 Neo4j 的 Bolt 协议兼容，但单机性能更猛、纯内存），已有 Neo4j 的团队直接用也可以。</p>
-<h3 id="_11">边的类型必须有限可枚举</h3>
+<h3 id="_12">边的类型必须有限可枚举</h3>
 <p>不要试图用一个通用的 "RELATED" 搞定所有关系。代码世界里真正有用的边就那么几种：</p>
 <div class="highlight"><pre><span></span><code>RelationType :=
     CONTAINS     # file 包含 function/class
@@ -492,7 +545,7 @@ Doc: runSync performs a full repository scan, parses all code files,
 </code></pre></div>
 
 <p>一开始先搞定 <code>CONTAINS / IMPORTS / CALLS</code> 三种，80% 的查询场景就能覆盖了。其他的慢慢加。</p>
-<h3 id="_12">调用关系的"穷人版"检测</h3>
+<h3 id="_13">调用关系的"穷人版"检测</h3>
 <p>理论上调用关系应该用 LSP / 编译器做静态分析，拿到精确的符号表。但实际工程里经常为了速度选择<strong>正则匹配</strong>，流程大致是：</p>
 <ol>
 <li>扫一遍所有函数，建一张 <code>functionByName</code> 的索引</li>
@@ -506,7 +559,7 @@ Doc: runSync performs a full repository scan, parses all code files,
 <li>实现成本十分之一</li>
 </ul>
 <p>对"帮新人建立直觉"、"生成 DeepWiki 式文档"来说，精度 80% 够用了。如果后续要做精确的 refactor 推荐或 dead code 检测，再换成 LSP 也不晚。</p>
-<h3 id="_13">降噪：别把内置类型塞进图里</h3>
+<h3 id="_14">降噪：别把内置类型塞进图里</h3>
 <p>这个点特别容易被忽视——<strong>不加过滤的图，90% 都是垃圾节点</strong>。</p>
 <p>Go 里的 <code>string / int / len / make</code>、Python 里的 <code>list / dict / print</code>、Java 里的 <code>String / Integer</code>……这些符号每个文件都出现，如果都建节点，打开图你只会看到一团乱麻。</p>
 <p><strong>降噪策略两条</strong>：</p>
@@ -524,30 +577,44 @@ Doc: runSync performs a full repository scan, parses all code files,
 <li>业务上可以接受"几秒的不一致窗口"，查询端加个重试就好。</li>
 </ul>
 <hr>
-<h2 id="_14">七、检索层：混合检索才靠谱</h2>
-<p>只用向量检索会丢精确匹配（"我就要找 <code>runSync</code> 这个名字"），只用关键字检索会丢语义（"我要找所有处理鉴权的函数"）。所以必须<strong>混合</strong>。</p>
-<h3 id="_15">最小可行检索策略</h3>
-<p>三板斧，按优先级：</p>
+<h2 id="_15">七、检索层：混合检索才靠谱</h2>
+<p>解析、向量、图三个存储都备齐之后，检索这一层的核心原则就一句话—— <strong>不同检索器各有长短，永远混着用，别指望一根绳子挂所有灯笼</strong> 。</p>
+<h3 id="_16">最小可行三板斧</h3>
+<p>按优先级来：</p>
 <ol>
-<li><strong>向量优先</strong>：query embed → KNN → Top-K 候选</li>
-<li><strong>关键字兜底</strong>：embedding 服务挂了、key 没配，就退回"名字匹配 3 分、正文匹配 1 分"的朴素打分</li>
-<li><strong>图扩展</strong>：拿 Top-K 实体去图上取邻居（<code>CALLS</code> / <code>CONTAINS</code> 的 1–2 跳），一起打包给 LLM</li>
+<li><strong>向量优先</strong>：query embed → KNN → Top-K 候选。</li>
+<li><strong>关键字兜底</strong>：embedding 服务挂了、key 没配，就退回 "名字匹配 3 分、正文匹配 1 分" 的朴素打分。朴素打分有个好处是永远不会挂。</li>
+<li><strong>图扩展</strong>：拿 Top-K 实体去图上取邻居（<code>CALLS</code> / <code>CONTAINS</code> 的 1–2 跳），一起打包给 LLM。</li>
 </ol>
-<p>第三步才是 DeepWiki 能回答"为什么"类问题的秘密——用户问一个函数，你给 LLM 的是<strong>它加上它的上下游</strong>。</p>
+<p>第三步才是 DeepWiki 能答"为什么"类问题的招牌动作——用户问一个函数，你给 LLM 的是 <strong>它加上它的上下游</strong> ，而不是一个孤零零的函数体。</p>
 <h3 id="bm25-rrf">进阶版：BM25 + 向量 RRF 融合</h3>
-<p>真正的工业级做法是 <strong>BM25 + 向量做 RRF（Reciprocal Rank Fusion）</strong>——两个检索器各出一份排序，按 <code>1/(k+rank)</code> 加权合并。</p>
-<p>但作为第一版，"向量优先 + 关键字兜底"这种朴素实现完全够用，而且 debug 友好——你一看分数就知道它为什么排这个位置。不要一上来就堆算法，<strong>先让系统跑起来，再优化召回指标</strong>。</p>
+<p>工业级做法是 <strong>BM25 + 向量做 RRF（Reciprocal Rank Fusion）</strong> ：两个检索器各出一份排序，按 <code>1/(k+rank)</code> 加权合并。公式不难，RRF 专门写过一篇，可以翻前面那篇。</p>
+<p>真想再往前一步，2025 年 CodeFuse 团队在 NeurIPS 上发的 CGM（Code Graph Model，arXiv 2505.16901）给了一条更完整的流水线——他们叫 <strong>R4 chain</strong>：Rewriter 改写问题、Retriever 在代码图上取候选子图、Reranker 挑出最可能要改的文件、Reader 生成补丁。拆开看每一步都不神秘，但串起来在 SWE-bench Lite 上拿到了开源模型第一（43% 解决率）。 <strong>关键启发不是"上更强的模型"，而是"把检索这步再拆细一层"</strong> ——Rewriter 和 Reranker 各自解决一个你原本靠运气解决的问题。</p>
+<h3 id="graph-rag">再进阶：Graph RAG —— 当图本身成为检索入口</h3>
+<p>前面三板斧里图只是"配角"——向量先命中入口函数，图顺着 <code>CALLS</code>/<code>CONTAINS</code> 扩一两跳邻居，锦上添花。但要问出 <strong>DeepWiki 级别</strong> 的问题，图必须升级成一等公民，这个范式学术圈叫 <strong>Graph RAG</strong> 。</p>
+<p><strong>为什么向量 RAG 答不了这类问题</strong>？想象同事这么问：</p>
+<ul>
+<li>"这个项目的鉴权体系整体是怎么设计的？"</li>
+<li>"支付模块和订单模块之间的所有耦合点列一下。"</li>
+</ul>
+<p>答案 <strong>不在某一段代码里</strong> ，而是散落在几十上百个文件里，需要 <strong>先全局、后局部</strong> 。向量只会吐最相似的 top-k 切片，LLM 拿着这堆碎片拼不出图景——微软的 Edge et al. (arXiv 2404.16130, 2024) 把这类问题正名为 <strong>query-focused summarization (QFS)</strong> ，论文题目 <em>From Local to Global</em> 本身就是答案。</p>
+<p><strong>Graph RAG 的配方就两步</strong> ：建图时用 <strong>社区检测</strong>（Leiden/Louvain）把图切成"实体团"，对每个团 <strong>预生成一段摘要</strong> ，逐层上卷成一棵摘要树；查询时不走 top-k ，而是让每个相关社区的摘要 <strong>各出一份部分答案，再 map-reduce 归并</strong> 。在 1M tokens 的全局问题上，这套打法在"答得全不全、角度多不多样"两项都明显压过朴素 RAG。</p>
+<p>代码场景天然好切——<strong>package / module / 目录就是现成的社区</strong>，让 LLM 给每个 module 写一段"设计意图摘要"（50–200 字）存进图节点，全局问题走 module 摘要召回，局部问题退回向量+图扩展，再上强度就把 CGM 的 R4 chain 接在后面。</p>
+<blockquote>
+<p><strong>Graph RAG 对 DeepWiki 的意义</strong>：普通 RAG 做出来的是"代码碎片搜索引擎"；而 Wiki 承诺的是 <strong>"能从目录翻到章节、从章节读到段落"的可导航层级</strong> ——这个层级恰好就是 Graph RAG 的产物。缺了它你顶多做成加强版 ctags；有了它，才配叫 Wiki。</p>
+</blockquote>
+<p>不过作为第一版， "向量优先 + 关键字兜底" 完全够用， debug 也友好。Graph RAG 是 <strong>达到 "DeepWiki 级体验" 前的最后一道坎</strong> ， <strong>不是第一版该上的</strong> 。先让系统跑起来，再优化召回指标。</p>
 <hr>
 <h2 id="deepwiki_1">八、生成层：把检索结果拼成"像样的 DeepWiki 文档"</h2>
-<p>最后一步才是 LLM。很多人把 LLM 放在 C 位，其实它只是"翻译官"——把结构化的检索结果翻译成人话。</p>
+<p>最后一步才轮到 LLM——第三节已经讲过它的定位是"翻译官"、不是主角，这里只补怎么让它稳。上下文不对，它再聪明也白搭。</p>
 <h3 id="prompt">Prompt 必须带定位信息</h3>
-<p>两条硬规则，写进 system prompt：</p>
+<p>两条写进 system prompt 的硬规则：</p>
 <ul>
 <li><strong>强制引用路径+行号</strong>：<code>Always cite specific function/file locations.</code></li>
 <li><strong>允许说不知道</strong>：<code>If the code context is insufficient, say so honestly.</code></li>
 </ul>
-<p>第二条尤其重要。允许 LLM 说"不知道"，它就不会胡编；不允许，它就幻觉。同一个模型，给不给台阶，回答质量差一个量级。</p>
-<h3 id="_16">上下文拼装格式</h3>
+<p>第二条比第一条更关键。<strong>给 LLM 留一个"我不确定"的台阶，它就不会硬编；不留，它就开始创作</strong>。同一个模型、同一份上下文，给不给台阶，回答质量差一个量级。这条规律在我试过的 GPT、Claude、Qwen 上都成立，没有例外。</p>
+<h3 id="_17">上下文拼装格式</h3>
 <p>每段上下文前加<strong>结构化头</strong>，让 LLM 清楚看到类型、位置、范围：</p>
 <div class="highlight"><pre><span></span><code>### [1] function `runSync` (service.go:166-276)
 ```&lt;code-body&gt;```
@@ -573,7 +640,7 @@ Keep it under 500 words. Use Markdown.
 
 <p><strong>结构化 prompt 比开放式 prompt 稳定一个量级</strong>。你要的是一篇能放进 wiki 的文档，不是聊天，所以先告诉它"要分这五段，每段都要带真实路径和函数名"。</p>
 <hr>
-<h2 id="_17">九、把整条流水线串起来：一张时序图</h2>
+<h2 id="_18">九、把整条流水线串起来：一张时序图</h2>
 <p>前面八节分头讲了每一层，最后用一张时序图把索引和查询两个阶段串起来：</p>
 <p><img alt="代码库 RAG 时序图" src="../images/journal_20260416_codekg_rag_deepwiki_sequence.png"></p>
 <div class="highlight"><pre><span></span><code>@startuml
@@ -629,25 +696,20 @@ R --&gt; U: 精确回答
 <li><strong>索引阶段是"写多读少"</strong>：parse → embed → upsert → 建图。瓶颈在 embedding API。</li>
 <li><strong>查询阶段是"读多写少"</strong>：embed query → KNN → 图扩展 → 拼 prompt → LLM。瓶颈在 LLM。</li>
 </ul>
-<p>两个阶段的性能瓶颈不同，优化路径也不同——<strong>不要混在一起调</strong>。</p>
+<p>两个阶段的性能瓶颈不同，优化路径也不同—— <strong>不要混在一起调</strong> 。再往下拆，整条流水线真正值得琢磨的变量就两个： <strong>索引阶段能不能做增量，查询阶段能不能装下正确的上下文</strong> 。前者决定你能不能上生产，后者决定答案质量——下一节讲前者。</p>
 <hr>
-<h2 id="_18">十、工程化关键：增量同步才是上生产的分水岭</h2>
-<p>前面说的所有东西都基于一个前提——<strong>代码在变</strong>。如果每次代码一改就全量重跑：扫一次 5 分钟，embed 一次 10 分钟，谁受得了？所以增量同步不是优化项，是<strong>上不上生产的分水岭</strong>。</p>
-<h3 id="101-git-diff-git-log">10.1 为什么是 <code>git diff</code>，而不是 <code>git log</code>？</h3>
-<p>很多人的第一反应是"我遍历一下 <code>git log</code>，把每个 commit 的变更合一合就行了"。这是在给自己加戏。</p>
-<ul>
-<li><strong><code>git log</code></strong> 回答的是"这段时间有哪些 commit"——给你的是<strong>提交历史</strong></li>
-<li><strong><code>git diff &lt;A&gt;..&lt;B&gt;</code></strong> 回答的是"从 A 到 B 状态差了哪些文件"——给你的是<strong>最终态差集</strong></li>
-</ul>
-<p>为什么必须用 <code>diff</code>？<strong>同一个文件在多个 commit 里被改过也只需要处理一次</strong>。按 <code>log</code> 聚合会遇到一堆诡异场景：文件先加后删、先删后加、先改后 revert……自己写聚合逻辑很容易算错。<code>git diff &lt;from&gt;..HEAD --name-status</code> 已经帮你做了最终态聚合，直接用。</p>
-<h3 id="102-git">10.2 核心思路：用 Git 当变更源</h3>
-<p>每次同步成功后，把当前的 <code>HEAD commit</code> 记到 <code>Repository</code> 表里。下一次触发时：</p>
+<h2 id="_19">十、工程化关键：增量同步才是上生产的分水岭</h2>
+<p>前面讲的一切都有一个前提—— <strong>代码每天都在变</strong> 。代码一改就全量重跑？扫一次 5 分钟，embed 一次 10 分钟，上线第一天工程师就提桶跑路了。所以增量同步不是可选优化， <strong>是能不能上生产的分水岭</strong> 。</p>
+<p>这条路上 2024 年清华团队的 RepoAgent（arXiv 2402.16667）已经替咱们蹚过一遍，它的三件套正好是 "AST 解析 + 跨文件调用关系 + 监听 Git 变更做增量更新" ——和咱们接下来要讲的几乎一模一样。读完那篇你会发现，结论不是"哪种实现最优"，而是 <strong>"不做增量同步的代码知识库都只能活在 Demo 里"</strong> 。</p>
+<h3 id="101-git-diff-log">10.1 用 Git 当变更源：<code>diff</code> 而不是 <code>log</code></h3>
+<p>第一反应是"遍历 <code>git log</code> 把每个 commit 的变更合一合"，别——这是给自己加戏。 <code>log</code> 给的是 <strong>提交历史</strong> ， <code>diff</code> 给的是 <strong>最终态差集</strong> 。同一个文件在十个 commit 里被改了十次，用 diff 只需要处理一次；用 log 聚合，碰到"先加后删、先删后加、先改后 revert"这种诡异链，自己写聚合必翻车。 <code>git diff &lt;from&gt;..HEAD --name-status</code> 已经帮你把最终态算好了，直接用。</p>
+<p>核心闭环就三步：</p>
 <ol>
 <li>跑 <code>git diff &lt;last_successful_commit&gt;..HEAD --name-status</code></li>
-<li>按四种变更类型分别处理（下面表格）</li>
-<li>全部阶段成功，才推进 <code>last_successful_commit = HEAD</code></li>
+<li>按变更类型分别处理（下面那张表）</li>
+<li>全部阶段成功，才把 <code>last_successful_commit</code> 推进到 <code>HEAD</code></li>
 </ol>
-<p>这里有张状态图把整个闭环画清楚了：</p>
+<p>状态图把这个闭环画清楚了：</p>
 <p><img alt="增量同步状态机" src="../images/journal_20260416_codekg_rag_deepwiki_sync_state.png"></p>
 <div class="highlight"><pre><span></span><code>@startuml
 [*] --&gt; Idle : 仓库注册
@@ -689,62 +751,37 @@ Failed --&gt; Idle
 @enduml
 </code></pre></div>
 
-<h3 id="103">10.3 四种变更类型，四种处理方式</h3>
-<p><code>git diff --name-status</code> 的输出长这样：</p>
-<div class="highlight"><pre><span></span><code>A     internal/codekg/retriever/vector.go
-M     internal/codekg/service.go
-D     internal/codekg/legacy/old_parser.go
-R100  old_name.go -&gt; new_name.go
-</code></pre></div>
-
-<p>每种都有自己的正确姿势：</p>
+<h3 id="102">10.2 四种变更，四种姿势</h3>
+<p><code>git diff --name-status</code> 吐出来的状态码就那几种，落到处理逻辑上正好四类：</p>
 <table>
 <thead>
 <tr>
 <th>状态</th>
-<th>含义</th>
-<th>正确动作</th>
+<th>动作</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>A</code> Added</td>
-<td>新增文件</td>
+<td><code>A</code> 新增</td>
 <td>parse → 生成 Entity → embed → 建图边</td>
 </tr>
 <tr>
-<td><code>M</code> Modified</td>
-<td>修改文件</td>
-<td><strong>按 file_path 先整体 DELETE，再 parse 重建</strong></td>
+<td><code>M</code> 修改</td>
+<td><strong>按 file_path 先整体 DELETE，再 parse 重建</strong> （下面专门说）</td>
 </tr>
 <tr>
-<td><code>D</code> Deleted</td>
-<td>删除文件</td>
+<td><code>D</code> 删除</td>
 <td>删 Entity + 向量条目 + 图节点</td>
 </tr>
 <tr>
-<td><code>R</code> Renamed</td>
-<td>改名</td>
-<td>视为"D 旧路径 + A 新路径"</td>
-</tr>
-<tr>
-<td><code>C</code> Copied</td>
-<td>复制</td>
-<td>视为 A</td>
-</tr>
-<tr>
-<td><code>T</code> Type changed</td>
-<td>类型变化（罕见）</td>
-<td>视为 M</td>
+<td><code>R</code> 改名 / <code>C</code> 复制 / <code>T</code> 类型变化</td>
+<td>拆成 "D 旧 + A 新" 或按 M 处理</td>
 </tr>
 </tbody>
 </table>
-<p><strong>最容易踩坑的是 <code>M</code></strong>。直觉会告诉你"update 就行了嘛"——错。原因：</p>
-<blockquote>
-<p>Entity ID 是 <code>hash(repo + path + type + name + start_line)</code>。一个函数从第 100 行挪到第 120 行（哪怕一个字符都没改），<code>start_line</code> 变了，ID 就跟着变。用 upsert 永远命中不上旧记录，脏数据堆成山。</p>
-</blockquote>
-<p>所以 <code>M</code> 的正确做法是 <strong>"按 <code>file_path</code> 先整体 DELETE，再把新解析出来的 Entity 批量 INSERT"</strong>。丑，但稳。</p>
-<h3 id="104">10.4 最大的坑：图里的"悬空边"</h3>
+<p><strong>最容易踩的坑是 <code>M</code></strong> ——直觉会告诉你"update 就行了嘛"，错。 Entity ID 是 <code>hash(repo + path + type + name + start_line)</code> ，一个函数从第 100 行挪到第 120 行，哪怕一个字符都没改，<code>start_line</code> 变了 ID 就跟着变。 upsert 永远命中不上旧记录，脏数据一堆。</p>
+<p>所以 <code>M</code> 的正确姿势只有一种： <strong>按 <code>file_path</code> 先整体 DELETE，再把新解析出来的 Entity 批量 INSERT</strong> 。丑，但稳。</p>
+<h3 id="103">10.3 最大的坑：图里的"悬空边"</h3>
 <p>这是我自己踩过最贵的一个坑——<strong>只看文件 diff 不够</strong>。</p>
 <p>看下面这个场景：</p>
 <div class="highlight"><pre><span></span><code>文件 A.go 没改
@@ -758,78 +795,48 @@ R100  old_name.go -&gt; new_name.go
 <li><strong>激进法（推荐）</strong>：<strong>向量增量 + 图全量重建</strong>。每次同步，向量按 diff 精细更新；图库按 <code>repo_id</code> 整体 <code>DETACH DELETE</code> 再重建。</li>
 </ol>
 <p>为什么选 2？因为<strong>代码关系是非局部的</strong>，纠结局部更新不划算。图全量重建几万节点几万边也就 1–2 秒（Memgraph 是内存数据库），换来一行悬空边都没有的安心，血赚。</p>
-<h3 id="105">10.5 什么时候该<strong>放弃增量，回到全量</strong></h3>
-<p>增量不是银弹。三种情况必须退回全量：</p>
+<h3 id="104">10.4 什么时候该放弃增量、回到全量</h3>
+<p>增量不是银弹。三种情况老老实实走全量：</p>
 <ul>
-<li><strong>首次同步</strong>：<code>last_successful_commit</code> 为空，没 diff 可做</li>
-<li><strong>分支切换</strong>：<code>git diff main..HEAD</code> 可能算出几千个变更，增量反而更慢</li>
-<li><strong>大范围改动</strong>：diff 出来的文件数超过总文件数的 <strong>30%</strong>，用增量的 overhead 已经跟全量接近</li>
+<li><strong>首次同步</strong>：<code>last_successful_commit</code> 为空，没 diff 可做。</li>
+<li><strong>分支切换</strong>：<code>git diff main..HEAD</code> 能算出几千个变更，增量反而更慢。</li>
+<li><strong>大范围改动</strong>：diff 文件数超过总文件数的 <strong>30%</strong> ，增量的 overhead 已经接近全量。</li>
 </ul>
-<p>伪代码大致是：</p>
-<div class="highlight"><pre><span></span><code>if last_successful_commit == &quot;&quot;:
-    full_scan()
-elif current_branch != last_synced_branch:
-    full_scan()
-else:
-    changes = git_diff(last_successful_commit, HEAD)
-    if len(changes) &gt; total_files * 0.3:
-        full_scan()
-    else:
-        incremental_scan(changes)
-</code></pre></div>
-
-<p>别高估 diff 算法——<strong>早早退回全量，心平气和</strong>。</p>
-<h3 id="106">10.6 三条工程细节，少一条都会翻车</h3>
-<ol>
-<li><strong>先删后插，别指望 "update"</strong>。理由上面讲过了：start_line 一变 ID 就变，upsert 必产生脏数据。<code>DELETE WHERE file_path = ?</code> 再 <code>INSERT</code>，最干净。</li>
-<li><strong>失败绝不推进 <code>last_successful_commit</code></strong>。用一张 <code>SyncJob</code> 表记 <code>status / phase</code>，失败时 <code>status = failed</code>，<code>last_successful_commit</code> 保持不变。下次触发从<strong>上次成功点</strong>继续 diff，哪怕中间失败 10 次也不会漏文件。</li>
-<li><strong>给 panic 一条生路</strong>。<code>defer recover()</code> 把 panic 兜成 failed status，否则一次 OOM 能把后续所有增量同步带崩——更惨的是状态表里留一个"永远 running 中"的脏记录，没人敢重启。</li>
-</ol>
-<h3 id="107">10.7 真实性能收益</h3>
-<p>一个几万行 Go 的中等仓库实测：</p>
+<p>一句话经验： <strong>别高估 diff 算法，早早退回全量，心平气和</strong> 。</p>
+<p>此外还有两条必须守住的工程底线：</p>
+<ul>
+<li><strong>失败绝不推进 <code>last_successful_commit</code></strong> 。一张 <code>SyncJob</code> 表记 <code>status / phase</code> ，失败时 <code>status = failed</code>， <code>last_successful_commit</code> 保持不变。哪怕中间失败 10 次，下次触发仍从上次成功点继续 diff，不会漏文件。</li>
+<li><strong>给 panic 一条生路</strong> 。 <code>defer recover()</code> 把 panic 兜成 failed，否则一次 OOM 能把后续所有增量同步带崩——更惨的是状态表里留一个"永远 running"的脏记录，没人敢重启。</li>
+</ul>
+<h3 id="105">10.5 真实性能收益</h3>
+<p>一个几万行 Go 的中等仓库实测，全量约 3 分钟，增量能做到：</p>
 <table>
 <thead>
 <tr>
 <th>场景</th>
-<th>全量耗时</th>
 <th>增量耗时</th>
 <th>提速</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>首次入库</td>
-<td>~3 分钟</td>
-<td>—</td>
-<td>—</td>
-</tr>
-<tr>
 <td>改 3 个文件</td>
-<td>~3 分钟</td>
 <td>~5 秒</td>
 <td>36×</td>
 </tr>
 <tr>
-<td>只删 1 个文件</td>
-<td>~3 分钟</td>
-<td>&lt;1 秒</td>
-<td>180×</td>
-</tr>
-<tr>
 <td>合并一个 PR（20 文件）</td>
-<td>~3 分钟</td>
 <td>~20 秒</td>
 <td>9×</td>
 </tr>
 <tr>
 <td>切换到别的分支（&gt;30% 变更）</td>
-<td>~3 分钟</td>
-<td>走全量</td>
 <td>—</td>
+<td>退回全量</td>
 </tr>
 </tbody>
 </table>
-<p>瓶颈几乎永远在 embedding API——<strong>省下来的每一次 embed 调用，都是省下来的时间和钱</strong>。</p>
+<p>瓶颈几乎永远在 embedding API—— <strong>省下来的每一次 embed 调用，都是省下来的时间和钱</strong> 。</p>
 <hr>
 <h2 id="deepwiki-source-of-truth">十一、从 DeepWiki 学到的：代码是 source of truth，文档该怎么活？</h2>
 <p>把代码库"搬进"一个可检索的知识库之后，一个更根本的问题就冒出来了：</p>
@@ -849,12 +856,12 @@ else:
 <h3 id="112-deepwiki">11.2 DeepWiki 值得借鉴的四个核心理念</h3>
 <p>把 DeepWiki 抽象一下，有四点特别值得搬进自家项目：</p>
 <ul>
-<li><strong>代码优先（Code-first）</strong>：任何结论都得能点进某个 <code>file:line</code>，不能"空口说白话"。</li>
-<li><strong>自动化（Auto-generated）</strong>：从代码推导出来的那一部分文档，<strong>绝对不手写、绝对不人工审校文字</strong>，而是审校"生成规则"。</li>
+<li><strong>代码优先（Code-first）</strong>：任何结论都得能点进某个 <code>file:line</code>，否则就是空口说白话。</li>
+<li><strong>自动化（Auto-generated）</strong>：从代码推导出来的那一部分文档，<strong>绝对不手写，也绝对不人工审校文字</strong>，你审的是"生成规则"，不是生成结果。</li>
 <li><strong>结构化（Structured）</strong>：Repo Overview → Module → File → Function，层级清晰，可检索可引用。</li>
-<li><strong>对话式（Conversational）</strong>：不是读完整本手册再做事，而是"带着问题来，带着答案+引用走"。</li>
+<li><strong>对话式（Conversational）</strong>：不是让人读完整本手册再干活，而是"带着问题来，带着答案+引用走"。</li>
 </ul>
-<p>把这四条内化成团队规矩，文档这件事就可控多了。</p>
+<p>这四条看起来朴素，但每一条都是在跟过去十年的文档习惯对着干——习惯了改 wiki 改了十年的团队，最难接受的就是第二条。没关系，先从一个小项目开始试，感受一下"文档不用手改"的爽，你就回不去了。</p>
 <h3 id="113">11.3 四层文档架构：哪些该自动生成，哪些必须人写</h3>
 <p>我的建议是，<strong>把项目文档按"变化频率"和"能否从代码推导"分成四层</strong>，每层走不同的维护策略：</p>
 <p><img alt="四层文档架构" src="../images/journal_20260416_codekg_rag_deepwiki_docs_layers.png"></p>
@@ -1017,31 +1024,22 @@ Deciders: @walter, @alice
 </table>
 <p><strong>关键心法</strong>：<strong>改代码时，图谱比向量更重要</strong>。向量告诉你"谁长得像"，图谱告诉你"改了这里会炸哪里"。AI 要做的是后者。</p>
 <h3 id="124-prompt-ai">12.4 硬约束 Prompt：让 AI 不敢乱编</h3>
-<p>生成代码的 prompt，我建议加这些<strong>硬约束</strong>（就像 SQL 的 NOT NULL）：</p>
+<p>生成代码的 system prompt，该加几条像 SQL <code>NOT NULL</code> 那样的 <strong>硬约束</strong> 。骨架长这样（槽位填上面检索来的上下文）：</p>
 <div class="highlight"><pre><span></span><code>规则：
-1. 优先复用仓库已有函数。如果 {similar_functions} 中有能用的，必须调用，不要重新实现。
-2. 所有公开函数必须带 doc comment，格式参考 {style_guide}。
-3. 错误处理遵循项目约定：返回 (T, error)，不用 panic（来自 ADR-003）。
-4. 不要虚构 API。如果下面 {available_apis} 里没有，就说&quot;我不确定，请确认&quot;。
-5. 输出时，每处引用的已有代码都标注 file:line。
-6. 如改动涉及 {sensitive_areas}，必须先列出影响的调用方，再动手。
+1. 优先复用仓库已有函数——{similar_functions} 里有能用的必须调用。
+2. 不要虚构 API——{available_apis} 里没有的就说 &quot;不确定&quot;。
+3. 错误处理遵循项目约定 (来自 ADR-xxx)。
+4. 涉及 {sensitive_areas} 的改动，必须先列出影响的调用方再动手。
 
 上下文：
-- 相似函数：{top_k_similar_functions_from_vector_search}
-- 直接调用方/被调用方：{graph_callers_callees}
+- 相似函数：{similar_functions}
+- 调用方/被调用方：{graph_callers_callees}
 - 相关 ADR：{relevant_adrs}
-- 风格示例：{style_examples}
-- 可用 API 列表：{available_apis_in_scope}
 
 任务：{user_task}
 </code></pre></div>
 
-<p><strong>几个经验教训</strong>：</p>
-<ul>
-<li><strong>"引用 file:line"这一条特别有效</strong>。AI 为了生成合规的引用，必须"真的去看"上下文，而不是编造——这和前面第八节里说的"强制引用"是同一个道理。</li>
-<li><strong>"不知道就说不知道"要写在 system prompt 最显眼的位置</strong>，否则它永远会编。</li>
-<li><strong>sensitive_areas</strong> 可以是：鉴权代码、支付逻辑、状态机转换——这些地方让 AI 先列影响面、再动手，能避免 80% 的"好心办坏事"。</li>
-</ul>
+<p>其中 <strong><code>sensitive_areas</code></strong> （鉴权、支付、状态机转换）是性价比最高的那一项—— <strong>让 AI 在这些区域先列影响面、再动手，能避免 80% 的"好心办坏事"</strong> 。 引用 <code>file:line</code> 和 "不确定就说不确定" 这两条第八节已经讲过了，这里只是把它们固化进 AI 编码场景。</p>
 <h3 id="125-cursor-rules-ai-agent">12.5 落地路径：从 Cursor Rules 到内部 AI Agent</h3>
 <p>不是所有团队都能一上来就搞 AI Agent 平台，按投入从小到大，我建议分三步走：</p>
 <p><strong>第一步（一天上线）：把知识库输出转成 Cursor/Claude Code 的 rules</strong></p>
@@ -1065,16 +1063,70 @@ Deciders: @walter, @alice
 </ul>
 <p>把 AI 变成团队的"初级 reviewer"，人类 reviewer 把精力放在设计和业务正确性上。</p>
 <h3 id="126-ai">12.6 一条必须守住的底线：AI 是加速器，不是自动驾驶</h3>
-<p>说到这里必须踩一脚刹车。<strong>代码知识库 + AI 编码，不等于"不用人审"</strong>。几条反复踩过的坑：</p>
+<p>讲到这里我得踩一脚刹车。 <strong>代码知识库 + AI 编码，不等于"不用人审"</strong> ，这话说十遍都不过分。几条血泪教训：</p>
 <ul>
-<li>AI 能"更准地写代码"，但它<strong>不知道你昨天和 PM 口头改了需求</strong>。审 AI 输出时，先问"需求对不对"，再看"代码对不对"。</li>
-<li>AI 引用的 <code>file:line</code>，<strong>一定要点进去看</strong>。它会偶尔把函数名引对、但行号给错——这和前面说的 LLM 幻觉是一个毛病。</li>
-<li>涉及<strong>敏感操作</strong>（删数据、改权限、发钱）的代码，<strong>永远加一道人工闸门</strong>。AI 越"像那么回事"，人越容易放松警惕——这种时候最容易出事。</li>
-<li>知识库本身要有<strong>版本与可追溯</strong>：如果某次生成出了问题，能查到当时 AI 拿到的是哪个 commit 的上下文。</li>
+<li>AI 能 "更准地写代码" ，但它 <strong>不知道你昨天和 PM 在工位口头改了需求</strong> 。审 AI 输出时，先问 "需求对不对" ，再看 "代码对不对" ，顺序别反。</li>
+<li>AI 引用的 <code>file:line</code> ， <strong>一定要点进去看</strong> 。它会偶尔把函数名引对、行号给错一两位——和前面说的 LLM 幻觉是一个毛病，只是换了种姿势。</li>
+<li>涉及 <strong>敏感操作</strong> （删数据、改权限、发钱）的代码， <strong>永远加一道人工闸门</strong> 。AI 越像那么回事，人越容易放松警惕，这种时候最容易出事。把 "AI 写的就一定靠谱" 当假设，跟把 "实习生写的就一定靠谱" 当假设没啥区别。</li>
+<li>知识库本身要有 <strong>版本与可追溯</strong> 。某次生成出了问题，你得能回头查到当时 AI 拿到的是哪个 commit 的上下文，不然事故就是一场玄学。</li>
 </ul>
-<p><strong>一句话总结</strong>：代码知识库让 AI 变得"更像你们团队的同事"，但它永远是那位<strong>需要人 review 的初级同事</strong>。</p>
+<p><strong>一句话</strong>：代码知识库让 AI 变得"更像你们团队的同事"，但它永远是那位<strong>需要人 review 的初级同事</strong>。靠谱的老同事不是不会出错，是知道哪里该停下来问一声。</p>
 <hr>
-<h2 id="_19">十三、总结：一张思维导图看完整套体系</h2>
+<h2 id="_20">十三、站在巨人肩上：三篇值得逐字读的论文</h2>
+<p>写到这里，其实没什么是我一个人拍脑袋想出来的。下面这三篇论文，是我在折腾这套东西的时候反复翻的"基石文献"。之所以单独列一节，不是为了凑参考文献，而是因为它们每一篇都能回答一个咱们绕不过去的问题。顺序是我推荐的阅读顺序，从"为什么"到"怎么做"。</p>
+<h3 id="131-llms-for-knowledge-graph-construction-and-reasoningyu-et-al-arxiv-2305131682023">13.1 <em>LLMs for Knowledge Graph Construction and Reasoning</em>（Yu et al., arXiv 2305.13168，2023）</h3>
+<p><strong>回答的问题</strong>：LLM 到底在知识图谱这件事里能干啥、不能干啥？</p>
+<p>作者跑了八个数据集，把 LLM 扔进 KG 的 <strong>抽取 / 补全 / 融合 / 推理</strong> 四个环节各测一遍，结论一句话：</p>
+<blockquote>
+<p><strong>LLM 是好的"推理助手"，不是好的"少样本抽取器"。</strong></p>
+</blockquote>
+<p>说白了，你想让 GPT-4 替你从代码里一把把实体和边抽出来，它会偶尔惊艳、长期翻车；但你把图建好、把候选都摆在它面前，让它来回答 "<code>runSync</code> 是干啥的、为啥这么写" ， <strong>它比谁都会说人话</strong> 。他们后来还顺手提了个 AutoKG（多 agent + 外部源）的方案。</p>
+<p><strong>对我们的启发</strong>：别让 LLM 去担 "解析代码、建边" 这种脏活，那是 Tree-sitter + 正则干的事；把 LLM 留到检索结果拼好之后的 "翻译官" 位置。第八节说的"LLM 只是翻译官"，不是我自己发明的个人偏好，是这篇论文在八个数据集上跑出来的。</p>
+<h3 id="132-repoagent-an-llm-powered-framework-for-repository-level-code-documentation-generationli-et-al-arxiv-240216667emnlp-2024-demo">13.2 <em>RepoAgent: An LLM-Powered Framework for Repository-level Code Documentation Generation</em>（Li et al., arXiv 2402.16667，EMNLP 2024 Demo）</h3>
+<p><strong>回答的问题</strong>：项目级的代码文档，能不能自动生成并且随代码演进？</p>
+<p>清华团队做的一个开源框架（GitHub 上开源在 OpenBMB/RepoAgent），三步：</p>
+<ol>
+<li><strong>全局结构分析</strong>：AST 解析，识别跨对象的调用/引用关系。</li>
+<li><strong>文档生成</strong>：不是给一个函数单独 "翻译" ，而是把它放进 <strong>全局上下文</strong> （它的调用方、被调用方、所在模块）里一起喂给 LLM。</li>
+<li><strong>Git 变更监听</strong>：A/M/D 触发对应对象的文档增量更新。</li>
+</ol>
+<p>看到这三步有没有很眼熟？——这正是咱们前面第九节的时序图和第十节的增量同步策略。区别在于他们更聚焦"文档生成"这一个子问题，咱们多了图库和 AI 编码闭环。</p>
+<p><strong>对我们的启发</strong>：第十一节里那个大胆结论—— <strong>L1 永远别手改、只改 prompt 和召回</strong>——RepoAgent 的整条流水线就是这个理念的活样本。想找一个"活着的、正在被企业用"的参考实现，它是目前门槛最低的那个。</p>
+<h3 id="133-code-graph-model-cgm-a-graph-integrated-llm-for-repository-level-software-engineeringtao-et-al-arxiv-250516901neurips-2025">13.3 <em>Code Graph Model (CGM): A Graph-Integrated LLM for Repository-Level Software Engineering</em>（Tao et al., arXiv 2505.16901，NeurIPS 2025）</h3>
+<p><strong>回答的问题</strong>：如果把代码图直接喂进 LLM，它能解决真实的 issue 吗？</p>
+<p>CodeFuse 团队（蚂蚁集团）做的，思路很激进——不搞 agent 循环，直接把代码图当成 LLM 的一等公民输入。核心是 <strong>R4 chain</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>干啥</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Rewriter</strong></td>
+<td>把用户的 issue 描述翻译成 "图里要找什么"</td>
+</tr>
+<tr>
+<td><strong>Retriever</strong></td>
+<td>在代码图上以 anchor node 为中心，启发式取相关子图</td>
+</tr>
+<tr>
+<td><strong>Reranker</strong></td>
+<td>在子图的文件里，挑出最可能要改的那几个</td>
+</tr>
+<tr>
+<td><strong>Reader</strong></td>
+<td>可训练，基于图生成补丁</td>
+</tr>
+</tbody>
+</table>
+<p>在 SWE-bench Lite 上拿到开源模型第一的 43% 解决率（V1.2 做到 44%）。更有意思的是， <strong>他们证明了不做 agent、只靠更好的图检索就能打得很凶</strong> ——agent 那套让 LLM 自己迭代的做法，未必是唯一解。</p>
+<p><strong>对我们的启发</strong>：第十二节里说 "改代码时图谱比向量更重要" ，CGM 直接用实验数据把这句话钉死了。如果你哪天想从 "回答问题的 DeepWiki" 升级到 "真的能替我改 bug 的 AI 工程师" ，CGM 就是下一步要抄的作业。</p>
+<hr>
+<p><strong>三篇串起来看</strong> ，其实是在回答三个相互递进的问题： <strong>LLM 该干什么（Yu 2023）—— 工程上怎么把"生成"做稳（RepoAgent）—— 图建得够好时 LLM 能不能从助手变选手（CGM）</strong> 。三个台阶踩稳了，代码知识库这件事就不是玄学，是一条被顶会和工业界反复验证过的工程路径。剩下要做的只有两件： <strong>把图建得再扎实一点，把检索拆得再细一层</strong> 。</p>
+<hr>
+<h2 id="_21">十四、总结：一张思维导图看完整套体系</h2>
 <p><img alt="代码库 RAG 思维导图" src="../images/journal_20260416_codekg_rag_deepwiki_mindmap.png"></p>
 <div class="highlight"><pre><span></span><code>@startmindmap
 &lt;style&gt;
@@ -1120,46 +1172,51 @@ mindmapDiagram {
 </code></pre></div>
 
 <h3 id="deepwiki-checklist">从零搭一套最小 DeepWiki 的 CheckList</h3>
-<p>想自己上手？照着抄就行：</p>
+<p>照下面这十四条按序勾，基本能少走我走过的弯路：</p>
+<p><strong>解析与存储</strong></p>
 <ul>
-<li>[ ] <strong>选语言与 tree-sitter 绑定</strong>：Go 用 <code>go-tree-sitter</code>，Python 用 <code>tree-sitter-python</code>，Node 用 <code>web-tree-sitter</code></li>
-<li>[ ] <strong>定义 Entity Schema</strong>：至少包含 <code>id / repo_id / type / name / file / start_line / end_line / signature / doc / body / language</code></li>
-<li>[ ] <strong>ID 用内容 hash</strong>（repo+path+type+name+line），不要用自增</li>
-<li>[ ] <strong>遍历时过滤 <code>vendor / node_modules / .git / dist / build</code></strong></li>
-<li>[ ] <strong>选 embedding</strong>：本地用 BGE-Large / Qwen-Embedding；线上用 OpenAI <code>text-embedding-3-small</code>（便宜）或 <code>voyage-code-2</code>（针对代码）</li>
-<li>[ ] <strong>Embedding 输入用结构化模板</strong>（Language+Type+Name+Signature+Doc），别塞整段 body</li>
-<li>[ ] <strong>向量库按规模选</strong>：&lt;100 万选 sqlite-vec；&gt;100 万或多用户选 pgvector</li>
-<li>[ ] <strong>图数据库</strong>：单机跑 Memgraph（Cypher 兼容，快）；已有 Neo4j 直接用</li>
-<li>[ ] <strong>图里先建 <code>CONTAINS / IMPORTS / CALLS</code> 三种边</strong>，其他慢慢加</li>
-<li>[ ] <strong>过滤内置类型与小写短符号</strong>，避免图变成一团乱麻</li>
-<li>[ ] <strong>检索做混合</strong>：向量 Top-K + 关键字兜底 +（可选）图上下游扩展</li>
-<li>[ ] <strong>Prompt 里强制带 <code>file:line</code></strong>，并在 system prompt 里写 "If insufficient, say so"</li>
-<li>[ ] <strong>同步走 <code>git diff --name-status</code> 增量</strong>，不要用 <code>git log</code> 自己聚合</li>
-<li>[ ] <strong>按 A/M/D/R 四种状态分别处理</strong>；M 必须"先 DELETE 再 INSERT"，不要用 upsert</li>
-<li>[ ] <strong>向量增量 + 图全量重建</strong>，避免悬空边</li>
-<li>[ ] <strong>大范围改动（&gt;30% 文件）退回全量</strong>；分支切换也走全量</li>
-<li>[ ] <strong>失败绝不推进 <code>last_successful_commit</code></strong>，用 <code>SyncJob</code> 表记 status/phase</li>
-<li>[ ] <strong><code>defer recover()</code> 兜住 panic</strong>，避免卡死在 running 状态</li>
-<li>[ ] <strong>暴露一个 <code>/sync/status</code> 接口</strong>，让前端看进度（phase = scanning / parsing / embedding / graph / docs）</li>
-<li>[ ] <strong>监控 embedding API 的 RPM 和失败率</strong>，加退避重试</li>
-<li>[ ] <strong>文档分层</strong>：L0 代码注释 / L1 自动生成 / L2 Runbook / L3 ADR / L4 人文层，L1 永远不人肉改文字</li>
-<li>[ ] <strong>每次架构决策立即补 ADR</strong>，放在 <code>docs/adr/</code> 和代码一起 review</li>
-<li>[ ] <strong>导出一份 <code>AGENTS.md</code> / <code>.cursor/rules/</code></strong>，让 IDE 里的 AI 先"读过"你们的约定</li>
-<li>[ ] <strong>把知识库包成 MCP Server</strong>，暴露 <code>search_similar_functions / get_callers / check_api_exists</code> 等 tool</li>
-<li>[ ] <strong>AI prompt 里强制：不得虚构 API，每处引用带 file:line，不确定就说不确定</strong></li>
-<li>[ ] <strong>改代码场景优先查图谱</strong>（上下游影响面），比纯向量检索有效得多</li>
-<li>[ ] <strong>敏感区域（鉴权/支付/状态机）的 AI 输出，加人工闸门</strong>，不要裸跑</li>
+<li>[ ] <strong>Entity schema 敲定</strong>：<code>id / repo_id / type / name / file / start_line / end_line / signature / doc / body / language</code>； <strong>ID 用内容 hash，不用自增</strong> 。</li>
+<li>[ ] <strong>遍历时 skip <code>vendor / node_modules / .git / dist / build</code></strong> ，不然 embedding 账单能让你哭。</li>
+<li>[ ] <strong>Embedding 输入用结构化模板</strong> （Language + Type + Name + Signature + Doc），别塞整段 body。</li>
+<li>[ ] <strong>向量库按规模选</strong> ：&lt;100 万 sqlite-vec，&gt;100 万或多用户 pgvector；超大规模再考虑专用向量库。</li>
+<li>[ ] <strong>图库用 Memgraph 或 Neo4j</strong> ；先建 <code>CONTAINS / IMPORTS / CALLS</code> 三种边， <strong>过滤内置类型与小写短符号</strong> ，其余慢慢加。</li>
 </ul>
-<h3 id="_20">留给你的几个问题</h3>
+<p><strong>检索与生成</strong></p>
+<ul>
+<li>[ ] <strong>检索做混合</strong> ：向量 Top-K + 关键字兜底 + 图上下游扩展；进阶再上 BM25 + RRF。</li>
+<li>[ ] <strong>Prompt 两条硬规矩</strong> ： 强制引用 <code>file:line</code> ； system prompt 里明写 "If insufficient, say so" 。</li>
+</ul>
+<p><strong>增量同步（上生产的分水岭）</strong></p>
+<ul>
+<li>[ ] <strong>用 <code>git diff --name-status</code> 增量</strong> ，别用 <code>git log</code> 自己聚合；A/M/D/R 分状态处理， <strong><code>M</code> 必须先 DELETE 再 INSERT，不要 upsert</strong> 。</li>
+<li>[ ] <strong>向量增量 + 图全量重建</strong> ，避免悬空边；大范围改动（&gt;30% 文件）或分支切换一律退回全量。</li>
+<li>[ ] <strong>失败绝不推进 <code>last_successful_commit</code></strong> ，用 <code>SyncJob</code> 表记 status/phase； <code>defer recover()</code> 兜住 panic，避免卡死。</li>
+</ul>
+<p><strong>文档与 AI 编码</strong></p>
+<ul>
+<li>[ ] <strong>文档四层分工</strong> ： L0 代码注释 / L1 AI 自动生成 / L2 Runbook / L3 ADR / L4 人文层； <strong>L1 永远不人肉改文字，只改 prompt 和召回</strong> 。</li>
+<li>[ ] <strong>每次架构决策立即补 ADR</strong> ，放进 <code>docs/adr/</code> 和代码一起走 code review。</li>
+<li>[ ] <strong>先导 <code>AGENTS.md</code> / <code>.cursor/rules/</code></strong> ；再把知识库包成 MCP Server 暴露 <code>search_similar_functions / get_callers / check_api_exists</code> 等 tool。</li>
+<li>[ ] <strong>敏感区域（鉴权/支付/状态机）AI 输出加人工闸门</strong> ，永远别裸跑； <strong>改代码时优先查图谱</strong> ，比纯向量有效得多。</li>
+</ul>
+<h3 id="_22">留给你的几个问题</h3>
 <ul>
 <li>你们团队的代码库，有没有一个"新人入职文档"的痛点？如果不靠人写文档，而靠<strong>从代码里自动生成</strong>，会不会更可持续？</li>
-<li>LSP 能拿到精确的调用关系，但集成复杂。<strong>用 regex 先跑起来，再慢慢升级到 LSP</strong>，这种演进路径你愿意接受吗？</li>
-<li>如果让你选只做一层：向量 还是 图？为什么？（我会选图——<strong>代码的灵魂在关系里，不在相似度里</strong>。）</li>
-<li>你觉得 AI 编码最让你抓狂的瞬间是哪一个？如果知识库能在<strong>生成前</strong>就把"项目已有的同名函数""相关 ADR""调用方影响面"喂给它，那次事故能避免吗？</li>
+<li>LSP 能拿到精确的调用关系，但集成复杂。<strong>用 regex 先跑起来，再慢慢升级到 LSP</strong>，这种 "先上车再买票" 的演进路径，你愿意接受吗？</li>
+<li>如果只让你做一层，你选向量还是图？我选图——<strong>代码的灵魂在关系里，不在相似度里</strong>。相似度帮你找到"像谁"，关系告诉你"牵一发动哪里"，后者才是工程师每天真正缺的信息。</li>
+<li>AI 编码最让你抓狂的瞬间是哪一个？如果在 <strong>生成前</strong> 就把 "项目已有的同名函数""相关 ADR""调用方影响面" 喂给它，那次事故能避免吗？</li>
 </ul>
-<p>欢迎评论区聊聊。</p>
+<p>欢迎评论区聊聊。写给新同事的一份 README，不如给新同事一个能对话的知识库——这不是在偷懒，而是把精力留在更值得写的那几页文档上。</p>
 <hr>
-<h2 id="_21">扩展阅读</h2>
+<h2 id="_23">扩展阅读</h2>
+<p><strong>论文（按推荐阅读顺序）</strong></p>
+<ul>
+<li>Yu et al. <em>LLMs for Knowledge Graph Construction and Reasoning: Recent Capabilities and Future Opportunities.</em> arXiv 2305.13168, 2023. <a href="https://arxiv.org/abs/2305.13168">https://arxiv.org/abs/2305.13168</a> — LLM 在 KG 四件事（抽取/补全/融合/推理）上能干啥、不能干啥的奠基综述</li>
+<li>Edge et al. <em>From Local to Global: A Graph RAG Approach to Query-Focused Summarization.</em> arXiv 2404.16130, 2024. <a href="https://arxiv.org/abs/2404.16130">https://arxiv.org/abs/2404.16130</a> ｜ 代码：<a href="https://github.com/microsoft/graphrag">https://github.com/microsoft/graphrag</a> — GraphRAG 的奠基论文，把 "社区检测 + 层次化摘要" 这套范式讲透</li>
+<li>Li et al. <em>RepoAgent: An LLM-Powered Open-Source Framework for Repository-level Code Documentation Generation.</em> arXiv 2402.16667, EMNLP 2024 Demo. <a href="https://arxiv.org/abs/2402.16667">https://arxiv.org/abs/2402.16667</a> ｜ 代码：<a href="https://github.com/OpenBMB/RepoAgent">https://github.com/OpenBMB/RepoAgent</a> — 项目级代码文档自动生成 + 增量更新的开源范例</li>
+<li>Tao et al. <em>Code Graph Model (CGM): A Graph-Integrated LLM for Repository-Level Software Engineering Tasks.</em> arXiv 2505.16901, NeurIPS 2025. <a href="https://arxiv.org/abs/2505.16901">https://arxiv.org/abs/2505.16901</a> ｜ 代码：<a href="https://github.com/codefuse-ai/CodeFuse-CGM">https://github.com/codefuse-ai/CodeFuse-CGM</a> — 图 + LLM 在 SWE-bench Lite 上拿到开源第一的 R4 chain</li>
+</ul>
+<p><strong>工具与参考实现</strong></p>
 <ul>
 <li><a href="https://tree-sitter.github.io/tree-sitter/">Tree-sitter 官方文档</a> — AST 解析的事实标准</li>
 <li><a href="https://github.com/asg017/sqlite-vec">sqlite-vec</a> — 把 SQLite 变成向量库的轻量扩展</li>
@@ -1216,6 +1273,9 @@ mindmapDiagram {
     <a class="btn float-left" href="https://www.fanyamin.com/yong-promptfoo-gei-ai-skill-zuo-ti-jian-ping-gu-ce-shi-zhi-liang-yu-an-quan-ba-guan.html" title="用 Promptfoo 给 AI skill 做体检：评估、测试、质量与安全把关">
       <i class="fa fa-angle-left"></i> Previous Post
     </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/rrf-dao-shu-pai-ming-rong-he-rag-li-na-ge-kan-qi-lai-tu-que-yi-zhi-mei-bei-huan-diao-de-xiao-gong-shi.html" title="RRF 倒数排名融合：RAG 里那个看起来土、却一直没被换掉的小公式">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
   </div>
 
   <div class="related-posts">
@@ -1225,7 +1285,7 @@ mindmapDiagram {
       <li><a href="https://www.fanyamin.com/obsidian-jia-llmge-ren-zhi-shi-ku-de-zheng-que-da-kai-fang-shi.html">Obsidian 加 LLM，个人知识库的正确打开方式</a></li>
       <li><a href="https://www.fanyamin.com/2026-01-16-prompt-engineering.html">Prompt 工程已死，上下文工程当立</a></li>
       <li><a href="https://www.fanyamin.com/2026-01-15-rag-elasticsearch-database.html">RAG 进阶指南：别只盯着向量数据库，Elasticsearch 才是扫地僧</a></li>
-      <li><a href="https://www.fanyamin.com/2026-02-05-rag-claude-skill-knowledge-base.html">如何打造个人与项目知识库：从全文搜索到 RAG，再到 Claude Skill</a></li>
+      <li><a href="https://www.fanyamin.com/rrf-dao-shu-pai-ming-rong-he-rag-li-na-ge-kan-qi-lai-tu-que-yi-zhi-mei-bei-huan-diao-de-xiao-gong-shi.html">RRF 倒数排名融合：RAG 里那个看起来土、却一直没被换掉的小公式</a></li>
     </ul>
   </div>
 

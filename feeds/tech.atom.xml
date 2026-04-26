@@ -1,5 +1,2042 @@
 <?xml version="1.0" encoding="utf-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom"><title>Walter Fan's Blog - Tech</title><link href="https://www.fanyamin.com/" rel="alternate"/><link href="https://www.fanyamin.com/feeds/tech.atom.xml" rel="self"/><id>https://www.fanyamin.com/</id><updated>2026-04-01T10:00:00+08:00</updated><subtitle>手握灵珠常奋笔, 心开天籁不吹箫</subtitle><entry><title>Axios 被投毒：一场教科书级的供应链攻击复盘</title><link href="https://www.fanyamin.com/2026-04-01-axios-supply-chain-attack.html" rel="alternate"/><published>2026-04-01T10:00:00+08:00</published><updated>2026-04-01T10:00:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-04-01:/2026-04-01-axios-supply-chain-attack.html</id><summary type="html">&lt;p&gt;2026 年 3 月 31 日，周下载量过亿的 npm 包 axios 被投毒，两小时内所有 npm install 的机器可能已沦陷。这次事件再次说明：你写的代码也许没有 bug，但你装的依赖里可能藏着一扇后门。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Walter Fan's Blog - Tech</title><link href="https://www.fanyamin.com/" rel="alternate"/><link href="https://www.fanyamin.com/feeds/tech.atom.xml" rel="self"/><id>https://www.fanyamin.com/</id><updated>2026-04-26T22:31:00+08:00</updated><subtitle>手握灵珠常奋笔, 心开天籁不吹箫</subtitle><entry><title>Hermes Agent 初探：一个会长记性的个人 Agent，以及它和 OpenClaw 的比较</title><link href="https://www.fanyamin.com/hermes-agent-chu-tan-yi-ge-hui-chang-ji-xing-de-ge-ren-agentyi-ji-ta-he-openclaw-de-bi-jiao.html" rel="alternate"/><published>2026-04-25T22:32:00+08:00</published><updated>2026-04-26T22:26:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-04-25:/hermes-agent-chu-tan-yi-ge-hui-chang-ji-xing-de-ge-ren-agentyi-ji-ta-he-openclaw-de-bi-jiao.html</id><summary type="html">&lt;p&gt;Hermes Agent 有趣的地方，不只是能聊天、能跑工具，而是把 memory、skills、gateway、scheduler 和 provider routing 放进一个长期运行的个人 agent。这篇文章基于 2026-04-25 查阅的官方资料，聊聊 Hermes Agent 的定位、它和 OpenClaw 的比较，以及接入 Feishu/Lark、DeepSeek 与 OpenAI-compatible API 的实践清单。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;Hermes Agent 初探：一个会长记性的个人 Agent，以及它和 OpenClaw 的比较&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;tech note&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Status&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;v1.0&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;2026-04-26&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h1 id="hermes-agent-agent-openclaw"&gt;Hermes Agent 初探：一个会长记性的个人 Agent，以及它和 OpenClaw 的比较&lt;/h1&gt;
+&lt;p&gt;最近 AI Agent 项目有点像小区门口新开的咖啡店：每家都说自己懂你、能陪你、还会替你干活。Hermes 这个名字也占便宜，在中文世界里很容易被调侃成“AI Agent 中的爱马仕”，听起来像是要卖包，其实卖的是记忆、技能和自动化。问题是，真坐下来点一杯，才发现有的只是换了杯套，有的确实在重新设计吧台。Hermes Agent 就属于后面这一类，至少它让我愿意多看两眼。&lt;/p&gt;
+&lt;p&gt;&lt;a href="https://github.com/nousresearch/hermes-agent"&gt;Hermes Agent&lt;/a&gt; 让我感兴趣的地方，不是它又支持了几个模型，也不是又接了几个聊天平台，而是它把一个个人 agent 当成&lt;strong&gt;长期运行、持续学习、有记忆、有技能库、有消息入口的系统&lt;/strong&gt;来做。这个方向对我这种老程序员很有吸引力。毕竟我们见过太多“聪明三分钟”的工具：当场回答很漂亮，第二天再问，像从没认识过你。&lt;/p&gt;
+&lt;p&gt;这篇初探基于我在 &lt;strong&gt;2026-04-25&lt;/strong&gt; 查阅的 Hermes Agent、OpenClaw 和 OpenAI 官方文档。先说结论：&lt;strong&gt;Hermes Agent 更像一个“会成长的个人运行时”，OpenClaw 更像一个“平台覆盖很广的本地个人助理系统”。&lt;/strong&gt;二者不是谁替代谁，而是设计重心不同。&lt;/p&gt;
+&lt;h2 id="hermes-agent"&gt;Hermes Agent 是什么&lt;/h2&gt;
+&lt;p&gt;按官方 README 的说法，Hermes Agent 是 Nous Research 做的一个 self-improving AI agent。它的关键词大概有六个：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;长期记忆：能保留 session、搜索历史对话，并建立用户画像。&lt;/li&gt;
+&lt;li&gt;Skills：能从经验中沉淀技能，并在使用中改进。&lt;/li&gt;
+&lt;li&gt;Gateway：可以从 CLI，也可以从 Telegram、Discord、Slack、WhatsApp、Signal、Feishu/Lark 等平台对话。&lt;/li&gt;
+&lt;li&gt;Scheduler：内置 cron，可做日报、备份、巡检之类的定时任务。&lt;/li&gt;
+&lt;li&gt;Subagent：支持委派和并行工作流。&lt;/li&gt;
+&lt;li&gt;Provider routing：可接 DeepSeek、OpenRouter、Nous Portal、OpenAI、Hugging Face、自定义 OpenAI-compatible endpoint 等。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;如果只看功能清单，它当然显得很“全”。但真正的看点不在“全”，而在“闭环”。功能多只是热闹，闭环跑起来才有价值。&lt;/p&gt;
+&lt;p&gt;普通聊天机器人通常是这样：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;用户输入 -&amp;gt; 模型回答 -&amp;gt; 会话结束
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;Hermes 想做的是：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;用户输入 -&amp;gt; 工具执行 -&amp;gt; 记忆沉淀 -&amp;gt; 技能生成/改进 -&amp;gt; 后续任务复用
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这条线如果跑顺，它就不只是“问答工具”，而是一个慢慢长出工作习惯的个人 agent。说得朴素一点，它不该只会今天帮你写脚本，还应该记得上次这个脚本为什么差点把生产日志目录扫没了。&lt;/p&gt;
+&lt;h2 id="hermes-agent_1"&gt;Hermes Agent 的味道：它不只是聊天的套壳&lt;/h2&gt;
+&lt;p&gt;如果只用一句话概括 Hermes Agent，我会这样说：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;它把 Agent 当成一个长期运行的个人操作系统雏形，而不是一次性问答窗口。&lt;/strong&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;按官方 Features 和 Architecture 文档，Hermes 的能力可以拆成几层：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;层次&lt;/th&gt;
+&lt;th&gt;Hermes 的做法&lt;/th&gt;
+&lt;th&gt;我的理解&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;入口层&lt;/td&gt;
+&lt;td&gt;CLI、Gateway、ACP、API Server、Batch Runner&lt;/td&gt;
+&lt;td&gt;入口很多，但尽量共用同一个 agent core&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;记忆层&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;MEMORY.md&lt;/code&gt;、&lt;code&gt;USER.md&lt;/code&gt;、session search、外部 memory provider&lt;/td&gt;
+&lt;td&gt;不是无限记忆，而是有边界、有取舍的记忆&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;技能层&lt;/td&gt;
+&lt;td&gt;Skills、tools、toolsets、plugins&lt;/td&gt;
+&lt;td&gt;轻能力用 skill，重集成用 tool/plugin&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;执行层&lt;/td&gt;
+&lt;td&gt;Agent loop、tool dispatch、fallback、compression、callbacks&lt;/td&gt;
+&lt;td&gt;真正复杂的地方在调度和状态维护&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;自动化层&lt;/td&gt;
+&lt;td&gt;Gateway tick、cron job、跨平台 delivery&lt;/td&gt;
+&lt;td&gt;定时任务不是 shell 脚本，而是新起一个 agent session&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;模型层&lt;/td&gt;
+&lt;td&gt;Provider resolution、credential pool、fallback provider&lt;/td&gt;
+&lt;td&gt;不把系统命运绑死在一个模型名上&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;这套设计的味道很明确：&lt;strong&gt;外面多入口，里面一个核心；上面多场景，下面统一调度。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;很多 agent 项目一开始像个聪明的 CLI，后来想接聊天平台、接定时任务、接 API server，就开始到处长分支。Hermes 的思路更像是先把 &lt;code&gt;AIAgent&lt;/code&gt; 作为核心发动机，再让 CLI、Gateway、ACP、API Server 这些入口都去调用它。这样做当然不轻，但长期看，系统不会那么快变成“每个入口都有一套半重复逻辑”的老房子。&lt;/p&gt;
+&lt;h2 id="_1"&gt;我看中的几个地方&lt;/h2&gt;
+&lt;p&gt;我认为 Hermes 最值得看的地方有五个。&lt;/p&gt;
+&lt;p&gt;第一个是&lt;strong&gt;长期性&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;它不是只处理一个 prompt，而是认真处理 memory、session、compression、skills、scheduler 这些脏活累活。Agent 真要进入日常工作，最麻烦的恰恰不是“这次回答聪不聪明”，而是“它下周还记不记得规矩，能不能接着上次的上下文干活”。&lt;/p&gt;
+&lt;p&gt;第二个是&lt;strong&gt;入口和核心分离&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;CLI、Feishu、Telegram、API Server、ACP 看上去是不同产品形态，但背后都尽量落到同一个 agent loop。这个设计值得借鉴。很多内部工具失败，不是模型不行，而是入口越接越多，每个入口都复制一套业务逻辑。维护者看见就想请假。&lt;/p&gt;
+&lt;p&gt;第三个是&lt;strong&gt;工具系统有分层&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;Hermes 区分 skills、tools、toolsets、plugins。这个分层很实用：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;能用说明文档和现有命令解决的，放 skill。&lt;/li&gt;
+&lt;li&gt;必须稳定执行、有认证、有状态的，做 tool。&lt;/li&gt;
+&lt;li&gt;要扩展系统边界的，走 plugin。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这比“所有能力都塞成 function calling”要清醒。函数调用不是万能胶，什么都粘上去，到头来会粘住自己的手。&lt;/p&gt;
+&lt;p&gt;第四个是&lt;strong&gt;调度和自动化不是外挂&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;Hermes 的 cron job 会创建新的 agent session，可以挂 skill，可以把结果投递到平台，还会由 gateway tick 触发。这一点很关键。它不是“晚上十点跑个 shell 脚本再 curl 一下模型”，而是把定时任务放回 agent 运行时里。这意味着 memory、skills、provider fallback、delivery 都能复用。&lt;/p&gt;
+&lt;p&gt;第五个是&lt;strong&gt;模型供应商可替换&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;DeepSeek、OpenAI、OpenRouter、本地模型、自定义 endpoint 都可以进入 provider 体系。今天模型市场变化太快，系统如果只围着一个 provider 写，半年后就容易变成遗迹。Provider resolution 和 fallback 这类设计，看着不性感，但很救命。&lt;/p&gt;
+&lt;h2 id="_2"&gt;坑也不少：好东西不是免费午餐&lt;/h2&gt;
+&lt;p&gt;当然，Hermes 也不是银弹。它的几个缺点，恰好来自它的野心。&lt;/p&gt;
+&lt;p&gt;第一个问题是&lt;strong&gt;复杂度高&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;官方架构文档里，&lt;code&gt;AIAgent&lt;/code&gt; 承担了 prompt assembly、provider 选择、tool dispatch、fallback、compression、session persistence 等职责。能力集中带来一致性，也带来学习成本。你要是只想要一个“群里自动回复 FAQ”的小 bot，用 Hermes 可能像开卡车去买菜，能到，但停车费不便宜。&lt;/p&gt;
+&lt;p&gt;第二个问题是&lt;strong&gt;配置面大&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;模型、gateway、Feishu 权限、cron、tools、memory、API server、provider key，全都要管。对个人折腾很爽，对团队生产环境则意味着要有配置治理、密钥治理、权限治理。否则 agent 没出错，人先被配置绕晕。&lt;/p&gt;
+&lt;p&gt;第三个问题是&lt;strong&gt;长期记忆有边界&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;Hermes 的内置 memory 是 bounded、curated memory，不是无限数据库。这个设计是对的，但也意味着你不能指望它“什么都永远记得”。真正重要的项目知识，还是要沉淀到文档、repo、wiki 或明确的 skill 里。记忆适合放偏好和经验，不适合当唯一事实源。&lt;/p&gt;
+&lt;p&gt;第四个问题是&lt;strong&gt;自动化质量取决于信息源&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;比如每天写科技新闻综述，如果没有 web/search 能力或固定 RSS 源，它只能靠模型已有知识胡乱补。模型再强，也不能凭空知道昨晚发生了什么。这里没有魔法，只有数据源、检索、验证和输出约束。&lt;/p&gt;
+&lt;p&gt;第五个问题是&lt;strong&gt;安全边界必须自己守住&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;一旦接入 shell、浏览器、文件系统、Feishu、API key，它就是一个有行动能力的系统。Hermes 提供 allowlist、approval、gateway auth 等机制，但机制只是安全带，不是替你开车的人。这个边界要自己守。&lt;/p&gt;
+&lt;h2 id="_3"&gt;架构上有哪些东西值得抄&lt;/h2&gt;
+&lt;p&gt;我觉得 Hermes 对我们做内部 agent、个人自动化系统，至少有四个可抄的设计原则。&lt;/p&gt;
+&lt;h3 id="1"&gt;1. 一个核心，多种入口&lt;/h3&gt;
+&lt;p&gt;不要为 CLI 写一套逻辑，为 Feishu 写一套逻辑，为 API Server 再写一套逻辑。入口可以多，核心尽量少。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;CLI / Feishu / API Server / ACP
+        |
+        v
+     Agent Core
+        |
+        v
+Tools / Memory / Provider / Session
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这样做的好处是：入口增加时，能力自然复用；核心修 bug 时，所有入口一起受益。&lt;/p&gt;
+&lt;h3 id="2"&gt;2. 能力分层，不要全塞进工具调用&lt;/h3&gt;
+&lt;p&gt;Agent 系统里常见一个坏味道：所有东西都做成 tool。结果工具 schema 越来越长，模型越看越晕，开发者也越看越烦。&lt;/p&gt;
+&lt;p&gt;Hermes 的 skills/tools/plugins 分层提醒我们：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;知识和流程，优先 skill。&lt;/li&gt;
+&lt;li&gt;稳定动作，才做 tool。&lt;/li&gt;
+&lt;li&gt;横向扩展，才做 plugin。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这套分层适合很多企业内部场景。比如“发布流程说明”更像 skill，“查工单状态”更像 tool，“接入 Jira/Feishu/GitLab”更像 plugin。&lt;/p&gt;
+&lt;h3 id="3"&gt;3. 记忆要小而准，不要大而糊&lt;/h3&gt;
+&lt;p&gt;Hermes 内置 memory 有字符限制，这点我很喜欢。记忆不是垃圾桶，不能什么都倒进去。&lt;/p&gt;
+&lt;p&gt;好的 memory 应该像便签纸：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;记录用户偏好。&lt;/li&gt;
+&lt;li&gt;记录项目惯例。&lt;/li&gt;
+&lt;li&gt;记录工具坑点。&lt;/li&gt;
+&lt;li&gt;记录已经验证过的经验。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;真正的大知识，应该放在文档和代码库里，让 agent 按需读取。否则 memory 写着写着就会变成“老工程师的抽屉”：什么都有，真找东西时全靠缘分。&lt;/p&gt;
+&lt;h3 id="4-agent-task-cron-script"&gt;4. 定时任务应该是 agent task，不只是 cron script&lt;/h3&gt;
+&lt;p&gt;传统 cron 擅长“到点执行命令”，不擅长“到点理解问题”。而 agent cron 的价值在于：它可以加载技能、读取上下文、调用工具、生成判断、投递到人所在的平台。&lt;/p&gt;
+&lt;p&gt;这对 OPC 特别有意义。一个人公司最缺的不是想法，而是稳定重复执行的“小职能”：日报、线索收集、竞品观察、客户反馈归类、内容选题、代码健康检查。把这些做成 agent task，比每天靠意志力点开十个网页靠谱。&lt;/p&gt;
+&lt;p&gt;这也是 Hermes 给我的最大启发：&lt;strong&gt;Agent 的价值不只是回答问题，而是把一部分重复判断变成可持续运行的系统。&lt;/strong&gt;&lt;/p&gt;
+&lt;h2 id="openclaw"&gt;和 OpenClaw 做个比较&lt;/h2&gt;
+&lt;p&gt;OpenClaw 也是个人 AI assistant，重点放在本地运行、多平台消息入口和个人使用体验。官方 README 里列出的渠道覆盖很夸张，包括 WhatsApp、Telegram、Slack、Discord、Google Chat、Signal、iMessage、Microsoft Teams、Matrix、Feishu、LINE、WeChat、QQ 等。它还强调 Gateway、multi-channel inbox、multi-agent routing、voice、live canvas、browser/canvas/cron/tools 等能力。&lt;/p&gt;
+&lt;p&gt;所以如果你问“谁支持的平台多”，OpenClaw 当前更像一个大杂货铺，货架很长；Hermes 则更像一个正在认真打磨工作流闭环的工具箱。前者热闹，后者较真。&lt;/p&gt;
+&lt;p&gt;选这种工具，不能只数功能点。功能清单像超市小票，看着很长，但真正决定你能不能长期用下去的，是它的责任边界：谁负责入口，谁负责记忆，谁负责工具，谁负责定时任务，谁负责兜底。边界清楚，系统才不容易长歪。&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;维度&lt;/th&gt;
+&lt;th&gt;Hermes Agent&lt;/th&gt;
+&lt;th&gt;OpenClaw&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;核心气质&lt;/td&gt;
+&lt;td&gt;自改进、记忆、skills、长期运行&lt;/td&gt;
+&lt;td&gt;本地个人助理、多平台入口、应用生态&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;技术栈观感&lt;/td&gt;
+&lt;td&gt;Python 生态更重，agent loop、gateway、toolsets、skills 明显&lt;/td&gt;
+&lt;td&gt;TypeScript/Node 生态更重，Gateway、apps、channels 覆盖广&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;模型接入&lt;/td&gt;
+&lt;td&gt;强调 provider routing、自定义 OpenAI-compatible endpoint、&lt;code&gt;hermes model&lt;/code&gt; 切换&lt;/td&gt;
+&lt;td&gt;支持多模型，README 建议使用可信 provider 的当前旗舰模型&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;消息入口&lt;/td&gt;
+&lt;td&gt;CLI + gateway，多平台逐步扩展，Feishu/Lark 已是官方文档平台&lt;/td&gt;
+&lt;td&gt;平台覆盖很广，Feishu 也在支持列表中&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;记忆与技能&lt;/td&gt;
+&lt;td&gt;README 明确强调 memory、skills、自我改进和 session search&lt;/td&gt;
+&lt;td&gt;也有 skills 与 workspace，但叙事重心更偏“个人助理和渠道覆盖”&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;迁移关系&lt;/td&gt;
+&lt;td&gt;官方提供 &lt;code&gt;hermes claw migrate&lt;/code&gt;，可导入 OpenClaw 的设置、记忆、skills、部分 API keys&lt;/td&gt;
+&lt;td&gt;作为被迁移来源存在于 Hermes 文档叙事里&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;适合谁&lt;/td&gt;
+&lt;td&gt;想把 agent 放在服务器上长期运行，并重视记忆、技能沉淀、模型路由的人&lt;/td&gt;
+&lt;td&gt;想要本地化、多终端、多聊天渠道、应用和设备体验的人&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;我个人的判断是：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;如果你的第一需求是“我想在各种聊天软件里找一个本地助理”，OpenClaw 的平台覆盖更有吸引力。&lt;/li&gt;
+&lt;li&gt;如果你的第一需求是“我想让 agent 持续学习我的项目、沉淀技能、跑在 VPS 或云环境里”，Hermes Agent 更值得研究。&lt;/li&gt;
+&lt;li&gt;如果你已经有 OpenClaw 数据，Hermes 的迁移命令降低了试用成本。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这也解释了为什么 Hermes 官方 README 专门写了 “Migrating from OpenClaw”。迁移内容包括 persona、memories、user-created skills、command allowlist、messaging settings、部分 API keys、workspace instructions 等。这里要注意：迁移不是魔法，不代表行为完全等价。Agent 系统迁移最麻烦的从来不是文件搬家，而是“它到底什么时候该相信什么、执行什么、拒绝什么”。&lt;/p&gt;
+&lt;h2 id="hermes-agent_2"&gt;先装起来：Hermes Agent 的最小路径&lt;/h2&gt;
+&lt;p&gt;官方提供的一键安装方式是：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;curl&lt;span class="w"&gt; &lt;/span&gt;-fsSL&lt;span class="w"&gt; &lt;/span&gt;https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;|&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;bash
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;安装后通常先做三件事：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nb"&gt;source&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;~/.zshrc
+hermes
+hermes&lt;span class="w"&gt; &lt;/span&gt;model
+hermes&lt;span class="w"&gt; &lt;/span&gt;gateway&lt;span class="w"&gt; &lt;/span&gt;setup
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这里的顺序有讲究：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;code&gt;hermes&lt;/code&gt; 先确认 CLI 能跑。&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;hermes model&lt;/code&gt; 配置模型 provider。&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;hermes gateway setup&lt;/code&gt; 再接入聊天平台。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;很多工程工具出问题，不是因为最终配置复杂，而是因为第一步没站稳就开始叠楼。先让 CLI 能正常对话，再接 Feishu，再加 scheduler 和 API server，人会少掉很多奇怪的脾气。&lt;/p&gt;
+&lt;h2 id="deepseek-openai-compatible-api"&gt;接入 DeepSeek / OpenAI-compatible API：三种含义别混了&lt;/h2&gt;
+&lt;p&gt;“Hermes Agent 集成 OpenAI API”这句话容易让人误会。更准确地说，Hermes 支持两类事情：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;把某个模型服务当作 Hermes 的模型提供方&lt;/strong&gt;：比如 DeepSeek、OpenAI、OpenRouter、自定义 OpenAI-compatible endpoint。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;把 Hermes 暴露成 OpenAI-compatible API server&lt;/strong&gt;：其他客户端调 Hermes。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;这两个方向刚好相反，别写到一起糊成一锅。&lt;/p&gt;
+&lt;h3 id="hermes-deepseek"&gt;方向一：让 Hermes 调 DeepSeek&lt;/h3&gt;
+&lt;p&gt;Hermes 当前把 DeepSeek 列为内置 provider，环境变量名是 &lt;code&gt;DEEPSEEK_API_KEY&lt;/code&gt;。如果你的目标模型是 &lt;code&gt;deepseek-v4-pro&lt;/code&gt;，最小配置可以这样写到 &lt;code&gt;~/.hermes/.env&lt;/code&gt;：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nv"&gt;DEEPSEEK_API_KEY&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;sk-xxxxxxxx
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;然后用交互式配置选择 DeepSeek：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;hermes&lt;span class="w"&gt; &lt;/span&gt;model
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;或者直接试一条命令：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;hermes&lt;span class="w"&gt; &lt;/span&gt;chat&lt;span class="w"&gt; &lt;/span&gt;--provider&lt;span class="w"&gt; &lt;/span&gt;deepseek&lt;span class="w"&gt; &lt;/span&gt;--model&lt;span class="w"&gt; &lt;/span&gt;deepseek-v4-pro
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;如果你偏爱手工配置，也可以在 &lt;code&gt;~/.hermes/config.yaml&lt;/code&gt; 里把默认模型固定下来：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nt"&gt;model&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;provider&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;deepseek&amp;quot;&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;default&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;deepseek-v4-pro&amp;quot;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;之后在 Hermes 会话里，如果 DeepSeek provider 已经配置好，可以用：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;/model deepseek:deepseek-v4-pro
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这里我会优先把 DeepSeek 当作内置 provider，而不是绕到 custom endpoint。这样配置更短，也少一个 base URL 写错的机会。&lt;/p&gt;
+&lt;h3 id="hermes-openai-openai-compatible-endpoint"&gt;方向二：让 Hermes 调 OpenAI 或其他 OpenAI-compatible endpoint&lt;/h3&gt;
+&lt;p&gt;OpenAI 官方文档建议把 API key 放在环境变量里，SDK 会自动读取；Hermes 当前文档则强调，模型、provider、base URL 的 source of truth 是 &lt;code&gt;~/.hermes/config.yaml&lt;/code&gt;。换句话说，旧式 &lt;code&gt;OPENAI_BASE_URL&lt;/code&gt;、&lt;code&gt;LLM_MODEL&lt;/code&gt; 这种 &lt;code&gt;.env&lt;/code&gt; 写法不要再当成主路径。&lt;/p&gt;
+&lt;p&gt;如果你接的是 OpenAI、公司内部代理、LiteLLM、vLLM 或其他 OpenAI-compatible endpoint，建议走 &lt;code&gt;hermes model&lt;/code&gt;：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;hermes&lt;span class="w"&gt; &lt;/span&gt;model
+&lt;span class="c1"&gt;# 选择 &amp;quot;Custom endpoint&amp;quot;&lt;/span&gt;
+&lt;span class="c1"&gt;# 填入 API base URL、API key、Model name&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;也可以手工写 &lt;code&gt;config.yaml&lt;/code&gt;：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nt"&gt;model&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;provider&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;custom&amp;quot;&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;default&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;gpt-5.2&amp;quot;&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;base_url&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;https://api.openai.com/v1&amp;quot;&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;api_key&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;use-env-or-secret-helper-here&amp;quot;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;我不太建议把真实 API key 明文写进 &lt;code&gt;config.yaml&lt;/code&gt;。更稳妥的做法是让 &lt;code&gt;hermes model&lt;/code&gt; 写入本地配置，或者通过系统密钥管理/环境变量注入。OpenAI API reference 也明确提醒，API key 是 secret，不应该暴露在浏览器或客户端代码里。&lt;/p&gt;
+&lt;p&gt;如果你有 named custom provider，也可以用类似下面的方式切换：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;/model custom:openai-prod:gpt-5.2
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;如果你自己写外部服务调用 OpenAI，当前官方文本生成文档建议新项目优先看 Responses API，而不是继续沿用老的 Chat Completions 心智模型。老接口不是不能用，只是新项目没必要先背旧包袱。&lt;/p&gt;
+&lt;h3 id="openai-api-hermes"&gt;方向三：让其他客户端按 OpenAI API 调 Hermes&lt;/h3&gt;
+&lt;p&gt;Hermes 还提供 API Server，能把 hermes-agent 暴露成 OpenAI-compatible HTTP endpoint。这样 Open WebUI、LobeChat、LibreChat、ChatBox，甚至 OpenAI Python SDK，都可以把 Hermes 当后端。&lt;/p&gt;
+&lt;p&gt;在 &lt;code&gt;~/.hermes/.env&lt;/code&gt; 里打开：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nv"&gt;API_SERVER_ENABLED&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="nb"&gt;true&lt;/span&gt;
+&lt;span class="nv"&gt;API_SERVER_KEY&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;change-me-to-a-long-random-secret
+&lt;span class="nv"&gt;API_SERVER_HOST&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="m"&gt;127&lt;/span&gt;.0.0.1
+&lt;span class="nv"&gt;API_SERVER_PORT&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="m"&gt;8642&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;启动 gateway：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;hermes&lt;span class="w"&gt; &lt;/span&gt;gateway
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;然后用 OpenAI SDK 连接 Hermes：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="kn"&gt;from&lt;/span&gt; &lt;span class="nn"&gt;openai&lt;/span&gt; &lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="n"&gt;OpenAI&lt;/span&gt;
+
+&lt;span class="n"&gt;client&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;OpenAI&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+    &lt;span class="n"&gt;base_url&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;http://127.0.0.1:8642/v1&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="n"&gt;api_key&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;change-me-to-a-long-random-secret&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="p"&gt;)&lt;/span&gt;
+
+&lt;span class="n"&gt;response&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;client&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;responses&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;create&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+    &lt;span class="n"&gt;model&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;hermes-agent&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="nb"&gt;input&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;请总结一下当前项目的风险清单。&amp;quot;&lt;/span&gt;
+&lt;span class="p"&gt;)&lt;/span&gt;
+
+&lt;span class="nb"&gt;print&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;response&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;output_text&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这个模式适合两类场景：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;你喜欢某个前端 UI，但想让背后执行的是 Hermes 的工具、记忆和 skills。&lt;/li&gt;
+&lt;li&gt;你想在一个内部系统里调用 Hermes，但不想为它单独写一套客户端协议。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;不过要记住一个限制：Hermes API server 文档说明，&lt;code&gt;model&lt;/code&gt; 字段更多是客户端兼容用，实际使用哪个底层 LLM，仍由 Hermes 服务器端配置决定。别以为客户端传了 &lt;code&gt;deepseek-v4-pro&lt;/code&gt;，Hermes 就一定会绕过自己的配置去调用这个模型。&lt;/p&gt;
+&lt;p&gt;如果你想把辅助模型也指向 OpenAI，比如图像分析，可以在 &lt;code&gt;config.yaml&lt;/code&gt; 里显式写：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nt"&gt;auxiliary&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;vision&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;provider&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;main&amp;quot;&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;model&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;gpt-4o&amp;quot;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h2 id="feishulark-websocket"&gt;接入 Feishu/Lark：推荐 WebSocket，少折腾公网回调&lt;/h2&gt;
+&lt;p&gt;Hermes 的 Feishu/Lark 文档已经比较完整。它支持私聊、群聊、cron 结果投递、文本、图片、音频、文件，还支持 Feishu 文档评论里的 &lt;code&gt;@&lt;/code&gt; 智能回复。&lt;/p&gt;
+&lt;p&gt;我建议优先用 WebSocket 模式。理由很简单：少一个公网 webhook，就少一堆 TLS、反向代理、签名校验、回调地址验证的麻烦。不是不能做，而是没必要一开始就给自己加戏。&lt;/p&gt;
+&lt;h3 id="1-feishulark-app"&gt;1. 创建 Feishu/Lark App&lt;/h3&gt;
+&lt;p&gt;最简单路径：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;hermes&lt;span class="w"&gt; &lt;/span&gt;gateway&lt;span class="w"&gt; &lt;/span&gt;setup
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;选择 Feishu/Lark，用手机扫码创建。若扫码创建不可用，就到开发者后台手工创建应用：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Feishu: &lt;a href="https://open.feishu.cn/"&gt;https://open.feishu.cn/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Lark: &lt;a href="https://open.larksuite.com/"&gt;https://open.larksuite.com/&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;然后复制 &lt;code&gt;App ID&lt;/code&gt; 和 &lt;code&gt;App Secret&lt;/code&gt;，启用 Bot capability，再回到 &lt;code&gt;hermes gateway setup&lt;/code&gt; 填入。&lt;/p&gt;
+&lt;h3 id="2-websocket"&gt;2. 配置 WebSocket 模式&lt;/h3&gt;
+&lt;p&gt;在 &lt;code&gt;~/.hermes/.env&lt;/code&gt; 中配置：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nv"&gt;FEISHU_APP_ID&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;cli_xxx
+&lt;span class="nv"&gt;FEISHU_APP_SECRET&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;secret_xxx
+&lt;span class="nv"&gt;FEISHU_DOMAIN&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;feishu
+&lt;span class="nv"&gt;FEISHU_CONNECTION_MODE&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;websocket
+
+&lt;span class="c1"&gt;# 强烈建议生产环境设置&lt;/span&gt;
+&lt;span class="nv"&gt;FEISHU_ALLOWED_USERS&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;ou_xxx,ou_yyy
+&lt;span class="nv"&gt;FEISHU_GROUP_POLICY&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;allowlist
+&lt;span class="nv"&gt;FEISHU_HOME_CHANNEL&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;oc_xxx
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;code&gt;FEISHU_DOMAIN&lt;/code&gt; 的取值：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;feishu&lt;/code&gt;：中国大陆飞书&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;lark&lt;/code&gt;：国际版 Lark&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;启动：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;hermes&lt;span class="w"&gt; &lt;/span&gt;gateway
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;然后在 Feishu 私聊这个 bot。群聊里默认需要 &lt;code&gt;@&lt;/code&gt; bot，它才会处理消息。这个设计挺合理：否则某天群里吵架，agent 在旁边认真总结“各位的需求分歧主要有三点”，场面会比较难看。&lt;/p&gt;
+&lt;h3 id="3-webhook"&gt;3. 如果必须用 Webhook 模式&lt;/h3&gt;
+&lt;p&gt;Webhook 模式适合你已经有公网 HTTPS 入口的场景：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nv"&gt;FEISHU_CONNECTION_MODE&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;webhook
+&lt;span class="nv"&gt;FEISHU_WEBHOOK_HOST&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="m"&gt;127&lt;/span&gt;.0.0.1
+&lt;span class="nv"&gt;FEISHU_WEBHOOK_PORT&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="m"&gt;8765&lt;/span&gt;
+&lt;span class="nv"&gt;FEISHU_WEBHOOK_PATH&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;/feishu/webhook
+&lt;span class="nv"&gt;FEISHU_ENCRYPT_KEY&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;your-encrypt-key
+&lt;span class="nv"&gt;FEISHU_VERIFICATION_TOKEN&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;your-verification-token
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;生产环境要同时设置 &lt;code&gt;FEISHU_ENCRYPT_KEY&lt;/code&gt; 和 &lt;code&gt;FEISHU_VERIFICATION_TOKEN&lt;/code&gt;。Hermes 文档说明，webhook 模式会做签名/ token 校验、请求大小限制、read timeout 和 rate limiting。安全这件事别省，省下来的时间通常会在事故复盘里加倍还回去。&lt;/p&gt;
+&lt;h3 id="4-feishu"&gt;4. Feishu 权限清单&lt;/h3&gt;
+&lt;p&gt;按场景逐步开权限，不要一上来全开。&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;场景&lt;/th&gt;
+&lt;th&gt;需要关注的配置&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;私聊/群聊&lt;/td&gt;
+&lt;td&gt;Bot capability、消息事件订阅、发送消息权限&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;图片/文件&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;im:message&lt;/code&gt;、&lt;code&gt;im:resource&lt;/code&gt; 等资源权限&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;交互卡片审批&lt;/td&gt;
+&lt;td&gt;订阅 &lt;code&gt;card.action.trigger&lt;/code&gt;，启用 Interactive Card&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;文档评论智能回复&lt;/td&gt;
+&lt;td&gt;订阅 &lt;code&gt;drive.notice.comment_add_v1&lt;/code&gt;，授予 &lt;code&gt;docs:doc:readonly&lt;/code&gt; 和 &lt;code&gt;drive:drive:readonly&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;如果你只是先验证“能不能在飞书里聊起来”，不要急着开文档评论和文件读取。最小权限跑通，再一层一层加。&lt;/p&gt;
+&lt;h2 id="10"&gt;应用实例：每天晚上 10 点写一份科技新闻综述&lt;/h2&gt;
+&lt;p&gt;这个例子比较贴近日常使用：每天晚上 10 点，让 Hermes 用 &lt;code&gt;deepseek-v4-pro&lt;/code&gt; 给我发一份科技新闻综述，重点关注两个方向。&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;AI 应用：不是模型榜单刷屏，而是产品、工作流、行业落地、开发工具的真实变化。&lt;/li&gt;
+&lt;li&gt;OPC：One-Person Company，一人公司。关注个人创业、自动化、AI-first business、solo founder 工具链。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;先把默认模型设成 DeepSeek：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# ~/.hermes/config.yaml&lt;/span&gt;
+&lt;span class="nt"&gt;model&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;provider&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;deepseek&amp;quot;&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;default&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;deepseek-v4-pro&amp;quot;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;再确认 gateway 长期运行。Hermes 的 cron 是由 gateway 的后台 tick 触发的，光开一个普通 CLI chat 不会自动跑定时任务：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;hermes&lt;span class="w"&gt; &lt;/span&gt;gateway&lt;span class="w"&gt; &lt;/span&gt;install
+hermes&lt;span class="w"&gt; &lt;/span&gt;gateway
+hermes&lt;span class="w"&gt; &lt;/span&gt;cron&lt;span class="w"&gt; &lt;/span&gt;status
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;如果你已经在 Feishu 里跟 Hermes bot 对话，最自然的方式是在 Feishu 私聊里直接说：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;Every day at 22:00, write a Chinese daily tech news briefing and send it back here.
+Focus on AI applications and OPC (one-person company).
+
+Requirements:
+- Use deepseek-v4-pro as the model if available.
+- Summarize 5-8 important items from the last 24 hours.
+- For each item include: title, source, why it matters, and one practical takeaway.
+- Separate &amp;quot;AI 应用&amp;quot; and &amp;quot;OPC / 一人公司&amp;quot; sections.
+- End with &amp;quot;明天值得观察的 3 件事&amp;quot;.
+- Avoid hype. Mark uncertain information clearly.
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;Hermes 文档说，cron 支持自然语言和标准 cron 表达式。上面这种从 Feishu 发起的任务，默认会把结果回投到创建任务的聊天来源。你也可以用更明确的 cron 表达式：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;hermes&lt;span class="w"&gt; &lt;/span&gt;cron&lt;span class="w"&gt; &lt;/span&gt;create&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;0 22 * * *&amp;quot;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="se"&gt;\&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;Write a Chinese daily tech news briefing for the last 24 hours. Focus on AI applications and OPC (one-person company). Include 5-8 items, source, why it matters, one practical takeaway, and 3 things to watch tomorrow. Avoid hype and mark uncertainty clearly.&amp;quot;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="se"&gt;\&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;--name&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;Daily AI and OPC brief&amp;quot;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;如果从 CLI 创建，默认结果通常会保存到本地输出目录；如果想投递到 Feishu，最好从 Feishu 对话中创建，或者按当前 Hermes 版本支持的 delivery target 配成 &lt;code&gt;feishu&lt;/code&gt;。这个细节别嫌麻烦，定时任务最烦人的不是“跑不起来”，而是跑起来以后发到了你找不到的地方。&lt;/p&gt;
+&lt;p&gt;这类任务还有一个前置条件：Hermes 需要有可用的 web/search 能力，或者你提供固定 RSS/新闻源。否则它只能靠模型已有知识写“昨日新闻”，那就不是综述，是新闻穿越。&lt;/p&gt;
+&lt;p&gt;我会再加三条质量约束，防止它写成“科技媒体标题党精选”：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;约束&lt;/th&gt;
+&lt;th&gt;为什么要加&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;每条新闻必须给来源&lt;/td&gt;
+&lt;td&gt;没来源的“新闻”只能算传闻&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;每条只写一个 takeaway&lt;/td&gt;
+&lt;td&gt;逼它从信息搬运变成判断&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;不确定就标注不确定&lt;/td&gt;
+&lt;td&gt;AI 最危险的不是不知道，而是不知道还装懂&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;一份合格的日报，不应该让你读完觉得“世界又变了”，而应该让你知道：明天哪三件事值得花时间，哪三件事可以先放过。&lt;/p&gt;
+&lt;h2 id="_4"&gt;一个推荐架构&lt;/h2&gt;
+&lt;p&gt;如果要把 Hermes Agent 放进日常工作流，我会从这个小架构开始：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;Feishu/Lark
+    |
+    | WebSocket Gateway
+    v
+Hermes Agent on VPS / workstation
+    |
+    | provider routing
+    v
+DeepSeek API / OpenAI API / OpenRouter / local model
+    |
+    | optional
+    v
+Hermes API Server -&amp;gt; Open WebUI / internal tools
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这个架构的好处是边界清楚：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Feishu 负责入口和通知。&lt;/li&gt;
+&lt;li&gt;Hermes 负责 session、memory、skills、tools、scheduler。&lt;/li&gt;
+&lt;li&gt;DeepSeek/OpenAI/OpenRouter 等 provider 负责模型能力。&lt;/li&gt;
+&lt;li&gt;API Server 只在需要被其他系统调用时打开。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;每一层都可以独立替换。今天用 DeepSeek，明天换 OpenAI、OpenRouter 或本地模型；今天用 Feishu，明天加 Slack；今天用 CLI，明天接 Open WebUI。能被替换，系统才不容易被某个供应商、某个聊天平台、某个模型名绑死。&lt;/p&gt;
+&lt;h2 id="agent"&gt;安全清单：别让个人 Agent 变成个人事故&lt;/h2&gt;
+&lt;p&gt;Agent 一旦接入聊天平台、文件系统、浏览器、shell 和 API key，它就不再是“玩具聊天机器人”。它更像一个拿着你门禁卡的实习生：聪明、勤快，但权限必须管住。&lt;/p&gt;
+&lt;p&gt;上线前我建议至少检查这些：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;API key 只放在 &lt;code&gt;~/.hermes/.env&lt;/code&gt; 或密钥系统，不进 Git。&lt;/li&gt;
+&lt;li&gt;DeepSeek、OpenAI、OpenRouter 等 provider 的 key 分开管理，别共用一个“万能 token”。&lt;/li&gt;
+&lt;li&gt;Feishu/Lark 必须设置 &lt;code&gt;FEISHU_ALLOWED_USERS&lt;/code&gt;，群聊默认用 &lt;code&gt;allowlist&lt;/code&gt;。&lt;/li&gt;
+&lt;li&gt;Webhook 模式必须配置 &lt;code&gt;FEISHU_ENCRYPT_KEY&lt;/code&gt; 和 &lt;code&gt;FEISHU_VERIFICATION_TOKEN&lt;/code&gt;。&lt;/li&gt;
+&lt;li&gt;不把 Hermes API Server 直接暴露到公网；如必须暴露，放在反向代理、TLS、鉴权和 IP allowlist 后面。&lt;/li&gt;
+&lt;li&gt;先用低权限 bot 跑通，再逐步加文件、文档、卡片审批权限。&lt;/li&gt;
+&lt;li&gt;对高风险工具保留 command approval，不要为了“省一次点击”把生产机器交出去。&lt;/li&gt;
+&lt;li&gt;定期跑 &lt;code&gt;hermes doctor&lt;/code&gt;，确认配置没有明显风险。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id="_5"&gt;常见坑&lt;/h2&gt;
+&lt;h3 id="1-feishu"&gt;1. Feishu 私聊能用，群聊没反应&lt;/h3&gt;
+&lt;p&gt;先检查三件事：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;群里是否明确 &lt;code&gt;@&lt;/code&gt; 了 bot。&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;FEISHU_GROUP_POLICY&lt;/code&gt; 是否是 &lt;code&gt;allowlist&lt;/code&gt;。&lt;/li&gt;
+&lt;li&gt;发送者的 open_id 是否在 &lt;code&gt;FEISHU_ALLOWED_USERS&lt;/code&gt; 里。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;如果 bot identity 没识别出来，再显式配置：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nv"&gt;FEISHU_BOT_OPEN_ID&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;ou_xxx
+&lt;span class="nv"&gt;FEISHU_BOT_USER_ID&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;xxx
+&lt;span class="nv"&gt;FEISHU_BOT_NAME&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;MyBot
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h3 id="2-feishu"&gt;2. 点击 Feishu 交互卡片报错&lt;/h3&gt;
+&lt;p&gt;检查是否订阅 &lt;code&gt;card.action.trigger&lt;/code&gt;，是否启用 Interactive Card。Webhook 模式还要配置 Card Request URL。&lt;/p&gt;
+&lt;h3 id="3-deepseek-hermes"&gt;3. DeepSeek 配好了，但 Hermes 没用你想的模型&lt;/h3&gt;
+&lt;p&gt;确认你是在改 Hermes 的 server-side model 配置，而不是只在外部客户端请求里传了一个 &lt;code&gt;model&lt;/code&gt; 字段。Hermes API Server 模式下，客户端的 &lt;code&gt;model&lt;/code&gt; 字段主要用于兼容，真正底层模型由 Hermes 配置决定。最直接的检查方式是看 &lt;code&gt;~/.hermes/config.yaml&lt;/code&gt; 里的 &lt;code&gt;model.provider&lt;/code&gt; 和 &lt;code&gt;model.default&lt;/code&gt;。&lt;/p&gt;
+&lt;h3 id="4-10"&gt;4. 定时任务到了晚上 10 点没动静&lt;/h3&gt;
+&lt;p&gt;先检查：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;hermes gateway&lt;/code&gt; 是否在运行。&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;hermes cron list&lt;/code&gt; 里任务是否是 active。&lt;/li&gt;
+&lt;li&gt;机器时区是否是你以为的时区。&lt;/li&gt;
+&lt;li&gt;任务是从 CLI 创建还是从 Feishu 创建，delivery target 是否符合预期。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id="5-openclaw"&gt;5. 迁移 OpenClaw 后感觉行为不一样&lt;/h3&gt;
+&lt;p&gt;这是正常的。迁移工具能搬设置、记忆、skills 和部分密钥，但搬不了“运行时哲学”。建议先用 &lt;code&gt;hermes claw migrate --dry-run&lt;/code&gt; 看迁移计划，再小范围验证，不要直接把日常入口切过去。&lt;/p&gt;
+&lt;h2 id="_6"&gt;参考资料&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://github.com/nousresearch/hermes-agent"&gt;NousResearch/hermes-agent GitHub README&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://hermes-agent.nousresearch.com/docs/user-guide/messaging/feishu"&gt;Hermes Agent: Feishu / Lark Setup&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://hermes-agent.nousresearch.com/docs/user-guide/features/overview/"&gt;Hermes Agent: Features Overview&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://hermes-agent.nousresearch.com/docs/developer-guide/architecture"&gt;Hermes Agent: Architecture&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://hermes-agent.nousresearch.com/docs/developer-guide/agent-loop/"&gt;Hermes Agent: Agent Loop Internals&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://hermes-agent.nousresearch.com/docs/user-guide/features/memory/"&gt;Hermes Agent: Persistent Memory&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://hermes-agent.nousresearch.com/docs/integrations/providers"&gt;Hermes Agent: AI Providers&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://hermes-agent.nousresearch.com/docs/user-guide/features/cron/"&gt;Hermes Agent: Scheduled Tasks (Cron)&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://hermes-agent.nousresearch.com/docs/user-guide/features/api-server/"&gt;Hermes Agent: API Server&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://github.com/openclaw/openclaw"&gt;openclaw/openclaw GitHub README&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://developers.openai.com/api/docs/quickstart"&gt;OpenAI API Quickstart&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://developers.openai.com/api/docs/guides/text"&gt;OpenAI Text Generation Guide&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://developers.openai.com/api/reference/overview"&gt;OpenAI API Reference: Authentication&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id="_7"&gt;如果是我，会怎么选&lt;/h2&gt;
+&lt;p&gt;如果让我今天在一台干净的 VPS 上搭一个个人工作 agent，我会先试 Hermes Agent。原因不是它“功能更多”，而是它的 memory、skills、gateway、scheduler 和 provider routing 放在一起后，像一个可以长期运行的工作底座。&lt;/p&gt;
+&lt;p&gt;但如果目标是“尽快覆盖尽可能多的聊天平台和本地设备体验”，OpenClaw 仍然值得看。它更像一个个人助理入口平台，尤其适合喜欢折腾本地设备、聊天渠道和 companion apps 的人。&lt;/p&gt;
+&lt;p&gt;我的建议很实在：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;先用 Hermes CLI 跑通一个真实任务。&lt;/li&gt;
+&lt;li&gt;再接 Feishu WebSocket，让它进入日常工作流。&lt;/li&gt;
+&lt;li&gt;然后配置 DeepSeek &lt;code&gt;deepseek-v4-pro&lt;/code&gt; 或其他 provider，观察成本、延迟和质量。&lt;/li&gt;
+&lt;li&gt;再逐步打开 scheduler、API Server、文档评论回复等高级能力。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;Agent 这件事，最怕一上来就“全家桶”。先让它在一个小场景里可靠，再让它长大。人是这样，系统也是这样。目的无他，先活下来，再谈宏大叙事。&lt;/p&gt;
+&lt;h2 id="_8"&gt;思维导图&lt;/h2&gt;
+&lt;p&gt;&lt;img alt="Hermes Agent 思维导图" src="../images/tech_20260425_hermes_agent_openclaw_feishu_openai_mindmap.svg"&gt;&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;mindmap
+  root((Hermes Agent))
+    定位
+      长期运行的个人 Agent
+      记忆和技能沉淀
+      Gateway 加 Scheduler
+    特点
+      多入口共用核心
+      有边界的长期记忆
+      Skills Tools Plugins 分层
+      Cron 是 Agent Task
+    优点
+      长期性
+      入口和核心分离
+      工具系统分层
+      自动化复用运行时
+      模型供应商可替换
+    缺点
+      复杂度高
+      配置面大
+      记忆不能当事实源
+      自动化依赖信息源
+      安全边界要自己守
+    架构借鉴
+      一个核心多种入口
+      能力分层
+      小而准的记忆
+      定时任务回到 Agent 运行时
+    对比 OpenClaw
+      Hermes
+        重视闭环
+        Memory
+        Skills
+        Provider routing
+      OpenClaw
+        平台覆盖广
+        本地个人助理
+        多渠道入口
+      选择标准
+        先看主要场景
+        再看责任边界
+        再看迁移成本
+    接入模型
+      DeepSeek
+        DEEPSEEK_API_KEY
+        deepseek-v4-pro
+        内置 provider
+      OpenAI-compatible
+        Custom endpoint
+        config.yaml
+        API key 不进 Git
+      API Server
+        OpenAI-compatible endpoint
+        前端 UI 可复用
+        服务器端决定真实模型
+    接入 Feishu
+      WebSocket 优先
+      私聊和群聊
+      cron 结果投递
+      权限最小化
+    应用实例
+      每晚 22 点
+      AI 应用
+      OPC 一人公司
+      新闻综述
+      来源和 takeaway
+    安全边界
+      用户 allowlist
+      Secret 管理
+      Webhook 校验
+      高风险工具审批
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;hr/&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Tech"/><category term="AI Agent"/><category term="Hermes Agent"/><category term="OpenClaw"/><category term="Feishu"/><category term="OpenAI API"/><category term="DeepSeek"/><category term="OPC"/></entry><entry><title>如何把你的论文发布到 arXiv</title><link href="https://www.fanyamin.com/ru-he-ba-ni-de-lun-wen-fa-bu-dao-arxiv.html" rel="alternate"/><published>2026-04-25T10:00:00+08:00</published><updated>2026-04-25T22:55:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-04-25:/ru-he-ba-ni-de-lun-wen-fa-bu-dao-arxiv.html</id><summary type="html">&lt;p&gt;介绍 arXiv 是什么, 适合发布什么类型的论文, 以及从准备稿件到提交、背书、授权和公告的完整流程。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;如何把你的论文发布到 arXiv&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;Tech&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Version&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;v1.0&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;2026-04-25&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;论文写完那一刻, 很多人会有一种错觉: 大功告成, 世界只差一个链接就能看到我的智慧结晶了。&lt;/p&gt;
+&lt;p&gt;现实通常没这么浪漫。投稿期刊要等, 会议审稿要等, 学校归档也要等。科研这事有时像排队打饭, 菜都做好了, 窗口还没开。于是 arXiv 这种预印本平台就变得很有用: 先把研究成果公开出来, 让同行能读到、引用、讨论, 同时保留一个清晰的时间戳。&lt;/p&gt;
+&lt;p&gt;不过先把话说在前头: arXiv 不是学位论文仓库, 也不是帮你盖章毕业的地方。它更像一个严肃的科研预印本集市。你可以把 thesis 改写成符合学术交流习惯的 paper/preprint 发上去, 也可以提交符合 arXiv 学科范围和格式要求的研究稿件, 但不要把它当作学校论文系统或期刊审稿系统的替代品。&lt;/p&gt;
+&lt;h2 id="arxiv"&gt;arXiv 是什么&lt;/h2&gt;
+&lt;p&gt;&lt;a href="https://arxiv.org/"&gt;arXiv&lt;/a&gt; 是一个开放访问的科研论文分享平台, 1991 年由 Paul Ginsparg 创建。按 arXiv 官方介绍, 它现在覆盖八大领域: physics, mathematics, computer science, quantitative biology, quantitative finance, statistics, electrical engineering and systems science, economics。&lt;/p&gt;
+&lt;p&gt;它的核心价值很简单:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;让研究成果更快被看到&lt;/li&gt;
+&lt;li&gt;给论文一个稳定的公开页面和 arXiv identifier&lt;/li&gt;
+&lt;li&gt;支持检索、订阅、API、批量数据访问&lt;/li&gt;
+&lt;li&gt;为 TeX/LaTeX 论文提供编译和展示服务&lt;/li&gt;
+&lt;li&gt;由志愿 moderator 做学科相关性和基本学术质量把关&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这里有个容易误解的点: arXiv 有 moderation, 但不是 peer review。moderator 会看稿件是否属于相关学科、是否有学术价值、格式是否靠谱、是否有明显抄袭或非科学内容, 但它不会像期刊审稿人那样给你三页意见, 顺便把你脆弱的自尊心按在地上摩擦。&lt;/p&gt;
+&lt;p&gt;一句话: arXiv 解决的是 "快速公开和长期保存", 不解决 "同行评审和学位认证"。&lt;/p&gt;
+&lt;h2 id="_1"&gt;什么论文适合发&lt;/h2&gt;
+&lt;p&gt;适合发到 arXiv 的, 通常是有明确研究贡献的稿件:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;已完成但尚未正式发表的 preprint&lt;/li&gt;
+&lt;li&gt;已投稿会议或期刊、但不违反出版方政策的版本&lt;/li&gt;
+&lt;li&gt;已发表论文的允许归档版本, 例如 accepted manuscript&lt;/li&gt;
+&lt;li&gt;从学位论文中整理出来的一篇或几篇研究论文&lt;/li&gt;
+&lt;li&gt;有完整问题、方法、实验、结论和参考文献的技术报告&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;不太适合的内容也要心里有数:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;课程作业&lt;/li&gt;
+&lt;li&gt;研究计划书&lt;/li&gt;
+&lt;li&gt;新闻评论或观点杂文&lt;/li&gt;
+&lt;li&gt;没有实质研究内容的介绍文&lt;/li&gt;
+&lt;li&gt;大段个人宣言、政治表达或营销材料&lt;/li&gt;
+&lt;li&gt;尚未和导师、合作者、单位确认权利归属的稿件&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;尤其是学位论文。博士论文、硕士论文往往篇幅很长, 有大量背景、综述、致谢、附录和学校格式要求。直接把整本 thesis 扔上去, 未必是最好的传播方式。更常见也更稳妥的做法是: 拆出其中最成熟的一章或几章, 按论文结构改写成一篇 research article。&lt;/p&gt;
+&lt;h2 id="_2"&gt;提交前先过四道门&lt;/h2&gt;
+&lt;h3 id="1"&gt;1. 权利和时机&lt;/h3&gt;
+&lt;p&gt;先确认你有权提交。&lt;/p&gt;
+&lt;p&gt;如果论文包含合作者贡献, 要和所有作者确认。若涉及学校、公司、基金、专利或保密协议, 也要先问清楚。做研究不能像写临时代码, 今天 push, 明天再说。论文一旦公开, 时间戳很漂亮, 但有些门也就关上了。&lt;/p&gt;
+&lt;p&gt;还要检查目标期刊或会议的 preprint 政策。有些出版方允许预印本, 有些对 license、版本、embargo 有要求。arXiv 官方也提醒作者, license 选择不可撤销, 不同 funder 和 journal 的要求可能不同。&lt;/p&gt;
+&lt;h3 id="2"&gt;2. 账号和背书&lt;/h3&gt;
+&lt;p&gt;你需要注册 arXiv 账号。注册时要填写姓名、机构、机构邮箱等信息; 如果没有机构, 可以填写 Independent。新用户或者第一次向某个分类提交时, 可能需要 endorsement。&lt;/p&gt;
+&lt;p&gt;endorsement 不是什么神秘仪式, 更像科研社区的入场检查。arXiv 希望确认提交者属于相应学术社区。最自然的背书人通常是导师、同领域教授、合作者, 或者在该领域已经活跃发表过 arXiv 论文的研究者。&lt;/p&gt;
+&lt;p&gt;这里不要群发骚扰邮件。科研圈不大, 邮件写得像海投简历, 很容易把路走窄。&lt;/p&gt;
+&lt;h3 id="3"&gt;3. 稿件格式&lt;/h3&gt;
+&lt;p&gt;arXiv 接受多种格式, 但官方明确偏好 TeX/LaTeX。原因也不复杂: 源文件更适合长期保存、重新编译、生成可访问的版本。&lt;/p&gt;
+&lt;p&gt;如果你的论文本来就是 LaTeX 写的, 不要只上传编译后的 PDF。arXiv 通常希望你提交源文件, 包括:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;主 &lt;code&gt;.tex&lt;/code&gt; 文件&lt;/li&gt;
+&lt;li&gt;被 &lt;code&gt;\input&lt;/code&gt; 或 &lt;code&gt;\include&lt;/code&gt; 引用的章节文件&lt;/li&gt;
+&lt;li&gt;图片文件&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;.bib&lt;/code&gt; 或 &lt;code&gt;.bbl&lt;/code&gt; 参考文献文件&lt;/li&gt;
+&lt;li&gt;自定义 &lt;code&gt;.sty&lt;/code&gt; 或宏文件, 如果确实需要&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;打包时可以用 &lt;code&gt;.zip&lt;/code&gt; 或 &lt;code&gt;.tar.gz&lt;/code&gt;。文件名尽量朴素, 不要带空格、中文、奇怪符号。咱们平时写代码都知道, 路径和大小写问题最烦人; 到论文提交系统里, 它照样烦人。&lt;/p&gt;
+&lt;p&gt;如果你的稿件来自 Word 或 Google Docs, 可以提交 PDF, 但要确保 PDF 是机器可读的、字体嵌入完整、图文在同一个 PDF 中。不要提交扫描版。扫描版看着像论文, 本质上是论文的照片, 系统和读者都不太高兴。&lt;/p&gt;
+&lt;h3 id="4"&gt;4. 元数据&lt;/h3&gt;
+&lt;p&gt;提交时要填写 title、authors、abstract、category 等信息。arXiv 的元数据字段对字符有要求, 常见坑是从 PDF 复制出来的弯引号、长破折号、连字和 Unicode 字符。官方建议很朴素: 如果搞不定, 就手打。&lt;/p&gt;
+&lt;p&gt;category 要认真选。比如计算机领域里, &lt;code&gt;cs.LG&lt;/code&gt; 是 machine learning, &lt;code&gt;cs.CR&lt;/code&gt; 是 cryptography and security, &lt;code&gt;cs.DC&lt;/code&gt; 是 distributed computing, &lt;code&gt;cs.SE&lt;/code&gt; 是 software engineering。选错分类不是大罪, moderator 可能会帮你调整, 但这会增加延迟, 也说明你没有认真给自己的论文找读者。&lt;/p&gt;
+&lt;h2 id="_3"&gt;提交流程&lt;/h2&gt;
+&lt;p&gt;实际操作可以按这个顺序走:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;注册账号, 完成邮箱验证。&lt;/li&gt;
+&lt;li&gt;从用户页面点击 &lt;code&gt;START NEW SUBMISSION&lt;/code&gt;。&lt;/li&gt;
+&lt;li&gt;选择学科分类。&lt;/li&gt;
+&lt;li&gt;如果系统要求 endorsement, 按邮件提示找合适背书人。&lt;/li&gt;
+&lt;li&gt;上传源文件或 PDF。&lt;/li&gt;
+&lt;li&gt;点击 &lt;code&gt;Check Files&lt;/code&gt;, 让系统识别编译器和顶层 TeX 文件。&lt;/li&gt;
+&lt;li&gt;检查编译日志, 预览 arXiv 生成的 PDF。&lt;/li&gt;
+&lt;li&gt;填写 title、authors、abstract、comments、category、DOI 等元数据。&lt;/li&gt;
+&lt;li&gt;选择 license, 并确认自己有权授予该 license。&lt;/li&gt;
+&lt;li&gt;最后提交, 等待 moderation 和公告。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;arXiv 的公告有固定节奏。官方说明里, 一般在美国东部时间周日至周四公开新提交, 周五和周六没有公告; 14:00 ET 前完成最终提交, 通常会进入当天 20:00 ET 的公告队列。遇到节假日、moderation 或技术问题, 可能会延迟。&lt;/p&gt;
+&lt;p&gt;注意一个细节: arXiv identifier 不是你点提交那一秒生成的, 而是在论文公告时分配。不要还没公告就到处问 "我的 arXiv ID 怎么还没有", 这就像饭还在锅里, 你已经开始点评摆盘了。&lt;/p&gt;
+&lt;h2 id="_4"&gt;版本、修改和撤回&lt;/h2&gt;
+&lt;p&gt;如果论文公开前发现问题, 可以 &lt;code&gt;Unsubmit&lt;/code&gt;, 修改后重新提交。公开前的修改不会生成新版本。&lt;/p&gt;
+&lt;p&gt;如果论文已经公开, 后续修订应提交 replacement, 不要开一个新 submission。arXiv 的版本号会变成 v2、v3。这个机制挺好, 像 Git 里的 commit history, 读者能看到研究如何演进。&lt;/p&gt;
+&lt;p&gt;但也正因为它是长期学术记录, 不要把 arXiv 当草稿箱。提交前至少做一次像样的自检:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;标题是否清楚&lt;/li&gt;
+&lt;li&gt;摘要是否说明问题、方法、结果和意义&lt;/li&gt;
+&lt;li&gt;作者顺序是否确认&lt;/li&gt;
+&lt;li&gt;图表是否完整&lt;/li&gt;
+&lt;li&gt;参考文献是否可追踪&lt;/li&gt;
+&lt;li&gt;PDF 是否从第一页到最后一页都正常&lt;/li&gt;
+&lt;li&gt;license 是否和期刊、基金、单位要求一致&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id="_5"&gt;一个可直接照抄的发布清单&lt;/h2&gt;
+&lt;p&gt;下面这张清单, 建议在提交前逐项打勾。&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;检查项&lt;/th&gt;
+&lt;th&gt;要问自己的问题&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;研究贡献&lt;/td&gt;
+&lt;td&gt;这篇论文是否有清楚的问题、方法、结果和结论?&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;学科范围&lt;/td&gt;
+&lt;td&gt;它是否属于 arXiv 当前服务的领域和分类?&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;作者授权&lt;/td&gt;
+&lt;td&gt;所有作者是否同意提交版本、作者顺序和 license?&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;出版政策&lt;/td&gt;
+&lt;td&gt;目标期刊/会议/基金是否允许该版本公开?&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;文件准备&lt;/td&gt;
+&lt;td&gt;LaTeX 源码、图片、参考文献、宏文件是否齐全?&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;PDF 预览&lt;/td&gt;
+&lt;td&gt;arXiv 生成的 PDF 是否逐页检查过?&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;元数据&lt;/td&gt;
+&lt;td&gt;title、authors、abstract、category 是否准确?&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;背书&lt;/td&gt;
+&lt;td&gt;新用户或新分类是否已准备好找合适 endorser?&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;长期影响&lt;/td&gt;
+&lt;td&gt;这份公开记录是否经得起半年后的自己回看?&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 id="_6"&gt;最后一句不中听但有用的话&lt;/h2&gt;
+&lt;p&gt;把论文发到 arXiv, 技术上不难。真正难的是判断: 这篇论文是否已经成熟到值得公开。&lt;/p&gt;
+&lt;p&gt;公开是一种加速器。好论文会因此更快遇到读者、合作者和引用; 半成品也会更快暴露问题。咱们写代码时常说 "不要在生产环境调试人生", 写论文也差不多。提交前多花一天做清理, 可能比提交后花一周解释错误更划算。&lt;/p&gt;
+&lt;p&gt;如果你的 thesis 已经写完, 我的建议是: 先别急着上传整本。拿出其中最强的一章, 改成一篇干净、完整、可读的 paper。能讲清楚问题, 能站住方法, 能让同行看完愿意继续追问, 这就够了。&lt;/p&gt;
+&lt;p&gt;学术传播, 无他, 认真准备, 及时公开, 接受检验。&lt;/p&gt;
+&lt;h2 id="references"&gt;References&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://info.arxiv.org/about/index.html"&gt;About arXiv&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://info.arxiv.org/help/submit/index.html"&gt;Submission Guidelines&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://info.arxiv.org/help/submit_tex.html"&gt;Submit TeX/LaTeX&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://info.arxiv.org/help/submit_pdf.html"&gt;Submit a PDF&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://info.arxiv.org/help/endorsement.html"&gt;Endorsement&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://info.arxiv.org/help/license/index.html"&gt;Licenses&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://info.arxiv.org/help/moderation/index.html"&gt;Content Moderation&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://info.arxiv.org/help/availability.html"&gt;Availability of submissions&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://arxiv.org/category_taxonomy"&gt;Category Taxonomy&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;hr/&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Tech"/><category term="arxiv"/><category term="research"/><category term="paper"/><category term="thesis"/><category term="open access"/></entry><entry><title>安全混沌工程：把安全事故演练成消防演习</title><link href="https://www.fanyamin.com/security-chaos-engineering-fire-drill.html" rel="alternate"/><published>2026-04-24T10:15:00+08:00</published><updated>2026-04-26T22:31:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-04-24:/security-chaos-engineering-fire-drill.html</id><summary type="html">&lt;p&gt;混沌工程不该只服务于稳定性。面对密码泄漏、账号被盗、数据外泄、勒索加密等安全事故，团队也需要像消防演习一样，在平时用可控、低风险的方式反复演练发现、响应、隔离、恢复和复盘。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;安全混沌工程：把安全事故演练成消防演习&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;Security&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Status&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;v1.0&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;2026-04-26&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h1 id="_1"&gt;安全混沌工程：把安全事故演练成消防演习&lt;/h1&gt;
+&lt;h2 id="_2"&gt;真出事时，最怕的不是火大，是人懵&lt;/h2&gt;
+&lt;p&gt;很多公司每年都会做消防演习。&lt;/p&gt;
+&lt;p&gt;警报一响，大家知道该往哪跑，谁负责清点人数，谁负责关门，谁负责联系物业。平时觉得有点麻烦，真起火的时候，这套流程就值钱了。&lt;/p&gt;
+&lt;p&gt;安全事故更需要这种演习。只是它不像火灾那样有烟、有味、有热浪，很多时候只是一条告警、一段日志、一个异常登录。等你闻到焦糊味，往往已经晚了。&lt;/p&gt;
+&lt;p&gt;密码泄漏、员工账号被盗、黑客横向移动、数据库被拖库、勒索软件把文件加密锁死，这些事平时听着都像“别人家的倒霉事”。可一旦真落到自己头上，最常见的场面不是技术不够，而是现场一片混乱：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;告警谁先看？&lt;/li&gt;
+&lt;li&gt;谁来定级？&lt;/li&gt;
+&lt;li&gt;是先断网还是先取证？&lt;/li&gt;
+&lt;li&gt;谁能拍板轮换密钥？&lt;/li&gt;
+&lt;li&gt;法务、公关、老板、客户，谁先通知？&lt;/li&gt;
+&lt;li&gt;恢复的时候，是先拉服务，还是先确认攻击口子已经堵上？&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这时候你会发现，安全响应和火灾逃生有个共同点：&lt;strong&gt;真正决定生死的，往往不是事故发生后的灵光一闪，而是事故发生前练过多少次。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;所以我越来越觉得，混沌工程不该只盯着 CPU 打满、节点宕机、网络抖动。安全也需要自己的 Game Day。你可以叫它：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Security Game Day&lt;/li&gt;
+&lt;li&gt;Tabletop Exercise&lt;/li&gt;
+&lt;li&gt;Incident Response Drill&lt;/li&gt;
+&lt;li&gt;Breach Simulation&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;名字不重要，核心就一句话，别等真着火了才找灭火器：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;别把第一次响应，留给真的事故。&lt;/strong&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h2 id="_3"&gt;混沌工程到了安全场景，重点要换一下&lt;/h2&gt;
+&lt;p&gt;传统混沌工程的目标，是验证系统在故障注入下是否还有韧性。比如：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;随机杀 Pod&lt;/li&gt;
+&lt;li&gt;注入网络延迟&lt;/li&gt;
+&lt;li&gt;让某个依赖超时&lt;/li&gt;
+&lt;li&gt;模拟可用区故障&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;它关心的是系统“会不会倒”。&lt;/p&gt;
+&lt;p&gt;到了安全场景，光看“倒不倒”不够。更要问的是：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;能不能发现&lt;/strong&gt;：异常有没有被监控、日志、检测规则及时捕获&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;能不能判断&lt;/strong&gt;：团队能不能快速分辨是真攻击、误报，还是灰色地带&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;能不能止血&lt;/strong&gt;：账号冻结、密钥轮换、网络隔离、权限收缩能不能真执行&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;能不能恢复&lt;/strong&gt;：恢复流程是不是和业务连续性、备份恢复、法务合规打通&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;能不能复盘&lt;/strong&gt;：事故后有没有沉淀成规则、脚本、流程和默认配置&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;稳定性混沌工程更像测试“机器抗不抗揍”。&lt;/p&gt;
+&lt;p&gt;安全演练更像测试“人、流程、工具、权限模型、沟通链路，遇到攻击时是不是一盘散沙”。一句话，稳定性演练看机器，安全演练看组织。&lt;/p&gt;
+&lt;h2 id="_4"&gt;安全演练，不等于“真的把自己黑一遍”&lt;/h2&gt;
+&lt;p&gt;很多团队一听“安全混沌工程”，第一反应就容易跑偏：&lt;/p&gt;
+&lt;p&gt;“是不是要找红队狠狠干我一轮？”&lt;/p&gt;
+&lt;p&gt;不一定。&lt;/p&gt;
+&lt;p&gt;消防演习也不是先把大楼点着，再看大家能不能跑出来。安全演练同样应该分层次，从低风险到高风险，逐步加码。先练会走，再练跑，别一上来就玩高空跳伞。&lt;/p&gt;
+&lt;p&gt;我比较推荐把它拆成五层。&lt;/p&gt;
+&lt;h2 id="tabletop-exercise"&gt;第一层：桌面推演（Tabletop Exercise）&lt;/h2&gt;
+&lt;p&gt;这是最轻的一层，也是最容易开始的一层。&lt;/p&gt;
+&lt;p&gt;做法很简单：把该来的人拉进一个会议室，拿一个场景，按时间线往前推。&lt;/p&gt;
+&lt;p&gt;例如这个场景：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;周六凌晨 2 点，SOC 告警提示某生产数据库账号在异常地域被登录；同时对象存储下载流量陡增，疑似数据外传。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;然后开始问：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;第一位接警的人是谁？&lt;/li&gt;
+&lt;li&gt;5 分钟内应该看什么？&lt;/li&gt;
+&lt;li&gt;15 分钟内谁有权决定临时冻结账号？&lt;/li&gt;
+&lt;li&gt;如果冻结会影响生产，谁来拍板？&lt;/li&gt;
+&lt;li&gt;什么时候拉法务、合规、PR、客服进来？&lt;/li&gt;
+&lt;li&gt;如果最终证明是误报，怎么降级、怎么恢复？&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;这种演练看起来“没技术含量”，其实最容易暴露现实问题：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;值班表是过期的&lt;/li&gt;
+&lt;li&gt;Runbook 没人看过&lt;/li&gt;
+&lt;li&gt;负责人休假没人顶&lt;/li&gt;
+&lt;li&gt;跨团队联系方式不全&lt;/li&gt;
+&lt;li&gt;决策权限不清楚&lt;/li&gt;
+&lt;li&gt;取证和止血的顺序互相打架&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;桌面推演的好处是便宜、快、阻力小。坏处是它只能验证“大家嘴上会不会”，验证不了“系统实际上能不能”。&lt;/p&gt;
+&lt;p&gt;所以它适合做起点，不适合做终点。只会开会推演，到头来也容易变成“纸上消防队”。&lt;/p&gt;
+&lt;h2 id="detection-drill"&gt;第二层：检测演练（Detection Drill）&lt;/h2&gt;
+&lt;p&gt;这一层开始碰系统，但仍然以低破坏为主。&lt;/p&gt;
+&lt;p&gt;目标很明确：&lt;strong&gt;验证你是不是真的看得见攻击信号。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;典型做法包括：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;投放一枚带审计的 honeytoken，验证是否会触发告警&lt;/li&gt;
+&lt;li&gt;在测试环境或受控范围内模拟一次异常登录&lt;/li&gt;
+&lt;li&gt;模拟开发者把伪造密钥提交到仓库，看 secret scanning 和告警链路是否生效&lt;/li&gt;
+&lt;li&gt;模拟异常批量下载、异常权限提升、异常地理位置访问，看 SIEM/EDR/CloudTrail 告警是否真的有人接&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;很多团队的问题不是“没有安全设备”，而是：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;告警规则早就配了，但没人调优&lt;/li&gt;
+&lt;li&gt;规则会响，但响了进一个没人看的频道&lt;/li&gt;
+&lt;li&gt;频道有人看，但没人知道该不该升级&lt;/li&gt;
+&lt;li&gt;升级以后，值班同学没有权限做处置&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;说白了，&lt;strong&gt;看见风险&lt;/strong&gt; 和 &lt;strong&gt;真正响应风险&lt;/strong&gt; 中间，隔着一整条组织链路。&lt;/p&gt;
+&lt;p&gt;这条链路不练，纸面能力基本都带水分。&lt;/p&gt;
+&lt;h2 id="containment-drill"&gt;第三层：处置演练（Containment Drill）&lt;/h2&gt;
+&lt;p&gt;这层最关键，因为很多事故不是死于“没发现”，而是死于“发现以后手忙脚乱，不敢下手”。&lt;/p&gt;
+&lt;p&gt;你可以挑几种高频场景，专门练止血动作。&lt;/p&gt;
+&lt;h3 id="1-api-key"&gt;场景 1：密码或 API Key 泄漏&lt;/h3&gt;
+&lt;p&gt;演练重点：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;谁来确认泄漏范围&lt;/li&gt;
+&lt;li&gt;谁来轮换密钥&lt;/li&gt;
+&lt;li&gt;轮换后哪些服务会受影响&lt;/li&gt;
+&lt;li&gt;有没有批量失效和批量下发机制&lt;/li&gt;
+&lt;li&gt;老密钥是否真的被撤销，而不是“新旧并存”&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这类演练很适合暴露一个常见坑：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;团队以为自己“支持密钥轮换”，实际意思往往只是“改配置再重启”。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;真到事故现场，这种能力基本等于没有。&lt;/p&gt;
+&lt;h3 id="2"&gt;场景 2：员工账号或管理员账号被盗&lt;/h3&gt;
+&lt;p&gt;演练重点：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;能否快速冻结账号和会话&lt;/li&gt;
+&lt;li&gt;MFA 重置流程是否清晰&lt;/li&gt;
+&lt;li&gt;高权限操作是否能回溯&lt;/li&gt;
+&lt;li&gt;关联 token、临时凭证、下游系统信任关系是否一起失效&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;很多系统能禁用用户，却禁不掉已经签发的 session/token。事故中这就是大坑。&lt;/p&gt;
+&lt;h3 id="3"&gt;场景 3：疑似数据泄漏&lt;/h3&gt;
+&lt;p&gt;演练重点：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;如何判断是误报还是真外传&lt;/li&gt;
+&lt;li&gt;哪些日志能支撑取证&lt;/li&gt;
+&lt;li&gt;什么情况下先阻断，什么情况下先观察&lt;/li&gt;
+&lt;li&gt;数据分级制度是否存在，否则根本无法判断严重性&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;数据泄漏场景最怕的是大家都在讨论“很严重”，但没人能回答：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;到底漏了什么？影响哪些客户？要不要上报？&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h3 id="4"&gt;场景 4：勒索软件 / 文件被加密锁住&lt;/h3&gt;
+&lt;p&gt;演练重点：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;隔离动作是否足够快&lt;/li&gt;
+&lt;li&gt;备份是否可用&lt;/li&gt;
+&lt;li&gt;恢复是否有明确 RTO/RPO&lt;/li&gt;
+&lt;li&gt;恢复过程会不会把攻击载荷一起恢复回来&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;备份没演练过，和没有备份，差别有时候没你想的大。&lt;/p&gt;
+&lt;h2 id="recovery-drill"&gt;第四层：恢复演练（Recovery Drill）&lt;/h2&gt;
+&lt;p&gt;这一层经常被低估。&lt;/p&gt;
+&lt;p&gt;很多团队把安全响应理解成“把坏人赶出去”，然后就结束了。其实真正难的是恢复：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;业务什么时候恢复&lt;/li&gt;
+&lt;li&gt;恢复到什么程度算“安全可用”&lt;/li&gt;
+&lt;li&gt;临时绕过措施什么时候收回&lt;/li&gt;
+&lt;li&gt;补丁、配置、权限、密钥、镜像、备份、审计规则，哪些要一起更新&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;恢复演练特别适合和业务连续性、灾备演练放在一起看。&lt;/p&gt;
+&lt;p&gt;因为安全事故不是单纯的“系统坏了”，而是“系统坏了，而且你不能确定它现在是不是干净”。&lt;/p&gt;
+&lt;p&gt;这个差别很要命。&lt;/p&gt;
+&lt;p&gt;稳定性故障追求的是“尽快恢复服务”。&lt;/p&gt;
+&lt;p&gt;安全事故恢复要多问一句：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;恢复的是业务，还是攻击者的落脚点？&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h2 id="purple-team-bas"&gt;第五层：对抗式演练（Purple Team / BAS / 高仿真演练）&lt;/h2&gt;
+&lt;p&gt;前面四层更偏“流程和响应肌肉”。&lt;/p&gt;
+&lt;p&gt;再往上，才轮到更像混沌工程的“注入式安全演练”：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Purple Team 演练&lt;/li&gt;
+&lt;li&gt;Breach and Attack Simulation（BAS）&lt;/li&gt;
+&lt;li&gt;受控红队演练&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这类演练的价值，在于验证真实检测和防御效果，比如：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;某种横向移动行为会不会被 EDR 发现&lt;/li&gt;
+&lt;li&gt;某个云权限提升路径会不会触发检测&lt;/li&gt;
+&lt;li&gt;某种数据打包外传模式会不会被 DLP 拦住&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;但这层门槛高、成本高、组织摩擦也大。&lt;/p&gt;
+&lt;p&gt;我的建议很简单：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;别把安全演练理解成“必须从红队开始”。&lt;br&gt;
+真正成熟的团队，往往是先把前四层练顺，再上第五层。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;否则容易变成一年一次大型表演，场面很热闹，日常能力没长出来。&lt;/p&gt;
+&lt;h2 id="colonial-pipeline"&gt;一个真实案例：Colonial Pipeline 为什么值得反复拿来演练&lt;/h2&gt;
+&lt;p&gt;如果要找一个“安全事故不是只影响 IT，而是会外溢成业务和社会问题”的经典案例，Colonial Pipeline 很合适。&lt;/p&gt;
+&lt;p&gt;根据美国能源部公开信息，&lt;strong&gt;2021 年 5 月 7 日&lt;/strong&gt;，Colonial Pipeline 因勒索软件攻击主动关闭了管道系统；到 &lt;strong&gt;2021 年 5 月 13 日&lt;/strong&gt;，公司宣布整条管道系统重启并开始向各市场恢复输送。事情本身发生在网络里，影响却直接跑到了现实世界：供应中断、市场恐慌、外部协调、恢复压力，全都来了。&lt;/p&gt;
+&lt;p&gt;这个案例最值得团队反复琢磨的，不是“攻击者用了什么招”，而是下面这几个问题：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;你有没有能力在“先止血”与“先取证”之间快速做决定？&lt;/li&gt;
+&lt;li&gt;当核心系统被迫下线时，业务连续性方案能不能立刻顶上？&lt;/li&gt;
+&lt;li&gt;恢复的时候，谁能确认系统已经“可用且相对干净”，而不是“只是又能跑了”？&lt;/li&gt;
+&lt;li&gt;事故响应是不是已经跨出安全团队，变成运维、业务、管理层、外部机构一起协作的事？&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这类事故说明一件很朴素的事：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;安全事故演练，练的从来不只是杀毒和封号，练的是“关键业务被迫降级甚至停摆时，组织还能不能有秩序地运行”。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;Colonial 事件后，美国 TSA 也在公开材料里强调了几件事：要有 24x7 的网络安全协调人，要及时上报重大网络事件，要评估现有安全措施的缺口并制定整改计划。说白了，监管落回的，也还是那几个关键词：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;人要到位&lt;/li&gt;
+&lt;li&gt;联系链路要清楚&lt;/li&gt;
+&lt;li&gt;响应动作要预先定义&lt;/li&gt;
+&lt;li&gt;恢复和整改不能靠临场发挥&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这其实就是消防演习思路在网络安全里的翻版。&lt;/p&gt;
+&lt;h2 id="okta"&gt;再看一个更像互联网公司的案例：Okta 支持系统事件&lt;/h2&gt;
+&lt;p&gt;如果 Colonial Pipeline 这个案例看起来还有点“基础设施行业专属”，那 Okta 2023 年这次事件，就离互联网公司日常近多了。&lt;/p&gt;
+&lt;p&gt;Okta 在 &lt;strong&gt;2023 年 10 月 20 日&lt;/strong&gt; 首次公开披露，其支持案例管理系统存在未经授权访问。随后在 &lt;strong&gt;2023 年 11 月 3 日&lt;/strong&gt; 的 root cause 说明里，Okta 确认攻击者在 &lt;strong&gt;2023 年 9 月 28 日到 2023 年 10 月 17 日&lt;/strong&gt; 之间，访问了部分客户上传到支持系统里的文件。其中有些文件是 HAR 文件，里面带有 session token；攻击者随后利用这些 token，对少数客户做了会话劫持。&lt;/p&gt;
+&lt;p&gt;这个案例为什么特别值得互联网团队看？&lt;/p&gt;
+&lt;p&gt;因为它不是那种“黑客突破了极深的内核漏洞”的故事，反而很日常，像很多团队平时会忽略的小事叠在一起：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;支持系统里能看到客户上传的排障文件&lt;/li&gt;
+&lt;li&gt;排障文件里可能带 cookie、session token、请求头&lt;/li&gt;
+&lt;li&gt;内部服务账号权限不算离谱，但已经足够访问敏感工单附件&lt;/li&gt;
+&lt;li&gt;日志有，但最初没有把“文件被直接下载”这类事件看全&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;事故就发生在这些“平时看着没那么吓人”的地方。&lt;/p&gt;
+&lt;p&gt;这件事给互联网研发团队最大的提醒，我觉得有三条。&lt;/p&gt;
+&lt;h3 id="1"&gt;1. 安全边界不只在生产系统，也在支持系统和运营系统&lt;/h3&gt;
+&lt;p&gt;很多团队讲安全时，脑子里只有生产 API、数据库、K8s 集群。&lt;/p&gt;
+&lt;p&gt;但现实里，真正容易被忽略的往往是这些“半后台”系统：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;工单系统&lt;/li&gt;
+&lt;li&gt;CRM&lt;/li&gt;
+&lt;li&gt;运营后台&lt;/li&gt;
+&lt;li&gt;日志检索平台&lt;/li&gt;
+&lt;li&gt;APM 平台&lt;/li&gt;
+&lt;li&gt;附件存储系统&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这些系统平时不是主链路，却常常装着最完整、最真实、最方便排障的数据。一旦权限和审计没收紧，它们就特别适合变成攻击者的捷径。&lt;/p&gt;
+&lt;h3 id="2-session-token"&gt;2. Session Token 泄漏演练，应该成为身份系统团队的必修课&lt;/h3&gt;
+&lt;p&gt;很多团队会演练“数据库挂了怎么办”，却很少认真演练：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;管理员 session token 泄漏了怎么办？&lt;/li&gt;
+&lt;li&gt;客服排障附件里混进 cookie 或 HAR 文件怎么办？&lt;/li&gt;
+&lt;li&gt;发现 token 被异地复用后，如何批量失效？&lt;/li&gt;
+&lt;li&gt;失效以后，哪些管理员、哪些自动化、哪些集成会跟着一起受影响？&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这类问题不演，平时都觉得“应该能处理”。真出事时，大家才发现：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;token 失效机制不统一&lt;/li&gt;
+&lt;li&gt;部分系统只能手动踢 session&lt;/li&gt;
+&lt;li&gt;部分 token 没绑定设备、网络或上下文&lt;/li&gt;
+&lt;li&gt;日志里能看见“有人登录了”，却很难快速串起整条会话链&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;而 Okta 这次事件后给出的补救动作里，有一条就很有代表性：增强管理员 session 的绑定能力，在检测到网络变化时强制重新认证。这个思路本身就说明，&lt;strong&gt;session token 被偷走以后还能不能继续用&lt;/strong&gt;，是一个必须被预演的问题，不是事后再拍脑袋想的。&lt;/p&gt;
+&lt;h3 id="3_1"&gt;3. 演练不能只练“生产被打”，还要练“支持链路被打”&lt;/h3&gt;
+&lt;p&gt;如果我是互联网公司的安全负责人，我会从这个案例反推几种值得做的演练：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;模拟客服工单附件里出现带敏感信息的 HAR 文件&lt;/li&gt;
+&lt;li&gt;模拟支持系统服务账号被异常调用&lt;/li&gt;
+&lt;li&gt;模拟管理员 session 在异常 IP 段被复用&lt;/li&gt;
+&lt;li&gt;模拟某排障平台附件被批量下载&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;然后重点观察四件事：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;有没有检测规则能及时发现&lt;/li&gt;
+&lt;li&gt;谁有权在不拖半小时会的前提下踢掉可疑 session&lt;/li&gt;
+&lt;li&gt;谁来通知客户或内部业务方&lt;/li&gt;
+&lt;li&gt;事后能不能明确回答：哪些 token 被看过、哪些被用过、哪些必须轮换&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这类演练很像消防演习里专门练“机房起火”“配电室冒烟”，不是因为最戏剧化，而是因为&lt;strong&gt;它离真实世界最近&lt;/strong&gt;。&lt;/p&gt;
+&lt;h2 id="_5"&gt;一个更接地气的框架：安全演练四件套&lt;/h2&gt;
+&lt;p&gt;如果你要在团队里推动这件事，别一上来就讲一堆大词。先用一个朴素一点的框架：&lt;/p&gt;
+&lt;p&gt;&lt;img alt="Security drill loop" src="../images/tech_20260424_security_chaos_engineering_flow.svg"&gt;&lt;/p&gt;
+&lt;h3 id="1-scenario"&gt;1. 场景（Scenario）&lt;/h3&gt;
+&lt;p&gt;每次只练一个具体场景，不要贪大求全。&lt;/p&gt;
+&lt;p&gt;优先级建议从这几个开始：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;凭证泄漏&lt;/li&gt;
+&lt;li&gt;管理员账号被盗&lt;/li&gt;
+&lt;li&gt;数据疑似外传&lt;/li&gt;
+&lt;li&gt;勒索加密&lt;/li&gt;
+&lt;li&gt;供应链依赖被投毒&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id="2-inject"&gt;2. 注入（Inject）&lt;/h3&gt;
+&lt;p&gt;给团队一个明确的“事故起点”。&lt;/p&gt;
+&lt;p&gt;例如：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;一条高危告警&lt;/li&gt;
+&lt;li&gt;一封外部通报邮件&lt;/li&gt;
+&lt;li&gt;一个客户投诉&lt;/li&gt;
+&lt;li&gt;一条 Git 泄漏扫描告警&lt;/li&gt;
+&lt;li&gt;一台机器被 EDR 隔离&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;演练不是聊天，要有“触发器”。&lt;/p&gt;
+&lt;h3 id="3-observe"&gt;3. 观测（Observe）&lt;/h3&gt;
+&lt;p&gt;重点不是看大家说得多漂亮，而是看这几个东西：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;有没有在规定时间内发现&lt;/li&gt;
+&lt;li&gt;有没有在规定时间内拉齐人&lt;/li&gt;
+&lt;li&gt;有没有卡在权限或流程上&lt;/li&gt;
+&lt;li&gt;哪些日志、告警、Runbook、脚本根本不可用&lt;/li&gt;
+&lt;li&gt;谁在重复劳动，谁在信息黑洞里&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id="4-learn"&gt;4. 复盘（Learn）&lt;/h3&gt;
+&lt;p&gt;没有复盘的演练，和没演差不多。&lt;/p&gt;
+&lt;p&gt;复盘至少要产出三类东西：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;流程修正&lt;/strong&gt;：谁该参与，谁该决策，升级链路怎么改&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;技术修正&lt;/strong&gt;：补检测规则、补脚本、补权限、补自动化&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;制度修正&lt;/strong&gt;：轮值机制、通知模板、数据分级、上报阈值&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;如果演练结束只有一句“大家辛苦了”，那基本等于做了场团建。&lt;/p&gt;
+&lt;h2 id="_6"&gt;演练时最容易踩的五个坑&lt;/h2&gt;
+&lt;h3 id="1_1"&gt;1. 只演技术，不演沟通&lt;/h3&gt;
+&lt;p&gt;安全事故不是纯技术问题。&lt;/p&gt;
+&lt;p&gt;很多事故真正拖慢节奏的，不是命令不会敲，而是：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;老板没人同步&lt;/li&gt;
+&lt;li&gt;客服不知道怎么回&lt;/li&gt;
+&lt;li&gt;法务太晚进场&lt;/li&gt;
+&lt;li&gt;外部通报措辞没人负责&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;如果你的演练里没有业务负责人、值班经理、法务/合规接口人，这场演练通常只练到了一半。&lt;/p&gt;
+&lt;h3 id="2_1"&gt;2. 只演发现，不演恢复&lt;/h3&gt;
+&lt;p&gt;发现入侵很酷，恢复业务很苦。&lt;/p&gt;
+&lt;p&gt;但客户只会记得一件事：你多久恢复，恢复后还敢不敢用。&lt;/p&gt;
+&lt;h3 id="3_2"&gt;3. 把演练做成考试&lt;/h3&gt;
+&lt;p&gt;演练不是抓战犯。&lt;/p&gt;
+&lt;p&gt;如果每次演练都让大家觉得“谁出错谁背锅”，下次大家只会演得更保守、更假，到头来只剩 PPT 很完美，系统还是老样子。&lt;/p&gt;
+&lt;p&gt;正确姿势应该是：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;对人宽一点&lt;/li&gt;
+&lt;li&gt;对系统严一点&lt;/li&gt;
+&lt;li&gt;对流程较真一点&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id="4_1"&gt;4. 不控制爆炸半径&lt;/h3&gt;
+&lt;p&gt;安全演练尤其要克制。&lt;/p&gt;
+&lt;p&gt;不要为了演练，真的把生产数据、客户账号、核心链路打出事故。尽量使用：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;测试环境&lt;/li&gt;
+&lt;li&gt;影子环境&lt;/li&gt;
+&lt;li&gt;沙箱账号&lt;/li&gt;
+&lt;li&gt;合成数据&lt;/li&gt;
+&lt;li&gt;可快速回滚的最小范围注入&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;混沌工程的前提不是“勇”，而是“可控”。&lt;/p&gt;
+&lt;h3 id="5"&gt;5. 演完不改&lt;/h3&gt;
+&lt;p&gt;最浪费的事，不是没演练，是演练出了十个问题，三个月后原封不动。&lt;/p&gt;
+&lt;p&gt;演练本质上是一次有计划的缺陷发现。既然发现了，就得进 backlog、定 owner、定截止时间。&lt;/p&gt;
+&lt;p&gt;否则下次还是同样的坑，只不过换个夜里再摔一遍。&lt;/p&gt;
+&lt;h2 id="_7"&gt;给团队一个可以直接拿来用的演练模板&lt;/h2&gt;
+&lt;p&gt;如果你想尽快开始，可以先用这个最小模板。别嫌它简单，能坚持填完，比空谈体系强。&lt;/p&gt;
+&lt;h3 id="_8"&gt;安全演练卡片&lt;/h3&gt;
+&lt;h4 id="_9"&gt;演练主题&lt;/h4&gt;
+&lt;p&gt;例如：&lt;code&gt;生产 API Key 疑似泄漏后的 60 分钟响应&lt;/code&gt;&lt;/p&gt;
+&lt;h4 id="_10"&gt;演练目标&lt;/h4&gt;
+&lt;ul&gt;
+&lt;li&gt;验证告警能否及时触达值班人员&lt;/li&gt;
+&lt;li&gt;验证 15 分钟内是否能完成定级&lt;/li&gt;
+&lt;li&gt;验证密钥轮换是否可执行&lt;/li&gt;
+&lt;li&gt;验证关联服务是否能平滑恢复&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h4 id="_11"&gt;参与角色&lt;/h4&gt;
+&lt;ul&gt;
+&lt;li&gt;值班工程师&lt;/li&gt;
+&lt;li&gt;服务 owner&lt;/li&gt;
+&lt;li&gt;安全负责人 / SOC&lt;/li&gt;
+&lt;li&gt;值班经理&lt;/li&gt;
+&lt;li&gt;必要时：法务、客服、PR、合规&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h4 id="_12"&gt;场景注入&lt;/h4&gt;
+&lt;blockquote&gt;
+&lt;p&gt;09:30，代码仓库扫描发现某项目疑似提交了生产 API Key；&lt;br&gt;
+09:35，监控显示该 Key 开始在异常 IP 段被调用；&lt;br&gt;
+09:42，某下游服务出现鉴权失败。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h4 id="_13"&gt;核心观察项&lt;/h4&gt;
+&lt;ul&gt;
+&lt;li&gt;TTD: Time To Detect，多快发现&lt;/li&gt;
+&lt;li&gt;TTA: Time To Acknowledge，多快有人接手&lt;/li&gt;
+&lt;li&gt;TTC: Time To Contain，多快完成止血&lt;/li&gt;
+&lt;li&gt;TTR: Time To Recover，多快恢复服务&lt;/li&gt;
+&lt;li&gt;是否有流程卡点 / 权限卡点 / 信息卡点&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h4 id="_14"&gt;产出物&lt;/h4&gt;
+&lt;ul&gt;
+&lt;li&gt;时间线&lt;/li&gt;
+&lt;li&gt;决策记录&lt;/li&gt;
+&lt;li&gt;缺陷清单&lt;/li&gt;
+&lt;li&gt;Runbook 更新项&lt;/li&gt;
+&lt;li&gt;自动化补强项&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id="_15"&gt;真正值得追求的，不是“零事故”，而是“不慌”&lt;/h2&gt;
+&lt;p&gt;安全这件事，跟消防一样，谁也不敢保证永远不起火。&lt;/p&gt;
+&lt;p&gt;咱们能做的，不是幻想“绝对不会出事”，而是把系统、流程和团队练到这样一种状态：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;事故来了，能尽快看见&lt;/li&gt;
+&lt;li&gt;看见以后，知道谁来拍板&lt;/li&gt;
+&lt;li&gt;拍板之后，真有工具可以止血&lt;/li&gt;
+&lt;li&gt;止完血，能有秩序地恢复&lt;/li&gt;
+&lt;li&gt;恢复以后，团队比事故前更强一点&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这才是“安全韧性”真正值钱的地方。&lt;/p&gt;
+&lt;p&gt;混沌工程的精神，本来就不是“把自己搞坏”，而是&lt;strong&gt;在可控的破坏里，提前认识自己的脆弱点&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;放到安全场景里，也是一样。不是为了制造惊吓，而是为了有一天真出事时，团队不会像第一次进火场的人那样，站在原地发呆。&lt;/p&gt;
+&lt;p&gt;目的无他，别把第一次响应留给真正的事故。&lt;/p&gt;
+&lt;h2 id="_16"&gt;明天就能做的行动清单&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;[ ] 先挑一个场景，不要贪大，建议从“凭证泄漏”或“管理员账号被盗”开始&lt;/li&gt;
+&lt;li&gt;[ ] 先做一次 60 分钟桌面推演，把值班、服务 owner、安全、管理者拉齐&lt;/li&gt;
+&lt;li&gt;[ ] 给演练定义 4 个指标：TTD、TTA、TTC、TTR&lt;/li&gt;
+&lt;li&gt;[ ] 演练结束后，只保留 3 个必须修的改进项，并明确 owner 和截止时间&lt;/li&gt;
+&lt;li&gt;[ ] 每季度至少做一次小演练，每半年做一次跨团队综合演练&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id="_17"&gt;边界条件&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;这类演练的目标是提升防御和响应能力，不是教授攻击技巧&lt;/li&gt;
+&lt;li&gt;生产环境注入必须控制 blast radius，优先用沙箱、影子环境、合成数据和可回滚动作&lt;/li&gt;
+&lt;li&gt;涉及真实客户数据、真实高权限账号、真实外部通报的动作，必须经过明确审批&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id="_18"&gt;参考资料&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;CISA Tabletop Exercise Packages: https://www.cisa.gov/resources-tools/services/cisa-tabletop-exercise-packages&lt;/li&gt;
+&lt;li&gt;CISA Exercises: https://www.cisa.gov/about/divisions-offices/cisa-exercises&lt;/li&gt;
+&lt;li&gt;NIST Incident Response Recommendations and Considerations for Cybersecurity Risk Management (SP 800-61r3, finalized on April 3, 2025): https://www.nist.gov/news-events/news/2025/04/nist-revises-sp-800-61-incident-response-recommendations-and-considerations&lt;/li&gt;
+&lt;li&gt;AWS Well-Architected Game Day: https://wa.aws.amazon.com/wellarchitected/2020-07-02T19-33-23/wat.concept.gameday.en.html&lt;/li&gt;
+&lt;li&gt;Google Cloud Tabletop Exercise: https://cloud.google.com/security/resources/datasheets/consulting-services-tabletop-exercise?hl=zh-CN&lt;/li&gt;
+&lt;li&gt;U.S. Department of Energy, Colonial Pipeline Cyber Incident: https://www.energy.gov/ceser/colonial-pipeline-cyber-incident&lt;/li&gt;
+&lt;li&gt;TSA testimony on pipeline cybersecurity and tabletop exercises: https://www.tsa.gov/news/press/testimony/2021/07/27/pipeline-cybersecurity-protecting-critical-infrastructure&lt;/li&gt;
+&lt;li&gt;Okta Security, Tracking Unauthorized Access to Okta's Support System (2023-10-20): https://sec.okta.com/articles/2023/10/tracking-unauthorized-access-oktas-support-system/&lt;/li&gt;
+&lt;li&gt;Okta Security, Root Cause and Remediation (2023-11-03): https://sec.okta.com/articles/2023/11/unauthorized-access-oktas-support-case-management-system-root-cause/&lt;/li&gt;
+&lt;/ul&gt;
+&lt;hr/&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Tech"/><category term="security"/><category term="chaos-engineering"/><category term="incident-response"/><category term="resilience"/><category term="tabletop-exercise"/><category term="game-day"/></entry><entry><title>从 Cursor 迁到 Codex：别急着抄配置，先把脑回路迁过去</title><link href="https://www.fanyamin.com/cong-cursor-qian-dao-codexbie-ji-zhao-chao-pei-zhi-xian-ba-nao-hui-lu-qian-guo-qu.html" rel="alternate"/><published>2026-04-23T15:46:00+08:00</published><updated>2026-04-23T15:46:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-04-23:/cong-cursor-qian-dao-codexbie-ji-zhao-chao-pei-zhi-xian-ba-nao-hui-lu-qian-guo-qu.html</id><summary type="html">&lt;p&gt;很多人以为从 Cursor 迁到 Codex 只是把 &lt;code&gt;.cursor/&lt;/code&gt; 改成 &lt;code&gt;.codex/&lt;/code&gt;，结果第一天就撞墙。真正难迁的不是目录，而是概念：Rules、Commands、AGENTS、Skills、Hooks、Sandbox、Approval 在两边的含义并不一样。结合官方文档和我在博客仓库里的真实迁移痕迹，聊聊怎么迁、先迁什么、哪些坑最容易踩。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;从 Cursor 迁到 Codex：别急着抄配置，先把脑回路迁过去&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;tech note&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Status&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;v1.0&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;2026-04-23&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h1 id="cursor-codex"&gt;从 Cursor 迁到 Codex：别急着抄配置，先把脑回路迁过去&lt;/h1&gt;
+&lt;p&gt;很多人做这个迁移时，第一反应都很自然：&lt;/p&gt;
+&lt;p&gt;“把 &lt;code&gt;.cursor/rules&lt;/code&gt; 搬过去，把 &lt;code&gt;.cursor/commands&lt;/code&gt; 搬过去，不就完了？”&lt;/p&gt;
+&lt;p&gt;我得先泼一盆冷水：&lt;strong&gt;真不是。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;从 Cursor 到 Codex，最难迁的不是文件夹，而是词汇表。你以为两边都叫 Rules、Commands、Agent、AGENTS.md，应该差不多；结果一动手就发现，名字像亲戚，脾气像陌生人。你在 Cursor 里很顺手的那套玩法，照抄到 Codex 里，十有八九会得到一种很熟悉的工程体验: “配置写了不少，为什么就是不按我想的来？”&lt;/p&gt;
+&lt;p&gt;这篇文章基于两个东西来写：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;一是我在 &lt;strong&gt;2026-04-23&lt;/strong&gt; 查过的官方文档；&lt;/li&gt;
+&lt;li&gt;二是我这个博客仓库里真实留下来的迁移痕迹：仓库里还保留着 &lt;code&gt;.cursor/commands/&lt;/code&gt;、&lt;code&gt;.cursor/rules/&lt;/code&gt;，也有一份从 Cursor 迁到另一个 agent 体系的 &lt;code&gt;MIGRATION_GUIDE.md&lt;/code&gt;，所以很多坑不是“听说”，而是“踩过”。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;如果你正准备把一个已经在 Cursor 里跑顺的工程迁到 Codex，我建议先看完这篇再动手。能少走不少弯路。&lt;/p&gt;
+&lt;h2 id="_1"&gt;先说结论：这不是“目录迁移”，而是“工作模型迁移”&lt;/h2&gt;
+&lt;p&gt;先把最重要的一句放前面：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;Cursor 更像“IDE 里的 agent 能力集合”，Codex 更像“以 AGENTS、sandbox、approvals、skills、hooks 为中心的 agent 运行时”。&lt;/strong&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;这意味着迁移时不要盯着文件名，而要盯着“职责”。&lt;/p&gt;
+&lt;p&gt;我把最常见的映射先放一张表，方便你脑子里先立个坐标系。&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;在 Cursor 里的东西&lt;/th&gt;
+&lt;th&gt;到 Codex 更像什么&lt;/th&gt;
+&lt;th&gt;迁移建议&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;.cursor/rules/*.mdc&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;AGENTS.md&lt;/code&gt;、嵌套 &lt;code&gt;AGENTS.md&lt;/code&gt;、必要时再配 skill&lt;/td&gt;
+&lt;td&gt;不要直接往 Codex 的 &lt;code&gt;rules&lt;/code&gt; 机制里塞&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;.cursor/commands/*.md&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;skills，或者写进 AGENTS 里的固定流程&lt;/td&gt;
+&lt;td&gt;不要期待 Codex slash commands 一比一接手&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;User Rules&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;~/.codex/AGENTS.md&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;适合放全局习惯，比如测试、包管理器、沟通风格&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Project Rules&lt;/td&gt;
+&lt;td&gt;仓库根目录 &lt;code&gt;AGENTS.md&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;放项目约定、测试命令、目录结构、禁忌项&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Nested rules&lt;/td&gt;
+&lt;td&gt;子目录里的 &lt;code&gt;AGENTS.md&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;前后端、monorepo、特定模块最好拆开写&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Background agents&lt;/td&gt;
+&lt;td&gt;Codex app 的线程、worktree、自动化、子代理能力&lt;/td&gt;
+&lt;td&gt;目标相似，但配置入口不同&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;MCP servers&lt;/td&gt;
+&lt;td&gt;MCP servers&lt;/td&gt;
+&lt;td&gt;这一块通常最好迁，心智负担最小&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;如果你只记一条，那就是：&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Cursor 的“Rules/Commands”思路，迁到 Codex 后，核心落点往往是 &lt;code&gt;AGENTS.md + skills + hooks + approvals&lt;/code&gt;。&lt;/strong&gt;&lt;/p&gt;
+&lt;h2 id="cursor-rules-codex-rules"&gt;第一坑：不要把 Cursor Rules 直接迁到 Codex Rules&lt;/h2&gt;
+&lt;p&gt;这可能是最容易踩、也最容易把人搞懵的一坑。&lt;/p&gt;
+&lt;p&gt;在 Cursor 文档里，Project Rules 的意思是给 Agent 持续喂上下文，放在 &lt;code&gt;.cursor/rules&lt;/code&gt;，可以按 glob、手动引用、自动附着来生效。简单说，它解决的是“AI 应该怎么做事、遵守什么项目规范”。&lt;/p&gt;
+&lt;p&gt;但在 Codex 文档里，&lt;code&gt;Rules&lt;/code&gt; 这页说的不是这个。它主要是&lt;strong&gt;控制哪些命令可以在 sandbox 外执行&lt;/strong&gt;，本质上更接近“命令放行规则”。&lt;/p&gt;
+&lt;p&gt;同一个单词，完全不是一回事。&lt;/p&gt;
+&lt;p&gt;所以如果你把 Cursor 的写作规范、代码风格、输出模板，脑门一热塞到 &lt;code&gt;~/.codex/rules/default.rules&lt;/code&gt; 里，那基本就是把菜谱塞进门禁系统。它不是不能存，而是压根不管这事。&lt;/p&gt;
+&lt;h3 id="_2"&gt;正确迁法&lt;/h3&gt;
+&lt;p&gt;把原来 &lt;code&gt;.cursor/rules/&lt;/code&gt; 里的内容按这三个层次拆：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;全局习惯&lt;/strong&gt;&lt;br&gt;
+放到 &lt;code&gt;~/.codex/AGENTS.md&lt;/code&gt;&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;仓库级约定&lt;/strong&gt;&lt;br&gt;
+放到项目根目录 &lt;code&gt;AGENTS.md&lt;/code&gt;&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;子目录特定规则&lt;/strong&gt;&lt;br&gt;
+放到对应子目录的 &lt;code&gt;AGENTS.md&lt;/code&gt;&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;Codex 官方文档里讲得很明确：它会在启动时构建一条 instruction chain，从 &lt;code&gt;~/.codex/AGENTS.md&lt;/code&gt; 到项目根，再到当前工作目录，越靠近当前目录的文件越“后出现”，也就越容易覆盖前面的通用指导。&lt;/p&gt;
+&lt;p&gt;这套机制非常适合把原先散落在 &lt;code&gt;.cursor/rules/*.mdc&lt;/code&gt; 里的内容重新组织一下。&lt;/p&gt;
+&lt;h3 id="_3"&gt;一个实用写法&lt;/h3&gt;
+&lt;p&gt;比如你原来在 Cursor 里有这些规则：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;core.mdc&lt;/code&gt;：通用风格&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;security-security-baseline.mdc&lt;/code&gt;：安全底线&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;writing-style.mdc&lt;/code&gt;：博客写作风格&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;迁到 Codex 时，可以这么拆：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="gh"&gt;# AGENTS.md&lt;/span&gt;
+
+&lt;span class="gu"&gt;## Project Overview&lt;/span&gt;
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;这是一个个人博客仓库，主要内容是技术文章、journal 和工作文档。
+
+&lt;span class="gu"&gt;## Working Agreements&lt;/span&gt;
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;修改博文时保留 frontmatter 和 license footer。
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;新 tech 文章默认放在 &lt;span class="sb"&gt;`content/tech/`&lt;/span&gt;。
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;改完文章要同步更新 &lt;span class="sb"&gt;`Modified`&lt;/span&gt; 字段。
+
+&lt;span class="gu"&gt;## Writing Style&lt;/span&gt;
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;中文为主，避免 AI 腔。
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;先讲痛点，再讲反直觉观点，再讲读者能拿走什么。
+
+&lt;span class="gu"&gt;## Validation&lt;/span&gt;
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;内容创作基于事实，不确定就给出处。
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;如果某个子目录有非常独立的玩法，比如 &lt;code&gt;doc/source/5.work/&lt;/code&gt; 专门写工作总结，那就在那个目录下再放一个更细的 &lt;code&gt;AGENTS.md&lt;/code&gt;，别把所有东西都堆进仓库根文件里。&lt;/p&gt;
+&lt;h3 id="agents"&gt;第二个小坑：AGENTS 不是越长越好&lt;/h3&gt;
+&lt;p&gt;Codex 文档里还提到一个很容易被忽略的点：组合后的指令链默认有大小限制，&lt;code&gt;project_doc_max_bytes&lt;/code&gt; 默认是 &lt;strong&gt;32 KiB&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;也就是说，你不能把一个团队两年的制度文件、架构史、值班手册、命名规范、代码模板全贴进一个 AGENTS 里，然后指望 agent 每次都认真背诵。&lt;/p&gt;
+&lt;p&gt;我的建议很朴素：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;根目录 &lt;code&gt;AGENTS.md&lt;/code&gt; 只写高频、长期、跨目录的规则；&lt;/li&gt;
+&lt;li&gt;模块细则下沉到子目录；&lt;/li&gt;
+&lt;li&gt;大模板、长参考资料别硬塞 AGENTS，抽成 skill 或 reference 文档。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id="cursorcommands-codex-slash-commands"&gt;第二坑：不要把 &lt;code&gt;.cursor/commands&lt;/code&gt; 直接理解成 Codex 的 slash commands&lt;/h2&gt;
+&lt;p&gt;这也是一个“名字很像，功能不完全一样”的地方。&lt;/p&gt;
+&lt;p&gt;在 Cursor 里，Custom Commands 是一种很顺手的工作流复用方式。你在 &lt;code&gt;.cursor/commands/&lt;/code&gt; 下放 Markdown 文件，然后在聊天框里用 &lt;code&gt;/design-doc&lt;/code&gt;、&lt;code&gt;/review-code&lt;/code&gt; 这种命令触发。&lt;/p&gt;
+&lt;p&gt;但在 Codex 里，官方 app/CLI 的 slash commands 更偏“控制会话”和“调 agent 状态”，比如：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;/status&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;/review&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;/plan-mode&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;/model&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;/diff&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;它们当然很有用，但它们不是你原来那种“项目内自定义工作流模板”的一比一替代品。&lt;/p&gt;
+&lt;h3 id="_4"&gt;正确迁法&lt;/h3&gt;
+&lt;p&gt;把你原来 &lt;code&gt;.cursor/commands/&lt;/code&gt; 里的东西分成两类：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;产品级控制命令&lt;/strong&gt;&lt;br&gt;
+交给 Codex 自带的 slash commands&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;项目内可复用流程&lt;/strong&gt;&lt;br&gt;
+迁成 skills，或者先写进 &lt;code&gt;AGENTS.md&lt;/code&gt; / 团队文档里&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;我这个仓库就是个现成例子。仓库里还留着 &lt;code&gt;.cursor/commands/blog-write.md&lt;/code&gt;、&lt;code&gt;.cursor/commands/work-summarize.md&lt;/code&gt; 这些文件，后来在另一个 agent 体系里，它们被合并成更稳定的 skill。&lt;/p&gt;
+&lt;p&gt;这个思路迁到 Codex 一样成立：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;把“写博客”“生成周报”“跑验收检查”这类复用流程提炼成 skill；&lt;/li&gt;
+&lt;li&gt;把“查看状态”“开 plan mode”“做 review”交给 Codex 自带命令。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id="_5"&gt;一个判断标准&lt;/h3&gt;
+&lt;p&gt;如果某个命令的本质是“告诉 agent 如何完成一类重复任务”，它更像 &lt;strong&gt;skill&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;如果某个命令的本质是“切换当前会话状态或查看运行信息”，它更像 &lt;strong&gt;slash command&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;这个边界想清楚，迁移时就不容易乱。&lt;/p&gt;
+&lt;h2 id="sandbox-approval-codex"&gt;第三坑：先把 sandbox 和 approval 想明白，不然你会觉得 Codex “不听使唤”&lt;/h2&gt;
+&lt;p&gt;很多第一次用 Codex 的人，前二十分钟最大的感受不是“强”，而是“怎么总要确认”“怎么这个也不让写”“怎么它不自己联网”。&lt;/p&gt;
+&lt;p&gt;这不是它笨，是它的安全模型跟 Cursor 不一样。&lt;/p&gt;
+&lt;p&gt;按 Codex 官方文档，版本控制目录默认推荐的模式是：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;workspace-write&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;on-request approvals&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;同时，&lt;code&gt;workspace-write&lt;/code&gt; 下网络默认还是关着的，除非你显式开启：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="n"&gt;approval_policy&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;on-request&amp;quot;&lt;/span&gt;
+&lt;span class="n"&gt;sandbox_mode&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;workspace-write&amp;quot;&lt;/span&gt;
+
+&lt;span class="k"&gt;[sandbox_workspace_write]&lt;/span&gt;
+&lt;span class="n"&gt;network_access&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="kc"&gt;false&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h3 id="_6"&gt;这里有三个很要命的细节&lt;/h3&gt;
+&lt;h4 id="1-workspace-write"&gt;1. &lt;code&gt;workspace-write&lt;/code&gt; 不是“随便写”&lt;/h4&gt;
+&lt;p&gt;官方文档明确提到，在默认 &lt;code&gt;workspace-write&lt;/code&gt; 下，下面这些路径依然是只读保护的：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;.git&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;.agents&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;.codex&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这意味着什么？&lt;/p&gt;
+&lt;p&gt;意味着如果你一边开着默认沙箱，一边又期待 agent 自己去改 &lt;code&gt;.codex/config.toml&lt;/code&gt;、&lt;code&gt;.codex/hooks.json&lt;/code&gt;，那它很可能会撞在保护墙上。&lt;/p&gt;
+&lt;p&gt;这不是 bug，这是故意的。&lt;/p&gt;
+&lt;h4 id="2"&gt;2. 网络默认是关的&lt;/h4&gt;
+&lt;p&gt;很多人把 repo 迁过来以后，发现原来在 Cursor 里顺手就能跑的事情，在 Codex 里突然不行了。尤其是：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;需要联网的脚本&lt;/li&gt;
+&lt;li&gt;需要访问外部 API 的 hook&lt;/li&gt;
+&lt;li&gt;运行时想 &lt;code&gt;curl&lt;/code&gt; 一下外部资源&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;根因往往不是配置写错了，而是&lt;strong&gt;你还没有显式给网络权限&lt;/strong&gt;。&lt;/p&gt;
+&lt;h4 id="3-codex-web-search-shell-network"&gt;3. Codex 的 web search 和 shell network 不是一回事&lt;/h4&gt;
+&lt;p&gt;Codex 文档里还特地把这两件事拆开讲了。&lt;/p&gt;
+&lt;p&gt;简单说：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;web search 是 web search&lt;/li&gt;
+&lt;li&gt;shell 里的联网命令是 shell 里的联网命令&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;你不能因为 agent “能搜网页”，就默认它的本地命令也能随便出网。&lt;/p&gt;
+&lt;h3 id="_7"&gt;我建议的起步配置&lt;/h3&gt;
+&lt;p&gt;如果你是从 Cursor 迁过来，刚开始别上来就 &lt;code&gt;--yolo&lt;/code&gt;。先用一个比较稳妥的组合：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="n"&gt;approval_policy&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;on-request&amp;quot;&lt;/span&gt;
+&lt;span class="n"&gt;sandbox_mode&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;workspace-write&amp;quot;&lt;/span&gt;
+
+&lt;span class="k"&gt;[sandbox_workspace_write]&lt;/span&gt;
+&lt;span class="n"&gt;network_access&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="kc"&gt;false&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;先把这套跑顺，再按需要放开网络或加 prefix rules。否则刚换工具第一天就把护栏全拆了，后面出了问题，你都分不清是迁移问题还是安全边界问题。&lt;/p&gt;
+&lt;h2 id="hooks-codex"&gt;Hooks 才是 Codex 迁移里最值得补的一课&lt;/h2&gt;
+&lt;p&gt;如果说 AGENTS 解决的是“你希望 agent 平时怎么做事”，那 hooks 解决的是“&lt;strong&gt;在 agent 生命周期的关键节点，你想强制插入什么确定性动作&lt;/strong&gt;”。&lt;/p&gt;
+&lt;p&gt;这玩意我很喜欢，因为它终于把很多“靠人记得住”的事，变成了“靠机制兜得住”的事。&lt;/p&gt;
+&lt;p&gt;Codex 官方文档把 hooks 定义得很直接：它是一个 extensibility framework，可以在 agent 循环里插 deterministic scripts。典型用途包括：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;扫描 prompt 里有没有误贴的密钥&lt;/li&gt;
+&lt;li&gt;在会话结束时做额外校验&lt;/li&gt;
+&lt;li&gt;自动写摘要或日志&lt;/li&gt;
+&lt;li&gt;根据目录动态调整 prompt&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id="_8"&gt;先记住三件事&lt;/h3&gt;
+&lt;ol&gt;
+&lt;li&gt;hooks 是&lt;strong&gt;实验特性&lt;/strong&gt;&lt;br&gt;
+要在 &lt;code&gt;config.toml&lt;/code&gt; 里打开：&lt;/li&gt;
+&lt;/ol&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;[features]&lt;/span&gt;
+&lt;span class="n"&gt;codex_hooks&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="kc"&gt;true&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;ol&gt;
+&lt;li&gt;
+&lt;p&gt;hooks 配在 &lt;code&gt;hooks.json&lt;/code&gt;&lt;br&gt;
+最常用的位置有两个：&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;code&gt;~/.codex/hooks.json&lt;/code&gt;&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;code&gt;&amp;lt;repo&amp;gt;/.codex/hooks.json&lt;/code&gt;&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;不是所有平台都一样&lt;br&gt;
+官方文档明确说了：&lt;strong&gt;Windows 目前暂时禁用 hooks&lt;/strong&gt;。&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h3 id="_9"&gt;最常用的几个事件&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;PreToolUse&lt;/code&gt;：工具调用前&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;PermissionRequest&lt;/code&gt;：申请权限时&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;PostToolUse&lt;/code&gt;：工具调用后&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;UserPromptSubmit&lt;/code&gt;：用户 prompt 提交时&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;Stop&lt;/code&gt;：一轮结束时&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;对于团队治理来说，这几个点已经很够用了。&lt;/p&gt;
+&lt;h3 id="hooks"&gt;一个够用的 hooks 例子&lt;/h3&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;hooks&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;PreToolUse&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;matcher&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;Bash&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;hooks&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;type&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;command&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;command&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;/usr/bin/python3 .codex/hooks/check_command.py&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;statusMessage&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;Checking shell policy&amp;quot;&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;UserPromptSubmit&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;hooks&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;type&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;command&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;command&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;/usr/bin/python3 .codex/hooks/check_secrets.py&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;statusMessage&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;Scanning prompt for secrets&amp;quot;&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;Stop&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;hooks&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;type&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;command&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;command&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;/usr/bin/python3 .codex/hooks/write_summary.py&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;statusMessage&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;Writing summary&amp;quot;&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这套配置在真实工程里已经很有用了：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;PreToolUse&lt;/code&gt; 拦危险命令&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;UserPromptSubmit&lt;/code&gt; 扫密钥和 token&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;Stop&lt;/code&gt; 做摘要、落日志、跑一个轻量检查&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id="hooks_1"&gt;Hooks 最容易踩的三个坑&lt;/h3&gt;
+&lt;h4 id="1-hook"&gt;坑 1：以为 hook 有严格顺序&lt;/h4&gt;
+&lt;p&gt;Codex 文档明确说了：多个匹配同一事件的 command hooks 会&lt;strong&gt;并发启动&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;翻成人话就是：&lt;/p&gt;
+&lt;p&gt;你不能指望 hook A 先跑完，再决定 hook B 要不要跑。它不是串行的流水线，更像几个并发的保安同时出门巡逻。&lt;/p&gt;
+&lt;p&gt;所以 hook 设计要满足三个词：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;短&lt;/li&gt;
+&lt;li&gt;幂等&lt;/li&gt;
+&lt;li&gt;不依赖彼此顺序&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h4 id="2-hook"&gt;坑 2：以为高优先级配置会覆盖低优先级 hook&lt;/h4&gt;
+&lt;p&gt;也不是。&lt;/p&gt;
+&lt;p&gt;文档里说得很清楚：如果多个位置都有 &lt;code&gt;hooks.json&lt;/code&gt;，&lt;strong&gt;匹配的 hooks 都会运行&lt;/strong&gt;。高优先级层不会把低优先级层整个替换掉。&lt;/p&gt;
+&lt;p&gt;所以你在用户目录和仓库目录都配了相似 hook，很可能两个都跑。&lt;/p&gt;
+&lt;h4 id="3-hook"&gt;坑 3：把 hook 当成“大而全的自动化平台”&lt;/h4&gt;
+&lt;p&gt;我的经验是，hook 非常适合干“确定、短平快、可判定”的事。&lt;/p&gt;
+&lt;p&gt;适合：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;扫敏感词&lt;/li&gt;
+&lt;li&gt;检查命令&lt;/li&gt;
+&lt;li&gt;补一段摘要&lt;/li&gt;
+&lt;li&gt;做轻量校验&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;不太适合：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;跑一大堆慢测试&lt;/li&gt;
+&lt;li&gt;串复杂审批流&lt;/li&gt;
+&lt;li&gt;依赖很多外部网络服务的长链路任务&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;那些更重的流程，应该放 skill、CI 或独立 automation。&lt;/p&gt;
+&lt;h2 id="_10"&gt;我推荐的迁移顺序：先保守，再抽象，最后清理&lt;/h2&gt;
+&lt;p&gt;如果你问我“应该怎么迁最不容易翻车”，我的答案不是一次性重构，而是分三步走。&lt;/p&gt;
+&lt;h3 id="cursor-codex_1"&gt;第一步：保留 &lt;code&gt;.cursor/&lt;/code&gt;，先让 Codex 能在仓库里正常工作&lt;/h3&gt;
+&lt;p&gt;别急着删旧目录。&lt;/p&gt;
+&lt;p&gt;先做三件事：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;在仓库根放一个靠谱的 &lt;code&gt;AGENTS.md&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;把最关键的测试、构建、目录约定写进去&lt;/li&gt;
+&lt;li&gt;用默认安全模式跑几轮真实任务&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;这一阶段的目标不是“迁完”，而是“能用”。&lt;/p&gt;
+&lt;h3 id="commands-skills"&gt;第二步：把高频 commands 抽成 skills 或固定流程&lt;/h3&gt;
+&lt;p&gt;我建议只先挑前三个最常用的：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;代码 review&lt;/li&gt;
+&lt;li&gt;生成设计文档&lt;/li&gt;
+&lt;li&gt;博客/周报/工作总结&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;不要一上来就把 &lt;code&gt;.cursor/commands/&lt;/code&gt; 二十多个文件全量重写。那种迁法很容易写出一堆“看起来完整，但没人真用”的新壳子。&lt;/p&gt;
+&lt;h3 id="hooks-approvals"&gt;第三步：最后再补 hooks 和细粒度 approvals&lt;/h3&gt;
+&lt;p&gt;很多人一上来就研究 hooks，最后折腾半天，连基本工作流都没跑通。&lt;/p&gt;
+&lt;p&gt;更稳的节奏是：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;先跑通 AGENTS&lt;/li&gt;
+&lt;li&gt;再收敛 workflows&lt;/li&gt;
+&lt;li&gt;最后用 hooks 和 approvals 做治理&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这样你会知道哪些摩擦是真问题，哪些只是“新工具还没用顺”。&lt;/p&gt;
+&lt;h2 id="_11"&gt;常见翻车现场清单&lt;/h2&gt;
+&lt;p&gt;下面这份清单，基本可以当迁移时的避坑卡片。&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;把 Cursor 的 &lt;code&gt;.cursor/rules&lt;/code&gt; 直接迁去 Codex 的 &lt;code&gt;rules&lt;/code&gt;，结果上下文完全没生效。&lt;/li&gt;
+&lt;li&gt;以为 Cursor 的 &lt;code&gt;/blog-write&lt;/code&gt;、&lt;code&gt;/design-doc&lt;/code&gt; 会自然变成 Codex slash commands，结果发现 Codex 的 slash commands 主要是会话控制。&lt;/li&gt;
+&lt;li&gt;把所有规范都塞进一个超长 &lt;code&gt;AGENTS.md&lt;/code&gt;，结果超出默认大小上限，后面的内容压根没进上下文。&lt;/li&gt;
+&lt;li&gt;忘了 &lt;code&gt;codex_hooks = true&lt;/code&gt;，写了半天 &lt;code&gt;hooks.json&lt;/code&gt;，结果一个都没跑。&lt;/li&gt;
+&lt;li&gt;在默认 &lt;code&gt;workspace-write&lt;/code&gt; 下让 agent 修改 &lt;code&gt;.codex/&lt;/code&gt; 里的配置，结果被只读保护挡住。&lt;/li&gt;
+&lt;li&gt;以为 hook 会按顺序执行，结果多个 hook 并发启动，互相踩脚。&lt;/li&gt;
+&lt;li&gt;hook 脚本偷偷依赖外网，但 sandbox 默认没开网络，最后看起来像脚本 bug。&lt;/li&gt;
+&lt;li&gt;一开始就删掉 &lt;code&gt;.cursor/&lt;/code&gt;，导致老工作流没法回退，团队里一半人直接炸毛。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id="_12"&gt;我的建议：先迁“约束”，再迁“自动化”，最后迁“舒适性”&lt;/h2&gt;
+&lt;p&gt;如果只给一个迁移原则，我会给这句：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;先把 agent 做事的边界讲清楚，再把重复流程固化下来，最后才去追求顺手和炫。&lt;/strong&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;边界靠什么？&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;AGENTS.md&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;sandbox&lt;/li&gt;
+&lt;li&gt;approvals&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;流程靠什么？&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;skills&lt;/li&gt;
+&lt;li&gt;hooks&lt;/li&gt;
+&lt;li&gt;MCP&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;舒适性靠什么？&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;slash commands&lt;/li&gt;
+&lt;li&gt;profiles&lt;/li&gt;
+&lt;li&gt;statusline&lt;/li&gt;
+&lt;li&gt;自动化和子代理&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这个顺序不要反。反过来做，通常就会变成“工具很高级，团队很疲惫”。&lt;/p&gt;
+&lt;h2 id="_13"&gt;最后给你一份可执行清单&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;[ ] 把 &lt;code&gt;.cursor/rules&lt;/code&gt; 里的高频约定提炼到根目录 &lt;code&gt;AGENTS.md&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;[ ] 为复杂子目录单独补一份局部 &lt;code&gt;AGENTS.md&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;[ ] 只挑 2-3 个最高频 Cursor commands 先迁成 skills 或固定流程&lt;/li&gt;
+&lt;li&gt;[ ] 先用 &lt;code&gt;workspace-write + on-request approvals&lt;/code&gt; 跑顺真实任务&lt;/li&gt;
+&lt;li&gt;[ ] 明确哪些脚本需要联网，再决定要不要打开 &lt;code&gt;network_access&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;[ ] 只加 1-2 个真正有价值的 hook，别一开始就搞 hook 大跃进&lt;/li&gt;
+&lt;li&gt;[ ] 保留 &lt;code&gt;.cursor/&lt;/code&gt; 一段时间，给团队留回退和对照空间&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;工具总会换名字，界面也总会换风格。&lt;/p&gt;
+&lt;p&gt;但真正值得迁移的，从来不是某个按钮，而是你们团队已经打磨出来的那套做事方式：什么能自动，什么必须确认，什么要留痕，什么绝不能越线。&lt;/p&gt;
+&lt;p&gt;把这个迁过去，换工具就不会像搬家，更像换一把更顺手的扳手。&lt;/p&gt;
+&lt;h2 id="references"&gt;References&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://docs.cursor.com/context/rules"&gt;Cursor Rules&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://docs.cursor.com/en/agent/chat/commands"&gt;Cursor Commands&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://docs.cursor.com/en/background-agents"&gt;Cursor Background Agents&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://developers.openai.com/codex/guides/agents-md"&gt;Codex AGENTS.md Guide&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://developers.openai.com/codex/hooks"&gt;Codex Hooks&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://developers.openai.com/codex/agent-approvals-security"&gt;Codex Agent Approvals &amp;amp; Security&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://developers.openai.com/codex/skills"&gt;Codex Skills&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://developers.openai.com/codex/app/commands"&gt;Codex App Commands&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://developers.openai.com/codex/cli/slash-commands"&gt;Codex CLI Slash Commands&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://developers.openai.com/codex/config-advanced"&gt;Codex Advanced Config&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://openai.com/index/introducing-codex/"&gt;Introducing Codex&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;hr/&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Tech"/><category term="Cursor"/><category term="Codex"/><category term="AGENTS.md"/><category term="hooks"/><category term="AI coding"/><category term="workflow"/></entry><entry><title>AI 时代，别只囤笔记：我是怎么把知识库做成一部活的 Wiki</title><link href="https://www.fanyamin.com/ai-shi-dai-bie-zhi-dun-bi-ji-wo-shi-zen-yao-ba-zhi-shi-ku-zuo-cheng-yi-bu-huo-de-wiki.html" rel="alternate"/><published>2026-04-22T22:56:00+08:00</published><updated>2026-04-22T23:05:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-04-22:/ai-shi-dai-bie-zhi-dun-bi-ji-wo-shi-zen-yao-ba-zhi-shi-ku-zuo-cheng-yi-bu-huo-de-wiki.html</id><summary type="html">&lt;p&gt;AI 很强，但它并不了解你的项目、你的经历和你的判断。真正有用的知识库，不是把笔记堆起来，而是把原始材料、结构化页面、治理规则、来源与校验串成一条流水线。结合我最近折腾的一套私人原型，聊聊我是怎么搭自己的知识库，以及怎样让它不只是一个"仓库"。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;AI 时代，别只囤笔记：我是怎么把知识库做成一部活的 Wiki&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;tech note&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Status&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;v1.0&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;2026-04-22&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h1 id="ai-wiki"&gt;AI 时代，别只囤笔记：我是怎么把知识库做成一部活的 Wiki&lt;/h1&gt;
+&lt;p&gt;这两年我越来越明显地感到一件事：AI 很聪明，笔记很多，可人还是常常卡住。&lt;/p&gt;
+&lt;p&gt;为什么？&lt;/p&gt;
+&lt;p&gt;因为 AI 知道的是公共世界，咱们真正要用的，往往是自己的那点"私房货"：上周为什么推翻方案 A，三个月前哪个坑已经踩过，某个老项目里那句"这里千万别这么改" 到底写在哪个文件里。&lt;/p&gt;
+&lt;p&gt;这几年我写博客、做笔记、留工作文档，存了不少东西。平时看着都在，真到要找时，经常像在阁楼里翻纸箱。Obsidian 一份，飞书一份，公司 wiki 一份，本地 Markdown 还有一份。东西没丢，人先烦了。&lt;/p&gt;
+&lt;p&gt;所以我后来慢慢想明白了，AI 时代最值得花力气搭的，不是一个"更花哨的笔记软件"，而是一套&lt;strong&gt;属于自己的知识底座&lt;/strong&gt;。它得让人能读，AI 也能读；得能持续吸收新材料，也得经得起回头审计；得能回答问题，更得能支持写作、决策和协作。&lt;/p&gt;
+&lt;p&gt;我最近折腾的一套私人原型，表面上是个 file-based wiki，骨子里其实在回答一个更土、也更真切的问题：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;在 AI 发达的今天，怎么建立自己的知识库，才能让它不只是一个知识仓库？&lt;/strong&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;这篇就结合这个项目，聊聊我现在的答案。&lt;/p&gt;
+&lt;h2 id="_1"&gt;先说结论：知识库不是"硬盘"，而是"生产线"&lt;/h2&gt;
+&lt;p&gt;很多人做知识管理，第一步就走偏了。&lt;/p&gt;
+&lt;p&gt;看到好文章，存一下。开会有纪要，存一下。灵光一闪，赶紧记一下。时间一长，Notion、Obsidian、飞书、邮件、微信收藏、本地 Markdown，到处都是"资料"。看上去挺勤奋，实际上像家里囤了一仓库纸箱，箱子外面还写着差不多的标签。真要找东西时，还是靠运气。&lt;/p&gt;
+&lt;p&gt;我现在的看法很简单，一句话：&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;知识库真正的价值，不在"存了多少"，而在"能不能持续吸收、整理、校验、连接，再反过来服务行动"。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;换句话说，知识库不是仓库，更像车间。原材料进来，先分拣，再加工，再质检，再编目，最后变成能直接拿来用的东西。你要的是"随时可取"，不是"堆着不丢"。&lt;/p&gt;
+&lt;p&gt;我在这套原型里，故意把这条线做得很明确：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;init -&amp;gt; import/ingest -&amp;gt; verify -&amp;gt; build -&amp;gt; serve
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这几个动词比"写笔记"更重要。因为它们说明一件事：&lt;strong&gt;知识不是静态摆放，而是动态生产。&lt;/strong&gt;&lt;/p&gt;
+&lt;h2 id="_2"&gt;为什么我没有把知识库做成"黑箱数据库"&lt;/h2&gt;
+&lt;p&gt;我做这个项目时，最先定下来的一个原则是：&lt;strong&gt;文件系统才是 source of truth。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;所以这套原型里的页面就是 Markdown 文件，元数据放 YAML frontmatter，目录就是分类，Git 直接记录历史。这样做不花哨，但很踏实。&lt;/p&gt;
+&lt;h3 id="1-ai"&gt;1. 人能直接读，AI 也能直接读&lt;/h3&gt;
+&lt;p&gt;Markdown 是少数同时对人类和 AI 都友好的格式。&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;人类可以直接打开看，不需要专门客户端。&lt;/li&gt;
+&lt;li&gt;AI 可以直接解析，不需要复杂转换。&lt;/li&gt;
+&lt;li&gt;Git 可以对比 diff，不会像数据库那样一黑到底。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这一点在 AI 时代尤其重要。因为将来不只是你自己在用这些知识，AI agent 也会参与进来。它要读，要写，要补充，要总结。如果底层格式不透明，最后你得到的很可能只是一个"看起来很聪明，谁也说不清里面装了什么"的黑箱。&lt;/p&gt;
+&lt;h3 id="2"&gt;2. 页面必须是"显性知识"，不是隐形向量&lt;/h3&gt;
+&lt;p&gt;向量检索当然有用，我并不反对。&lt;/p&gt;
+&lt;p&gt;但如果一个知识库里，最核心的内容只存在于 embedding 里，那它更像一个"召回系统"，不是一个真正的知识系统。因为你看不到它形成了什么判断，也看不到它到底依据了什么内容。&lt;/p&gt;
+&lt;p&gt;所以我更偏向"编译式知识库"这个思路：先把原始材料整理成结构化页面，再让搜索、问答、AI 助手建立在这些页面之上。&lt;/p&gt;
+&lt;p&gt;这也是我现在比较认同的三层结构：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;raw/        -&amp;gt; 原始材料、待处理输入
+wiki/       -&amp;gt; 结构化知识页面
+metadata/   -&amp;gt; schema、索引、日志、治理信息
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;有了这三层，"随手记下来的碎片" 和 "已经沉淀过的结论" 就不会搅成一锅粥。前者是毛坯房，后者才是能住人的房子。&lt;/p&gt;
+&lt;h3 id="3-git"&gt;3. Git 历史本身就是知识的一部分&lt;/h3&gt;
+&lt;p&gt;很多人只把 Git 当代码工具，我越来越把它当知识工具。&lt;/p&gt;
+&lt;p&gt;为什么这个页面是今天这个样子？是谁改的？什么时候改的？是 AI 先写的，还是人后来修过？这些都不是边角料，而是"这条知识值不值得信"的重要依据。&lt;/p&gt;
+&lt;p&gt;所以在这个项目里，我特别看重这些元数据：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;created_by&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;updated_by&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;source&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;verification_status&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;updated&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;commit&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这些字段干的不是"装饰工作"，而是把"知识的来路和可信度"说清楚。&lt;/p&gt;
+&lt;h2 id="_3"&gt;我是怎么搭这个知识库骨架的&lt;/h2&gt;
+&lt;p&gt;如果把这套原型当成我对知识库的一次实验，那它的骨架大致有四层。说白了，就是先把门、牌照、用途和规矩都立起来。&lt;/p&gt;
+&lt;h3 id="inbox"&gt;第一层：先把入口分清楚，别让所有东西都挤在一个 inbox&lt;/h3&gt;
+&lt;p&gt;做知识库最大的坑之一，就是"什么都先记下来，以后再整理"。&lt;/p&gt;
+&lt;p&gt;问题是，"以后" 通常不会来。&lt;/p&gt;
+&lt;p&gt;所以我现在会强迫自己把入口拆开：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;raw/&lt;/code&gt; 放原始材料，比如剪藏、会议记录、临时草稿、外部文档&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;wiki/content/&lt;/code&gt; 放已经整理成页面的知识&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;wiki/metadata/&lt;/code&gt; 放治理文件、索引和日志&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这样分的好处是，你永远知道一条信息现在处于哪个阶段：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;只是收集了&lt;/li&gt;
+&lt;li&gt;已经分类了&lt;/li&gt;
+&lt;li&gt;已经沉淀为可复用知识了&lt;/li&gt;
+&lt;li&gt;已经被验证过了&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这听起来有点流程味，实际上是在帮自己对抗信息过载。否则三个月后你回头一看，根本分不清哪些是随手一记，哪些是你真正认可的结论。&lt;/p&gt;
+&lt;h3 id="ai"&gt;第二层：给每一页加"身份证"，别让 AI 胡乱冒充权威&lt;/h3&gt;
+&lt;p&gt;项目里我给页面定义了比较完整的 frontmatter，核心类似这样：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nn"&gt;---&lt;/span&gt;
+&lt;span class="nt"&gt;title&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;Page&lt;/span&gt;&lt;span class="nv"&gt; &lt;/span&gt;&lt;span class="s"&gt;Title&amp;quot;&lt;/span&gt;
+&lt;span class="nt"&gt;tags&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p p-Indicator"&gt;[&lt;/span&gt;&lt;span class="nv"&gt;tag1&lt;/span&gt;&lt;span class="p p-Indicator"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nv"&gt;tag2&lt;/span&gt;&lt;span class="p p-Indicator"&gt;]&lt;/span&gt;
+&lt;span class="nt"&gt;summary&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;Brief&lt;/span&gt;&lt;span class="nv"&gt; &lt;/span&gt;&lt;span class="s"&gt;description&amp;quot;&lt;/span&gt;
+&lt;span class="nt"&gt;created_by&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l l-Scalar l-Scalar-Plain"&gt;ai&lt;/span&gt;
+&lt;span class="nt"&gt;updated_by&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l l-Scalar l-Scalar-Plain"&gt;human+ai&lt;/span&gt;
+&lt;span class="nt"&gt;doc_type&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l l-Scalar l-Scalar-Plain"&gt;explanation&lt;/span&gt;
+&lt;span class="nt"&gt;verification_status&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l l-Scalar l-Scalar-Plain"&gt;unreviewed&lt;/span&gt;
+&lt;span class="nt"&gt;source&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;type&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l l-Scalar l-Scalar-Plain"&gt;git_repo&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;uri&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;https://github.com/example/repo&amp;quot;&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;path&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;docs/design.md&amp;quot;&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;ref&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;main&amp;quot;&lt;/span&gt;
+&lt;span class="nn"&gt;---&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;我越来越不相信"没有上下文的知识"。&lt;/p&gt;
+&lt;p&gt;一句话写得再漂亮，如果你不知道它从哪里来，由谁写下，有没有复核，适合什么场景，那它就很容易变成一种危险的"伪确定性"。AI 特别擅长把这种伪确定性说得一本正经，气势很足，心里没底。&lt;/p&gt;
+&lt;p&gt;所以我宁可让知识库多一点"啰嗦的元数据"，也不愿意让页面看起来像百科全书，其实来源不明。&lt;/p&gt;
+&lt;p&gt;尤其是 &lt;code&gt;verification_status&lt;/code&gt; 这个设计，我很喜欢。AI 写的内容默认可以是 &lt;code&gt;unreviewed&lt;/code&gt;，人确认过的再变成 &lt;code&gt;supported&lt;/code&gt;。这样一来，AI 就不是在偷偷替你发言，而是在老老实实交作业，等你批改。&lt;/p&gt;
+&lt;h3 id="_4"&gt;第三层：别只按主题分类，要按"文档职责"分类&lt;/h3&gt;
+&lt;p&gt;我在这套原型里引入了 Diátaxis 的四种文档类型：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;tutorial&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;how-to&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;reference&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;explanation&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这件事看着文绉绉，其实非常实用。&lt;/p&gt;
+&lt;p&gt;很多知识库之所以越写越乱，不是因为内容不够多，而是因为文章都写成了一个样子。教程里掺了一半原理解释，参考文档里又夹了操作步骤，最后每篇都像一锅乱炖。写的人累，看的人也累。&lt;/p&gt;
+&lt;p&gt;我后来才慢慢意识到：&lt;strong&gt;分类不仅是为了"放在哪"，更是为了"怎么写" 和 "怎么用"。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;比如：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;我 onboarding 新同事时，更需要 &lt;code&gt;tutorial&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;我线上排障时，更需要 &lt;code&gt;how-to&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;我查参数和接口时，更需要 &lt;code&gt;reference&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;我做技术判断时，更需要 &lt;code&gt;explanation&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;如果知识库不区分这些职责，搜索结果再多也很难真正帮上忙。你明明是来查参数的，结果先被教育了半天人生道理，这谁受得了。&lt;/p&gt;
+&lt;h3 id="_5"&gt;第四层：给知识库配治理文件，而不是只配目录&lt;/h3&gt;
+&lt;p&gt;这是我这次做项目时感受最深的一点。&lt;/p&gt;
+&lt;p&gt;以前我们搭知识库，通常只会关心目录结构，比如 &lt;code&gt;programming/&lt;/code&gt;、&lt;code&gt;devops/&lt;/code&gt;、&lt;code&gt;project-a/&lt;/code&gt;。现在我觉得这还不够，还得有"治理层"。&lt;/p&gt;
+&lt;p&gt;在这套原型里，至少有这么几类治理文件很关键：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;一个 schema 文件：告诉人和 AI，这个知识库接受什么命名、什么 frontmatter、什么链接规则&lt;/li&gt;
+&lt;li&gt;一个总索引页：给出总入口，避免内容写着写着散掉&lt;/li&gt;
+&lt;li&gt;一个变更日志页：记录操作轨迹，知道最近发生过什么变化&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;而在后续演进里，我又特别想补上一块"目的说明"。&lt;/p&gt;
+&lt;p&gt;为什么？因为 schema 解决的是"怎么写"，解决不了"为什么写"。没有目的约束，AI 很容易把知识库越写越像一锅资料汇编，什么都沾一点，最后什么都不聚焦。&lt;/p&gt;
+&lt;p&gt;所以如果今天让我给任何一个人提建议，我会说：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;别只给知识库设计目录，也给它设计"宪法" 和 "北极星"。&lt;/strong&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;前者约束格式，后者约束方向。&lt;/p&gt;
+&lt;h2 id="_6"&gt;怎样让它不只是一个知识仓库&lt;/h2&gt;
+&lt;p&gt;这才是最关键的问题。&lt;/p&gt;
+&lt;p&gt;如果只把资料放进去，知识库最多算个"电子储物柜"。要让它真正活起来，我现在主要做五件事。&lt;/p&gt;
+&lt;h3 id="1"&gt;1. 让它有摄入能力，而不是靠手工搬运&lt;/h3&gt;
+&lt;p&gt;在这套原型里，我给自己留了几种入口：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;单文件导入&lt;/li&gt;
+&lt;li&gt;目录批量导入&lt;/li&gt;
+&lt;li&gt;URL 导入&lt;/li&gt;
+&lt;li&gt;inbox 批处理&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这意味着知识库不是一个"只能手工写页面"的地方，而是一个能够不断吸收外部材料的系统。&lt;/p&gt;
+&lt;p&gt;比如我看到一篇文章，存下一份设计文档，记了一段会议纪要，它们都可以先进入 &lt;code&gt;raw/&lt;/code&gt;，然后再经过分类、整理和沉淀。这样你就不会被迫在"先别记" 和 "记了就永远不整理" 之间二选一。&lt;/p&gt;
+&lt;h3 id="2_1"&gt;2. 让它有校验能力，而不是只会越堆越多&lt;/h3&gt;
+&lt;p&gt;我很反感一种知识管理幻觉：以为"存下来了" 就等于 "掌握了"。&lt;/p&gt;
+&lt;p&gt;其实很多知识库，最需要的不是更多输入，而是一次体面的体检。&lt;/p&gt;
+&lt;p&gt;所以这套原型里有一条专门的校验步骤，我觉得非常必要。它提醒我去看：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;有没有失效链接&lt;/li&gt;
+&lt;li&gt;有没有互相矛盾的内容&lt;/li&gt;
+&lt;li&gt;有没有长期没更新的页面&lt;/li&gt;
+&lt;li&gt;有没有来源不明、状态不清的页面&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;AI 时代更要重视这件事。因为 AI 能帮你生产内容，但不会天然帮你控制内容腐烂。你如果没有"验证" 这道工序，最后得到的往往是一个产能很高、质量很飘的知识工厂。量上去了，心里反而更虚。&lt;/p&gt;
+&lt;h3 id="3"&gt;3. 让它有连接能力，而不是只有孤岛页面&lt;/h3&gt;
+&lt;p&gt;我越来越觉得，知识的价值一半在内容，一半在连接。&lt;/p&gt;
+&lt;p&gt;我在这套原型里放了 wiki link、分类索引、标题索引、标签索引、最近变更、全文搜索。这些能力单看都不复杂，但加在一起，会把一堆独立页面变成一个可以漫游的网络。&lt;/p&gt;
+&lt;p&gt;这点对人和 AI 都重要：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;对人来说，你能顺着链接找到上下文&lt;/li&gt;
+&lt;li&gt;对 AI 来说，它能据此判断哪些页面互相关联&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;没有连接的知识库，很像一本页码被撕掉的书。每一页可能都对，但你不知道它和前后文是什么关系。单页是对的，整体是散的。&lt;/p&gt;
+&lt;h3 id="4"&gt;4. 让它有信任分层，而不是"一律当真"&lt;/h3&gt;
+&lt;p&gt;这是我很在意的一件事。&lt;/p&gt;
+&lt;p&gt;以前我们默认"写进文档的就是正式结论"，现在这个前提已经不成立了。因为越来越多内容是 AI 草拟的、协作生成的、甚至是半自动编译出来的。&lt;/p&gt;
+&lt;p&gt;所以知识库里最好天然区分几类状态：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;这是原始材料&lt;/li&gt;
+&lt;li&gt;这是 AI 整理稿&lt;/li&gt;
+&lt;li&gt;这是人审核过的稳定结论&lt;/li&gt;
+&lt;li&gt;这是已经过时但保留存档的历史页面&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;你会发现，一旦把这层状态显式化，知识库的气质就完全不一样了。它不再假装自己"句句都像圣旨"，而是诚实地告诉你：哪部分可以直接信，哪部分要打个问号。&lt;/p&gt;
+&lt;h3 id="5"&gt;5. 让它有出口，能反过来服务写作、决策和协作&lt;/h3&gt;
+&lt;p&gt;如果一个知识库最常见的用途只是"搜一下"，那它还没完全发挥价值。&lt;/p&gt;
+&lt;p&gt;我现在更看重它能不能反过来支持这些动作：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;写博客时，快速调出过去的材料和观点&lt;/li&gt;
+&lt;li&gt;写设计文档时，复用已有术语、约束和决策背景&lt;/li&gt;
+&lt;li&gt;做 code review 或 onboarding 时，给新人一条可追踪的知识路径&lt;/li&gt;
+&lt;li&gt;问 AI 问题时，让它基于我的材料回答，而不是基于公共互联网胡猜&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这其实就是从"存储系统" 走向 "工作系统"。&lt;/p&gt;
+&lt;p&gt;知识库一旦能稳定支持这些输出，它就不只是记忆体，而开始像一个"外接大脑"了。平时安安静静地躺着，用的时候又真能帮上忙。&lt;/p&gt;
+&lt;h2 id="_7"&gt;一个最小可行做法&lt;/h2&gt;
+&lt;p&gt;如果你今天也想搭一个自己的知识库，我建议别一上来就追求"大而全"，先做一个最小版本。&lt;/p&gt;
+&lt;h3 id="_8"&gt;第一步：选一个足够朴素的底座&lt;/h3&gt;
+&lt;p&gt;我建议优先考虑本地 Markdown + Git。&lt;/p&gt;
+&lt;p&gt;原因很简单：十年后它大概率还读得出来，迁移成本也低。你现在贪的那点"功能炫酷"，以后很可能都要连本带利还回去。&lt;/p&gt;
+&lt;h3 id="_9"&gt;第二步：先把目录分成三层&lt;/h3&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;raw/
+wiki/content/
+wiki/metadata/
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;就这三层，先跑起来再说。别上来就设计 27 个目录，最后自己也记不住。&lt;/p&gt;
+&lt;h3 id="_10"&gt;第三步：为页面补齐最关键的元数据&lt;/h3&gt;
+&lt;p&gt;至少有这些：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;title&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;summary&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;tags&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;doc_type&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;source&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;created_by&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;verification_status&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;少了这些，后面 AI 很难稳定帮你工作。&lt;/p&gt;
+&lt;h3 id="_11"&gt;第四步：把"导入" 和 "校验" 做成固定动作&lt;/h3&gt;
+&lt;p&gt;对应到实践里，大概就是：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;初始化知识库目录
+导入一篇笔记或一批材料
+跑一次校验
+重建索引和页面
+启动本地预览
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这几个命令的意义不只是跑通工具，而是帮你养成习惯：输入不是随便堆，输出之前要过一遍检查。别把知识库养成一个只进不出的仓鼠笼。&lt;/p&gt;
+&lt;h3 id="ai_1"&gt;第五步：给 AI 划边界，不要让它自动发布"结论"&lt;/h3&gt;
+&lt;p&gt;我的经验是：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;AI 适合做分类、摘要、初稿、链接建议&lt;/li&gt;
+&lt;li&gt;人适合做定性、取舍、背书、最后发布&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;别把这两件事反过来。否则你的知识库会越来越勤快，也越来越不靠谱。它看上去很忙，实际上在制造新的技术债。&lt;/p&gt;
+&lt;h2 id="_12"&gt;我现在最警惕的三个坑&lt;/h2&gt;
+&lt;p&gt;最后说几个我自己也在努力避免的坑。&lt;/p&gt;
+&lt;h3 id="_13"&gt;坑一：把知识库做成信息坟场&lt;/h3&gt;
+&lt;p&gt;看起来什么都没丢，实际上什么都找不到。症状通常是"收藏很多、沉淀很少、搜索全靠关键词碰运气"。&lt;/p&gt;
+&lt;h3 id="ai_2"&gt;坑二：把 AI 当权威，而不是当助手&lt;/h3&gt;
+&lt;p&gt;AI 可以参与知识生产，但不该偷偷代替你下结论。尤其是涉及架构、流程、组织经验的内容，最后那道责任门最好还在你手里。&lt;/p&gt;
+&lt;h3 id="_14"&gt;坑三：只追求检索效果，不建设可读页面&lt;/h3&gt;
+&lt;p&gt;这类系统通常 demo 很亮眼，长期维护却很痛苦。因为知识最后还是要给人看、给人改、给人讨论。页面不可读，知识就很难变成团队资产。能召回，不等于能传承。&lt;/p&gt;
+&lt;h2 id="_15"&gt;结语&lt;/h2&gt;
+&lt;p&gt;AI 时代，建立自己的知识库，不再是"爱记笔记的人" 的小众爱好，而越来越像一种基础能力。&lt;/p&gt;
+&lt;p&gt;它决定了你是在反复喂给 AI 一堆零散上下文，还是给它一个真正可依赖的工作底座；也决定了你手里的知识，是一堆安静躺着的文件，还是一套能不断吸收、整理、校验、连接、输出的活系统。&lt;/p&gt;
+&lt;p&gt;如果要把这篇文章收成一句话，我会这样说：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;知识库最好的形态，不是仓库，而是 wiki；不只是 wiki，而是一条可信、可演化、可协作的知识生产线。&lt;/strong&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h2 id="_16"&gt;可执行清单&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;用本地 Markdown + Git 作为知识底座&lt;/li&gt;
+&lt;li&gt;把内容拆成 &lt;code&gt;raw / wiki / metadata&lt;/code&gt; 三层&lt;/li&gt;
+&lt;li&gt;为页面补齐来源、作者、状态、文档类型&lt;/li&gt;
+&lt;li&gt;区分 AI 初稿和人工确认内容&lt;/li&gt;
+&lt;li&gt;定期跑一次校验，处理失效和陈旧信息&lt;/li&gt;
+&lt;li&gt;用 wiki link、索引和标签把页面连起来&lt;/li&gt;
+&lt;li&gt;让知识库服务真实工作流，而不只是"能搜到"&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id="_17"&gt;参考&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;我自己这些年积累的博客、笔记和工作文档整理经验&lt;/li&gt;
+&lt;li&gt;file-based wiki 的一些通用设计思路&lt;/li&gt;
+&lt;li&gt;Diátaxis 文档分类方法&lt;/li&gt;
+&lt;li&gt;Git 作为知识历史与审计线索的实践&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;你现在手上的知识库，更像"收藏夹"，还是已经开始像"操作系统"了？&lt;/p&gt;</content><category term="Tech"/><category term="AI"/><category term="knowledge-base"/><category term="wiki"/><category term="PKM"/><category term="RAG"/></entry><entry><title>Axios 被投毒：一场教科书级的供应链攻击复盘</title><link href="https://www.fanyamin.com/2026-04-01-axios-supply-chain-attack.html" rel="alternate"/><published>2026-04-01T10:00:00+08:00</published><updated>2026-04-01T10:00:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-04-01:/2026-04-01-axios-supply-chain-attack.html</id><summary type="html">&lt;p&gt;2026 年 3 月 31 日，周下载量过亿的 npm 包 axios 被投毒，两小时内所有 npm install 的机器可能已沦陷。这次事件再次说明：你写的代码也许没有 bug，但你装的依赖里可能藏着一扇后门。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
 &lt;thead&gt;
 &lt;tr&gt;
 &lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
@@ -1346,7 +3383,363 @@ sops&lt;span class="w"&gt; &lt;/span&gt;--encrypt&lt;span class="w"&gt; &lt;/spa
 
 &lt;p&gt;&lt;img alt="LiteLLM 供应链投毒事件思维导图" src="../images/litellm_supply_chain_mindmap.png"&gt;&lt;/p&gt;
 &lt;hr/&gt;
-&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Tech"/><category term="security"/><category term="supply-chain"/><category term="python"/><category term="secrets-management"/><category term="LiteLLM"/></entry><entry><title>用 Playwright 自动发帖到知乎和小红书：一个程序员的偷懒指南</title><link href="https://www.fanyamin.com/2026-03-21-playwright-auto-posting.html" rel="alternate"/><published>2026-03-21T00:00:00+08:00</published><updated>2026-03-21T00:00:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-03-21:/2026-03-21-playwright-auto-posting.html</id><summary type="html">&lt;p&gt;写完一篇文章，手动复制粘贴到知乎、小红书、公众号……每次都要重新排版、加标签、传图片，烦不烦？这篇文章聊聊怎么用 Playwright 把这些重复劳动自动化掉——从录制操作到封装脚本，附完整代码。&lt;/p&gt;</summary><content type="html">&lt;h1 id="playwright"&gt;用 Playwright 自动发帖到知乎和小红书：一个程序员的偷懒指南&lt;/h1&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Tech"/><category term="security"/><category term="supply-chain"/><category term="python"/><category term="secrets-management"/><category term="LiteLLM"/></entry><entry><title>从 RAG 到 GraphRAG：当检索增强生成遇上知识图谱</title><link href="https://www.fanyamin.com/graphrag-deep-dive.html" rel="alternate"/><published>2026-03-26T10:00:00+08:00</published><updated>2026-04-26T10:00:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-03-26:/graphrag-deep-dive.html</id><summary type="html">&lt;p&gt;传统 RAG 在处理复杂多跳问题时力不从心，GraphRAG 通过引入知识图谱为检索增强生成带来了结构化推理能力。本文从痛点分析、核心架构、Leiden 社区检测算法到工程实践，全面深入剖析 GraphRAG。&lt;/p&gt;</summary><content type="html">&lt;h1 id="rag-graphrag"&gt;从 RAG 到 GraphRAG：当检索增强生成遇上知识图谱&lt;/h1&gt;
+&lt;blockquote&gt;
+&lt;p&gt;传统 RAG 已经暴露出越来越多的局限性，GraphRAG 的出现为我们打开了一扇新的大门。本文将深入剖析 RAG 的痛点，并全面探讨 GraphRAG 的原理、架构与实践。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;hr&gt;
+&lt;h2 id="rag"&gt;一、RAG 回顾：为什么我们需要检索增强生成？&lt;/h2&gt;
+&lt;p&gt;RAG（Retrieval-Augmented Generation）的核心思想很简单：&lt;strong&gt;先检索，再生成&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;大语言模型（LLM）虽然强大，但存在几个天然缺陷：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;知识截止&lt;/strong&gt;：训练数据有时间边界，无法获取最新信息&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;幻觉问题&lt;/strong&gt;：模型会"一本正经地胡说八道"&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;领域知识不足&lt;/strong&gt;：对企业私有数据一无所知&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;RAG 通过在生成前引入外部知识检索，有效缓解了这些问题。典型的 RAG 流程如下：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;用户提问 → 文本向量化 → 向量数据库检索 → 拼接上下文 → LLM 生成回答
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这套方案在很多场景下效果不错，但随着应用深入，&lt;strong&gt;痛点也逐渐暴露&lt;/strong&gt;。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="rag_1"&gt;二、传统 RAG 的六大痛点&lt;/h2&gt;
+&lt;h3 id="1"&gt;痛点 1：语义孤岛 —— 只见树木，不见森林&lt;/h3&gt;
+&lt;p&gt;传统 RAG 将文档切分为 chunk（文本块），每个 chunk 独立嵌入向量空间。这导致了一个根本问题：&lt;strong&gt;chunk 之间的关联关系丢失了&lt;/strong&gt;。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;举例：
+- Chunk A: &amp;quot;张三是公司的 CTO&amp;quot;
+- Chunk B: &amp;quot;CTO 负责公司的技术战略&amp;quot;
+- Chunk C: &amp;quot;公司的技术战略聚焦于 AI 和云计算&amp;quot;
+
+用户问：&amp;quot;张三负责什么？&amp;quot;
+→ 检索可能只命中 Chunk A，无法串联出完整答案
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;每个 chunk 就像一座孤岛，缺乏上下文连接，导致回答片面、不完整。&lt;/p&gt;
+&lt;h3 id="2"&gt;痛点 2：多跳推理无能为力&lt;/h3&gt;
+&lt;p&gt;当回答一个问题需要跨越多个文档、多个实体进行推理时，传统 RAG 几乎束手无策。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;问题：&amp;quot;哪些与李四合作过的研究员发表了关于 Transformer 的论文？&amp;quot;
+
+这需要：
+1. 找到李四的合作者
+2. 确认哪些合作者是研究员
+3. 检查这些研究员是否发表过 Transformer 相关论文
+
+传统 RAG 无法完成这种多跳推理链
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h3 id="3"&gt;痛点 3：全局性问题的盲区&lt;/h3&gt;
+&lt;p&gt;传统 RAG 擅长回答&lt;strong&gt;局部性、细节性&lt;/strong&gt;的问题，但对于需要全局视角的问题表现糟糕：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;❌ "这个数据集的主要主题有哪些？"&lt;/li&gt;
+&lt;li&gt;❌ "公司过去一年的战略变化趋势是什么？"&lt;/li&gt;
+&lt;li&gt;❌ "请总结所有项目之间的依赖关系"&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这类问题需要对整个语料库有全局理解，而向量相似度检索天然是局部的。&lt;/p&gt;
+&lt;h3 id="4chunk"&gt;痛点 4：Chunk 切分的两难困境&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Chunk 太小&lt;/strong&gt;：语义不完整，上下文丢失&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Chunk 太大&lt;/strong&gt;：噪声增多，检索精度下降，且受限于 LLM 的上下文窗口&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;无论怎么调整 chunk 大小和重叠策略，都无法从根本上解决问题。&lt;/p&gt;
+&lt;h3 id="5"&gt;痛点 5：检索与生成的语义鸿沟&lt;/h3&gt;
+&lt;p&gt;用户的问题和文档的表述方式往往存在差异：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;用户问：&amp;quot;怎么提高系统性能？&amp;quot;
+文档写的是：&amp;quot;通过引入缓存层和数据库索引优化，响应时间降低了 60%&amp;quot;
+
+语义相关，但词汇层面差异很大，向量检索可能错过这段内容
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h3 id="6"&gt;痛点 6：缺乏可解释性&lt;/h3&gt;
+&lt;p&gt;传统 RAG 返回的结果往往是"黑箱"的：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;为什么检索到这些 chunk？&lt;/li&gt;
+&lt;li&gt;这些 chunk 之间是什么关系？&lt;/li&gt;
+&lt;li&gt;回答的推理路径是什么？&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;用户只能看到最终答案，无法理解和验证推理过程。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="graphrag-rag"&gt;三、GraphRAG：用知识图谱重新定义 RAG&lt;/h2&gt;
+&lt;h3 id="31-graphrag"&gt;3.1 什么是 GraphRAG？&lt;/h3&gt;
+&lt;p&gt;GraphRAG 是微软研究院在 2024 年提出的一种新范式，其核心思想是：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;将非结构化文本转化为知识图谱，利用图结构进行检索和推理，再结合 LLM 生成回答。&lt;/strong&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;传统 RAG:  文档 → Chunks → 向量索引 → 相似度检索 → LLM 生成
+GraphRAG: 文档 → 知识图谱 → 社区检测 → 图检索/遍历 → LLM 生成
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;与传统 RAG 相比，关键差异在于多了一层&lt;strong&gt;结构化的知识表示&lt;/strong&gt;。一句话概括：&lt;strong&gt;向量相似度能找到近义词，但找不到因果链；图谱遍历可以。&lt;/strong&gt;&lt;/p&gt;
+&lt;h3 id="32-graphrag"&gt;3.2 GraphRAG 的核心架构&lt;/h3&gt;
+&lt;p&gt;GraphRAG 的流程可以分为两个阶段：&lt;strong&gt;索引阶段（Indexing）&lt;/strong&gt; 和 &lt;strong&gt;查询阶段（Querying）&lt;/strong&gt;。&lt;/p&gt;
+&lt;h4 id="_1"&gt;索引阶段&lt;/h4&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;┌─────────────┐    ┌──────────────┐    ┌──────────────┐    ┌───────────────┐
+│  源文档      │ →  │  实体/关系    │ →  │  知识图谱     │ →  │  社区检测      │
+│  (Documents) │    │  抽取 (LLM)  │    │  构建         │    │  &amp;amp; 摘要生成    │
+└─────────────┘    └──────────────┘    └──────────────┘    └───────────────┘
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;strong&gt;Step 1: 文本分块与实体关系抽取&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;利用 LLM 从文本中抽取实体（Entity）和关系（Relationship），形成三元组：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;entities&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;name&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;张三&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;type&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;Person&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;description&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;公司CTO，负责技术战略&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;},&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;name&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;AI战略&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;type&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;Strategy&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;description&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;公司核心技术方向&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;relationships&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;source&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;张三&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;target&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;AI战略&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;description&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;主导制定&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;weight&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="mf"&gt;0.9&lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;我的经验是：&lt;strong&gt;宁可少抽、抽准，也不要贪多抽乱。&lt;/strong&gt; 噪声三元组会严重污染图谱检索结果。针对你的领域定制 schema 和 few-shot examples，通用 prompt 的抽取质量往往不够。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Step 2: 知识图谱构建&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;将抽取的实体和关系组织成图结构：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;[张三] --主导制定--&amp;gt; [AI战略]
+  |                      |
+  |--担任CTO--&amp;gt;  [公司]  |--包含--&amp;gt; [大模型研发]
+  |                      |--包含--&amp;gt; [云计算平台]
+  |--合作--&amp;gt;  [李四]
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;strong&gt;Step 3: 社区检测（Community Detection）—— Leiden 算法详解&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;这是 GraphRAG 最关键的创新之一。微软 GraphRAG 使用 &lt;strong&gt;Leiden 算法&lt;/strong&gt; 对知识图谱进行层次化社区检测，将紧密关联的实体自动聚类成社区，然后为每个社区生成摘要。&lt;/p&gt;
+&lt;h5 id="leiden-louvain"&gt;为什么是 Leiden 而不是 Louvain？&lt;/h5&gt;
+&lt;p&gt;Leiden 算法是 Louvain 算法的改进版，由荷兰莱顿大学（Leiden University）的研究者在 2019 年提出。Louvain 虽然快，但有一个已知缺陷：&lt;strong&gt;它可能产生内部不连通的社区&lt;/strong&gt;——把一些实际上没有直接联系的节点分到了同一组。这在 GraphRAG 场景下是不可接受的，因为社区摘要需要基于真正有关联的实体来生成。&lt;/p&gt;
+&lt;h5 id="leiden"&gt;Leiden 算法的三阶段迭代&lt;/h5&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;1. 局部移动（Local Moving）
+   → 每个节点尝试加入邻居所在的社区，选择模块度增益最大的
+
+2. 细化（Refinement）  ← Leiden 的关键改进
+   → 在每个社区内部再做一次划分，确保社区内部是连通的
+   → 解决了 Louvain 的&amp;quot;断裂社区&amp;quot;问题
+
+3. 聚合（Aggregation）
+   → 把每个社区压缩成一个超级节点，形成新的图
+   → 回到第 1 步，继续迭代，直到收敛
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;打个比方：你有一群人的社交关系网络。Louvain 像是粗略地按"谁跟谁聊得多"分组，但可能把两个互不认识的人分到同一组。Leiden 多了一步&lt;strong&gt;组内检查&lt;/strong&gt;，确保同一组里的人确实都能通过组内关系连起来。&lt;/p&gt;
+&lt;h5 id="modularity"&gt;模块度（Modularity）：优化目标&lt;/h5&gt;
+&lt;p&gt;两种算法都在优化&lt;strong&gt;模块度&lt;/strong&gt; Q，简单说就是：&lt;strong&gt;社区内部的实际边数，比随机情况下期望的边数多多少&lt;/strong&gt;。Q 越高，社区划分质量越好。&lt;/p&gt;
+&lt;h5 id="leiden-vs-louvain"&gt;Leiden vs Louvain 对比&lt;/h5&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;维度&lt;/th&gt;
+&lt;th&gt;Louvain&lt;/th&gt;
+&lt;th&gt;Leiden&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;社区连通性&lt;/td&gt;
+&lt;td&gt;不保证&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;保证&lt;/strong&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;速度&lt;/td&gt;
+&lt;td&gt;快&lt;/td&gt;
+&lt;td&gt;略慢（多了细化步骤）&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;划分质量&lt;/td&gt;
+&lt;td&gt;好&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;更好&lt;/strong&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;大规模图支持&lt;/td&gt;
+&lt;td&gt;✅&lt;/td&gt;
+&lt;td&gt;✅&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h5 id="graphrag"&gt;在 GraphRAG 中的多层级社区&lt;/h5&gt;
+&lt;p&gt;Leiden 产生的层次化社区结构正好满足 GraphRAG 的需求：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;Level 0 (最细粒度):  [张三, AI战略, 大模型研发] [李四, 云计算, 基础设施]
+Level 1 (中等粒度):  [技术部门: 张三, 李四, AI, 云计算]
+Level 2 (最粗粒度):  [整个公司: 技术, 业务, 运营...]
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;每个社区会由 LLM 生成一份&lt;strong&gt;社区摘要（Community Summary）&lt;/strong&gt;，捕获该社区的核心主题和关键信息。不同粒度的问题可以在不同层级找到答案。&lt;/p&gt;
+&lt;h4 id="_2"&gt;查询阶段&lt;/h4&gt;
+&lt;p&gt;GraphRAG 提供两种查询模式：&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Local Search（局部搜索）&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;适用于：具体的、需要详细信息的问题&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;用户提问 → 实体识别 → 图邻域遍历 → 收集相关实体/关系/chunk → LLM 生成
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;工作流程：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;从问题中识别关键实体&lt;/li&gt;
+&lt;li&gt;在知识图谱中定位这些实体&lt;/li&gt;
+&lt;li&gt;遍历其邻域节点和边（可多跳）&lt;/li&gt;
+&lt;li&gt;收集相关的社区摘要、实体描述、原始文本&lt;/li&gt;
+&lt;li&gt;构建上下文，交给 LLM 生成回答&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;&lt;strong&gt;Global Search（全局搜索）&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;适用于：宏观的、需要全局视角的问题&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;用户提问 → 选择社区层级 → 收集社区摘要 → Map-Reduce → LLM 生成
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;工作流程：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;根据问题选择合适的社区层级&lt;/li&gt;
+&lt;li&gt;将所有社区摘要作为上下文&lt;/li&gt;
+&lt;li&gt;使用 Map-Reduce 策略：先对每个社区摘要生成中间答案，再汇总生成最终答案&lt;/li&gt;
+&lt;li&gt;这使得 GraphRAG 能够回答"全局性"问题&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h3 id="33"&gt;3.3 混合检索策略&lt;/h3&gt;
+&lt;p&gt;实际检索时，GraphRAG 通常采用混合策略：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# 伪代码示意&lt;/span&gt;
+&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;hybrid_retrieve&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;query&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+    &lt;span class="c1"&gt;# 1. 向量检索：找相关文本块&lt;/span&gt;
+    &lt;span class="n"&gt;text_chunks&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;vector_search&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;query&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;top_k&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;10&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+    &lt;span class="c1"&gt;# 2. 实体识别：从 query 中提取实体&lt;/span&gt;
+    &lt;span class="n"&gt;entities&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;extract_entities&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;query&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+    &lt;span class="c1"&gt;# 3. 图谱检索：沿关系扩展上下文&lt;/span&gt;
+    &lt;span class="n"&gt;graph_context&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;graph_traverse&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;entities&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;max_hops&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+    &lt;span class="c1"&gt;# 4. 合并去重，送入 LLM&lt;/span&gt;
+    &lt;span class="n"&gt;context&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;merge&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;text_chunks&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;graph_context&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;generate_answer&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;query&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;context&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;code&gt;max_hops&lt;/code&gt; 是个关键参数。跳数太少，信息不够；跳数太多，噪声太大。一般 2-3 跳是个不错的起点。&lt;/p&gt;
+&lt;h3 id="34-graphrag-rag"&gt;3.4 GraphRAG 如何解决 RAG 的痛点&lt;/h3&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;RAG 痛点&lt;/th&gt;
+&lt;th&gt;GraphRAG 解决方案&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;语义孤岛&lt;/td&gt;
+&lt;td&gt;知识图谱天然连接实体和关系，消除信息孤岛&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;多跳推理&lt;/td&gt;
+&lt;td&gt;图遍历支持多跳路径探索&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;全局性问题&lt;/td&gt;
+&lt;td&gt;社区摘要 + Global Search 提供全局视角&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Chunk 切分困境&lt;/td&gt;
+&lt;td&gt;信息以实体和关系形式存储，不依赖 chunk 边界&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;语义鸿沟&lt;/td&gt;
+&lt;td&gt;实体和关系提供结构化的语义桥梁&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;缺乏可解释性&lt;/td&gt;
+&lt;td&gt;图路径提供清晰的推理链条&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;hr&gt;
+&lt;h2 id="graphrag_1"&gt;四、GraphRAG 实践：关键技术细节&lt;/h2&gt;
+&lt;h3 id="41-prompt"&gt;4.1 实体关系抽取的 Prompt 工程&lt;/h3&gt;
+&lt;p&gt;实体关系抽取的质量直接决定了知识图谱的质量。以下是一些关键策略：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;定义清晰的实体类型和关系类型&lt;/strong&gt; — 不要让 LLM 自由发挥，给出明确的 schema&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;提供 few-shot examples&lt;/strong&gt; — 用你领域内的真实样本做示范&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;分步抽取&lt;/strong&gt; — 先抽实体，再抽关系，比一步到位效果更好&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;设置置信度阈值&lt;/strong&gt; — 低置信度的三元组宁可丢弃&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id="42"&gt;4.2 图谱存储选择&lt;/h3&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;方案&lt;/th&gt;
+&lt;th&gt;适用场景&lt;/th&gt;
+&lt;th&gt;优势&lt;/th&gt;
+&lt;th&gt;劣势&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;NetworkX（内存）&lt;/td&gt;
+&lt;td&gt;原型验证、小规模&lt;/td&gt;
+&lt;td&gt;简单快速&lt;/td&gt;
+&lt;td&gt;不持久化、不支持大图&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Neo4j&lt;/td&gt;
+&lt;td&gt;中大规模生产&lt;/td&gt;
+&lt;td&gt;成熟的图查询语言 Cypher&lt;/td&gt;
+&lt;td&gt;运维成本&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Nebula Graph&lt;/td&gt;
+&lt;td&gt;大规模场景&lt;/td&gt;
+&lt;td&gt;国产、高性能&lt;/td&gt;
+&lt;td&gt;学习曲线&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;直接用 JSON/Parquet&lt;/td&gt;
+&lt;td&gt;微软 GraphRAG 默认&lt;/td&gt;
+&lt;td&gt;零依赖&lt;/td&gt;
+&lt;td&gt;查询灵活性差&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h3 id="43-graphrag"&gt;4.3 什么时候该用 GraphRAG？&lt;/h3&gt;
+&lt;p&gt;不是所有场景都需要 GraphRAG。我的判断标准：&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;适合用 GraphRAG 的场景：&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;文档间有大量实体交叉引用（如法规、技术规范、医学文献）&lt;/li&gt;
+&lt;li&gt;用户经常问多跳关系问题（"A 影响了 B，B 又导致了什么？"）&lt;/li&gt;
+&lt;li&gt;需要全局性总结和主题概览&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;不需要 GraphRAG 的场景：&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;单文档内的简单问答&lt;/li&gt;
+&lt;li&gt;文档之间关联性弱&lt;/li&gt;
+&lt;li&gt;对延迟和成本敏感（GraphRAG 的索引成本显著高于传统 RAG）&lt;/li&gt;
+&lt;/ul&gt;
+&lt;hr&gt;
+&lt;h2 id="_3"&gt;五、工具和框架&lt;/h2&gt;
+&lt;p&gt;目前比较成熟的 GraphRAG 实现：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Microsoft GraphRAG&lt;/strong&gt;：微软开源实现，支持 Global/Local Search，社区检测用的是 Leiden 算法&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;LlamaIndex + KnowledgeGraphIndex&lt;/strong&gt;：LlamaIndex 内置的图谱索引，适合快速原型&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Neo4j + LangChain&lt;/strong&gt;：用 Neo4j 存图谱，LangChain 做编排，灵活但需要自己搭&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Nebula Graph + RAG&lt;/strong&gt;：国产图数据库方案，适合大规模场景&lt;/li&gt;
+&lt;/ul&gt;
+&lt;hr&gt;
+&lt;h2 id="_4"&gt;六、总结&lt;/h2&gt;
+&lt;p&gt;GraphRAG 的本质是给 RAG 加上了&lt;strong&gt;结构化推理能力&lt;/strong&gt;。它不是传统 RAG 的替代品，而是在特定场景下的增强方案。&lt;/p&gt;
+&lt;p&gt;核心取舍很清楚：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;收益&lt;/strong&gt;：多跳推理、全局总结、实体关系理解、可解释的推理路径&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;代价&lt;/strong&gt;：索引成本高、实体抽取质量要求高、系统复杂度上升&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id="_5"&gt;行动清单&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;[ ] 评估你的场景是否真的需要多跳推理&lt;/li&gt;
+&lt;li&gt;[ ] 先跑通传统 RAG baseline，记录 bad case&lt;/li&gt;
+&lt;li&gt;[ ] 挑 20-50 个 bad case，分析是否因为缺少实体关系导致&lt;/li&gt;
+&lt;li&gt;[ ] 如果是，用 Microsoft GraphRAG 或 LlamaIndex 跑个 POC&lt;/li&gt;
+&lt;li&gt;[ ] 重点关注实体抽取质量，建立评估机制&lt;/li&gt;
+&lt;li&gt;[ ] 初期控制图谱规模在几千到几万节点，避免维护成本失控&lt;/li&gt;
+&lt;li&gt;[ ] 设计增量更新流程，不要每次全量重建图谱&lt;/li&gt;
+&lt;/ul&gt;
+&lt;blockquote&gt;
+&lt;p&gt;一句话：不要因为 GraphRAG 听起来酷就上，要因为你的 bad case 需要它才上。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h2 id="_6"&gt;参考资料&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://arxiv.org/abs/2404.16130"&gt;Microsoft GraphRAG Paper&lt;/a&gt; - From Local to Global: A Graph RAG Approach to Query-Focused Summarization&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://github.com/microsoft/graphrag"&gt;Microsoft GraphRAG GitHub&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://www.nature.com/articles/s41598-019-41695-z"&gt;Leiden Algorithm Paper&lt;/a&gt; - From Louvain to Leiden: guaranteeing well-connected communities (2019)&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://docs.llamaindex.ai/"&gt;LlamaIndex Knowledge Graph Guide&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;</content><category term="tech"/><category term="graphrag"/><category term="rag"/><category term="knowledge-graph"/><category term="llm"/><category term="ai"/><category term="leiden"/><category term="community-detection"/></entry><entry><title>用 Playwright 自动发帖到知乎和小红书：一个程序员的偷懒指南</title><link href="https://www.fanyamin.com/2026-03-21-playwright-auto-posting.html" rel="alternate"/><published>2026-03-21T00:00:00+08:00</published><updated>2026-03-21T00:00:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-03-21:/2026-03-21-playwright-auto-posting.html</id><summary type="html">&lt;p&gt;写完一篇文章，手动复制粘贴到知乎、小红书、公众号……每次都要重新排版、加标签、传图片，烦不烦？这篇文章聊聊怎么用 Playwright 把这些重复劳动自动化掉——从录制操作到封装脚本，附完整代码。&lt;/p&gt;</summary><content type="html">&lt;h1 id="playwright"&gt;用 Playwright 自动发帖到知乎和小红书：一个程序员的偷懒指南&lt;/h1&gt;
 &lt;h2 id="_1"&gt;一、程序员的内容分发之痛&lt;/h2&gt;
 &lt;p&gt;写技术博客的人大概都有这个烦恼：文章写完了，发布才是噩梦的开始。&lt;/p&gt;
 &lt;p&gt;先在自己的博客站发一遍，然后复制到知乎专栏，格式全乱了，得重新调。再发小红书，标题要改短，正文要加 emoji，图片要重新上传。如果还想发公众号，那又是另一套排版规则。&lt;/p&gt;

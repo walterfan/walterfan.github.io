@@ -241,10 +241,10 @@
 <ul>
 <li>这种 skill 为什么和 promptfoo 那种 skill 不一样</li>
 <li>测试金字塔：结构 lint → 触发 eval → 行为 eval → 回归</li>
-<li>用 Claude Code 的 headless 模式做 CI 测试</li>
+<li>用 Claude Code / Codex 的 headless 模式做 CI 测试</li>
 <li>Anthropic 官方 <code>skill-creator</code> 的 eval / benchmark / comparator 思路</li>
 <li>一个最小可运行的测试样例</li>
-<li>用魔法打败魔法：把这套流程封装成一个 <code>skill-tester</code> skill，让 agent 自己跑</li>
+<li>用魔法打败魔法：把这套流程封装成一个 <code>lazy-skill-check</code> skill，让 agent 自己跑</li>
 <li>常见坑和落地建议</li>
 </ul>
 <hr>
@@ -399,6 +399,29 @@
 <li>总 token 和总费用</li>
 <li>总耗时</li>
 </ul>
+<p>如果你测的是 Codex，思路完全一样，只是 CLI 形态不一样。OpenAI 给的入口是 <code>codex exec</code>：</p>
+<div class="highlight"><pre><span></span><code>codex<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>--json<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--full-auto<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--sandbox<span class="w"> </span>workspace-write<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="s2">&quot;帮我把 sample/expense.pdf 填好，金额 1234.56，只做最小修改并把结果保存到 sample/expense_filled.pdf&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>&gt;<span class="w"> </span>result.jsonl
+</code></pre></div>
+
+<p>这几个开关也值得记一下：</p>
+<ul>
+<li><code>--json</code>：输出 JSONL 事件流，适合脚本消费</li>
+<li><code>--full-auto</code>：允许 agent 自动编辑和执行，不用人工确认</li>
+<li><code>--sandbox workspace-write</code>：只给工作区写权限，通常比 <code>danger-full-access</code> 更适合 CI</li>
+</ul>
+<p>Codex 和 Claude 最大的差别，不在"会不会跑"，而在<strong>输出格式</strong>。Claude 一把吐一个 JSON；Codex 吐的是 JSONL 事件流，里面会出现 <code>thread.started</code>、<code>item.completed</code>、<code>turn.completed</code> 这类事件。所以工程上最好别把断言直接绑死在某一家的原始 schema 上，而是先做一层归一化：</p>
+<ul>
+<li><code>final_output</code></li>
+<li><code>tool_calls</code></li>
+<li><code>skills_used</code></li>
+<li><code>duration_seconds</code></li>
+<li><code>total_tokens</code></li>
+</ul>
+<p>这样你上层的 pytest 断言就能保持不动，只替换底层 parser。<strong>别小看这一层 adapter，它不是多余抽象，而是跨 agent 测试能不能活下来的分水岭。</strong></p>
 <p>有了这些，你就能写出和单元测试同构的断言：</p>
 <div class="highlight"><pre><span></span><code><span class="k">def</span> <span class="nf">test_pdf_skill_fills_acroform</span><span class="p">():</span>
     <span class="n">result</span> <span class="o">=</span> <span class="n">run_claude_headless</span><span class="p">(</span>
@@ -429,6 +452,12 @@
 <li><strong>代价断言</strong>：成本和时长在阈值内</li>
 </ul>
 <p>到这一步，给 coding agent 用的 skill 终于有了和后端服务一样的"可测性"。</p>
+<p>如果你愿意把这一层再做得像样一点，可以把 runner 写成双实现：</p>
+<ul>
+<li><code>run_claude_headless()</code>：吃 Claude JSON</li>
+<li><code>run_codex_headless()</code>：吃 Codex JSONL</li>
+</ul>
+<p>对外统一返回同一个 <code>AgentRunResult</code>。后面你无论测 Claude Code、Codex，还是再接别家 agent，测试代码都不用重写。</p>
 <h2 id="4-benchmark">六、第 4 层：回归与 benchmark，改完到底是变好了还是变差了</h2>
 <p>到这里其实已经能交差了。但还有一件事更要命：<strong>改完 skill 之后，你怎么知道它是真的变好了，不是只在你昨晚那个用例上变好了？</strong></p>
 <p>这就是 benchmark 和 A/B comparator 要解决的事。</p>
@@ -454,6 +483,25 @@
 python<span class="w"> </span>compare.py<span class="w"> </span>runs/v1_*.json<span class="w"> </span>runs/v2_*.json
 </code></pre></div>
 
+<p>如果你想拿 Codex 跑同一套 benchmark，runner 其实也只是换个壳：</p>
+<div class="highlight"><pre><span></span><code><span class="k">for</span><span class="w"> </span>i<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="m">3</span><span class="w"> </span><span class="m">4</span><span class="w"> </span><span class="m">5</span><span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="w">  </span>codex<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>--json<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--full-auto<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--sandbox<span class="w"> </span>workspace-write<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="s2">&quot;</span><span class="k">$(</span>cat<span class="w"> </span>tests/case_001.txt<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>&gt;<span class="w"> </span>runs/codex_run_<span class="nv">$i</span>.jsonl
+<span class="k">done</span>
+
+python<span class="w"> </span>compare.py<span class="w"> </span>runs/codex_run_*.jsonl
+</code></pre></div>
+
+<p>这里有个小坑：<strong>Codex 的 <code>--json</code> 是事件流，不是最终结果快照。</strong> 所以 <code>compare.py</code> 不能直接把整个文件当一个 JSON 读进来，而要先提取：</p>
+<ul>
+<li>最终 agent message</li>
+<li>所有 command / tool 事件</li>
+<li><code>turn.completed</code> 里的 usage</li>
+</ul>
+<p>然后再做 pass rate、token、时长、盲评胜率这些统计。这个步骤看起来啰嗦，其实值回票价——你今天只是多接了一个 Codex，明天换成 Cursor Agent，照样还能复用同一个 compare 框架。</p>
 <p>跑 5 次取均值，比较 pass rate、平均 token、平均时长。再让另一个模型对每对输出做盲评，统计 v2 胜率。如果 v2 胜率显著高于 50%，再合并。</p>
 <p>这套机制最大的价值不是某次发版，而是<strong>模型升级时</strong>。Claude 4.5 升到 4.6，你的 skill 还能用吗？跑一遍 benchmark 立刻见分晓。Anthropic 官方还提到一个更微妙的发现：有时候底模升级之后，<strong>你的 capability uplift 类 skill 反而不再需要了</strong>——base model 自己就能干。这种"skill 退役"信号，只能靠持续 benchmark 才能捕捉到。</p>
 <h2 id="_3">七、把四层串起来：一个最小可跑的样例</h2>
@@ -517,8 +565,8 @@ python<span class="w"> </span>compare.py<span class="w"> </span>runs/v1_*.json<s
 <p>写到这儿，有读者私信问我：这一整套 lint + trigger + behavior + benchmark，能不能封装成一个 skill，让 Cursor / Claude Code 自己就能调？</p>
 <p>能。而且这事挺顺——因为测试 skill 本身，也是一套可反复使用的工作流，正好长成 skill 的样子。</p>
 <p>这不就是"<strong>用魔法打败魔法</strong>"么。</p>
-<p>我把这个 skill 叫 <code>skill-tester</code>，放在仓库的 <code>.claude/skills/skill-tester/</code>、<code>.cursor/skills/skill-tester/</code>、<code>.agents/skills/skill-tester/</code> 三份（Cursor、Claude Code、通用 agent 各一份），目录结构很朴素：</p>
-<div class="highlight"><pre><span></span><code>skill-tester/
+<p>我把这个 skill 叫 <code>lazy-skill-check</code>。skill 本体放在我专门的 skill 仓库 <code>zoom-dev-skills/skills/lazy-skill-check/</code> 里作为 <strong>single source of truth</strong>，然后在本仓库的 <code>.claude/skills/</code>、<code>.cursor/skills/</code>、<code>.codex/skills/</code>、<code>.agents/skills/</code> 各做一个软链过去——这样 Claude Code、Cursor Agent、Codex、通用 agent 入口都能命中同一份代码，改一处生效四处。目录结构本身很朴素：</p>
+<div class="highlight"><pre><span></span><code>lazy-skill-check/
 ├── SKILL.md                  # 给 agent 看的四层流程
 ├── scripts/
 │   ├── lint.py               # L1：结构 lint
@@ -535,7 +583,7 @@ python<span class="w"> </span>compare.py<span class="w"> </span>runs/v1_*.json<s
 
 <p>用法是纯自然语言。你在 Claude Code 里说：</p>
 <blockquote>
-<p>帮我用 skill-tester 测一下 <code>.claude/skills/my-pdf-skill/</code>，只跑前三层就行。</p>
+<p>帮我用 lazy-skill-check 测一下 <code>.claude/skills/my-pdf-skill/</code>，只跑前三层就行。</p>
 </blockquote>
 <p>Agent 读到 SKILL.md 的描述之后，就会按顺序调 <code>lint.py</code> → <code>trigger_eval.py</code> → <code>behavior_run.sh</code> + <code>evaluate_runs.py</code>，一层 fail 就停下来告诉你原因，全过就出一份报告。</p>
 <p>几个设计上值得聊的取舍：</p>
@@ -543,8 +591,8 @@ python<span class="w"> </span>compare.py<span class="w"> </span>runs/v1_*.json<s
 <p><strong>为什么 trigger eval 要单独起 LLM 判 YES/NO，不让 agent 自己判？</strong> 因为被测 skill 的 description 一旦进了当前 agent 的 context，它就被"污染"了——它已经知道这个 skill 的意图。要测"一个干净的 agent 在路由时会不会选它"，必须另起一个新 session。这个细节我踩过坑，调试了两天才想明白。</p>
 <p><strong>为什么 behavior 跑 <code>claude --bare</code>？</strong> 这句我重点说一下。<code>--bare</code> 会跳过 hook、plugin、MCP 自动发现。不加它，你今天跑的测试和明天跑的测试结果可能不一样——因为同事合了一个新 plugin 进来。<strong>测试必须可复现，<code>--bare</code> 是"可复现"的门闸。</strong></p>
 <p><strong>为什么 benchmark 的判官要做盲评 + 随机 swap？</strong> LLM 作为 judge 有 position bias（偏好第一个或第二个答案）。<code>benchmark.py</code> 里每个 case 都随机决定把 v1 放 A 还是放 B，事后再把结果反推回来。这是 LLM-as-Judge 研究里最基本的一个防偏见手法，不做不行。</p>
-<p><strong>我自己第一次跑的时候发现了一件挺尴尬的事。</strong> 我用 <code>skill-tester</code> 去测另一个 skill，lint 立刻报"broken reference"——SKILL.md 里引用的 <code>references/xxx.md</code> 其实文件名拼错了，小写大写不一致。这个 bug 之前一直没被发现，因为 agent 能"猜"到正确文件，我肉眼看也看不出来。lint 半秒就抓住了。</p>
-<p>还有更尴尬的：我<strong>用 skill-tester 测 skill-tester 自己</strong>，第一次运行报错：</p>
+<p><strong>我自己第一次跑的时候发现了一件挺尴尬的事。</strong> 我用 <code>lazy-skill-check</code> 去测另一个 skill，lint 立刻报"broken reference"——SKILL.md 里引用的 <code>references/xxx.md</code> 其实文件名拼错了，小写大写不一致。这个 bug 之前一直没被发现，因为 agent 能"猜"到正确文件，我肉眼看也看不出来。lint 半秒就抓住了。</p>
+<p>还有更尴尬的：我<strong>用 lazy-skill-check 测 lazy-skill-check 自己</strong>，第一次运行报错：</p>
 <div class="highlight"><pre><span></span><code>[L1 lint] FAIL
   ERROR  broken reference: scripts/trigger_eval.py not found
   ERROR  broken reference: scripts/behavior_run.sh not found
@@ -552,14 +600,14 @@ python<span class="w"> </span>compare.py<span class="w"> </span>runs/v1_*.json<s
 
 <p>原因是我写 SKILL.md 时把未来要写的脚本都引用上了，但还没真写。这就是 lint 该干的事——<strong>强迫你把承诺兑现</strong>。改到 PASS 才算合格。</p>
 <p>这种 dogfooding 还顺手揭示了一个生态问题：Claude 栈（<code>.claude/skills/</code>）的 skill 很多是<strong>没有 YAML frontmatter</strong> 的自由格式，而 Cursor 栈（<code>.cursor/skills/</code>）严格要求 <code>name</code> + <code>description</code>。同一个 lint 脚本跑过去，两边结果完全不同。这说明写跨栈 skill 时，最好往<strong>最严格的一方</strong>对齐，否则搬家的时候一片红。</p>
-<p>最后一句实话：<code>skill-tester</code> 本身也是被测对象。它的每一次改动，都应该再用它自己跑一遍。<strong>一个测试工具如果没法测自己，多半也测不好别人。</strong></p>
+<p>最后一句实话：<code>lazy-skill-check</code> 本身也是被测对象。它的每一次改动，都应该再用它自己跑一遍。<strong>一个测试工具如果没法测自己，多半也测不好别人。</strong></p>
 <h3 id="_5">九·一、写完一版之后，又踩到的四个真问题</h3>
-<p>第一版 <code>skill-tester</code> 发出去之后，我很快发现它有四个软肋，正好也是这类 meta skill 最容易犯的通病。<strong>顺手把它们都修了</strong>，算是这篇文章的"第二版说明"。</p>
+<p>第一版 <code>lazy-skill-check</code> 发出去之后，我很快发现它有四个软肋，正好也是这类 meta skill 最容易犯的通病。<strong>顺手把它们都修了</strong>，算是这篇文章的"第二版说明"。</p>
 <p><strong>1) L3 只吃 Claude Code 的 JSON。</strong> 原版 <code>evaluate_runs.py</code> 假设输出是 <code>{"messages":[...], "result": "..."}</code> 这种 Claude 格式，拿到 Codex 的 JSONL 流或 Cursor 的 <code>{"type":"result", ...}</code> 就抓不到工具名。我把解析拆成了独立模块 <code>scripts/agent_runs.py</code>，三种 agent 各写一个 parser，再加一个嗅探函数 <code>detect_agent()</code>，靠 payload 的 schema 特征（<code>thread.started</code> / <code>type=result + session_id</code> / <code>messages</code> 字段）自动识别。然后写了 19 条单元测试固定行为，TDD 途中还真抓到两个 bug：一个是 Claude fixture 被误判成 Cursor（因为我的嗅探顺序搞错了），一个是我在解 Claude <code>messages</code> 时提前 return，把工具调用给漏了。<strong>这就是为什么任何跨格式 parser 都必须配 fixture 测试——你肉眼看不出 schema 的细微差异。</strong></p>
-<p><strong>2) judge 模型只能用 Anthropic。</strong> 原版 <code>trigger_eval.py</code> 硬编码 Anthropic Messages API；<code>benchmark.py</code> 里的盲评也是。但"<strong>判官和被测不要同家</strong>"才是 LLM-as-Judge 的基本防偏见手法，只能用 Claude 判 Claude 显然不行。我把 judge 抽成 <code>scripts/judge.py</code>，根据模型名自动推 vendor（<code>claude-*</code> → Anthropic，<code>gpt-*</code> / <code>o*</code> → OpenAI），API 失败回落到对应 CLI（<code>claude --bare -p</code> 或 <code>codex exec</code>），还加了 <code>SKILL_TESTER_JUDGE_VENDOR</code> 环境变量兜底。<strong>现在你可以拿 <code>gpt-4o</code> 判 Claude skill，或拿 <code>claude-haiku</code> 判 Codex skill，偏见互相抵消。</strong></p>
-<p><strong>3) 四个脚本散着放，CI 里调用麻烦。</strong> 我加了一个 <code>scripts/skilltest.py</code> 做统一 entrypoint，子命令 <code>lint / trigger / behavior / benchmark / all / gen / selftest</code>。底层脚本没动——CLI 就是个薄调度层，想绕过它直接调 <code>lint.py</code> 也完全可以。<strong>最重要的是 <code>selftest</code> 子命令</strong>：它会把 <code>test_agent_runs.py</code> / <code>test_judge.py</code> / <code>test_evaluate_runs.py</code> 三套单元测试都跑一遍，确保"工具链没坏"。CI 的第一步就该跑它，之后才敢去跑真 agent。</p>
-<p><strong>4) 没有 pytest 入口。</strong> 很多团队已经有完善的 pytest 基建，再给他们一个独立 CLI 是负担。我加了 <code>scripts/pytest_adapter.py</code>：一行 <code>register_skill(...)</code> 就能把任意 skill 目录接进 pytest，产出 <code>test_skill_lint[x]</code> / <code>test_skill_trigger[x]</code> / <code>test_skill_behavior[x]</code> 三个参数化节点。<strong>关键设计取舍</strong>是：pytest 跑 behavior 时<strong>不会</strong>spawn 真 agent——而是读取 <code>runs_dir</code> 下上游 CI 步骤提前抓的 JSON 做断言。这样 pytest 保持确定性、离线、秒级；真正贵的 <code>skilltest behavior</code> 只在上游跑一次。完整示例见 <code>references/pytest-example.md</code>。</p>
-<p>再加上一个隐藏好处：这四个改动让 <code>scripts/</code> 目录自身变成了被 self-test 覆盖的 Python 包——不是只有 <code>lint</code> 被自己测了，<code>parse_run</code> 和 <code>judge</code> 也有单元测试护着。<strong>再改一版不用手动回归，<code>skilltest selftest</code> 一条命令就知道没回归。</strong></p>
+<p><strong>2) judge 模型只能用 Anthropic。</strong> 原版 <code>trigger_eval.py</code> 硬编码 Anthropic Messages API；<code>benchmark.py</code> 里的盲评也是。但"<strong>判官和被测不要同家</strong>"才是 LLM-as-Judge 的基本防偏见手法，只能用 Claude 判 Claude 显然不行。我把 judge 抽成 <code>scripts/judge.py</code>，根据模型名自动推 vendor（<code>claude-*</code> → Anthropic，<code>gpt-*</code> / <code>o*</code> → OpenAI），API 失败回落到对应 CLI（<code>claude --bare -p</code> 或 <code>codex exec</code>），还加了 <code>LAZY_SKILL_CHECK_JUDGE_VENDOR</code> 环境变量兜底。<strong>现在你可以拿 <code>gpt-4o</code> 判 Claude skill，或拿 <code>claude-haiku</code> 判 Codex skill，偏见互相抵消。</strong></p>
+<p><strong>3) 四个脚本散着放，CI 里调用麻烦。</strong> 我加了一个 <code>scripts/lazyskillcheck.py</code> 做统一 entrypoint，子命令 <code>lint / trigger / behavior / benchmark / all / gen / selftest</code>。底层脚本没动——CLI 就是个薄调度层，想绕过它直接调 <code>lint.py</code> 也完全可以。<strong>最重要的是 <code>selftest</code> 子命令</strong>：它会把 <code>test_agent_runs.py</code> / <code>test_judge.py</code> / <code>test_evaluate_runs.py</code> 三套单元测试都跑一遍，确保"工具链没坏"。CI 的第一步就该跑它，之后才敢去跑真 agent。</p>
+<p><strong>4) 没有 pytest 入口。</strong> 很多团队已经有完善的 pytest 基建，再给他们一个独立 CLI 是负担。我加了 <code>scripts/pytest_adapter.py</code>：一行 <code>register_skill(...)</code> 就能把任意 skill 目录接进 pytest，产出 <code>test_skill_lint[x]</code> / <code>test_skill_trigger[x]</code> / <code>test_skill_behavior[x]</code> 三个参数化节点。<strong>关键设计取舍</strong>是：pytest 跑 behavior 时<strong>不会</strong>spawn 真 agent——而是读取 <code>runs_dir</code> 下上游 CI 步骤提前抓的 JSON 做断言。这样 pytest 保持确定性、离线、秒级；真正贵的 <code>lazyskillcheck behavior</code> 只在上游跑一次。完整示例见 <code>references/pytest-example.md</code>。</p>
+<p>再加上一个隐藏好处：这四个改动让 <code>scripts/</code> 目录自身变成了被 self-test 覆盖的 Python 包——不是只有 <code>lint</code> 被自己测了，<code>parse_run</code> 和 <code>judge</code> 也有单元测试护着。<strong>再改一版不用手动回归，<code>lazyskillcheck selftest</code> 一条命令就知道没回归。</strong></p>
 <p>一个经验教训：<strong>meta skill 的第一个版本一定是"只服务自己那家 agent 的"。</strong> 你只在 Claude Code 里写、只在 Claude Code 里调，天然就会把假设烙进代码。等别的 agent 来用一次，假设就破了。所以一开始就按"如果明天换 Codex/Cursor 还能跑吗"来写，成本其实更低——晚一点改会把你的测试用例、fixture、CI 配置全拖着走。</p>
 <h2 id="promptfoo">十、和上一篇 promptfoo 测试的关系</h2>
 <p>可能你看到这里会问：那 promptfoo 还有用吗？</p>
@@ -595,9 +643,9 @@ python<span class="w"> </span>compare.py<span class="w"> </span>runs/v1_*.json<s
 <ul>
 <li>给 Cursor / Codex / Claude Code 用的 skill 没有 endpoint，调用方是另一个 agent，所以测试方式必须从"测 API"换成"测 agent + skill 的组合行为"。</li>
 <li>拆成四层：结构 lint、触发 eval、行为 eval、回归 benchmark。每层用最合适的工具，别想拿一个工具搞定全部。</li>
-<li>Claude Code <code>-p --bare --max-turns --output-format json</code> 是这套测试的事实基础设施，能让 agent 像普通 CLI 一样进 CI。</li>
+<li>Claude Code <code>-p --bare --max-turns --output-format json</code> 和 Codex <code>exec --json --full-auto</code>，已经足够把 agent 变成 CI 里可脚本化的测试进程。</li>
 <li>Anthropic 官方 <code>skill-creator</code> 的 executor / grader / comparator / analyzer 思路值得借鉴，尤其是 A/B 盲评，是判断 skill 改动好坏的最干净办法。</li>
-<li>把这套流程封装成一个 <code>skill-tester</code> skill，是 dogfooding 的绝佳机会——一个连自己都测不了的测试工具，多半也测不好别人。</li>
+<li>把这套流程封装成一个 <code>lazy-skill-check</code> skill，是 dogfooding 的绝佳机会——一个连自己都测不了的测试工具，多半也测不好别人。</li>
 <li>一句话：<strong>你 skill 的稳定性，等于你测试的颗粒度。</strong> 没有第 2 层触发 eval，你永远不知道 skill 为啥不响应；没有第 4 层 benchmark，你永远不知道改完到底是好是坏。</li>
 </ul>
 <h2 id="_7">思维导图</h2>
@@ -621,7 +669,8 @@ python<span class="w"> </span>compare.py<span class="w"> </span>runs/v1_*.json<s
 **** 看 precision + recall
 *** L3 行为 eval
 **** Claude Code -p --bare
-**** --output-format json
+**** Codex exec --json
+**** JSON / JSONL 输出
 **** 结果 / 路径 / 代价 三种断言
 **** pytest 集成
 *** L4 回归 / benchmark
@@ -636,16 +685,16 @@ python<span class="w"> </span>compare.py<span class="w"> </span>runs/v1_*.json<s
 *** promptfoo（内层 prompt + 红队）
 *** Ragas（RAG 子模块）
 *** GitHub Actions / Jenkins
-** skill-tester（自举）
+** lazy-skill-check（自举）
 *** 用一个 skill 测别的 skill
 *** lint.py / trigger_eval.py
 *** behavior_run.sh / evaluate_runs.py
 *** benchmark.py（A/B 盲评）
 *** 能自测自己
-** skill-tester v1.1 迭代
+** lazy-skill-check v1.1 迭代
 *** agent_runs.py：claude/codex/cursor 三家 parser
 *** judge.py：Anthropic + OpenAI 双厂商 judge
-*** skilltest.py：统一 CLI（含 gen + selftest）
+*** lazyskillcheck.py：统一 CLI（含 gen + selftest）
 *** pytest_adapter.py：接入已有 pytest 基建
 *** 单元测试护航（19+ 条）
 ** 常见坑
@@ -673,7 +722,7 @@ python<span class="w"> </span>compare.py<span class="w"> </span>runs/v1_*.json<s
 <li>Claude Code Headless Mode 文档：<a href="https://docs.claude.com/en/docs/claude-code/headless">https://docs.claude.com/en/docs/claude-code/headless</a></li>
 <li>Headless Claude in CI 实战：<a href="https://agentpatterns.ai/workflows/headless-claude-ci/">https://agentpatterns.ai/workflows/headless-claude-ci/</a></li>
 <li>pulser eval（skill 结构 lint）：<a href="https://dev.to/thestack_ai/testing-claude-code-skills-in-ci-pulser-eval-github-action-3na9">https://dev.to/thestack_ai/testing-claude-code-skills-in-ci-pulser-eval-github-action-3na9</a></li>
-<li>本文配套的 <code>skill-tester</code> skill（仓库内）：<code>.claude/skills/skill-tester/</code>、<code>.cursor/skills/skill-tester/</code>、<code>.agents/skills/skill-tester/</code></li>
+<li>本文配套的 <code>lazy-skill-check</code> skill：源在 <code>zoom-dev-skills/skills/lazy-skill-check/</code>，本仓库的 <code>.claude/skills/</code>、<code>.cursor/skills/</code>、<code>.codex/skills/</code>、<code>.agents/skills/</code> 四处都是软链指向它</li>
 <li>Codex 非交互模式（<code>codex exec --json</code>）：<a href="https://developers.openai.com/codex/noninteractive/">https://developers.openai.com/codex/noninteractive/</a></li>
 <li>Cursor Agent CLI 的 JSON / stream-json 输出格式：<a href="https://cursor.com/docs/cli/reference/output-format">https://cursor.com/docs/cli/reference/output-format</a></li>
 <li>上一篇：<a href="2026-04-15-promptfoo-ai-skill-evaluation">用 Promptfoo 给 AI skill 做体检</a></li>
@@ -727,6 +776,9 @@ python<span class="w"> </span>compare.py<span class="w"> </span>runs/v1_*.json<s
   <div class="neighbors">
     <a class="btn float-left" href="https://www.fanyamin.com/rrf-dao-shu-pai-ming-rong-he-rag-li-na-ge-kan-qi-lai-tu-que-yi-zhi-mei-bei-huan-diao-de-xiao-gong-shi.html" title="RRF 倒数排名融合：RAG 里那个看起来土、却一直没被换掉的小公式">
       <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/2026-04-20-louvain-algorithm.html" title="什么是 Louvain 算法——graphology-communities-louvain 背后的那点事">
+      Next Post <i class="fa fa-angle-right"></i>
     </a>
   </div>
 

@@ -1,0 +1,814 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'G-VZL08BHDPP', 'auto');
+  ga('send', 'pageview');
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="这篇文章用一个脱敏后的 Python HTTPS 报错为例，讲清楚 unable to get local issuer certificate 到底是什么意思，为什么很多时候不是客户端代码写坏了，而是证书链没接上；正文讲排查主线，完整脚本与可运行示例放到独立仓库里。" />
+<meta name="keywords" content="Python, SSL, TLS, HTTPS, Requests, Certificate, Debugging">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "一次 HTTPS 证书报错排查：为什么会出现 `unable to get local issuer certificate`",
+  "description": "这篇文章用一个脱敏后的 Python HTTPS 报错为例，讲清楚 unable to get local issuer certificate 到底是什么意思，为什么很多时候不是客户端代码写坏了，而是证书链没接上；正文讲排查主线，完整脚本与可运行示例放到独立仓库里。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-04-22T14:28:00+08:00",
+  "dateModified": "2026-04-22T22:22:00+08:00",
+  "url": "https://www.fanyamin.com/2026-04-22-python-ssl-unable-to-get-local-issuer-certificate.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/2026-04-22-python-ssl-unable-to-get-local-issuer-certificate.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "Python, SSL, TLS, HTTPS, Requests, Certificate, Debugging"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="一次 HTTPS 证书报错排查：为什么会出现 `unable to get local issuer certificate`"/>
+  <meta property="og:description" content="这篇文章用一个脱敏后的 Python HTTPS 报错为例，讲清楚 unable to get local issuer certificate 到底是什么意思，为什么很多时候不是客户端代码写坏了，而是证书链没接上；正文讲排查主线，完整脚本与可运行示例放到独立仓库里。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/2026-04-22-python-ssl-unable-to-get-local-issuer-certificate.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-04-22 14:28:00+08:00"/>
+  <meta property="article:modified_time" content="2026-04-22 22:22:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/author/walter-fan.html">
+  <meta property="article:section" content="Journal"/>
+  <meta property="article:tag" content="Python"/>
+  <meta property="article:tag" content="SSL"/>
+  <meta property="article:tag" content="TLS"/>
+  <meta property="article:tag" content="HTTPS"/>
+  <meta property="article:tag" content="Requests"/>
+  <meta property="article:tag" content="Certificate"/>
+  <meta property="article:tag" content="Debugging"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 一次 HTTPS 证书报错排查：为什么会出现 `unable to get local issuer certificate`</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/">Walter Fan</a>
+    </h1>
+
+    <p>手握灵珠常奋笔, 心开天籁不吹箫</p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/search.html" role="search">
+      <input type="text" name="q" id="tipue_search_input" placeholder="Search...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank" href="tao.html" >tao</a>
+          </li>
+          <li>
+            <a target="_blank" href="article.html" >article</a>
+          </li>
+          <li>
+            <a target="_blank" href="manual.html" >manual</a>
+          </li>
+          <li>
+            <a target="_blank" href="interest.html" >interest</a>
+          </li>
+          <li>
+            <a target="_self" href="/wordpress" >notebook</a>
+          </li>
+          <li>
+            <a target="_blank" href="bookmark.html" >bookmark</a>
+          </li>
+          <li>
+            <a target="_self" href="/webrtc/examples/index.html" >webrtc</a>
+          </li>
+          <li>
+            <a target="_blank" href="https://github.com/walterfan" >github</a>
+          </li>
+          <li>
+            <a target="_blank" href="categories.html" >categories</a>
+          </li>
+          <li>
+            <a target="_blank" href="tags.html" >tags</a>
+          </li>
+      </ul>
+    </nav>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+</aside>
+  <main>
+
+
+<article class="single">
+  <header>
+      
+    <h1 id="2026-04-22-python-ssl-unable-to-get-local-issuer-certificate">一次 HTTPS 证书报错排查：为什么会出现 `unable to get local issuer certificate`</h1>
+    <p>
+      Posted on 三 22 4月 2026 in <a href="https://www.fanyamin.com/category/journal.html">Journal</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>一次 HTTPS 证书报错排查：为什么会出现 <code>unable to get local issuer certificate</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Journal</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-04-22</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h1 id="https-unable-to-get-local-issuer-certificate">一次 HTTPS 证书报错排查：为什么会出现 <code>unable to get local issuer certificate</code></h1>
+<h2 id="_1">短大纲</h2>
+<ul>
+<li>先把这句报错翻成人话</li>
+<li>借 <code>tls-cert-debugger</code> 这个公开示例，看看链子到底断在哪儿</li>
+<li>分清服务端的锅，还是客户端的锅</li>
+<li>给一套够用的排查顺序和修法</li>
+<li>最后收一份明天就能照着做的 CheckList</li>
+</ul>
+<hr>
+<h2 id="ssl">一、最让人火大的 SSL 报错，往往不是最难的</h2>
+<p>有些错误，一看就知道该往哪儿使劲。</p>
+<p>比如 "连接超时"，多半先查网络。比如 "401 Unauthorized"，多半先看 token。可 <code>certificate verify failed: unable to get local issuer certificate</code> 这类报错，就很会摆架子。它字很多，语气也很严肃，第一眼看过去，好像整条 HTTPS 栈都坏了。</p>
+<p>其实很多时候，事情没那么玄。</p>
+<p>一句话说，这类错误大多不是 "Python 不会做 HTTPS"，也不是 "<code>requests</code> 坏了"，而是：</p>
+<blockquote>
+<p><strong>客户端在校验证书时，没能拼出一条从服务器证书一直通到受信任根证书的完整链路。</strong></p>
+</blockquote>
+<p>我写了一个例子 <a href="https://github.com/walterfan/security-handbook/tree/master/example/tls-cert-debugger"><code>tls-cert-debugger</code></a>，里面把这个问题演得很标准：证书链明明是 <code>root CA -&gt; intermediate CA -&gt; server cert</code>，客户端也信任根证书，但服务端偏偏只发了叶子证书。结果呢？链子就在中间断了。</p>
+<p>这事很像认亲。</p>
+<p>你认识爷爷，不代表见到孙子就能立刻确认是一家人。中间那个 "爹" 要是没到场，场面就会有点尴尬。</p>
+<p>我就碰到过这类问题， 一开始有点晕， 静下心来分析， 其实就是 TLS 证书验证链路的问题。</p>
+<hr>
+<h2 id="_2">二、先把错误脱敏，再看真正的信号</h2>
+<p>把敏感域名、内部路径和产品名拿掉以后，这类错误大概长这样：</p>
+<div class="highlight"><pre><span></span><code>HTTPSConnectionPool(host=&#39;internal.example.com&#39;, port=443): Max retries exceeded with url: /api/v1/secret
+(Caused by SSLError(SSLCertVerificationError(
+1,
+&#39;[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed:
+unable to get local issuer certificate (_ssl.c:998)&#39;
+)))
+</code></pre></div>
+
+<p>这里真正有用的，不是最外面那层 <code>Max retries exceeded</code>。那只是 <code>urllib3</code> / <code>requests</code> 告诉你 "我重试过了，还是不行"。</p>
+<p>真正要盯住的是里面这句：</p>
+<div class="highlight"><pre><span></span><code>SSLCertVerificationError: unable to get local issuer certificate
+</code></pre></div>
+
+<p>它已经把方向指得很清楚了：<strong>证书验证失败，而且失败点在 issuer certificate，也就是签发者证书这一层。</strong></p>
+<p>换成人话就是：</p>
+<ul>
+<li>客户端拿到了服务端证书；</li>
+<li>它想继续往上找 "这张证书是谁签的"；</li>
+<li>结果没找到，或者找得不完整；</li>
+<li>所以它不敢信。</li>
+</ul>
+<p>这和下面几类错误不是一回事：</p>
+<ul>
+<li><code>hostname mismatch</code>：主机名对不上</li>
+<li><code>certificate has expired</code>：证书过期</li>
+<li><code>self signed certificate</code>：自签名证书不被信任</li>
+</ul>
+<p>它更像是：<strong>链路里缺了一节。</strong></p>
+<hr>
+<h2 id="_3">三、拿公开示例开刀，这个错误是怎么被 "故意造" 出来的</h2>
+<p>我看了那个公开示例 <code>tls-cert-debugger</code> 里的复现实验，觉得这个小实验做得挺老实。它没堆太多花活，就是把生产里常见的坑缩小成一个你本机就能跑起来的玩具模型。</p>
+<p>它干了三件事：</p>
+<h3 id="1">1. 生成一条三段式证书链</h3>
+<p>证书关系是：</p>
+<div class="highlight"><pre><span></span><code>root CA -&gt; intermediate CA -&gt; server cert
+</code></pre></div>
+
+<p>也就是说，真正给服务器证书签名的，不是 root CA，而是 intermediate CA。</p>
+<h3 id="2-https">2. 启动一个 HTTPS 服务，但默认只挂叶子证书</h3>
+<p>服务端默认加载的是 <code>server.pem</code>，也就是叶子证书本体，不带中间证书。</p>
+<p>这正是问题的根。</p>
+<h3 id="3-root-ca">3. 客户端信任 root CA，但访问时仍然失败</h3>
+<p>客户端代码里，<code>requests.get(..., verify=root_ca.pem)</code> 这一点也没有偷懒。可它还是报了：</p>
+<div class="highlight"><pre><span></span><code>unable to get local issuer certificate
+</code></pre></div>
+
+<p>这说明一个很重要、也很容易被忽略的事实：</p>
+<blockquote>
+<p><strong>"客户端信任 root CA" 这件事，本身并不保证链路一定能验通。</strong></p>
+</blockquote>
+<p>如果服务端没有把 intermediate certificate 一起发出来，客户端只知道：</p>
+<ul>
+<li>我看见了 leaf cert；</li>
+<li>我本地信 root CA；</li>
+<li>可 leaf cert 的直接签发者是 intermediate；</li>
+<li>intermediate 这张证书我手里没有；</li>
+<li>那我就没法从 leaf 一步步走到 root。</li>
+</ul>
+<p>于是握手失败。</p>
+<hr>
+<h2 id="_4">四、证书链到底断在哪儿</h2>
+<p>这一段值得讲透。很多人一提 TLS，就觉得那是玄学。其实它比不少业务逻辑还老实，你给它什么，它就验什么，不会陪你打马虎眼。</p>
+<h3 id="41">4.1 一个正常的验证过程</h3>
+<p>客户端拿到服务端证书后，会尝试做这样一件事：</p>
+<ol>
+<li>检查 leaf certificate 是谁签的。</li>
+<li>找到对应的 intermediate certificate。</li>
+<li>再检查 intermediate 是谁签的。</li>
+<li>一路往上追到本地信任库中的 root CA。</li>
+</ol>
+<p>只要这条链完整，而且每一节都对得上，验证就通过。</p>
+<h3 id="42">4.2 报这个错时，通常发生了什么</h3>
+<p>最常见的情况是：</p>
+<ul>
+<li>服务端只发了 leaf cert；</li>
+<li>客户端信任库里只有 root CA；</li>
+<li>中间证书没有随握手发下来；</li>
+<li>OpenSSL / Python / requests 无法自动脑补；</li>
+<li>验证失败。</li>
+</ul>
+<p>这个公开示例里的复现实验，基本就是在演这个过程。</p>
+<h3 id="43">4.3 一张图看明白</h3>
+<div class="highlight"><pre><span></span><code>@startuml
+title `unable to get local issuer certificate` 的典型断点
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam roundcorner 12
+skinparam defaultTextAlignment center
+
+actor &quot;Python Client&quot; as Client
+rectangle &quot;HTTPS Server&quot; as Server
+database &quot;Local Trust Store&quot; as Store
+
+Client -&gt; Server : TLS handshake
+Server --&gt; Client : leaf certificate only
+Client -&gt; Store : 查找 issuer 链
+Store --&gt; Client : 只有 root CA
+Client -&gt; Client : 缺少 intermediate CA\n无法拼出完整 trust chain
+Client --&gt; Server : certificate verify failed
+@enduml
+</code></pre></div>
+
+<p><img alt="unable to get local issuer certificate 的典型断点" src="../images/journal_20260422_python-ssl-unable-to-get-local-issuer-certificate_flow.png"></p>
+<p>一句话收束这一段：</p>
+<blockquote>
+<p><strong>客户端不是不信任根证书，而是没法从叶子证书走到根证书。</strong></p>
+</blockquote>
+<hr>
+<h2 id="_5">五、这类错误最常见的根因，其实就那么几种</h2>
+<p>别被错误字符串吓住。真到工程里，常见原因没那么多，来来回回就那几样。</p>
+<h3 id="1_1">1. 服务端没有发送完整证书链</h3>
+<p>这是最常见、也最容易被误判成 "客户端问题" 的一种。</p>
+<p>比如 Web Server、Ingress、Gateway、Load Balancer 上配置的是：</p>
+<ul>
+<li><code>server.pem</code></li>
+</ul>
+<p>而不是：</p>
+<ul>
+<li><code>fullchain.pem</code></li>
+</ul>
+<p>结果就是服务端只把 leaf cert 发给客户端，中间证书没带上。</p>
+<p>这也是 <code>tls-cert-debugger</code> 里故意 "挖坑" 的方式。</p>
+<h3 id="2-ca-bundle">2. 客户端 CA bundle 配错了</h3>
+<p>你以为自己传的是 "公司 CA 包"，实际上可能是：</p>
+<ul>
+<li>路径写错了；</li>
+<li>文件格式不对；</li>
+<li>只放了一个不够用的证书；</li>
+<li>运行环境和你本地 shell 用的 CA 包根本不是同一份。</li>
+</ul>
+<p>这种情况也会表现成 issuer 找不到。</p>
+<h3 id="3">3. 运行环境的信任库和你想的不一样</h3>
+<p>很多人本机命令行能通，部署到容器里就不通，心态一下子就有点崩。</p>
+<p>原因通常不是容器讨厌你，而是：</p>
+<ul>
+<li>本机装了企业根证书；</li>
+<li>容器镜像里没装；</li>
+<li><code>requests</code> 用的是 <code>certifi</code> 默认 CA；</li>
+<li>你的内部 CA 根本不在那份 trust store 里。</li>
+</ul>
+<p>这就会出现一个很经典的场面：</p>
+<blockquote>
+<p>浏览器能开，Python 不行。<br>
+本机能跑，容器不行。</p>
+</blockquote>
+<p>看着邪门，其实一点也不邪门。</p>
+<h3 id="4">4. 证书链里本来就缺文件</h3>
+<p>有时候不是服务端忘了配 full chain，而是证书发放流程本身就只给了 leaf cert，或者中间证书没跟着归档。</p>
+<p>这种问题不查证书文件，很容易永远陷在 "是不是 Python 版本太新" 这种歪路上。</p>
+<hr>
+<h2 id="_6">六、怎么判断锅在服务端，还是在客户端</h2>
+<p>我通常把这事拆成两头查。这样不容易一上来就瞎改代码，更不容易还没看清证书链，就先去翻 SDK 源码。</p>
+<h3 id="61">6.1 先查服务端：它到底发了什么证书</h3>
+<p>最直接的办法，是用 <code>openssl s_client</code> 看服务端实际发出来的证书链：</p>
+<div class="highlight"><pre><span></span><code>openssl<span class="w"> </span>s_client<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-connect<span class="w"> </span>internal.example.com:443<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-servername<span class="w"> </span>internal.example.com<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-showcerts
+</code></pre></div>
+
+<p>你要看的是：</p>
+<ul>
+<li>输出里是不是只有一张 leaf cert</li>
+<li>有没有 intermediate cert</li>
+<li><code>Verify return code</code> 是多少</li>
+</ul>
+<p>如果只看到 leaf，没有 intermediate，这事八成就不是客户端乱来，而是服务端链没配全。</p>
+<h3 id="62">6.2 再查客户端：它到底信了谁</h3>
+<p>如果你想从 Python 这头再确认一遍，也不必一上来就搬整套业务代码。用 <code>ssl.create_default_context(cafile=...)</code> 连一下目标服务，往往就够了。</p>
+<p>一个最小化示例可以写成这样：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">socket</span>
+<span class="kn">import</span> <span class="nn">ssl</span>
+
+<span class="n">host</span> <span class="o">=</span> <span class="s2">&quot;internal.example.com&quot;</span>
+<span class="n">context</span> <span class="o">=</span> <span class="n">ssl</span><span class="o">.</span><span class="n">create_default_context</span><span class="p">(</span><span class="n">cafile</span><span class="o">=</span><span class="s2">&quot;/path/to/ca-bundle.pem&quot;</span><span class="p">)</span>
+
+<span class="k">with</span> <span class="n">socket</span><span class="o">.</span><span class="n">create_connection</span><span class="p">((</span><span class="n">host</span><span class="p">,</span> <span class="mi">443</span><span class="p">),</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span> <span class="k">as</span> <span class="n">sock</span><span class="p">:</span>
+    <span class="k">with</span> <span class="n">context</span><span class="o">.</span><span class="n">wrap_socket</span><span class="p">(</span><span class="n">sock</span><span class="p">,</span> <span class="n">server_hostname</span><span class="o">=</span><span class="n">host</span><span class="p">)</span> <span class="k">as</span> <span class="n">tls_sock</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;verified:&quot;</span><span class="p">,</span> <span class="n">tls_sock</span><span class="o">.</span><span class="n">version</span><span class="p">())</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;peer cert:&quot;</span><span class="p">,</span> <span class="n">tls_sock</span><span class="o">.</span><span class="n">getpeercert</span><span class="p">())</span>
+</code></pre></div>
+
+<p>如果这里都失败，而且错误仍然是 <code>unable to get local issuer certificate</code>，那就说明链路问题还在。</p>
+<h3 id="63-verifyfalse">6.3 别被 <code>verify=False</code> 骗了</h3>
+<p>很多人一着急，先来一句：</p>
+<div class="highlight"><pre><span></span><code><span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">verify</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</code></pre></div>
+
+<p>代码一跑，居然通了。于是大家长舒一口气，仿佛问题已经解决了一半。</p>
+<p>其实没有。</p>
+<p>这只能证明一件事：</p>
+<blockquote>
+<p><strong>你把证书验证关掉以后，请求当然能发出去。</strong></p>
+</blockquote>
+<p>这就像门锁坏了，你把门拆了，确实也能进屋。可这不叫修门，这叫撤防。</p>
+<p><code>verify=False</code> 只适合本地临时复现，或者做一次性验证。真进生产，这就是给自己埋雷。</p>
+<hr>
+<h2 id="_7">七、解决方案怎么选，取决于你能改哪一侧</h2>
+<h3 id="full-chain">方案一：优先修服务端，发送 full chain</h3>
+<p>这是首选，也是最像样的修法。</p>
+<p>在 <code>tls-cert-debugger</code> 的复现实验里，README 给出的修复方式就很直白：把服务端证书从 leaf-only 的 <code>server.pem</code>，换成带中间证书的 <code>server-fullchain.pem</code>。然后客户端就能通过。</p>
+<p>服务端代码层面，核心差别往往只是一行：</p>
+<div class="highlight"><pre><span></span><code><span class="n">context</span><span class="o">.</span><span class="n">load_cert_chain</span><span class="p">(</span>
+    <span class="n">certfile</span><span class="o">=</span><span class="s2">&quot;server-fullchain.pem&quot;</span><span class="p">,</span>
+    <span class="n">keyfile</span><span class="o">=</span><span class="s2">&quot;server.key&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+
+<p>而不是：</p>
+<div class="highlight"><pre><span></span><code><span class="n">context</span><span class="o">.</span><span class="n">load_cert_chain</span><span class="p">(</span>
+    <span class="n">certfile</span><span class="o">=</span><span class="s2">&quot;server.pem&quot;</span><span class="p">,</span>
+    <span class="n">keyfile</span><span class="o">=</span><span class="s2">&quot;server.key&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+
+<p>如果你用的是 Nginx、Apache、Envoy、Ingress Controller、云上 LB，思路也一样：<strong>挂 full chain，不要只挂 leaf cert。</strong></p>
+<h3 id="ca-bundle">方案二：客户端显式指定正确的 CA bundle</h3>
+<p>如果短期内你改不了服务端，客户端当然可以先自保。</p>
+<p>比如在 <code>requests</code> 里传入你自己的 CA bundle：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">requests</span>
+
+<span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+    <span class="s2">&quot;https://internal.example.com/api/v1/secret&quot;</span><span class="p">,</span>
+    <span class="n">verify</span><span class="o">=</span><span class="s2">&quot;/etc/ssl/custom-ca-bundle.pem&quot;</span><span class="p">,</span>
+    <span class="n">timeout</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+
+<p>这里的 <code>custom-ca-bundle.pem</code> 最好是：</p>
+<ul>
+<li>来源明确</li>
+<li>内容可审计</li>
+<li>和部署环境一起发版</li>
+</ul>
+<p>不要今天从同事电脑拷一份，明天再从另一个容器里捞一份。证书文件如果靠口口相传，事故多半也会靠口口相传。</p>
+<h3 id="trust-store">方案三：把内部根证书装进运行环境的 trust store</h3>
+<p>如果你的服务长期要访问公司内网 HTTPS 服务，单靠每个程序自己传 <code>verify=...</code>，维护成本会越来越高。</p>
+<p>更稳妥的办法是：</p>
+<ul>
+<li>在容器镜像里安装企业根证书</li>
+<li>明确系统 trust store 的更新方式</li>
+<li>统一 Python 运行时对 CA 的读取策略</li>
+</ul>
+<p>这样 "本地能通、线上不通" 的戏码会少很多。</p>
+<h3 id="_8">方案四：把证书链检查放进发布流程</h3>
+<p>这是更进一步的做法。</p>
+<p>每次证书变更、网关变更、LB 迁移、域名切换时，都自动跑一遍：</p>
+<ul>
+<li><code>openssl s_client</code></li>
+<li>Python TLS 校验脚本</li>
+<li>证书到期检查</li>
+</ul>
+<p>很多 SSL 事故本来都不复杂，只是没人提前验，等真炸了才想起来补作业。</p>
+<hr>
+<h2 id="_9">八、一个更贴近工程现场的排查顺序</h2>
+<p>如果这类错误出现在真实服务里，我通常按这个顺序查：</p>
+<h3 id="ssl_1">第一步：先确认不是别的 SSL 错误</h3>
+<p>看清楚是不是：</p>
+<ul>
+<li><code>unable to get local issuer certificate</code></li>
+</ul>
+<p>而不是：</p>
+<ul>
+<li><code>hostname mismatch</code></li>
+<li><code>certificate has expired</code></li>
+<li><code>self signed certificate</code></li>
+</ul>
+<p>方向错了，越查越远。</p>
+<h3 id="openssl-s_client-showcerts">第二步：用 <code>openssl s_client -showcerts</code> 看服务端返回链</h3>
+<p>如果缺 intermediate，就先记账：服务端有嫌疑。</p>
+<h3 id="ca-bundle_1">第三步：在出问题的运行环境里检查 CA bundle</h3>
+<p>尤其是容器、CI、k8s Job 这种环境。别拿你笔记本的结果替容器做证词。</p>
+<h3 id="python">第四步：用最小 Python 脚本复现</h3>
+<p>不要上来就从整套业务 SDK 开始翻。先用 20 行脚本确认是不是纯 TLS 问题，省得把自己绕进更深的一层。</p>
+<h3 id="full-chain-ca">第五步：优先改服务端 full chain，其次再补客户端 CA</h3>
+<p>原因很简单：</p>
+<blockquote>
+<p><strong>服务端把链发完整，是对所有客户端都友好的修复。</strong></p>
+</blockquote>
+<p>如果只在某个 Python 客户端里单独绕过去，那更像止疼片，不像根治。</p>
+<hr>
+<h2 id="_10">九、完整脚本在示例仓库</h2>
+<p>这篇文章写到这里，其实已经够把 "问题是什么、锅大概率在哪一侧、修复优先级怎么排" 讲清楚了。</p>
+<p>再往下继续塞脚本和命令，文章就变味了——越看越像 README，不像博客。</p>
+<p>所以我把完整脚本和可复现实验单独整理成了一个公开示例项目：</p>
+<ul>
+<li><code>tls-cert-debugger</code>：
+  <a href="https://github.com/walterfan/security-handbook/tree/master/example/tls-cert-debugger">https://github.com/walterfan/security-handbook/tree/master/example/tls-cert-debugger</a></li>
+</ul>
+<p>里面现在有三类内容：</p>
+<ol>
+<li>
+<p><code>inspect_cert_chain.sh</code><br>
+   专门看服务端到底发了哪些证书，适合快速确认有没有漏发 intermediate。</p>
+</li>
+<li>
+<p><code>tls_probe.py</code><br>
+   从 Python 运行时视角检查 CA trust store、环境变量覆盖、<code>requests</code> / <code>certifi</code> 差异。</p>
+</li>
+<li>
+<p><code>unable-local-issuer-repro/</code><br>
+   一个完整的可运行复现实验，能稳定演示：</p>
+</li>
+<li>失败场景：服务端只发 leaf cert，客户端即使信任 root CA 也会失败</li>
+<li>成功场景：服务端改成发送 full chain，同一客户端立刻恢复正常</li>
+</ol>
+<h3 id="91-4">9.1 正文里我建议你至少记住这 4 组命令</h3>
+<p>第一组，先看服务端发了什么：</p>
+<div class="highlight"><pre><span></span><code>openssl<span class="w"> </span>s_client<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-connect<span class="w"> </span>internal.example.com:443<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-servername<span class="w"> </span>internal.example.com<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-showcerts
+</code></pre></div>
+
+<p>第二组，手工验证链本身能不能成立：</p>
+<div class="highlight"><pre><span></span><code>openssl<span class="w"> </span>verify<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-CAfile<span class="w"> </span>root-ca.pem<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-untrusted<span class="w"> </span>intermediate-ca.pem<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>server.pem
+</code></pre></div>
+
+<p>第三组，用 <code>curl</code> 做一次交叉验证：</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-vI<span class="w"> </span><span class="s2">&quot;https://internal.example.com/api/v1/secret&quot;</span>
+</code></pre></div>
+
+<p>第四组，在 Python 里看当前 CA 路径：</p>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>-<span class="w"> </span><span class="s">&lt;&lt;&#39;PY&#39;</span>
+<span class="s">import os, ssl</span>
+<span class="s">print(ssl.get_default_verify_paths())</span>
+<span class="s">for name in [&quot;SSL_CERT_FILE&quot;, &quot;SSL_CERT_DIR&quot;, &quot;REQUESTS_CA_BUNDLE&quot;, &quot;CURL_CA_BUNDLE&quot;]:</span>
+<span class="s">    print(f&quot;{name}={os.environ.get(name)}&quot;)</span>
+<span class="s">PY</span>
+</code></pre></div>
+
+<p>这四组命令，已经够你把大多数问题先定性了。</p>
+<h3 id="92">9.2 排查时真正该盯住的检查点</h3>
+<p>命令不在多，在于看点要对。</p>
+<p>我自己会盯下面这些：</p>
+<ul>
+<li>服务端有没有发 intermediate cert</li>
+<li><code>issuer(cert-1)</code> 是否能顺着链走到本地信任的 root</li>
+<li><code>subjectAltName</code> 里有没有目标域名</li>
+<li>证书是否过期</li>
+<li>leaf 是否 <code>CA:FALSE</code>，intermediate 是否 <code>CA:TRUE</code></li>
+<li>本机和容器是不是在用同一套 trust store</li>
+<li><code>REQUESTS_CA_BUNDLE</code>、<code>SSL_CERT_FILE</code> 有没有偷偷覆盖默认配置</li>
+</ul>
+<p>如果这些点你都看了，问题通常就跑不远了。</p>
+<h3 id="93">9.3 什么时候去看完整脚本</h3>
+<p>如果你只是临时排一个线上问题，正文里这套思路和上面那几条命令，通常已经够用。</p>
+<p>如果你想：</p>
+<ul>
+<li>系统化地看服务端证书链详情</li>
+<li>从 Python 侧把 CA / <code>requests</code> / <code>certifi</code> 一次性打平</li>
+<li>给同事演示 "为什么信任 root CA 仍然可能失败"</li>
+<li>在培训或文档里放一个可运行的 failure vs success 对比实验</li>
+</ul>
+<p>那就直接去看上面的 <code>tls-cert-debugger</code> 示例。<br>
+那些内容放在仓库里，比塞在正文里更合适，也更容易维护。</p>
+<hr>
+<h2 id="_11">十、这类问题里，最不该做的三件事</h2>
+<h3 id="1-verifyfalse">1. 把 <code>verify=False</code> 当正式修复</h3>
+<p>这不是修复，这是撤防。</p>
+<h3 id="2">2. 在日志里把内部域名、敏感路径、证书内容全打出来</h3>
+<p>排障归排障，脱敏还是要做。日志是拿来帮你定位问题的，不是拿来把内部信息顺手送出去的。</p>
+<h3 id="3-ssl-python">3. 一听到 SSL 就开始怀疑 Python 版本</h3>
+<p>有时候版本确实会影响行为，可这类报错，十次里有八次还是证书链或 CA store 的事。别一上来就拿运行时当替罪羊。</p>
+<hr>
+<h2 id="_12">总结</h2>
+<p>如果只记一句话，我希望是这一句：</p>
+<p><strong><code>unable to get local issuer certificate</code> 往往不是 "客户端不信任根证书"，而是 "客户端没拿到或没找到把 leaf 证书接到根证书所需的那一段中间证书"。</strong></p>
+<p>这也是为什么你明明配了 root CA，程序还是报错。根是认识的，可中间那位 "介绍人" 没来，链子还是接不上。</p>
+<p>对这类问题，我更推荐一个朴素的判断顺序：</p>
+<ol>
+<li>先看服务端发没发 full chain，用 <code>openssl s_client -showcerts</code> 看返回证书里有没有 intermediate；如果只有 leaf cert，没有中间证书，那锅多半先在服务端。</li>
+<li>再看客户端 trust store 里到底装了什么，在出问题的环境里打印 <code>ssl.get_default_verify_paths()</code>，顺手核对 <code>REQUESTS_CA_BUNDLE</code> 这类变量；别你本机信了，容器里其实根本没装那份 CA。</li>
+<li>最后才考虑运行时、库版本、平台差异。前两步都看过了，再去怀疑 Python、<code>requests</code>、<code>certifi</code> 或镜像差异，才不容易跑偏。
+别倒过来。倒过来查，容易把一件本来两小时能解决的事，拖成两天。</li>
+</ol>
+<h3 id="_13">总结思维导图</h3>
+<div class="highlight"><pre><span></span><code>@startmindmap
+* Python HTTPS 证书报错排查
+** 错误表象
+*** CERTIFICATE_VERIFY_FAILED
+*** unable to get local issuer certificate
+*** Max retries exceeded 只是外层噪音
+** 真正含义
+*** 证书链不完整
+*** issuer 证书没找到
+*** 客户端无法从 leaf 走到 root
+** 常见根因
+*** 服务端没发 intermediate
+*** 客户端 CA bundle 配错
+*** 容器与本机 trust store 不一致
+*** 证书归档本身不完整
+** 排查步骤
+*** openssl s_client -showcerts
+*** Python 最小脚本复现
+*** 核对 CA bundle
+*** 区分 hostname/expiry/self-signed
+** 修复策略
+*** 服务端发送 full chain
+*** 客户端指定正确 CA bundle
+*** 运行环境统一 trust store
+*** 把证书检查纳入发布流程
+** 不该做
+*** verify=False 当正式修复
+*** 日志暴露敏感信息
+*** 一上来怀疑 Python 版本
+@endmindmap
+</code></pre></div>
+
+<p><img alt="Python HTTPS 证书报错排查思维导图" src="../images/journal_20260422_python-ssl-unable-to-get-local-issuer-certificate_mindmap.png"></p>
+<h3 id="5">给明天就能做的 5 条建议</h3>
+<ul>
+<li>碰到这类错误，先抓住 <code>unable to get local issuer certificate</code> 这一层，别被 <code>Max retries exceeded</code> 带偏。</li>
+<li>立刻用 <code>openssl s_client -showcerts</code> 看目标服务到底发了几张证书。</li>
+<li>在出问题的运行环境里打印 CA bundle 路径和内容来源，别拿本机结果替线上环境发言。</li>
+<li>如果你能改服务端，优先上 full chain，这比在单个客户端里打补丁更稳。</li>
+<li><code>verify=False</code> 可以拿来做一次性验证，但不要把它混进正式代码。</li>
+</ul>
+<h2 id="_14">扩展阅读</h2>
+<ul>
+<li>完整脚本与复现实验：<a href="https://github.com/walterfan/security-handbook/tree/master/example/tls-cert-debugger"><code>tls-cert-debugger</code></a></li>
+<li>Python 官方文档：<a href="https://docs.python.org/3/library/ssl.html"><code>ssl</code> module</a></li>
+<li>Requests 官方文档：<a href="https://requests.readthedocs.io/en/latest/user/advanced/#ssl-cert-verification"><code>SSL Cert Verification</code></a></li>
+<li>urllib3 官方文档：<a href="https://urllib3.readthedocs.io/en/stable/advanced-usage.html#custom-ssl-certificates"><code>Custom TLS Certificates</code></a></li>
+<li>OpenSSL 文档：<a href="https://docs.openssl.org/3.4/man1/openssl-s_client/"><code>openssl s_client</code></a></li>
+</ul>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。</p>
+  </div>
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/tag/python.html">Python</a>
+      <a href="https://www.fanyamin.com/tag/ssl.html">SSL</a>
+      <a href="https://www.fanyamin.com/tag/tls.html">TLS</a>
+      <a href="https://www.fanyamin.com/tag/https.html">HTTPS</a>
+      <a href="https://www.fanyamin.com/tag/requests.html">Requests</a>
+      <a href="https://www.fanyamin.com/tag/certificate.html">Certificate</a>
+      <a href="https://www.fanyamin.com/tag/debugging.html">Debugging</a>
+    </p>
+  </div>
+
+
+  <div class="center social-share" style="margin: 1.5em 0; text-align: center;">
+    <p style="margin-bottom: 0.5em; color: #888;">📤 Share this article</p>
+    <a href="https://twitter.com/intent/tweet?text=%E4%B8%80%E6%AC%A1%20HTTPS%20%E8%AF%81%E4%B9%A6%E6%8A%A5%E9%94%99%E6%8E%92%E6%9F%A5%EF%BC%9A%E4%B8%BA%E4%BB%80%E4%B9%88%E4%BC%9A%E5%87%BA%E7%8E%B0%20%60unable%20to%20get%20local%20issuer%20certificate%60&url=https://www.fanyamin.com/2026-04-22-python-ssl-unable-to-get-local-issuer-certificate.html"
+       target="_blank" rel="noopener" title="Share on Twitter/X"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#1da1f2; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      𝕏 Twitter
+    </a>
+    <a href="https://www.linkedin.com/sharing/share-offsite/?url=https://www.fanyamin.com/2026-04-22-python-ssl-unable-to-get-local-issuer-certificate.html"
+       target="_blank" rel="noopener" title="Share on LinkedIn"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#0077b5; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      💼 LinkedIn
+    </a>
+    <a href="javascript:void(0);" onclick="copyLink('https://www.fanyamin.com/2026-04-22-python-ssl-unable-to-get-local-issuer-certificate.html')" title="Copy link"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#666; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em; cursor:pointer;">
+      🔗 Copy Link
+    </a>
+    <script>
+    function copyLink(url) {
+      navigator.clipboard.writeText(url).then(function() {
+        alert('链接已复制！');
+      });
+    }
+    </script>
+  </div>
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/2026-04-22-aws-kms-private-key-hosting.html" title="从 AWS KMS 到用户私钥托管：把加密这条链路一次讲清楚">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/ai-shi-dai-bie-zhi-dun-bi-ji-wo-shi-zen-yao-ba-zhi-shi-ku-zuo-cheng-yi-bu-huo-de-wiki.html" title="AI 时代，别只囤笔记：我是怎么把知识库做成一部活的 Wiki">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/zheng-shu-zhe-huo-er-pemjksp12-zen-yao-xuan-mian-fei-zheng-shu-na-jia-qiang-zi-dong-lun-huan-zen-yao-gao.html">证书这活儿：PEM/JKS/P12 怎么选、免费证书哪家强、自动轮换怎么搞</a></li>
+      <li><a href="https://www.fanyamin.com/zai-kubernetes-li-yong-cert-manager-venafi-zi-dong-qian-fa-he-lun-huan-zheng-shu.html">在 Kubernetes 里用 cert-manager + Venafi 自动签发和轮换证书</a></li>
+      <li><a href="https://www.fanyamin.com/2026-04-21-lazy-podcast-mate.html">把文章一键变成播客：我的 side project `lazy-podcast-mate`</a></li>
+      <li><a href="https://www.fanyamin.com/gevent-shi-shi-yao-he-asyncio-yi-qi-yong-you-shi-yao-keng.html">Gevent 是什么，和 asyncio 一起用有什么坑</a></li>
+      <li><a href="https://www.fanyamin.com/litellm-supply-chain-attack-secrets-security.html">从 LiteLLM 供应链投毒事件聊聊密钥安全</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

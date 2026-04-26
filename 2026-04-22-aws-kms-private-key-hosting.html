@@ -1,0 +1,788 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'G-VZL08BHDPP', 'auto');
+  ga('send', 'pageview');
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="这篇文章把 AWS KMS、data key、encrypted data key、EncryptionContext 以及“为特定用户托管私钥”的工程设计串成一条完整链路，尽量用人话讲清楚它们各自该放在哪里、由谁负责、什么时候该用、什么时候别乱用。" />
+<meta name="keywords" content="AWS, KMS, Encryption, Security, Secrets Manager, Private Key">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "从 AWS KMS 到用户私钥托管：把加密这条链路一次讲清楚",
+  "description": "这篇文章把 AWS KMS、data key、encrypted data key、EncryptionContext 以及“为特定用户托管私钥”的工程设计串成一条完整链路，尽量用人话讲清楚它们各自该放在哪里、由谁负责、什么时候该用、什么时候别乱用。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-04-22T14:18:00+08:00",
+  "dateModified": "2026-04-22T14:18:00+08:00",
+  "url": "https://www.fanyamin.com/2026-04-22-aws-kms-private-key-hosting.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/2026-04-22-aws-kms-private-key-hosting.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "AWS, KMS, Encryption, Security, Secrets Manager, Private Key"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="从 AWS KMS 到用户私钥托管：把加密这条链路一次讲清楚"/>
+  <meta property="og:description" content="这篇文章把 AWS KMS、data key、encrypted data key、EncryptionContext 以及“为特定用户托管私钥”的工程设计串成一条完整链路，尽量用人话讲清楚它们各自该放在哪里、由谁负责、什么时候该用、什么时候别乱用。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/2026-04-22-aws-kms-private-key-hosting.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-04-22 14:18:00+08:00"/>
+  <meta property="article:modified_time" content="2026-04-22 14:18:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/author/walter-fan.html">
+  <meta property="article:section" content="Journal"/>
+  <meta property="article:tag" content="AWS"/>
+  <meta property="article:tag" content="KMS"/>
+  <meta property="article:tag" content="Encryption"/>
+  <meta property="article:tag" content="Security"/>
+  <meta property="article:tag" content="Secrets Manager"/>
+  <meta property="article:tag" content="Private Key"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 从 AWS KMS 到用户私钥托管：把加密这条链路一次讲清楚</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/">Walter Fan</a>
+    </h1>
+
+    <p>手握灵珠常奋笔, 心开天籁不吹箫</p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/search.html" role="search">
+      <input type="text" name="q" id="tipue_search_input" placeholder="Search...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank" href="tao.html" >tao</a>
+          </li>
+          <li>
+            <a target="_blank" href="article.html" >article</a>
+          </li>
+          <li>
+            <a target="_blank" href="manual.html" >manual</a>
+          </li>
+          <li>
+            <a target="_blank" href="interest.html" >interest</a>
+          </li>
+          <li>
+            <a target="_self" href="/wordpress" >notebook</a>
+          </li>
+          <li>
+            <a target="_blank" href="bookmark.html" >bookmark</a>
+          </li>
+          <li>
+            <a target="_self" href="/webrtc/examples/index.html" >webrtc</a>
+          </li>
+          <li>
+            <a target="_blank" href="https://github.com/walterfan" >github</a>
+          </li>
+          <li>
+            <a target="_blank" href="categories.html" >categories</a>
+          </li>
+          <li>
+            <a target="_blank" href="tags.html" >tags</a>
+          </li>
+      </ul>
+    </nav>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+</aside>
+  <main>
+
+
+<article class="single">
+  <header>
+      
+    <h1 id="2026-04-22-aws-kms-private-key-hosting">从 AWS KMS 到用户私钥托管：把加密这条链路一次讲清楚</h1>
+    <p>
+      Posted on 三 22 4月 2026 in <a href="https://www.fanyamin.com/category/journal.html">Journal</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>从 AWS KMS 到用户私钥托管：把加密这条链路一次讲清楚</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Journal</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-04-22</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h1 id="aws-kms">从 AWS KMS 到用户私钥托管：把加密这条链路一次讲清楚</h1>
+<h2 id="_1">短大纲</h2>
+<ul>
+<li>先把 <code>KMS key</code>、<code>data key</code>、业务数据这三个角色分开</li>
+<li>讲明白 KMS 和 Secrets Manager 到底各管什么</li>
+<li>把加密、存储、解密这条链路从头走一遍</li>
+<li>落到“为特定用户托管私钥”这个场景，给出表结构、IAM 和代码样例</li>
+<li>最后收一份容易照着做、也容易避坑的 CheckList</li>
+</ul>
+<hr>
+<h2 id="kms">一、很多人不是不会用 KMS，而是脑子里少了一张总图</h2>
+<p>第一次碰 AWS KMS，最容易陷进去的不是 API，而是概念。</p>
+<p>脑子里总会连环冒出几个问题：<code>KMS key</code> 到底在哪儿，<code>data key</code> 为什么要多加这一层，<code>encrypted data key</code> 存哪儿，调用 <code>KMS Decrypt</code> 时到底是谁在解密，如果我要替某个用户托管一份私钥，锅又该由谁来背。</p>
+<p>这些问题单看都不难，串起来就容易打结。安全设计里最怕的，不是复杂，而是<strong>看着简单，于是想当然</strong>。一想当然，明文 key 就进日志了，<code>EncryptionContext</code> 就乱填了，数据库里就多出一列“先存着以后再说”的敏感字段。后面想补救，往往比重写还贵。</p>
+<p>一句话先把结论压住：</p>
+<blockquote>
+<p><strong>AWS KMS 负责保护主密钥，并执行受控的密码学操作；你的应用负责用 data key 加密真正的业务数据，并保存业务密文和 encrypted data key。KMS key 本体不会交给你。</strong></p>
+</blockquote>
+<p>这件事，在 AWS 官方的 <a href="https://docs.aws.amazon.com/kms/latest/developerguide/data-keys.html">data keys 文档</a> 和 <a href="https://docs.aws.amazon.com/kms/latest/APIReference/API_Decrypt.html">Decrypt API 文档</a> 里其实都说得很清楚。只是文档是分散的，工程问题是连起来的。</p>
+<hr>
+<h2 id="_2">二、先把三个角色认清：谁是主角，谁是临时工</h2>
+<p>这套模型里，至少有三层东西，别混。</p>
+<h3 id="1-kms-key">1. <code>KMS key</code></h3>
+<p>这是主密钥，长期存在，由 AWS KMS 管理。你可以授权它、轮换它、审计它，但<strong>不能把它像配置文件那样下载出来塞进代码</strong>。</p>
+<h3 id="2-data-key">2. <code>data key</code></h3>
+<p>这是临时对称密钥，真正拿来加密你的业务数据。调用 <a href="https://docs.aws.amazon.com/kms/latest/APIReference/API_GenerateDataKey.html"><code>GenerateDataKey</code></a> 之后，KMS 会返回两份东西：</p>
+<ul>
+<li>一份明文 <code>Plaintext</code></li>
+<li>一份被 KMS key 加密过的 <code>CiphertextBlob</code></li>
+</ul>
+<p>前者给你“当场办事”，后者给你“事后留档”。</p>
+<h3 id="3">3. 业务数据</h3>
+<p>这才是你真正在乎的东西，比如：</p>
+<ul>
+<li>用户私钥</li>
+<li>refresh token</li>
+<li>第三方 API credential</li>
+<li>某个租户独有的敏感配置</li>
+</ul>
+<p>业务数据不是 KMS 直接替你保管的。AWS 在 <a href="https://docs.aws.amazon.com/kms/latest/developerguide/data-keys.html">data keys 文档</a> 里说得很直白：KMS 生成、加密、解密 data key，但<strong>不会替你存、管、追踪 data key，更不会替你拿 data key 去加密业务数据</strong>。这部分活，还是得应用自己干。</p>
+<hr>
+<h2 id="kms-secrets-manager">三、KMS 和 Secrets Manager，不是一回事</h2>
+<p>很多团队一听到“秘密”“密钥”，脑子里就把 KMS 和 Secrets Manager 搅成一锅粥。其实它们的活并不一样。</p>
+<h3 id="secrets-manager">Secrets Manager 更像什么</h3>
+<p>它更像一个“少量高价值 secret 的托管柜”，适合放：</p>
+<ul>
+<li>数据库密码</li>
+<li>第三方 API key</li>
+<li>服务级 JWT 私钥</li>
+<li>定期轮换的基础设施凭证</li>
+</ul>
+<h3 id="kms_1">KMS 更像什么</h3>
+<p>它更像一个“密钥管理与加解密操作中心”，适合干这些事：</p>
+<ul>
+<li>保护主密钥</li>
+<li>生成 data key</li>
+<li>解密 encrypted data key</li>
+<li>配合 IAM / key policy 做权限边界</li>
+<li>把关键操作打进审计链路</li>
+</ul>
+<p>一句不中听但有用的话：</p>
+<blockquote>
+<p><strong>Secrets Manager 当然也能放秘密，但它不是给你拿来堆海量用户级私钥对象的。</strong></p>
+</blockquote>
+<p>如果你只有几十个服务级 secret，用 Secrets Manager 很舒服。如果你要托管十万、百万级别的用户私钥，通常更靠谱的路径是：<strong>业务数据放你的数据层，保护方式走 KMS-backed envelope encryption。</strong></p>
+<hr>
+<h2 id="data-key">四、为什么非要多出一把 <code>data key</code></h2>
+<p>很多人初看会觉得：都已经有 KMS 了，为什么不直接让 KMS 加密所有东西？</p>
+<p>因为 KMS 的强项不是替你高频搬砖，而是<strong>守住总闸门</strong>。</p>
+<p>AWS 推荐的模式叫 <code>envelope encryption</code>，中文通常叫“信封加密”。意思很朴素：</p>
+<div class="highlight"><pre><span></span><code>KMS key 保护 data key
+data key 保护业务数据
+</code></pre></div>
+
+<p>这样做有三件事同时成立：</p>
+<ol>
+<li>主密钥始终待在 KMS 里，不出门。</li>
+<li>真正的大块数据由你的应用本地高效加解密。</li>
+<li>权限控制点集中在 KMS，而不是散落在每一台应用机上。</li>
+</ol>
+<p>这就像银行金库和现金抽屉的关系。金库不负责每天找零，但它决定谁有资格去开抽屉。你要是让金库去干收银员的活，系统设计就有点魔幻了。</p>
+<hr>
+<h2 id="_3">五、完整链路：加密时到底发生了什么</h2>
+<p>假设现在有个很具体的需求：<strong>服务端要托管某个用户专用的私钥。</strong></p>
+<p>比较稳妥的加密流程，大致长这样。</p>
+<h3 id="51">5.1 总体流程图</h3>
+<div class="highlight"><pre><span></span><code>@startuml
+title 用户私钥托管的信封加密链路
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam roundcorner 12
+skinparam defaultTextAlignment center
+skinparam componentStyle rectangle
+
+actor &quot;应用服务&quot; as App
+rectangle &quot;AWS KMS&quot; as KMS
+database &quot;业务数据库&quot; as DB
+
+App --&gt; KMS : GenerateDataKey\n(user_id, tenant_id, purpose)
+KMS --&gt; App : plaintext data key\nencrypted data key
+App --&gt; App : 本地用 AES-GCM\n加密用户私钥
+App --&gt; DB : 保存 private_key_ciphertext\nencrypted_data_key\ncontext / metadata
+
+App --&gt; DB : 读取 ciphertext + EDK
+App --&gt; KMS : Decrypt(encrypted_data_key, context)
+KMS --&gt; App : plaintext data key
+App --&gt; App : 本地解密用户私钥
+@enduml
+</code></pre></div>
+
+<p><img alt="用户私钥托管的信封加密链路" src="../images/journal_20260422_aws-kms-private-key-hosting_architecture.png"></p>
+<h3 id="52-kms-data-key">5.2 第一步：向 KMS 要一把 data key</h3>
+<p>应用调用 <a href="https://docs.aws.amazon.com/kms/latest/APIReference/API_GenerateDataKey.html"><code>GenerateDataKey</code></a>，指定一个对称 KMS key。KMS 返回：</p>
+<ul>
+<li><code>Plaintext</code>：明文 data key</li>
+<li><code>CiphertextBlob</code>：被 KMS key 包起来的 data key</li>
+</ul>
+<p>如果你还没想好 <code>EncryptionContext</code> 要不要用，我的建议是：<strong>只要数据和租户、用户、用途有关，就别偷懒。</strong></p>
+<p>一个常见的 context 长这样：</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;tenant_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;acme&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;user_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;user_123&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;purpose&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;user-private-key&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;v1&quot;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>注意，它不是 secret。AWS 在 <a href="https://docs.aws.amazon.com/kms/latest/developerguide/encrypt_context.html">Encryption Context 文档</a> 里明确说了，这玩意儿会出现在日志与审计信息里，所以别把手机号、邮箱、身份证之类敏感内容塞进去。</p>
+<h3 id="53">5.3 第二步：应用本地加密真正的数据</h3>
+<p>拿到明文 data key 以后，应用自己在本地加密用户私钥。常见做法是 <code>AES-256-GCM</code>。</p>
+<p>这里有个容易被忽略的小点：如果你用的是 GCM，除了密文，你还得保存 <code>nonce/IV</code>。做法有两种：</p>
+<ul>
+<li>单独存 <code>nonce</code></li>
+<li>直接把 <code>nonce</code> 前缀到密文 blob 里</li>
+</ul>
+<p>第二种更省心，我自己更偏爱。</p>
+<p>再多说一句，<strong>本地加密层最好也带 AAD</strong>。比如把 <code>tenant_id/user_id/purpose/version</code> 再作为 AES-GCM 的 AAD 绑一层。这样即便数据库里两条记录错位，解密时也更容易第一时间炸出来，而不是悄悄返回一份“格式看着像对的垃圾”。</p>
+<h3 id="54-data-key">5.4 第三步：立刻丢掉明文 data key</h3>
+<p>这一步没什么浪漫色彩，但非常重要。</p>
+<p>明文 data key：</p>
+<ul>
+<li>不该落盘</li>
+<li>不该写日志</li>
+<li>不该进缓存</li>
+<li>不该长时间留在内存里</li>
+</ul>
+<p>它就是个临时工。干完活，就该下班。</p>
+<h3 id="55-encrypted-data-key">5.5 第四步：保存业务密文和 encrypted data key</h3>
+<p>真正应该进数据库的，是这几样东西：</p>
+<ul>
+<li><code>encrypted_private_key</code></li>
+<li><code>encrypted_data_key</code></li>
+<li><code>kms_key_arn</code></li>
+<li><code>encryption_context_json</code></li>
+<li><code>algorithm</code></li>
+<li><code>status</code></li>
+<li><code>created_at</code></li>
+</ul>
+<p>也可以再加：</p>
+<ul>
+<li><code>key_version</code></li>
+<li><code>rotated_at</code></li>
+<li><code>revoked_at</code></li>
+</ul>
+<p>工程系统能不能长期用，常常不取决于第一天有没有跑通，而取决于半年后你还认不认得这些字段是干什么的。</p>
+<hr>
+<h2 id="_4">六、数据库到底该存什么</h2>
+<p>如果你用关系型数据库，一个比较顺手的表结构可以是这样：</p>
+<div class="highlight"><pre><span></span><code><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">user_private_keys</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="n">id</span><span class="w"> </span><span class="n">BIGSERIAL</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="p">,</span>
+<span class="w">    </span><span class="n">tenant_id</span><span class="w"> </span><span class="nb">VARCHAR</span><span class="p">(</span><span class="mi">128</span><span class="p">)</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">user_id</span><span class="w"> </span><span class="nb">VARCHAR</span><span class="p">(</span><span class="mi">128</span><span class="p">)</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">purpose</span><span class="w"> </span><span class="nb">VARCHAR</span><span class="p">(</span><span class="mi">64</span><span class="p">)</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;user-private-key&#39;</span><span class="p">,</span>
+<span class="w">    </span><span class="n">key_version</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+
+<span class="w">    </span><span class="n">kms_key_arn</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">encrypted_data_key</span><span class="w"> </span><span class="n">BYTEA</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">encrypted_private_key</span><span class="w"> </span><span class="n">BYTEA</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+
+<span class="w">    </span><span class="n">encryption_algorithm</span><span class="w"> </span><span class="nb">VARCHAR</span><span class="p">(</span><span class="mi">32</span><span class="p">)</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;AES-256-GCM&#39;</span><span class="p">,</span>
+<span class="w">    </span><span class="n">encryption_context_json</span><span class="w"> </span><span class="n">JSONB</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+
+<span class="w">    </span><span class="n">created_at</span><span class="w"> </span><span class="n">TIMESTAMPTZ</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">NOW</span><span class="p">(),</span>
+<span class="w">    </span><span class="n">rotated_at</span><span class="w"> </span><span class="n">TIMESTAMPTZ</span><span class="p">,</span>
+<span class="w">    </span><span class="n">revoked_at</span><span class="w"> </span><span class="n">TIMESTAMPTZ</span><span class="p">,</span>
+<span class="w">    </span><span class="n">status</span><span class="w"> </span><span class="nb">VARCHAR</span><span class="p">(</span><span class="mi">32</span><span class="p">)</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;active&#39;</span>
+<span class="p">);</span>
+
+<span class="k">CREATE</span><span class="w"> </span><span class="k">INDEX</span><span class="w"> </span><span class="n">idx_user_private_keys_lookup</span>
+<span class="k">ON</span><span class="w"> </span><span class="n">user_private_keys</span><span class="w"> </span><span class="p">(</span><span class="n">tenant_id</span><span class="p">,</span><span class="w"> </span><span class="n">user_id</span><span class="p">,</span><span class="w"> </span><span class="n">status</span><span class="p">);</span>
+</code></pre></div>
+
+<p>这里我刻意没有单独放 <code>nonce</code> 字段，因为我更建议把 <code>nonce</code> 直接拼在 <code>encrypted_private_key</code> 前面。这样接口更简单，读记录时也不容易漏字段。</p>
+<p>一句话概括这个表的设计：</p>
+<blockquote>
+<p><strong>库里存的是“业务密文 + 加密后的 data key + 可复原的上下文”，而不是任何明文 key。</strong></p>
+</blockquote>
+<hr>
+<h2 id="_5">七、解密时到底是谁在解</h2>
+<p>这是最容易绕晕的一段。</p>
+<h3 id="71">7.1 先从数据库取出两样东西</h3>
+<p>你先拿到：</p>
+<ul>
+<li><code>encrypted_private_key</code></li>
+<li><code>encrypted_data_key</code></li>
+</ul>
+<p>如果之前用了 <code>EncryptionContext</code>，这时也要把它一并取出来。</p>
+<h3 id="72-kms-decrypt">7.2 再调用 <code>KMS Decrypt</code></h3>
+<p>你把 <code>encrypted_data_key</code> 传给 <a href="https://docs.aws.amazon.com/kms/latest/APIReference/API_Decrypt.html"><code>Decrypt</code></a>，KMS 返回明文 data key。</p>
+<p>这里的关键点是：</p>
+<blockquote>
+<p><strong><code>KMS Decrypt</code> 解开的不是你的用户私钥，而是 encrypted data key。</strong></p>
+</blockquote>
+<p>用户私钥本身，还是由你的应用在本地解。</p>
+<h3 id="73-kms-key">7.3 真正干活的 KMS key 在哪儿</h3>
+<p>很多人会继续问：那 KMS 不是也得有密钥才能解吗？</p>
+<p>当然要有。只是这把密钥不由你拿，也不由你管，而是由 KMS 在它自己的受保护环境里用。</p>
+<p>对称 KMS key 的场景下，AWS 文档说明，KMS 通常可以从对称密文 blob 的元数据中识别出对应的 KMS key，所以 <code>Decrypt</code> 时 <code>KeyId</code> 往往可以省略。不过在工程实践里，我仍然倾向于<strong>显式传 <code>KeyId</code> 做一道硬限制</strong>。能多一道护栏，何乐而不为。</p>
+<h3 id="74-encryptioncontext">7.4 <code>EncryptionContext</code> 为什么这么要命</h3>
+<p>AWS 在 <a href="https://docs.aws.amazon.com/kms/latest/developerguide/encrypt_context.html">Encryption Context 文档</a> 里说得很明确：它会被加到认证数据里，解密时必须带回<strong>完全一致、区分大小写</strong>的值。对不上，解密就失败。</p>
+<p>这正是它的价值所在。</p>
+<p>它不是备注，不是装饰，而是边界的一部分。</p>
+<hr>
+<h2 id="_6">八、落到“为特定用户托管私钥”这个场景，应该怎么设计</h2>
+<p>先说一句可能有点扫兴的话。</p>
+<h3 id="81">8.1 能不托管私钥，最好别托管</h3>
+<p>如果业务允许：</p>
+<ul>
+<li>让用户自己持有私钥</li>
+<li>服务端只存公钥</li>
+<li>或者把签名动作放到 KMS / HSM 一侧</li>
+</ul>
+<p>那通常更干净。</p>
+<p>因为一旦你决定“我要在服务端恢复一份用户私钥”，你就要同时承担：</p>
+<ul>
+<li>密钥托管责任</li>
+<li>访问控制责任</li>
+<li>审计责任</li>
+<li>轮换与吊销责任</li>
+<li>泄露后的事故责任</li>
+</ul>
+<p>这锅不轻。</p>
+<h3 id="82">8.2 真要托管，就按“专线专用”的思路来</h3>
+<p>比较稳妥的做法是：</p>
+<ol>
+<li>给这类私钥使用专门的 KMS key，不和别的业务 secret 混在一起。</li>
+<li>使用 <code>GenerateDataKey</code> 为每条记录或每个用户生成独立 data key。</li>
+<li>用 data key 本地加密私钥。</li>
+<li>只保存 <code>encrypted_private_key</code> 和 <code>encrypted_data_key</code>。</li>
+<li>使用 <code>EncryptionContext</code> 绑定 <code>tenant_id/user_id/purpose/version</code>。</li>
+<li>把 <code>kms:Decrypt</code> 权限收窄到特定服务角色，并要求 context 匹配。</li>
+</ol>
+<p>一个最小可用的 IAM policy，大致可以这么写：</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;Version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2012-10-17&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;Statement&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;Sid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;AllowUserPrivateKeyEnvelopeOps&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;Effect&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Allow&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;Action&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">        </span><span class="s2">&quot;kms:GenerateDataKey&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="s2">&quot;kms:Decrypt&quot;</span>
+<span class="w">      </span><span class="p">],</span>
+<span class="w">      </span><span class="nt">&quot;Resource&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;arn:aws:kms:us-west-2:123456789012:key/11111111-2222-3333-4444-555555555555&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;Condition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;StringEquals&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">&quot;kms:EncryptionContext:purpose&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;user-private-key&quot;</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>AWS 在 <a href="https://docs.aws.amazon.com/prescriptive-guidance/latest/aws-kms-best-practices/access.html">KMS access best practices</a> 里一直强调 least privilege。这话大家都听过，真正做到的团队并不多。安全的难点从来都不是“不知道”，而是“嫌麻烦”。</p>
+<h3 id="83">8.3 数据库被拖走以后，会发生什么</h3>
+<p>这时候你的底线应该是：</p>
+<ul>
+<li>攻击者拿到的是 <code>encrypted_private_key</code></li>
+<li>还有 <code>encrypted_data_key</code></li>
+<li>还有一堆看上去很懂事的 metadata</li>
+</ul>
+<p>但如果没有：</p>
+<ul>
+<li>对应的 KMS 权限</li>
+<li>正确的 <code>EncryptionContext</code></li>
+<li>通过你服务端授权链路的能力</li>
+</ul>
+<p>他仍然恢复不出明文私钥。</p>
+<p>这才叫“托管”，不是“换个地方存明文”。</p>
+<hr>
+<h2 id="_7">九、几个最容易踩的坑</h2>
+<h3 id="1-secrets-manager">1. 把 Secrets Manager 当成用户私钥仓库</h3>
+<p>少量服务级 secret，没问题。海量用户级私钥，别这么干。后面运维、成本、检索、权限边界都会让你后悔。</p>
+<h3 id="2-data-key_1">2. 把明文 data key 或私钥打进日志</h3>
+<p>很多事故不是黑客太强，而是 debug 太勤。对象一 <code>print</code>，半个事故报告就写好了。</p>
+<h3 id="3-encryptioncontext">3. <code>EncryptionContext</code> 填得太随意</h3>
+<p>要么不用，要用就设计好字段，并且版本化。别今天叫 <code>userId</code>，明天改成 <code>user_id</code>，后天再加个大小写变化。KMS 不陪你玩“差不多就行”。</p>
+<h3 id="4-nonce-aad">4. 本地加密没考虑 <code>nonce</code> / AAD</h3>
+<p>只记得“我用了 AES-GCM”，不等于你真的把工程细节做对了。</p>
+<h3 id="5">5. 应用角色权限太宽</h3>
+<p><code>kms:*</code> 这种权限，写起来爽，出事时也很爽。只是爽的是事故复盘，不是你。</p>
+<h3 id="6">6. 没想好轮换与吊销</h3>
+<p>真正到生产里，私钥会过期、用户会离职、租户会迁移、算法会升级。设计里没有 <code>version</code>、<code>status</code>、<code>rotated_at</code>，后面就只能靠祈祷。</p>
+<hr>
+<h2 id="_8">十、一段最小可行的伪代码</h2>
+<h3 id="_9">加密时</h3>
+<div class="highlight"><pre><span></span><code><span class="n">resp</span> <span class="o">=</span> <span class="n">kms</span><span class="o">.</span><span class="n">generate_data_key</span><span class="p">(</span>
+    <span class="n">KeyId</span><span class="o">=</span><span class="s2">&quot;arn:aws:kms:us-west-2:123456789012:key/11111111-2222-3333-4444-555555555555&quot;</span><span class="p">,</span>
+    <span class="n">KeySpec</span><span class="o">=</span><span class="s2">&quot;AES_256&quot;</span><span class="p">,</span>
+    <span class="n">EncryptionContext</span><span class="o">=</span><span class="p">{</span>
+        <span class="s2">&quot;tenant_id&quot;</span><span class="p">:</span> <span class="s2">&quot;acme&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;user_id&quot;</span><span class="p">:</span> <span class="s2">&quot;user_123&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;purpose&quot;</span><span class="p">:</span> <span class="s2">&quot;user-private-key&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;version&quot;</span><span class="p">:</span> <span class="s2">&quot;v1&quot;</span><span class="p">,</span>
+    <span class="p">},</span>
+<span class="p">)</span>
+
+<span class="n">plaintext_data_key</span> <span class="o">=</span> <span class="n">resp</span><span class="p">[</span><span class="s2">&quot;Plaintext&quot;</span><span class="p">]</span>
+<span class="n">encrypted_data_key</span> <span class="o">=</span> <span class="n">resp</span><span class="p">[</span><span class="s2">&quot;CiphertextBlob&quot;</span><span class="p">]</span>
+
+<span class="n">aad</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">&quot;tenant=acme|user=user_123|purpose=user-private-key|version=v1&quot;</span>
+<span class="n">nonce</span><span class="p">,</span> <span class="n">encrypted_private_key</span> <span class="o">=</span> <span class="n">local_encrypt_aes_gcm</span><span class="p">(</span>
+    <span class="n">key</span><span class="o">=</span><span class="n">plaintext_data_key</span><span class="p">,</span>
+    <span class="n">plaintext</span><span class="o">=</span><span class="n">user_private_key_pem</span><span class="p">,</span>
+    <span class="n">aad</span><span class="o">=</span><span class="n">aad</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">store_to_db</span><span class="p">(</span>
+    <span class="n">tenant_id</span><span class="o">=</span><span class="s2">&quot;acme&quot;</span><span class="p">,</span>
+    <span class="n">user_id</span><span class="o">=</span><span class="s2">&quot;user_123&quot;</span><span class="p">,</span>
+    <span class="n">encrypted_private_key</span><span class="o">=</span><span class="n">nonce</span> <span class="o">+</span> <span class="n">encrypted_private_key</span><span class="p">,</span>
+    <span class="n">encrypted_data_key</span><span class="o">=</span><span class="n">encrypted_data_key</span><span class="p">,</span>
+    <span class="n">encryption_context_json</span><span class="o">=</span><span class="p">{</span>
+        <span class="s2">&quot;tenant_id&quot;</span><span class="p">:</span> <span class="s2">&quot;acme&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;user_id&quot;</span><span class="p">:</span> <span class="s2">&quot;user_123&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;purpose&quot;</span><span class="p">:</span> <span class="s2">&quot;user-private-key&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;version&quot;</span><span class="p">:</span> <span class="s2">&quot;v1&quot;</span><span class="p">,</span>
+    <span class="p">},</span>
+<span class="p">)</span>
+
+<span class="n">wipe_from_memory</span><span class="p">(</span><span class="n">plaintext_data_key</span><span class="p">)</span>
+</code></pre></div>
+
+<h3 id="_10">解密时</h3>
+<div class="highlight"><pre><span></span><code><span class="n">row</span> <span class="o">=</span> <span class="n">load_from_db</span><span class="p">(</span><span class="n">tenant_id</span><span class="o">=</span><span class="s2">&quot;acme&quot;</span><span class="p">,</span> <span class="n">user_id</span><span class="o">=</span><span class="s2">&quot;user_123&quot;</span><span class="p">)</span>
+
+<span class="n">resp</span> <span class="o">=</span> <span class="n">kms</span><span class="o">.</span><span class="n">decrypt</span><span class="p">(</span>
+    <span class="n">KeyId</span><span class="o">=</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;kms_key_arn&quot;</span><span class="p">],</span>
+    <span class="n">CiphertextBlob</span><span class="o">=</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;encrypted_data_key&quot;</span><span class="p">],</span>
+    <span class="n">EncryptionContext</span><span class="o">=</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;encryption_context_json&quot;</span><span class="p">],</span>
+<span class="p">)</span>
+
+<span class="n">plaintext_data_key</span> <span class="o">=</span> <span class="n">resp</span><span class="p">[</span><span class="s2">&quot;Plaintext&quot;</span><span class="p">]</span>
+
+<span class="n">blob</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s2">&quot;encrypted_private_key&quot;</span><span class="p">]</span>
+<span class="n">nonce</span> <span class="o">=</span> <span class="n">blob</span><span class="p">[:</span><span class="mi">12</span><span class="p">]</span>
+<span class="n">ciphertext</span> <span class="o">=</span> <span class="n">blob</span><span class="p">[</span><span class="mi">12</span><span class="p">:]</span>
+
+<span class="n">aad</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">&quot;tenant=acme|user=user_123|purpose=user-private-key|version=v1&quot;</span>
+<span class="n">private_key_pem</span> <span class="o">=</span> <span class="n">local_decrypt_aes_gcm</span><span class="p">(</span>
+    <span class="n">key</span><span class="o">=</span><span class="n">plaintext_data_key</span><span class="p">,</span>
+    <span class="n">nonce</span><span class="o">=</span><span class="n">nonce</span><span class="p">,</span>
+    <span class="n">ciphertext</span><span class="o">=</span><span class="n">ciphertext</span><span class="p">,</span>
+    <span class="n">aad</span><span class="o">=</span><span class="n">aad</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">wipe_from_memory</span><span class="p">(</span><span class="n">plaintext_data_key</span><span class="p">)</span>
+</code></pre></div>
+
+<p>这段伪代码背后的核心逻辑，其实只有一句：</p>
+<blockquote>
+<p><strong>KMS 帮你恢复 data key，你自己负责恢复真正的数据。</strong></p>
+</blockquote>
+<hr>
+<h2 id="_11">总结</h2>
+<p>如果只记一件事，我希望是这一句：</p>
+<p><strong>KMS 不替你长期保存用户私钥明文，也不会把主密钥交给你。它做的是保护主密钥、生成 data key、并在授权通过时把 encrypted data key 还原成明文 data key。真正的数据加解密，仍然发生在你的应用里。</strong></p>
+<p>这条链路压缩成一张脑图，大概是这样：</p>
+<h3 id="_12">总结思维导图</h3>
+<div class="highlight"><pre><span></span><code>@startmindmap
+* AWS KMS 与用户私钥托管
+** 三个角色
+*** KMS key
+*** data key
+*** 业务数据
+** 加密流程
+*** GenerateDataKey
+*** 本地加密私钥
+*** 丢弃明文 data key
+*** 保存密文与 encrypted data key
+** 解密流程
+*** 从库中取出密文与 EDK
+*** KMS Decrypt 解开 EDK
+*** 应用本地解开私钥
+** 关键边界
+*** 主密钥不出 KMS
+*** EncryptionContext 必须一致
+*** least privilege
+*** 明文 key 不落盘
+** 托管私钥建议
+*** 能不托管就别托管
+*** 专 key 专用途
+*** 记录版本与状态
+*** 预留轮换与吊销
+** 常见坑
+*** 把 Secrets Manager 当用户密钥仓库
+*** 日志泄露明文 key
+*** context 乱填
+*** IAM 权限过宽
+@endmindmap
+</code></pre></div>
+
+<p><img alt="AWS KMS 与用户私钥托管思维导图" src="../images/journal_20260422_aws-kms-private-key-hosting_mindmap.png"></p>
+<h3 id="5_1">给明天就能做的 5 条建议</h3>
+<ul>
+<li>先把你的敏感数据分层：哪些是服务级 secret，哪些是用户级数据，别全塞进一个桶里。</li>
+<li>如果要托管用户私钥，先画一张“加密时”和“解密时”的时序图，看看明文 key 有没有任何落盘机会。</li>
+<li>给 <code>EncryptionContext</code> 定一个固定 schema，比如 <code>tenant_id/user_id/purpose/version</code>，别让不同服务各写各的。</li>
+<li>IAM policy 从 <code>kms:GenerateDataKey</code> 和 <code>kms:Decrypt</code> 起步，能收多窄就收多窄，别图省事。</li>
+<li>在代码评审里专门检查一遍日志、异常、debug 输出，确认没有把明文 key 或私钥内容带出去。</li>
+</ul>
+<h2 id="_13">扩展阅读</h2>
+<ul>
+<li>AWS 官方文档：<a href="https://docs.aws.amazon.com/kms/latest/developerguide/data-keys.html"><code>Generate data keys</code></a></li>
+<li>AWS API 文档：<a href="https://docs.aws.amazon.com/kms/latest/APIReference/API_GenerateDataKey.html"><code>GenerateDataKey</code></a></li>
+<li>AWS API 文档：<a href="https://docs.aws.amazon.com/kms/latest/APIReference/API_Decrypt.html"><code>Decrypt</code></a></li>
+<li>AWS 官方文档：<a href="https://docs.aws.amazon.com/kms/latest/developerguide/encrypt_context.html"><code>Encryption context</code></a></li>
+<li>AWS 最佳实践：<a href="https://docs.aws.amazon.com/prescriptive-guidance/latest/aws-kms-best-practices/access.html"><code>Identity and access management best practices for AWS KMS</code></a></li>
+</ul>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。</p>
+  </div>
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/tag/aws.html">AWS</a>
+      <a href="https://www.fanyamin.com/tag/kms.html">KMS</a>
+      <a href="https://www.fanyamin.com/tag/encryption.html">Encryption</a>
+      <a href="https://www.fanyamin.com/tag/security.html">Security</a>
+      <a href="https://www.fanyamin.com/tag/secrets-manager.html">Secrets Manager</a>
+      <a href="https://www.fanyamin.com/tag/private-key.html">Private Key</a>
+    </p>
+  </div>
+
+
+  <div class="center social-share" style="margin: 1.5em 0; text-align: center;">
+    <p style="margin-bottom: 0.5em; color: #888;">📤 Share this article</p>
+    <a href="https://twitter.com/intent/tweet?text=%E4%BB%8E%20AWS%20KMS%20%E5%88%B0%E7%94%A8%E6%88%B7%E7%A7%81%E9%92%A5%E6%89%98%E7%AE%A1%EF%BC%9A%E6%8A%8A%E5%8A%A0%E5%AF%86%E8%BF%99%E6%9D%A1%E9%93%BE%E8%B7%AF%E4%B8%80%E6%AC%A1%E8%AE%B2%E6%B8%85%E6%A5%9A&url=https://www.fanyamin.com/2026-04-22-aws-kms-private-key-hosting.html"
+       target="_blank" rel="noopener" title="Share on Twitter/X"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#1da1f2; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      𝕏 Twitter
+    </a>
+    <a href="https://www.linkedin.com/sharing/share-offsite/?url=https://www.fanyamin.com/2026-04-22-aws-kms-private-key-hosting.html"
+       target="_blank" rel="noopener" title="Share on LinkedIn"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#0077b5; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      💼 LinkedIn
+    </a>
+    <a href="javascript:void(0);" onclick="copyLink('https://www.fanyamin.com/2026-04-22-aws-kms-private-key-hosting.html')" title="Copy link"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#666; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em; cursor:pointer;">
+      🔗 Copy Link
+    </a>
+    <script>
+    function copyLink(url) {
+      navigator.clipboard.writeText(url).then(function() {
+        alert('链接已复制！');
+      });
+    }
+    </script>
+  </div>
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/2026-04-21-lazy-podcast-mate.html" title="把文章一键变成播客：我的 side project `lazy-podcast-mate`">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/2026-04-22-python-ssl-unable-to-get-local-issuer-certificate.html" title="一次 HTTPS 证书报错排查：为什么会出现 `unable to get local issuer certificate`">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/2026-01-25-eks-pod-iam-role.html">在 EKS 上给 Pod 绑 IAM Role：IRSA（ServiceAccount + OIDC）到底怎么回事</a></li>
+      <li><a href="https://www.fanyamin.com/2025-09-14-journal.html">密码存储的艺术</a></li>
+      <li><a href="https://www.fanyamin.com/security-chaos-engineering-fire-drill.html">安全混沌工程：把安全事故演练成消防演习</a></li>
+      <li><a href="https://www.fanyamin.com/yong-promptfoo-gei-ai-skill-zuo-ti-jian-ping-gu-ce-shi-zhi-liang-yu-an-quan-ba-guan.html">用 Promptfoo 给 AI skill 做体检：评估、测试、质量与安全把关</a></li>
+      <li><a href="https://www.fanyamin.com/zai-kubernetes-li-yong-cert-manager-venafi-zi-dong-qian-fa-he-lun-huan-zheng-shu.html">在 Kubernetes 里用 cert-manager + Venafi 自动签发和轮换证书</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

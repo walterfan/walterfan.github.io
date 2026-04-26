@@ -1,0 +1,634 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'G-VZL08BHDPP', 'auto');
+  ga('send', 'pageview');
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="一张关系图摆在你面前，几万个节点、几十万条边，你被问：&#34;这里面有几个圈子？谁和谁是一伙的？&#34; 你总不能靠肉眼画圈吧。这时候 Louvain 算法就派上用场了——它不是万能药，但在&#34;社区发现&#34;这个活儿上，它是工业界用得最多的那把瑞士军刀。本文从直觉讲到模块度公式，再到 graphology-communities-louvain 的实战用法，以及它什么时候该用、什么时候别用。" />
+<meta name="keywords" content="Graph, Algorithm, Community Detection, Louvain, Modularity, graphology">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "什么是 Louvain 算法——graphology-communities-louvain 背后的那点事",
+  "description": "一张关系图摆在你面前，几万个节点、几十万条边，你被问：&#34;这里面有几个圈子？谁和谁是一伙的？&#34; 你总不能靠肉眼画圈吧。这时候 Louvain 算法就派上用场了——它不是万能药，但在&#34;社区发现&#34;这个活儿上，它是工业界用得最多的那把瑞士军刀。本文从直觉讲到模块度公式，再到 graphology-communities-louvain 的实战用法，以及它什么时候该用、什么时候别用。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-04-20T22:30:00+08:00",
+  "dateModified": "2026-04-20T22:30:00+08:00",
+  "url": "https://www.fanyamin.com/2026-04-20-louvain-algorithm.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/2026-04-20-louvain-algorithm.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "Graph, Algorithm, Community Detection, Louvain, Modularity, graphology"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="什么是 Louvain 算法——graphology-communities-louvain 背后的那点事"/>
+  <meta property="og:description" content="一张关系图摆在你面前，几万个节点、几十万条边，你被问：&#34;这里面有几个圈子？谁和谁是一伙的？&#34; 你总不能靠肉眼画圈吧。这时候 Louvain 算法就派上用场了——它不是万能药，但在&#34;社区发现&#34;这个活儿上，它是工业界用得最多的那把瑞士军刀。本文从直觉讲到模块度公式，再到 graphology-communities-louvain 的实战用法，以及它什么时候该用、什么时候别用。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/2026-04-20-louvain-algorithm.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-04-20 22:30:00+08:00"/>
+  <meta property="article:modified_time" content="2026-04-20 22:30:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/author/walter-fan.html">
+  <meta property="article:section" content="Journal"/>
+  <meta property="article:tag" content="Graph"/>
+  <meta property="article:tag" content="Algorithm"/>
+  <meta property="article:tag" content="Community Detection"/>
+  <meta property="article:tag" content="Louvain"/>
+  <meta property="article:tag" content="Modularity"/>
+  <meta property="article:tag" content="graphology"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 什么是 Louvain 算法——graphology-communities-louvain 背后的那点事</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/">Walter Fan</a>
+    </h1>
+
+    <p>手握灵珠常奋笔, 心开天籁不吹箫</p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/search.html" role="search">
+      <input type="text" name="q" id="tipue_search_input" placeholder="Search...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank" href="tao.html" >tao</a>
+          </li>
+          <li>
+            <a target="_blank" href="article.html" >article</a>
+          </li>
+          <li>
+            <a target="_blank" href="manual.html" >manual</a>
+          </li>
+          <li>
+            <a target="_blank" href="interest.html" >interest</a>
+          </li>
+          <li>
+            <a target="_self" href="/wordpress" >notebook</a>
+          </li>
+          <li>
+            <a target="_blank" href="bookmark.html" >bookmark</a>
+          </li>
+          <li>
+            <a target="_self" href="/webrtc/examples/index.html" >webrtc</a>
+          </li>
+          <li>
+            <a target="_blank" href="https://github.com/walterfan" >github</a>
+          </li>
+          <li>
+            <a target="_blank" href="categories.html" >categories</a>
+          </li>
+          <li>
+            <a target="_blank" href="tags.html" >tags</a>
+          </li>
+      </ul>
+    </nav>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+</aside>
+  <main>
+
+
+<article class="single">
+  <header>
+      
+    <h1 id="2026-04-20-louvain-algorithm">什么是 Louvain 算法——graphology-communities-louvain 背后的那点事</h1>
+    <p>
+      Posted on 一 20 4月 2026 in <a href="https://www.fanyamin.com/category/journal.html">Journal</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>Louvain 社区发现算法的原理、实现与工程取舍</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Journal</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-04-20</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h1 id="louvain-graphology-communities-louvain">什么是 Louvain 算法——graphology-communities-louvain 背后的那点事</h1>
+<h2 id="_1">短大纲</h2>
+<ul>
+<li>开头：一个"谁和谁是一伙的"真实场景，为什么你需要社区发现</li>
+<li>直觉：Louvain 到底在优化什么——模块度（Modularity）</li>
+<li>两阶段循环：局部挪一挪，全局缩一缩</li>
+<li>graphology-communities-louvain 的最小可运行例子</li>
+<li>参数与坑：<code>resolution</code>、随机性、权重图、有向图</li>
+<li>什么时候别用 Louvain（Leiden、Label Propagation、Infomap 的取舍）</li>
+<li>工程落地 CheckList</li>
+</ul>
+<hr>
+<h2 id="_2">一张图摆面前，你要怎么下手</h2>
+<p>前几天一位朋友拉我看他的项目：他把公司内部 Slack 几个月的 @mention 关系建成了一张图，节点是人，边是"你 @ 过我"。两万多节点，十几万条边。他问：<strong>"能不能自动告诉我这里面有几个部门/小团体？"</strong></p>
+<p>这不是社交网络专属问题。你把它换一下皮就遍地都是：</p>
+<ul>
+<li>电商里用户和商品共同出现的二部图——自动归类"喜欢相似东西的人"</li>
+<li>代码依赖图——把一个巨型 monorepo 自动拆成高内聚的模块</li>
+<li>金融反欺诈——一群共享手机号、设备、IP 的账号，自动抱团</li>
+<li>知识图谱——相关实体聚成主题簇，喂给 RAG 做粗召回</li>
+</ul>
+<p>问题的学名叫 <strong>社区发现（Community Detection）</strong>：在一张图里找到若干子集，使得<strong>子集内部边很密、子集之间边很稀</strong>。听起来简单，算起来要命——因为"怎么分"本身是个组合爆炸问题，全局最优是 NP-hard。</p>
+<p>而 Louvain 算法，就是 2008 年比利时鲁汶大学（Université catholique de Louvain，算法因此得名）那帮人搞出来的<strong>近似解</strong>。它不追求最优，它追求<strong>又快又好</strong>。快到什么程度？百万级节点，单机分钟级能跑完。这也是为什么 Gephi、NetworkX、igraph、Neo4j GDS、graphology 都把它作为默认社区发现算法。</p>
+<h2 id="louvain">Louvain 到底在优化什么：模块度</h2>
+<p>要看懂 Louvain，先得看懂它盯着的那个"分数"——<strong>模块度（Modularity, Q）</strong>。</p>
+<p>一句话人话版：<strong>"实际连接强度"减去"随机情况下的期望连接强度"。</strong> 分数越高，说明这种分组相比"瞎分"越显著。</p>
+<p>公式长这样：</p>
+<p>[
+Q = \frac{1}{2m} \sum_{i,j} \left[ A_{ij} - \frac{k_i k_j}{2m} \right] \delta(c_i, c_j)
+]</p>
+<p>别急，一项项拆：</p>
+<ul>
+<li>(A_{ij})：节点 i 和 j 之间<strong>真实</strong>的边权（无边就是 0）</li>
+<li>(k_i)：节点 i 的度数（所有连出去的边权之和）</li>
+<li>(m)：图里所有边权之和</li>
+<li>(\frac{k_i k_j}{2m})：<strong>如果</strong>我把所有边打散重连，i 和 j 之间<strong>期望</strong>有多少边。这是所谓的"零模型"</li>
+<li>(\delta(c_i, c_j))：i 和 j 在同一个社区就是 1，否则是 0</li>
+</ul>
+<p>所以 Q 在问：<strong>"同社区内部的实际边，比随机情况下多出了多少？"</strong></p>
+<ul>
+<li>Q ≈ 0：你这分法跟瞎猜差不多</li>
+<li>Q &gt; 0.3：开始有点意思了</li>
+<li>Q &gt; 0.7：社区结构非常明显（现实世界很少达到，除非图本身就很"分块"）</li>
+</ul>
+<p>Louvain 就是一个不断调整分组来<strong>贪心地提高 Q</strong> 的过程。</p>
+<h2 id="_3">两阶段循环：局部挪一挪，全局缩一缩</h2>
+<p>Louvain 的精髓，不在模块度公式，而在它<strong>怎么优化</strong>。它用了一个特别朴素但特别有效的两阶段循环：</p>
+<div class="highlight"><pre><span></span><code>@startuml
+!theme plain
+skinparam backgroundColor #FFFFFF
+
+start
+:每个节点单独是一个社区;
+repeat
+  :Phase 1: 局部移动;
+  note right
+    遍历每个节点，
+    尝试把它加入&quot;邻居所在社区&quot;，
+    选 ΔQ 增益最大的那个。
+    反复扫直到没有节点再能受益。
+  end note
+  :Phase 2: 社区折叠;
+  note right
+    把同一社区内的节点合并成一个&quot;超级节点&quot;，
+    社区之间的边变成超级节点之间的加权边。
+    然后回到 Phase 1。
+  end note
+repeat while (ΔQ &gt; 阈值？) is (是)
+-&gt;否;
+:输出最终社区划分;
+stop
+@enduml
+</code></pre></div>
+
+<p><img alt="Louvain 两阶段流程" src="../images/journal_20260420_louvain_algorithm_flow.png"></p>
+<p><strong>Phase 1（局部移动）</strong>：每个节点看看自己的邻居，计算"我搬到邻居 X 所在的社区，Q 能涨多少？"选涨得最多的那个社区搬过去。没有增益就原地不动。一轮一轮扫，直到没人愿意动了。</p>
+<p><strong>Phase 2（社区折叠）</strong>：把当前所有社区"压扁"成一个节点。原来社区内部的边变成自环（带权），社区之间的边变成两个超级节点之间的加权边。得到一张<strong>更小的新图</strong>。</p>
+<p>然后——在这张新图上，再跑一次 Phase 1。</p>
+<p>这就是整个算法的灵魂：<strong>"先在小尺度上搞清楚谁和谁抱团，然后把抱好团的当成一个整体，去解决更大尺度的抱团问题"</strong>。像不像公司架构？先分小组，小组长开会决定部门怎么分，部门总监再开会决定事业部怎么分。Louvain 就是这么一层层"官僚"上去的。</p>
+<p>这也解释了它为什么快：每一轮迭代，图都在<strong>指数级缩小</strong>。一百万节点的图，跑三四轮可能就缩成几千个"超级节点"了。</p>
+<h3 id="_4">一个极简例子</h3>
+<p>假设有 6 个人，连接关系如下：</p>
+<div class="highlight"><pre><span></span><code><span class="k">graph</span><span class="w"> </span><span class="nt">G</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="na">layout</span><span class="p">=</span><span class="s">neato</span>
+<span class="w">  </span><span class="k">node</span><span class="w"> </span><span class="p">[</span><span class="na">shape</span><span class="p">=</span><span class="s">circle</span><span class="p">,</span><span class="w"> </span><span class="na">style</span><span class="p">=</span><span class="s">filled</span><span class="p">,</span><span class="w"> </span><span class="na">fillcolor</span><span class="p">=</span><span class="s2">&quot;#FFE4B5&quot;</span><span class="p">]</span>
+<span class="w">  </span><span class="nt">A</span><span class="w"> </span><span class="o">--</span><span class="w"> </span><span class="nt">B</span>
+<span class="w">  </span><span class="nt">A</span><span class="w"> </span><span class="o">--</span><span class="w"> </span><span class="nt">C</span>
+<span class="w">  </span><span class="nt">B</span><span class="w"> </span><span class="o">--</span><span class="w"> </span><span class="nt">C</span>
+<span class="w">  </span><span class="nt">D</span><span class="w"> </span><span class="o">--</span><span class="w"> </span><span class="nt">E</span>
+<span class="w">  </span><span class="nt">D</span><span class="w"> </span><span class="o">--</span><span class="w"> </span><span class="nt">F</span>
+<span class="w">  </span><span class="nt">E</span><span class="w"> </span><span class="o">--</span><span class="w"> </span><span class="nt">F</span>
+<span class="w">  </span><span class="nt">C</span><span class="w"> </span><span class="o">--</span><span class="w"> </span><span class="nt">D</span><span class="w"> </span><span class="p">[</span><span class="na">style</span><span class="p">=</span><span class="s">dashed</span><span class="p">,</span><span class="w"> </span><span class="na">color</span><span class="p">=</span><span class="s">gray</span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><img alt="6 节点示例图" src="../images/journal_20260420_louvain_algorithm_example.png"></p>
+<p>肉眼一看，{A, B, C} 是一团，{D, E, F} 是一团，C—D 那条虚线是连接两团的"桥"。Louvain 跑一遍：</p>
+<ol>
+<li>Phase 1：A 试着加入 B 或 C 所在社区，ΔQ 为正，合并；D、E、F 同理合并。C 要不要加入 D 所在社区？算一下 ΔQ——因为 C 和 {A, B} 之间有 2 条边，和 {D, E, F} 之间只有 1 条，留在原地 Q 更高，不动。</li>
+<li>Phase 2：{A, B, C} 压成一个超级节点，{D, E, F} 压成一个超级节点，两者之间一条权重为 1 的边。</li>
+<li>Phase 1（第二次）：两个超级节点要不要合并？不合并的 Q 更高，不动。收敛。</li>
+</ol>
+<p>最终输出：两个社区。干净利落。</p>
+<h2 id="graphology-communities-louvainjs">graphology-communities-louvain：JS 生态里的那把趁手刀</h2>
+<p>说完原理，轮到工程实操。如果你在 Node.js / 浏览器里画关系图，<a href="https://graphology.github.io/">graphology</a> 几乎是绕不过的库——它是一套"图数据结构 + 算法生态"，跟 D3、Sigma.js 生态打通得最好。</p>
+<p>Louvain 的实现在独立包 <a href="https://graphology.github.io/standard-library/communities-louvain"><code>graphology-communities-louvain</code></a> 里。</p>
+<h3 id="_5">最小可运行例子</h3>
+<div class="highlight"><pre><span></span><code>npm<span class="w"> </span>install<span class="w"> </span>graphology<span class="w"> </span>graphology-communities-louvain
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="nx">Graph</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;graphology&#39;</span><span class="p">;</span>
+<span class="k">import</span><span class="w"> </span><span class="nx">louvain</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;graphology-communities-louvain&#39;</span><span class="p">;</span>
+
+<span class="kd">const</span><span class="w"> </span><span class="nx">graph</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">Graph</span><span class="p">();</span>
+
+<span class="p">[</span><span class="s1">&#39;A&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;B&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;C&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;D&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;E&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;F&#39;</span><span class="p">].</span><span class="nx">forEach</span><span class="p">(</span><span class="nx">n</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">graph</span><span class="p">.</span><span class="nx">addNode</span><span class="p">(</span><span class="nx">n</span><span class="p">));</span>
+
+<span class="nx">graph</span><span class="p">.</span><span class="nx">addEdge</span><span class="p">(</span><span class="s1">&#39;A&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;B&#39;</span><span class="p">);</span>
+<span class="nx">graph</span><span class="p">.</span><span class="nx">addEdge</span><span class="p">(</span><span class="s1">&#39;A&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;C&#39;</span><span class="p">);</span>
+<span class="nx">graph</span><span class="p">.</span><span class="nx">addEdge</span><span class="p">(</span><span class="s1">&#39;B&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;C&#39;</span><span class="p">);</span>
+<span class="nx">graph</span><span class="p">.</span><span class="nx">addEdge</span><span class="p">(</span><span class="s1">&#39;D&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;E&#39;</span><span class="p">);</span>
+<span class="nx">graph</span><span class="p">.</span><span class="nx">addEdge</span><span class="p">(</span><span class="s1">&#39;D&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;F&#39;</span><span class="p">);</span>
+<span class="nx">graph</span><span class="p">.</span><span class="nx">addEdge</span><span class="p">(</span><span class="s1">&#39;E&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;F&#39;</span><span class="p">);</span>
+<span class="nx">graph</span><span class="p">.</span><span class="nx">addEdge</span><span class="p">(</span><span class="s1">&#39;C&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;D&#39;</span><span class="p">);</span>
+
+<span class="kd">const</span><span class="w"> </span><span class="nx">communities</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">louvain</span><span class="p">(</span><span class="nx">graph</span><span class="p">);</span>
+
+<span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="nx">communities</span><span class="p">);</span>
+<span class="c1">// { A: 0, B: 0, C: 0, D: 1, E: 1, F: 1 }</span>
+
+<span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s1">&#39;Modularity:&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">louvain</span><span class="p">.</span><span class="nx">detailed</span><span class="p">(</span><span class="nx">graph</span><span class="p">).</span><span class="nx">modularity</span><span class="p">);</span>
+</code></pre></div>
+
+<p>三行核心代码：建图、加边、调用 <code>louvain(graph)</code>。返回一个 <code>{ node: communityId }</code> 的字典。就这么直给。</p>
+<h3 id="_6">加权图、分辨率、随机种子</h3>
+<p>真实场景里，边往往带权重（通信次数、交易金额、相似度分数），而且你希望结果<strong>可复现</strong>。这时候就要用到 Louvain 的参数：</p>
+<div class="highlight"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="nx">louvain</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;graphology-communities-louvain&#39;</span><span class="p">;</span>
+
+<span class="nx">graph</span><span class="p">.</span><span class="nx">addEdge</span><span class="p">(</span><span class="s1">&#39;A&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;B&#39;</span><span class="p">,</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">weight</span><span class="o">:</span><span class="w"> </span><span class="mf">5</span><span class="w"> </span><span class="p">});</span>
+<span class="nx">graph</span><span class="p">.</span><span class="nx">addEdge</span><span class="p">(</span><span class="s1">&#39;B&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;C&#39;</span><span class="p">,</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">weight</span><span class="o">:</span><span class="w"> </span><span class="mf">2</span><span class="w"> </span><span class="p">});</span>
+<span class="c1">// ...</span>
+
+<span class="kd">const</span><span class="w"> </span><span class="nx">communities</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">louvain</span><span class="p">(</span><span class="nx">graph</span><span class="p">,</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">getEdgeWeight</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;weight&#39;</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">resolution</span><span class="o">:</span><span class="w"> </span><span class="mf">1.0</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">randomWalk</span><span class="o">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">rng</span><span class="o">:</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="mf">0.5</span><span class="p">,</span>
+<span class="p">});</span>
+</code></pre></div>
+
+<p>几个参数要特别注意：</p>
+<ul>
+<li><strong><code>getEdgeWeight</code></strong>：告诉它去哪个属性读权重。不设置就当无权图处理。</li>
+<li><strong><code>resolution</code></strong>（分辨率参数 γ）：大于 1 倾向于<strong>更多、更小</strong>的社区；小于 1 倾向于<strong>更少、更大</strong>的社区。默认是 1。这个参数背后是模块度的一个变体 (Q_\gamma)，是 Louvain "解决不了小社区（resolution limit）"问题的一个常见补丁。</li>
+<li><strong><code>rng</code></strong>：Louvain 的节点遍历顺序会影响结果，传一个固定的随机数生成器可以让结果可复现。线上系统很需要这个。</li>
+<li><strong><code>.detailed()</code></strong>：返回 <code>{ communities, modularity, count, resolution, ... }</code>，比直接调用多给你一堆指标。做调优的时候用这个。</li>
+</ul>
+<h3 id="_7">一个容易踩的坑：多次运行结果不一样</h3>
+<p>新手最常见的困惑：<strong>"我跑两次怎么社区数量都不一样？"</strong></p>
+<p>这是特性，不是 bug。Louvain 是贪心算法，节点扫描顺序不同，局部最优解就不同。解决办法：</p>
+<ol>
+<li>固定 <code>rng</code>（上面提过）</li>
+<li>多跑几次，挑 modularity 最高的那次（<code>louvain.detailed(graph)</code> 拿到分数）</li>
+<li>升级到 Leiden 算法（后面讲）</li>
+</ol>
+<h2 id="louvain_1">什么时候别用 Louvain</h2>
+<p>这是全文最值钱的部分。Louvain 再好，也有三大死穴：</p>
+<h3 id="1-resolution-limit">1. 分辨率极限（Resolution Limit）</h3>
+<p>模块度天生偏爱"大社区"。当你的图里有很多<strong>小而紧密</strong>的社区时，Louvain 会<strong>把它们强行合并</strong>，哪怕它们内部结构明显不同。典型表现：你凭经验知道应该有 50 个小圈子，Louvain 给你合成 10 个大圈子。</p>
+<p><strong>补救</strong>：调大 <code>resolution</code>，或者换 Leiden。</p>
+<h3 id="2">2. 可能产生"内部断裂"的社区</h3>
+<p>Louvain 的 Phase 1 是<strong>节点级别</strong>的贪心移动，它不保证一个社区在图上<strong>真的是连通的</strong>。你有概率拿到一个"这几个人被分到同一个社区，但他们之间其实根本没连通"的诡异结果。</p>
+<p><strong>补救</strong>：用 <a href="https://www.nature.com/articles/s41598-019-41695-z">Leiden 算法</a>。Leiden 是 2019 年 Traag 等人对 Louvain 的改进，核心改动是在 Phase 1 之后加了一步"社区内部再分裂检查"，从数学上保证每个社区都是连通的，而且 modularity 通常还更高一点。graphology 生态里有 <code>graphology-communities-leiden</code> 对应实现。<strong>如果你不确定选哪个，默认选 Leiden。</strong></p>
+<h3 id="3">3. 有向图与异质图</h3>
+<p>Louvain 原生是为<strong>无向、加权</strong>图设计的。有向图（比如 Twitter follow 关系）强行跑一遍也能出结果，但模块度公式的"零模型"就不太对路了。</p>
+<p><strong>补救</strong>：要么把有向边折叠成无向（损失信息），要么用 <a href="https://www.mapequation.org/infomap/">Infomap</a> 这种基于随机游走和信息论的算法——它天生支持有向图，对"信息流动结构"特别敏感。</p>
+<h3 id="_8">一张对比速查表</h3>
+<table>
+<thead>
+<tr>
+<th>算法</th>
+<th>最适合的场景</th>
+<th>缺点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Louvain</strong></td>
+<td>无向加权大图，追求速度和够用就行</td>
+<td>分辨率极限，社区可能不连通，结果不稳定</td>
+</tr>
+<tr>
+<td><strong>Leiden</strong></td>
+<td>同 Louvain，但要求更稳、更好</td>
+<td>实现更复杂，略慢</td>
+</tr>
+<tr>
+<td><strong>Label Propagation</strong></td>
+<td>超大图，只要求粗粒度划分</td>
+<td>结果极度依赖随机性，质量较差</td>
+</tr>
+<tr>
+<td><strong>Infomap</strong></td>
+<td>有向图、追求"信息流"结构</td>
+<td>慢，参数不直观</td>
+</tr>
+<tr>
+<td><strong>GNN 聚类（如 DMoN）</strong></td>
+<td>节点有丰富特征，追求语义社区</td>
+<td>需要训练、算力、调参</td>
+</tr>
+</tbody>
+</table>
+<h2 id="checklist">工程落地 CheckList</h2>
+<p>攒了这么多，最后给一个小抄清单：</p>
+<ul>
+<li>[ ] <strong>先看数据规模</strong>：节点 &lt;1k，管他用啥都行；1k–10M，Louvain/Leiden；&gt;10M，考虑分布式（PowerGraph、GraphX）。</li>
+<li>[ ] <strong>有向图别直接套 Louvain</strong>：先想清楚方向信息要不要，要就用 Infomap，不要就手动转无向并小心处理权重。</li>
+<li>[ ] <strong>默认用 Leiden</strong>：如果你的库支持，优先 Leiden。<code>graphology-communities-leiden</code> / <code>python-igraph</code> 的 <code>la.leiden</code> / <code>cdlib</code> 都行。</li>
+<li>[ ] <strong>固定随机种子</strong>：生产环境每次结果必须可复现，否则出报告都是灾难。</li>
+<li>[ ] <strong>先跑一次看 Q</strong>：Q &lt; 0.3 就说明这图本来社区结构就不明显，别硬 claim；Q &gt; 0.4 再认真解读结果。</li>
+<li>[ ] <strong>调 <code>resolution</code> 做敏感性分析</strong>：从 0.5 到 2.0 扫一遍，看社区数量怎么变化，挑业务上讲得通的那个点。</li>
+<li>[ ] <strong>社区大小要做截断</strong>：跑完往往有一堆 size=1 或 size=2 的碎屑社区，业务上一般当"其他"处理。</li>
+<li>[ ] <strong>可视化用力</strong>：用 Sigma.js / Gephi / ForceAtlas2 画出来给产品看，数值人一般不买账，图他们会买账。</li>
+</ul>
+<h2 id="_9">总结</h2>
+<p>Louvain 不是魔法，它只是把"社区发现"这个 NP-hard 问题用两个朴素循环做了一个<strong>又快又够用</strong>的贪心近似。理解了它，你就理解了半个图算法工程的路子——<strong>"全局最优拿不到？那就找一个稳定的局部最优，让它跑得快、结果能解释"</strong>。</p>
+<p><code>graphology-communities-louvain</code> 是把它搬到前端 / Node.js 的那个趁手工具，但请记住三件事：<strong>默认用 Leiden、固定随机种子、别无脑信 Q</strong>。</p>
+<p>最后，一张思维导图帮你收纳本文：</p>
+<div class="highlight"><pre><span></span><code>@startmindmap
+* Louvain 算法
+** 它是什么
+*** 社区发现算法
+*** 贪心近似，NP-hard 的妥协
+*** 比利时鲁汶大学 2008
+** 优化目标
+*** 模块度 Q
+**** 实际边 - 随机期望边
+**** Q 越高越&quot;非随机&quot;
+** 两阶段循环
+*** Phase 1 局部移动
+**** 每个节点试跳邻居社区
+**** 选 ΔQ 最大的
+*** Phase 2 社区折叠
+**** 同社区压成超级节点
+**** 图指数缩小
+** graphology-communities-louvain
+*** 最小例子 三行核心
+*** getEdgeWeight
+*** resolution 分辨率
+*** rng 随机种子
+** 坑与取舍
+*** 分辨率极限
+*** 社区可能不连通
+*** 有向图不友好
+** 替代品
+*** Leiden 默认推荐
+*** Infomap 有向图
+*** Label Propagation 超大图
+*** GNN 带特征场景
+** 工程 CheckList
+*** 看数据规模
+*** 默认 Leiden
+*** 固定种子
+*** 先看 Q
+*** resolution 敏感性分析
+*** 小社区当&quot;其他&quot;
+@endmindmap
+</code></pre></div>
+
+<p><img alt="Louvain 思维导图" src="../images/journal_20260420_louvain_algorithm_mindmap.png"></p>
+<h2 id="_10">扩展阅读</h2>
+<ul>
+<li><a href="https://arxiv.org/abs/0803.0476">Fast unfolding of communities in large networks</a> — Louvain 原始论文（2008）</li>
+<li><a href="https://www.nature.com/articles/s41598-019-41695-z">From Louvain to Leiden: guaranteeing well-connected communities</a> — Leiden 论文，讲清了 Louvain 的坑</li>
+<li><a href="https://graphology.github.io/standard-library/communities-louvain">graphology-communities-louvain 文档</a> — 本文用的库</li>
+<li><a href="https://github.com/graphology/graphology/tree/master/src/communities-leiden">graphology-communities-leiden</a> — Leiden 实现</li>
+<li><a href="https://gephi.org/tutorials/gephi-tutorial-layouts.pdf">Gephi 的 Modularity 教程</a> — 可视化视角理解社区发现</li>
+<li><a href="https://cdlib.readthedocs.io/">CDlib: Community Discovery Library</a> — Python 生态里最全的社区发现算法合集</li>
+<li><a href="https://www.mapequation.org/infomap/">The Map Equation（Infomap 官网）</a> — 有向图社区发现的另一条路</li>
+</ul>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。</p>
+  </div>
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/tag/graph.html">Graph</a>
+      <a href="https://www.fanyamin.com/tag/algorithm.html">Algorithm</a>
+      <a href="https://www.fanyamin.com/tag/community-detection.html">Community Detection</a>
+      <a href="https://www.fanyamin.com/tag/louvain.html">Louvain</a>
+      <a href="https://www.fanyamin.com/tag/modularity.html">Modularity</a>
+      <a href="https://www.fanyamin.com/tag/graphology.html">graphology</a>
+    </p>
+  </div>
+
+
+  <div class="center social-share" style="margin: 1.5em 0; text-align: center;">
+    <p style="margin-bottom: 0.5em; color: #888;">📤 Share this article</p>
+    <a href="https://twitter.com/intent/tweet?text=%E4%BB%80%E4%B9%88%E6%98%AF%20Louvain%20%E7%AE%97%E6%B3%95%E2%80%94%E2%80%94graphology-communities-louvain%20%E8%83%8C%E5%90%8E%E7%9A%84%E9%82%A3%E7%82%B9%E4%BA%8B&url=https://www.fanyamin.com/2026-04-20-louvain-algorithm.html"
+       target="_blank" rel="noopener" title="Share on Twitter/X"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#1da1f2; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      𝕏 Twitter
+    </a>
+    <a href="https://www.linkedin.com/sharing/share-offsite/?url=https://www.fanyamin.com/2026-04-20-louvain-algorithm.html"
+       target="_blank" rel="noopener" title="Share on LinkedIn"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#0077b5; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      💼 LinkedIn
+    </a>
+    <a href="javascript:void(0);" onclick="copyLink('https://www.fanyamin.com/2026-04-20-louvain-algorithm.html')" title="Copy link"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#666; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em; cursor:pointer;">
+      🔗 Copy Link
+    </a>
+    <script>
+    function copyLink(url) {
+      navigator.clipboard.writeText(url).then(function() {
+        alert('链接已复制！');
+      });
+    }
+    </script>
+  </div>
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/2026-04-20-test-ai-skill-for-coding-agents.html" title="给 Cursor、Codex、Claude Code 用的 AI Skill，到底该怎么测">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/2026-04-21-code-graph-model-cgm-paper-and-roadmap.html" title="CGM 论文讲了什么，咱们又该怎么落地">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/graphrag-deep-dive.html">从 RAG 到 GraphRAG：当检索增强生成遇上知识图谱</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

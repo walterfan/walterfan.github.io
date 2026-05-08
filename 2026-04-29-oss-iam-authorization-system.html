@@ -1,0 +1,1678 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'G-VZL08BHDPP', 'auto');
+  ga('send', 'pageview');
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="如果要用开源组件搭一个 AWS IAM 风格的授权系统，不能只靠 OpenFGA 或 OPA。更合理的组合是 Keycloak/Dex 做用户身份，SPIFFE/SPIRE 做工作负载身份，STS 服务签发短期角色会话，OpenFGA 表达 trust/resource relationship，OPA 表达 permission policy、condition 和 explicit deny，再由 API Gateway 或服务中间件作为 PEP 执行决策。" />
+<meta name="keywords" content="authorization, IAM, OPA, OpenFGA, Keycloak, STS, SPIFFE, SPIRE, RBAC, ABAC, ReBAC, security">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "用开源组件搭一个 AWS IAM 风格的授权系统",
+  "description": "如果要用开源组件搭一个 AWS IAM 风格的授权系统，不能只靠 OpenFGA 或 OPA。更合理的组合是 Keycloak/Dex 做用户身份，SPIFFE/SPIRE 做工作负载身份，STS 服务签发短期角色会话，OpenFGA 表达 trust/resource relationship，OPA 表达 permission policy、condition 和 explicit deny，再由 API Gateway 或服务中间件作为 PEP 执行决策。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-04-29T22:16:00+08:00",
+  "dateModified": "2026-04-29T22:52:00+08:00",
+  "url": "https://www.fanyamin.com/2026-04-29-oss-iam-authorization-system.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/2026-04-29-oss-iam-authorization-system.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "authorization, IAM, OPA, OpenFGA, Keycloak, STS, SPIFFE, SPIRE, RBAC, ABAC, ReBAC, security"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="用开源组件搭一个 AWS IAM 风格的授权系统"/>
+  <meta property="og:description" content="如果要用开源组件搭一个 AWS IAM 风格的授权系统，不能只靠 OpenFGA 或 OPA。更合理的组合是 Keycloak/Dex 做用户身份，SPIFFE/SPIRE 做工作负载身份，STS 服务签发短期角色会话，OpenFGA 表达 trust/resource relationship，OPA 表达 permission policy、condition 和 explicit deny，再由 API Gateway 或服务中间件作为 PEP 执行决策。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/2026-04-29-oss-iam-authorization-system.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-04-29 22:16:00+08:00"/>
+  <meta property="article:modified_time" content="2026-04-29 22:52:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="authorization"/>
+  <meta property="article:tag" content="IAM"/>
+  <meta property="article:tag" content="OPA"/>
+  <meta property="article:tag" content="OpenFGA"/>
+  <meta property="article:tag" content="Keycloak"/>
+  <meta property="article:tag" content="STS"/>
+  <meta property="article:tag" content="SPIFFE"/>
+  <meta property="article:tag" content="SPIRE"/>
+  <meta property="article:tag" content="RBAC"/>
+  <meta property="article:tag" content="ABAC"/>
+  <meta property="article:tag" content="ReBAC"/>
+  <meta property="article:tag" content="security"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 用开源组件搭一个 AWS IAM 风格的授权系统</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/">Walter Fan</a>
+    </h1>
+
+    <p>手握灵珠常奋笔, 心开天籁不吹箫</p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/search.html" role="search">
+      <input type="text" name="q" id="tipue_search_input" placeholder="Search...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank" href="tao.html" >tao</a>
+          </li>
+          <li>
+            <a target="_blank" href="article.html" >article</a>
+          </li>
+          <li>
+            <a target="_blank" href="manual.html" >manual</a>
+          </li>
+          <li>
+            <a target="_blank" href="interest.html" >interest</a>
+          </li>
+          <li>
+            <a target="_self" href="/wordpress" >notebook</a>
+          </li>
+          <li>
+            <a target="_blank" href="bookmark.html" >bookmark</a>
+          </li>
+          <li>
+            <a target="_self" href="/webrtc/examples/index.html" >webrtc</a>
+          </li>
+          <li>
+            <a target="_blank" href="https://github.com/walterfan" >github</a>
+          </li>
+          <li>
+            <a target="_blank" href="categories.html" >categories</a>
+          </li>
+          <li>
+            <a target="_blank" href="tags.html" >tags</a>
+          </li>
+      </ul>
+    </nav>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+</aside>
+  <main>
+
+
+<article class="single">
+  <header>
+      
+    <h1 id="2026-04-29-oss-iam-authorization-system">用开源组件搭一个 AWS IAM 风格的授权系统</h1>
+    <p>
+      Posted on 三 29 4月 2026 in <a href="https://www.fanyamin.com/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>用开源组件搭一个 AWS IAM 风格的授权系统</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Security</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-04-29</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h1 id="aws-iam">用开源组件搭一个 AWS IAM 风格的授权系统</h1>
+<h2 id="_1">短大纲</h2>
+<ul>
+<li>为什么授权不是一句 <code>if user.is_admin</code> 能解决的事</li>
+<li>AWS IAM 的 User、Role、Trust Policy、Permission Policy 给我们什么模型</li>
+<li>用 Keycloak/Dex、SPIFFE/SPIRE、OpenFGA、OPA、自建 STS、OpenBao/Vault 和审计系统拼出开源版 IAM</li>
+<li>SPIFFE/SPIRE 在 workload identity、mTLS 和 service-to-service trust 里做什么</li>
+<li>OpenFGA 怎么表达 trust policy 和 resource relationship</li>
+<li>OPA 怎么表达 condition、explicit deny 和全局 guardrail</li>
+<li>STS 如何实现 AssumeRole 和短期凭证</li>
+<li>一个可运行的 HTTP Request 授权例子</li>
+<li>一套能落地的授权实施清单</li>
+</ul>
+<hr>
+<h2 id="_2">一、先说一个扎心场景</h2>
+<p>很多系统的授权，都是从一行代码开始失控的：</p>
+<div class="highlight"><pre><span></span><code><span class="k">if</span> <span class="n">user</span><span class="o">.</span><span class="n">is_admin</span><span class="p">:</span>
+    <span class="n">allow</span><span class="p">()</span>
+</code></pre></div>
+
+<p>刚开始它很可爱。一个后台页面，两个角色，三个接口，大家都懂。</p>
+<p>半年后，产品经理说：“项目 owner 可以改自己项目的配置，但不能删生产环境。”安全同事说：“外包同学只能看脱敏数据。”运营说：“临时活动期间，区域负责人能审批本区域的工单。”老板说：“我都能看，但你们不要在日志里写我是 super admin。”</p>
+<p>于是代码开始长蘑菇：</p>
+<div class="highlight"><pre><span></span><code><span class="k">if</span> <span class="n">user</span><span class="o">.</span><span class="n">is_admin</span> <span class="ow">or</span> <span class="n">user</span><span class="o">.</span><span class="n">id</span> <span class="o">==</span> <span class="n">project</span><span class="o">.</span><span class="n">owner_id</span> <span class="ow">or</span> <span class="p">(</span>
+    <span class="n">user</span><span class="o">.</span><span class="n">region</span> <span class="o">==</span> <span class="n">ticket</span><span class="o">.</span><span class="n">region</span> <span class="ow">and</span> <span class="n">ticket</span><span class="o">.</span><span class="n">status</span> <span class="o">!=</span> <span class="s2">&quot;closed&quot;</span>
+<span class="p">):</span>
+    <span class="o">...</span>
+</code></pre></div>
+
+<p>再过一阵子，没人敢改了。授权逻辑像办公室冰箱里的剩饭，理论上还属于某个人，实际上没人愿意负责。</p>
+<p>所以我越来越觉得：<strong>授权不是业务代码里的几个条件判断，而是一套独立的决策系统。</strong></p>
+<p>AWS IAM 做得好的地方，不是它的 JSON 多优雅。老实说，IAM Policy 的 JSON 有时候像一只章鱼摔进了键盘。它真正有价值的地方，是给了我们一个稳定的授权心智模型：</p>
+<blockquote>
+<p>谁（Principal）能对什么资源（Resource）执行什么动作（Action），在什么条件下（Condition）允许或拒绝。</p>
+</blockquote>
+<p>到了开源世界，自建系统也需要类似能力。但这里有个坑：<strong>不要指望某一个开源项目直接变成 AWS IAM。</strong></p>
+<p>OpenFGA 很适合表达“谁和什么资源有什么关系”，OPA 很适合表达“在什么条件下允许或拒绝”。但 AWS IAM 还包含身份登录、角色信任、AssumeRole、短期凭证、policy version、resource policy、审计追踪、密钥生命周期。它不是一个库，而是一套系统。</p>
+<p>如果要用开源组件搭一个 IAM-like 系统，我会这么拆：</p>
+<ul>
+<li><strong>Keycloak / Dex / ORY Hydra</strong>：负责用户登录、OIDC、身份联邦。</li>
+<li><strong>SPIFFE / SPIRE</strong>：负责 workload identity，让服务、Pod、Job、Agent 拿到可验证的机器身份。</li>
+<li><strong>自建 STS 服务</strong>：负责 <code>AssumeRole</code>，签发短期 role session token。</li>
+<li><strong>OpenFGA</strong>：负责 trust relationship 和 resource relationship。</li>
+<li><strong>OPA</strong>：负责 permission policy、condition、explicit deny 和全局 guardrail。</li>
+<li><strong>API Gateway / middleware</strong>：负责拦截请求，也就是 PEP。</li>
+<li><strong>OpenBao / Vault</strong>：负责动态密钥和敏感凭证。</li>
+<li><strong>Audit pipeline</strong>：负责记录每一次授权决策。</li>
+</ul>
+<p>一句话先说结论：</p>
+<p><strong>开源版 IAM 不是“OpenFGA vs OPA”，而是“Identity + STS + Relationship + Policy + Enforcement + Audit”的组合拳。</strong></p>
+<hr>
+<h2 id="aws-iam_1">二、先借 AWS IAM 建一个脑内模型</h2>
+<p>如果你熟悉 AWS IAM，大概知道它有几个核心概念：</p>
+<ul>
+<li><code>Principal</code>：谁在发起请求，比如 user、role、service。</li>
+<li><code>Action</code>：要做什么，比如 <code>s3:GetObject</code>、<code>ec2:StartInstances</code>。</li>
+<li><code>Resource</code>：对哪个资源做，比如某个 bucket、某台 EC2。</li>
+<li><code>Condition</code>：在什么条件下，比如来源 IP、MFA、tag、时间。</li>
+<li><code>Effect</code>：允许还是拒绝，<code>Allow</code> / <code>Deny</code>。</li>
+</ul>
+<p>一个 IAM policy 大概长这样：</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;Version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2012-10-17&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;Statement&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;Effect&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Allow&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;Action&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;s3:GetObject&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;Resource&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;arn:aws:s3:::example-bucket/reports/*&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;Condition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;StringEquals&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">&quot;aws:PrincipalTag/team&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;finance&quot;</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这套模型很有用，因为它把授权问题拆成了几块：</p>
+<div class="highlight"><pre><span></span><code>subject + action + resource + context -&gt; decision
+</code></pre></div>
+
+<p>翻译成人话：</p>
+<blockquote>
+<p>张三能不能在周五晚上，用公司 VPN，从北京办公室，删除生产项目里的密钥？</p>
+</blockquote>
+<p>授权系统要回答的不是“张三是不是管理员”这么粗糙的问题，而是“在这个上下文里，这个动作是否被允许”。</p>
+<p>开源世界里的 OPA 和 OpenFGA，也是在回答这类问题，只是切入点不一样。</p>
+<hr>
+<h2 id="iam">三、开源版 IAM 的总体架构</h2>
+<p>如果把 AWS IAM 拆开看，它至少有八块能力：</p>
+<table>
+<thead>
+<tr>
+<th>AWS IAM 能力</th>
+<th>开源实现建议</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>User / Federation</td>
+<td>Keycloak、Dex、ORY Hydra</td>
+<td>负责登录、OIDC、SAML、企业身份接入</td>
+</tr>
+<tr>
+<td>Workload Identity</td>
+<td>SPIFFE / SPIRE</td>
+<td>给服务、Pod、VM、Agent 签发 X.509-SVID 或 JWT-SVID</td>
+</tr>
+<tr>
+<td>Role</td>
+<td>IAM 元数据服务 + OpenFGA object</td>
+<td>role 是一个可被 assume 的身份和权限边界</td>
+</tr>
+<tr>
+<td>Trust Policy</td>
+<td>OpenFGA <code>can_assume</code> + OPA condition</td>
+<td>谁可以 assume role，以及在什么条件下可以</td>
+</tr>
+<tr>
+<td>Permission Policy</td>
+<td>OPA policy + OpenFGA relation</td>
+<td>role/session 能对资源做什么</td>
+</tr>
+<tr>
+<td>Resource Policy</td>
+<td>OpenFGA resource relation + OPA condition</td>
+<td>资源自己声明谁能访问</td>
+</tr>
+<tr>
+<td>AssumeRole / STS</td>
+<td>自建 STS 服务</td>
+<td>校验 trust，签发短期 token</td>
+</tr>
+<tr>
+<td>Temporary Credentials</td>
+<td>JWT / opaque token / mTLS cert</td>
+<td>有 TTL、scope、session id</td>
+</tr>
+<tr>
+<td>CloudTrail</td>
+<td>PostgreSQL、ClickHouse、OpenSearch</td>
+<td>记录 every decision，不只是成功请求</td>
+</tr>
+</tbody>
+</table>
+<p>架构可以画成这样：</p>
+<div class="highlight"><pre><span></span><code>User / Workload
+  |
+  v
+Identity Provider / SPIRE
+  |  OIDC login or SVID
+  v
+STS Service  &lt;----&gt; OpenFGA: can_assume role?
+  |           &lt;----&gt; OPA: trust policy conditions?
+  | issues short-lived role session
+  v
+Client with STS token
+  |
+  v
+API Gateway / Middleware (PEP)
+  |----&gt; OpenFGA: role/session relation to resource?
+  |----&gt; OPA: permission policy, condition, explicit deny?
+  |----&gt; Audit: who/action/resource/decision/reason
+  v
+Business Service
+</code></pre></div>
+
+<p>这个设计里，最关键的是不要把所有职责塞进一个组件。</p>
+<ul>
+<li>Keycloak 负责“你是谁”。</li>
+<li>SPIRE 负责“这个工作负载是谁”。</li>
+<li>STS 负责“你现在扮演什么角色”。</li>
+<li>OpenFGA 负责“你和这个 role / resource 有什么关系”。</li>
+<li>OPA 负责“这个上下文下是否允许”。</li>
+<li>PEP 负责“真的拦住或放行请求”。</li>
+<li>Audit 负责“以后能不能说清楚发生了什么”。</li>
+</ul>
+<p>人话版：</p>
+<blockquote>
+<p>OpenFGA 管关系，OPA 管规矩，STS 管临时身份，Gateway 管拦门，Audit 管翻账。</p>
+</blockquote>
+<p>这里 SPIFFE/SPIRE 的位置很容易被低估。Keycloak 解决的是 human identity，SPIFFE/SPIRE 解决的是 workload identity。人登录系统靠 OIDC token；服务调用服务、Agent 调 API、Job 调 STS，最好不要再靠一串长期 API key，而是用可自动轮换、可验证、可绑定运行环境的 SVID。</p>
+<p>一句话：</p>
+<blockquote>
+<p><strong>Keycloak 给人发工牌，SPIRE 给工作负载发工牌。</strong></p>
+</blockquote>
+<h3 id="spiffespire">SPIFFE/SPIRE 在这里做什么</h3>
+<p>SPIFFE 是规范，定义工作负载身份的格式和获取方式；SPIRE 是实现，负责做 node attestation、workload attestation，并给工作负载签发 SVID。SVID 可以是：</p>
+<ul>
+<li><strong>X.509-SVID</strong>：常用于 mTLS，服务之间互相验证身份。</li>
+<li><strong>JWT-SVID</strong>：常用于向 STS、Vault、网关这类服务证明“我是某个 workload”。</li>
+</ul>
+<p>放到 IAM-like 系统里，它主要解决四件事。</p>
+<p>第一，<strong>让服务调用 STS 时不用长期密钥</strong>。</p>
+<div class="highlight"><pre><span></span><code>workload -&gt; SPIRE Workload API -&gt; JWT-SVID
+workload -&gt; STS: AssumeRoleWithSVID(JWT-SVID, role)
+STS -&gt; verify SVID trust domain and SPIFFE ID
+STS -&gt; OpenFGA + OPA
+STS -&gt; short-lived role session token
+</code></pre></div>
+
+<p>比如某个 Kubernetes Job 的 SPIFFE ID 是：</p>
+<div class="highlight"><pre><span></span><code>spiffe://example.org/ns/billing/sa/report-generator
+</code></pre></div>
+
+<p>STS 可以把它当成 principal：</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;principal&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;spiffe://example.org/ns/billing/sa/report-generator&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;role&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;role:billing-report-reader&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;context&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;cluster&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;prod-us-west&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;mfa&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>然后 OpenFGA 表达它能不能 assume role：</p>
+<div class="highlight"><pre><span></span><code>workload:spiffe://example.org/ns/billing/sa/report-generator trusted role:billing-report-reader
+</code></pre></div>
+
+<p>OPA 再判断这个 workload 的 trust domain、namespace、service account、cluster、时间窗口是否满足策略。</p>
+<p>第二，<strong>让 PEP 到 PDP 的调用有服务身份</strong>。</p>
+<p>API Gateway 调 OPA、OpenFGA、STS，不应该靠共享密码。可以用 SPIRE 发的 X.509-SVID 做 mTLS：</p>
+<div class="highlight"><pre><span></span><code>api-gateway --mTLS--&gt; opa
+api-gateway --mTLS--&gt; openfga
+api-gateway --mTLS--&gt; sts
+</code></pre></div>
+
+<p>这样 OPA / OpenFGA / STS 可以知道调用方到底是 <code>api-gateway</code>、<code>agent-runtime</code>，还是某个不该来的 Pod。</p>
+<p>第三，<strong>让 OPA policy 能基于 workload identity 做条件判断</strong>。</p>
+<p>OPA 的 input 可以带上 SPIFFE ID：</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;workload&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;spiffe_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;spiffe://example.org/ns/agent/sa/coding-agent&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;trust_domain&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;example.org&quot;</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;action&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;tool.execute&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;resource&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;tool:shell&quot;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>策略可以写成：</p>
+<div class="highlight"><pre><span></span><code>deny contains &quot;coding agent cannot execute shell outside sandbox&quot; if {
+  input.workload.spiffe_id == &quot;spiffe://example.org/ns/agent/sa/coding-agent&quot;
+  input.action == &quot;tool.execute&quot;
+  input.resource == &quot;tool:shell&quot;
+  input.context.sandbox != true
+}
+</code></pre></div>
+
+<p>第四，<strong>替代一部分“机器账号 + 静态 token”的老路</strong>。</p>
+<p>很多公司做内部 IAM 时，最容易留下的洞就是 service account token、API key、机器人账号密码。SPIRE 的价值是让这些工作负载身份变成短期、自动轮换、可 attestation 的凭证，而不是一条躺在配置文件里三年没人敢删的 token。</p>
+<h3 id="trust-policy">Trust policy 怎么做</h3>
+<p>AWS IAM 的 trust policy 回答的是：</p>
+<blockquote>
+<p>谁可以 assume 这个 role？</p>
+</blockquote>
+<p>开源版可以用 OpenFGA 表达基础信任关系：</p>
+<div class="highlight"><pre><span></span><code>type user
+
+type role
+  relations
+    define trusted: [user]
+    define can_assume: trusted
+</code></pre></div>
+
+<p>写入关系：</p>
+<div class="highlight"><pre><span></span><code>user:alice trusted role:prod-admin
+</code></pre></div>
+
+<p>然后 STS 收到请求：</p>
+<div class="highlight"><pre><span></span><code><span class="err">POST /assume-role</span>
+<span class="err">{</span>
+<span class="err">  &quot;user&quot;: &quot;user:alice&quot;,</span>
+<span class="err">  &quot;role&quot;: &quot;role:prod-admin&quot;</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<p>它先问 OpenFGA：</p>
+<div class="highlight"><pre><span></span><code>Can user:alice can_assume role:prod-admin?
+</code></pre></div>
+
+<p>但这还不够。AWS trust policy 里常常还有 condition，比如 MFA、来源账号、外部 ID、设备、网络。这个部分更适合交给 OPA：</p>
+<div class="highlight"><pre><span></span><code>package iam.trust
+
+default allow := false
+
+allow if {
+  input.relationship.allowed == true
+  input.role == &quot;role:prod-admin&quot;
+  input.context.mfa == true
+  input.context.source == &quot;vpn&quot;
+  input.context.ticket != &quot;&quot;
+}
+
+deny contains &quot;assume prod-admin requires MFA&quot; if {
+  input.role == &quot;role:prod-admin&quot;
+  input.context.mfa != true
+}
+</code></pre></div>
+
+<p>所以 trust policy 的开源实现不是单点：</p>
+<div class="highlight"><pre><span></span><code>OpenFGA: 是否存在信任关系
+OPA: 当前上下文是否允许 assume
+STS: 通过后签发短期 token
+</code></pre></div>
+
+<h3 id="permission-policy">Permission policy 怎么做</h3>
+<p>AWS permission policy 回答的是：</p>
+<blockquote>
+<p>拿到这个身份以后，可以对哪些资源做哪些动作？</p>
+</blockquote>
+<p>OpenFGA 可以表达 role 和 resource 的关系：</p>
+<div class="highlight"><pre><span></span><code>type user
+
+type role
+  relations
+    define assignee: [user]
+
+type secret
+  relations
+    define reader: [user, role#assignee]
+    define deleter: [role#assignee]
+    define can_read: reader
+    define can_delete: deleter
+</code></pre></div>
+
+<p>写入关系：</p>
+<div class="highlight"><pre><span></span><code>user:alice assignee role:prod-admin
+role:prod-admin#assignee deleter secret:prod-123_db-password
+</code></pre></div>
+
+<p>这表达的是“扮演 prod-admin 这个 role 的主体，可以删除这个 secret”。</p>
+<p>但 permission policy 里的 condition、explicit deny、全局 guardrail 仍然更适合 OPA：</p>
+<div class="highlight"><pre><span></span><code>package iam.permission
+
+default allow := false
+
+allow if {
+  input.relationship.allowed == true
+  input.action == &quot;secret.delete&quot;
+  input.resource.env == &quot;prod&quot;
+  input.session.role == &quot;role:prod-admin&quot;
+  input.context.mfa == true
+  input.context.ticket != &quot;&quot;
+}
+
+deny contains &quot;contractor cannot access confidential secrets&quot; if {
+  input.subject.type == &quot;contractor&quot;
+  input.resource.classification == &quot;confidential&quot;
+}
+</code></pre></div>
+
+<p>这就是 IAM-like 系统里最重要的分层：</p>
+<div class="highlight"><pre><span></span><code>relationship says: 有资格
+policy says: 此时此地可以做
+explicit deny says: 就算有资格也不行
+</code></pre></div>
+
+<h3 id="assumerole">AssumeRole 的最小流程</h3>
+<p>一个最小 STS 流程可以这样做：</p>
+<div class="highlight"><pre><span></span><code>1. Alice 通过 Keycloak 登录，拿到 user token。
+2. Alice 调 STS：AssumeRole(role:prod-admin)。
+3. STS 校验 user token。
+4. STS 调 OpenFGA：user:alice can_assume role:prod-admin?
+5. STS 调 OPA：MFA、VPN、ticket、risk 是否满足 trust policy?
+6. 通过后，STS 签发 15 分钟短期 token。
+7. 后续请求用这个 token 访问业务 API。
+</code></pre></div>
+
+<p>短期 token 里不要塞太多权限细节，只放身份和会话信息：</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;sub&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;user:alice&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;role&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;role:prod-admin&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;session_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;sess_01HV...&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;secret.read&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;secret.delete&quot;</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;iat&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1714380000</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;exp&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1714380900</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>真正的授权仍然由 PEP 每次请求时调用 OpenFGA + OPA 决策。不要因为有了 STS token，就把它当万能钥匙。</p>
+<hr>
+<h2 id="opa">四、OPA：把策略变成代码</h2>
+<p>OPA 的定位是 policy engine。你把输入交给它，它根据策略返回决策。这个决策可以用于 API 网关、Kubernetes admission、微服务接口、CI/CD、Terraform、数据访问、Agent 工具调用，等等。</p>
+<p>它的核心形态很简单：</p>
+<div class="highlight"><pre><span></span><code>input + data + policy -&gt; decision
+</code></pre></div>
+
+<ul>
+<li><code>input</code>：本次请求，比如用户、动作、资源、HTTP method、环境。</li>
+<li><code>data</code>：外部数据，比如用户组、资源标签、风险等级。</li>
+<li><code>policy</code>：用 Rego 写的规则。</li>
+<li><code>decision</code>：允许、拒绝、原因、附加约束。</li>
+</ul>
+<h3 id="opa_1">一个 OPA 小例子</h3>
+<p>假设我们有一个内部 API：</p>
+<div class="highlight"><pre><span></span><code><span class="err">DELETE /projects/prod-123/secrets/db-password</span>
+</code></pre></div>
+
+<p>请求上下文如下：</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;user&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;alice&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;role&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;developer&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;groups&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;team-a&quot;</span><span class="p">]</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;action&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;secret.delete&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;resource&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;secret&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;project&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;prod-123&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;env&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;prod&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;owner_group&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;team-a&quot;</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;request&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;mfa&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;source_ip&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;10.0.1.23&quot;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>一段 Rego 可以这样写：</p>
+<div class="highlight"><pre><span></span><code>package authz
+
+default allow := false
+
+allow if {
+  input.user.role == &quot;admin&quot;
+  input.request.mfa == true
+}
+
+allow if {
+  input.action == &quot;secret.read&quot;
+  input.resource.owner_group in input.user.groups
+}
+
+deny_reason contains &quot;developers cannot delete production secrets&quot; if {
+  input.action == &quot;secret.delete&quot;
+  input.resource.env == &quot;prod&quot;
+  input.user.role == &quot;developer&quot;
+}
+</code></pre></div>
+
+<p>这段策略表达了几件事：</p>
+<ul>
+<li>admin 开了 MFA，可以通过；</li>
+<li>同组成员可以读 secret；</li>
+<li>developer 删除生产 secret，明确拒绝并给原因。</li>
+</ul>
+<p>OPA 的好处是：策略从业务代码里抽出来了。你可以 review、测试、版本化、灰度发布。授权不再是散落在 17 个 service 里的祖传 <code>if</code>。</p>
+<h3 id="opa_2">OPA 擅长什么</h3>
+<p>OPA 特别适合这些问题：</p>
+<ul>
+<li>这个请求是否满足环境约束？</li>
+<li>这个部署是否符合安全基线？</li>
+<li>这个 API 调用是否来自允许的网络、租户、设备？</li>
+<li>这个 Agent 是否能调用某个工具？</li>
+<li>这个 Terraform plan 是否允许创建公网资源？</li>
+<li>这个 Kubernetes Pod 是否允许使用 privileged mode？</li>
+</ul>
+<p>它擅长 <code>ABAC</code>：Attribute-Based Access Control。也就是基于属性做决策。</p>
+<p>例如：</p>
+<ul>
+<li>用户属性：部门、岗位、风险等级、是否 MFA。</li>
+<li>资源属性：环境、数据分级、owner、region。</li>
+<li>请求属性：来源 IP、时间、设备、ticket id。</li>
+<li>系统属性：是否生产环境、是否维护窗口、是否高危操作。</li>
+</ul>
+<p>OPA 像一个铁面无私的门卫。它不会替你维护组织关系图，但你把证件、工牌、申请单、当前时间都递给它，它能按规则给你判断。</p>
+<hr>
+<h2 id="openfga">五、OpenFGA：把关系变成图</h2>
+<p>OpenFGA 解决的是另一类痛点：对象级授权。</p>
+<p>比如：</p>
+<ul>
+<li>Alice 能不能读 <code>document:roadmap</code>？</li>
+<li>Bob 能不能编辑 <code>folder:finance</code> 里的文件？</li>
+<li>Carol 是不是 <code>org:acme</code> 的 admin？</li>
+<li>Dave 能不能邀请别人加入 <code>project:csms</code>？</li>
+</ul>
+<p>这些问题只靠用户角色不够。因为权限来自关系：</p>
+<ul>
+<li>Alice 是这个文档的 owner。</li>
+<li>Bob 是这个 folder 的 viewer。</li>
+<li>Carol 是这个 org 的 admin。</li>
+<li>Dave 是项目 owner 所在 group 的 member。</li>
+</ul>
+<p>OpenFGA 的模型来自 Google Zanzibar 一类思想。它用三元组描述关系：</p>
+<div class="highlight"><pre><span></span><code>user, relation, object
+</code></pre></div>
+
+<p>比如：</p>
+<div class="highlight"><pre><span></span><code>user:alice reader document:roadmap
+user:bob member group:security
+group:security#member viewer folder:prod-secrets
+folder:prod-secrets parent organization:zoom
+</code></pre></div>
+
+<p>它回答的问题通常是：</p>
+<div class="highlight"><pre><span></span><code>Can user:alice read document:roadmap?
+</code></pre></div>
+
+<h3 id="openfga_1">一个 OpenFGA 小例子</h3>
+<p>授权模型可以这样写：</p>
+<div class="highlight"><pre><span></span><code>model
+  schema 1.1
+
+type user
+
+type group
+  relations
+    define member: [user]
+
+type document
+  relations
+    define owner: [user]
+    define viewer: [user, group#member]
+    define editor: [user, group#member] or owner
+    define can_read: viewer or editor or owner
+    define can_write: editor or owner
+</code></pre></div>
+
+<p>然后写入关系 tuple：</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;user&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;user:alice&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;relation&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;owner&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;object&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;document:roadmap&quot;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>或者：</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;user&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;group:security#member&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;relation&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;viewer&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;object&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;document:incident-runbook&quot;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>检查权限时：</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;user&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;user:alice&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;relation&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;can_read&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;object&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;document:roadmap&quot;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>OpenFGA 返回：</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;allowed&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这就是它最强的地方：<strong>它不是在问 Alice 是不是 admin，而是在沿着关系图寻找一条授权路径。</strong></p>
+<h3 id="openfga_2">OpenFGA 擅长什么</h3>
+<p>OpenFGA 特别适合：</p>
+<ul>
+<li>文档、项目、文件夹、组织、团队这种层级资源。</li>
+<li>SaaS 多租户系统。</li>
+<li>用户与资源关系复杂，且经常变化。</li>
+<li>需要回答“某人对某对象是否有某关系”。</li>
+<li>需要 list objects：列出某用户可访问的对象。</li>
+<li>需要 explain：解释权限来自哪条关系链。</li>
+</ul>
+<p>这类授权常叫 <code>ReBAC</code>：Relationship-Based Access Control。</p>
+<p>如果 OPA 像门卫，OpenFGA 更像一本不断更新的通讯录和组织关系图。它知道谁属于哪个组，哪个组拥有哪个文档，哪个文档继承哪个 folder 的权限。</p>
+<hr>
+<h2 id="opa-openfga">六、OPA 和 OpenFGA 到底怎么选</h2>
+<p>先给一个粗暴但有用的判断：</p>
+<table>
+<thead>
+<tr>
+<th>问题</th>
+<th>更适合</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>“这个请求是否符合策略？”</td>
+<td>OPA</td>
+</tr>
+<tr>
+<td>“这个用户和这个对象之间有没有关系？”</td>
+<td>OpenFGA</td>
+</tr>
+<tr>
+<td>“生产环境删除操作必须 MFA + 工单”</td>
+<td>OPA</td>
+</tr>
+<tr>
+<td>“Alice 是否能编辑 document:123？”</td>
+<td>OpenFGA</td>
+</tr>
+<tr>
+<td>“Kubernetes Pod 是否允许 hostNetwork？”</td>
+<td>OPA</td>
+</tr>
+<tr>
+<td>“项目 owner 是否继承 folder admin 权限？”</td>
+<td>OpenFGA</td>
+</tr>
+<tr>
+<td>“高风险操作需要审批，且只能在维护窗口执行”</td>
+<td>OPA</td>
+</tr>
+<tr>
+<td>“列出 Bob 能访问的所有文档”</td>
+<td>OpenFGA</td>
+</tr>
+</tbody>
+</table>
+<p>一个常见误区是想让其中一个工具包打天下。</p>
+<p>让 OPA 维护海量对象关系，可以做，但会很累。你要自己设计数据加载、缓存、增量同步、关系推导。最后你可能写出了半个 OpenFGA。</p>
+<p>让 OpenFGA 做所有环境条件判断，也不自然。比如“来源 IP 必须是 VPN、设备风险分低于 30、生产删除必须在维护窗口、Agent 工具调用必须经过审批”，这些更像策略，不像关系。</p>
+<p>所以我更推荐这样分工：</p>
+<div class="highlight"><pre><span></span><code>OPA：判断请求是否符合上下文策略
+OpenFGA：判断主体是否和对象存在授权关系
+应用 / 网关：负责执行拦截，也就是 PEP
+</code></pre></div>
+
+<p>这里有几个缩写值得记一下：</p>
+<ul>
+<li><code>PEP</code>：Policy Enforcement Point，策略执行点，比如 API Gateway、middleware、sidecar。</li>
+<li><code>PDP</code>：Policy Decision Point，策略决策点，比如 OPA、OpenFGA。</li>
+<li><code>PIP</code>：Policy Information Point，策略信息点，比如用户目录、资源标签、风控系统。</li>
+<li><code>PAP</code>：Policy Administration Point，策略管理点，比如策略仓库、授权后台。</li>
+</ul>
+<p>不要被缩写吓到。人话版就是：</p>
+<blockquote>
+<p>拦截请求的人，不一定是做决策的人；做决策的人，也不应该偷偷改业务数据。</p>
+</blockquote>
+<hr>
+<h2 id="opa-openfga_1">七、一套组合架构：OPA 管条件，OpenFGA 管关系</h2>
+<p>假设我们做一个内部 Secret 管理系统。</p>
+<p>需求是：</p>
+<ul>
+<li>项目 owner 可以读写本项目 secret。</li>
+<li>项目 viewer 只能读。</li>
+<li>生产环境 secret 删除必须开 MFA。</li>
+<li>删除生产 secret 必须带审批工单。</li>
+<li>外包用户不能访问 <code>confidential</code> 级别 secret。</li>
+<li>Agent 只能在 sandbox 中调用 read-only 工具。</li>
+</ul>
+<p>这时可以这样设计：</p>
+<div class="highlight"><pre><span></span><code>Client
+  |
+  v
+API Gateway / Middleware  &lt;-- PEP
+  |
+  +--&gt; OPA：检查上下文策略
+  |
+  +--&gt; OpenFGA：检查对象关系
+  |
+  v
+Business Service
+</code></pre></div>
+
+<p>一次请求大概是：</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;subject&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;user:alice&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;action&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;secret.delete&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;object&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;secret:prod-db-password&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;context&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;env&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;prod&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;mfa&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;ticket&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;SEC-12345&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;data_classification&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;confidential&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;source&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;vpn&quot;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>OpenFGA 先回答：</p>
+<div class="highlight"><pre><span></span><code>Can user:alice delete secret:prod-db-password?
+</code></pre></div>
+
+<p>OPA 再回答：</p>
+<div class="highlight"><pre><span></span><code>这个 delete 操作在 prod + confidential + 当前上下文下是否允许？
+</code></pre></div>
+
+<p>最后 PEP 合并结果：</p>
+<div class="highlight"><pre><span></span><code>allow = openfga.allowed &amp;&amp; opa.allow &amp;&amp; not opa.deny
+</code></pre></div>
+
+<p>为什么要分两步？</p>
+<p>因为“你是不是这个对象的 owner”和“你现在能不能执行这个高危动作”不是同一个问题。</p>
+<p>owner 也不应该随时随地删除生产密钥。就像你是房主，也不能在半夜三点把承重墙拆了，说“这是我家”。物业会来，楼上楼下也会来。</p>
+<hr>
+<h2 id="http-request">八、一个可运行的 HTTP Request 授权例子</h2>
+<p>上面讲了这么多模型，读者很容易点头：“嗯，有道理。”然后回到项目里，继续写：</p>
+<div class="highlight"><pre><span></span><code><span class="k">if</span> <span class="n">user</span><span class="o">.</span><span class="n">is_admin</span><span class="p">:</span>
+    <span class="o">...</span>
+</code></pre></div>
+
+<p>所以这里给一个最小可运行例子。我们用 <code>docker-compose</code> 一次性启动三类服务：</p>
+<ul>
+<li><code>api</code>：FastAPI 业务服务，也就是 <code>PEP</code>。</li>
+<li><code>opa</code>：OPA 策略决策服务，判断上下文条件。</li>
+<li><code>openfga</code>：OpenFGA 关系授权服务，判断用户和对象之间的关系。</li>
+</ul>
+<p>最终请求路径是：</p>
+<div class="highlight"><pre><span></span><code>HTTP Request -&gt; FastAPI PEP -&gt; OpenFGA Check -&gt; OPA Decision -&gt; allow / deny
+</code></pre></div>
+
+<p>这个 demo 的业务规则是：</p>
+<ul>
+<li><code>alice</code> 可以读取 <code>secret:prod-123_db-password</code>。</li>
+<li><code>admin</code> 可以删除 <code>secret:prod-123_db-password</code>。</li>
+<li>删除生产 secret 还必须满足：<code>role=admin</code>、<code>MFA=true</code>、带审批工单。</li>
+</ul>
+<h3 id="1-opa">1. 写 OPA 策略</h3>
+<p>新建 <code>policy.rego</code>：</p>
+<div class="highlight"><pre><span></span><code>package http.authz
+
+default allow := false
+
+allow if {
+  input.action == &quot;secret.read&quot;
+  input.relationship.allowed == true
+}
+
+allow if {
+  input.action == &quot;secret.delete&quot;
+  input.relationship.allowed == true
+  input.resource.env == &quot;prod&quot;
+  input.user.role == &quot;admin&quot;
+  input.request.mfa == true
+  input.request.ticket != &quot;&quot;
+}
+
+deny contains &quot;OpenFGA relationship check failed&quot; if {
+  input.relationship.allowed != true
+}
+
+deny contains &quot;read requires can_read relationship&quot; if {
+  input.action == &quot;secret.read&quot;
+  input.relationship.allowed != true
+}
+
+deny contains &quot;production delete requires admin&quot; if {
+  input.action == &quot;secret.delete&quot;
+  input.resource.env == &quot;prod&quot;
+  input.user.role != &quot;admin&quot;
+}
+
+deny contains &quot;production delete requires MFA&quot; if {
+  input.action == &quot;secret.delete&quot;
+  input.resource.env == &quot;prod&quot;
+  input.request.mfa != true
+}
+
+deny contains &quot;production delete requires approved ticket&quot; if {
+  input.action == &quot;secret.delete&quot;
+  input.resource.env == &quot;prod&quot;
+  input.request.ticket == &quot;&quot;
+}
+
+decision := {
+  &quot;allow&quot;: allow,
+  &quot;deny&quot;: deny,
+}
+</code></pre></div>
+
+<p>这个策略表达了两个规则：</p>
+<ul>
+<li>读 secret：OpenFGA 必须确认用户对 secret 有 <code>can_read</code> 关系。</li>
+<li>删除生产 secret：OpenFGA 必须确认 <code>can_delete</code> 关系，同时 OPA 要求 admin、MFA 和审批工单。</li>
+</ul>
+<h3 id="2-fastapi">2. 写 FastAPI 业务服务</h3>
+<p>新建 <code>requirements.txt</code>：</p>
+<div class="highlight"><pre><span></span><code>fastapi
+uvicorn
+httpx
+</code></pre></div>
+
+<p>新建 <code>app.py</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Any</span>
+
+<span class="kn">import</span> <span class="nn">httpx</span>
+<span class="kn">from</span> <span class="nn">fastapi</span> <span class="kn">import</span> <span class="n">FastAPI</span><span class="p">,</span> <span class="n">HTTPException</span><span class="p">,</span> <span class="n">Request</span>
+
+
+<span class="n">OPA_URL</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span>
+    <span class="s2">&quot;OPA_URL&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;http://opa:8181/v1/data/http/authz/decision&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">OPENFGA_URL</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;OPENFGA_URL&quot;</span><span class="p">,</span> <span class="s2">&quot;http://openfga:8080&quot;</span><span class="p">)</span>
+
+<span class="n">app</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">()</span>
+
+<span class="n">FGA_STORE_ID</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+<span class="n">FGA_MODEL_ID</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+
+
+<span class="n">FGA_MODEL</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;schema_version&quot;</span><span class="p">:</span> <span class="s2">&quot;1.1&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;type_definitions&quot;</span><span class="p">:</span> <span class="p">[</span>
+        <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">},</span>
+        <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;secret&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;relations&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;reader&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;this&quot;</span><span class="p">:</span> <span class="p">{}},</span>
+                <span class="s2">&quot;deleter&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;this&quot;</span><span class="p">:</span> <span class="p">{}},</span>
+                <span class="s2">&quot;can_read&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;union&quot;</span><span class="p">:</span> <span class="p">{</span>
+                        <span class="s2">&quot;child&quot;</span><span class="p">:</span> <span class="p">[</span>
+                            <span class="p">{</span><span class="s2">&quot;computedUserset&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;relation&quot;</span><span class="p">:</span> <span class="s2">&quot;reader&quot;</span><span class="p">}},</span>
+                            <span class="p">{</span><span class="s2">&quot;computedUserset&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;relation&quot;</span><span class="p">:</span> <span class="s2">&quot;deleter&quot;</span><span class="p">}},</span>
+                        <span class="p">]</span>
+                    <span class="p">}</span>
+                <span class="p">},</span>
+                <span class="s2">&quot;can_delete&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;computedUserset&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;relation&quot;</span><span class="p">:</span> <span class="s2">&quot;deleter&quot;</span><span class="p">}},</span>
+            <span class="p">},</span>
+            <span class="s2">&quot;metadata&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;relations&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;reader&quot;</span><span class="p">:</span> <span class="p">{</span>
+                        <span class="s2">&quot;directly_related_user_types&quot;</span><span class="p">:</span> <span class="p">[{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">}]</span>
+                    <span class="p">},</span>
+                    <span class="s2">&quot;deleter&quot;</span><span class="p">:</span> <span class="p">{</span>
+                        <span class="s2">&quot;directly_related_user_types&quot;</span><span class="p">:</span> <span class="p">[{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">}]</span>
+                    <span class="p">},</span>
+                <span class="p">}</span>
+            <span class="p">},</span>
+        <span class="p">},</span>
+    <span class="p">],</span>
+<span class="p">}</span>
+
+
+<span class="n">FGA_TUPLES</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="p">{</span>
+        <span class="s2">&quot;user&quot;</span><span class="p">:</span> <span class="s2">&quot;user:alice&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;relation&quot;</span><span class="p">:</span> <span class="s2">&quot;reader&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;object&quot;</span><span class="p">:</span> <span class="s2">&quot;secret:prod-123_db-password&quot;</span><span class="p">,</span>
+    <span class="p">},</span>
+    <span class="p">{</span>
+        <span class="s2">&quot;user&quot;</span><span class="p">:</span> <span class="s2">&quot;user:admin&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;relation&quot;</span><span class="p">:</span> <span class="s2">&quot;deleter&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;object&quot;</span><span class="p">:</span> <span class="s2">&quot;secret:prod-123_db-password&quot;</span><span class="p">,</span>
+    <span class="p">},</span>
+<span class="p">]</span>
+
+
+<span class="k">def</span> <span class="nf">secret_object</span><span class="p">(</span><span class="n">project</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">secret_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;secret:</span><span class="si">{</span><span class="n">project</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">secret_name</span><span class="si">}</span><span class="s2">&quot;</span>
+
+
+<span class="k">def</span> <span class="nf">parse_bool</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+    <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">&quot;1&quot;</span><span class="p">,</span> <span class="s2">&quot;true&quot;</span><span class="p">,</span> <span class="s2">&quot;yes&quot;</span><span class="p">,</span> <span class="s2">&quot;y&quot;</span><span class="p">}</span>
+
+
+<span class="k">async</span> <span class="k">def</span> <span class="nf">wait_for_openfga</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">30</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">async</span> <span class="k">with</span> <span class="n">httpx</span><span class="o">.</span><span class="n">AsyncClient</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mf">2.0</span><span class="p">)</span> <span class="k">as</span> <span class="n">client</span><span class="p">:</span>
+                <span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">post</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">OPENFGA_URL</span><span class="si">}</span><span class="s2">/stores&quot;</span><span class="p">,</span>
+                    <span class="n">json</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;authz-demo&quot;</span><span class="p">},</span>
+                <span class="p">)</span>
+                <span class="n">response</span><span class="o">.</span><span class="n">raise_for_status</span><span class="p">()</span>
+                <span class="k">global</span> <span class="n">FGA_STORE_ID</span>
+                <span class="n">FGA_STORE_ID</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">json</span><span class="p">()[</span><span class="s2">&quot;id&quot;</span><span class="p">]</span>
+                <span class="k">return</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;OpenFGA is not ready&quot;</span><span class="p">)</span>
+
+
+<span class="k">async</span> <span class="k">def</span> <span class="nf">init_openfga</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">await</span> <span class="n">wait_for_openfga</span><span class="p">()</span>
+
+    <span class="k">async</span> <span class="k">with</span> <span class="n">httpx</span><span class="o">.</span><span class="n">AsyncClient</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mf">5.0</span><span class="p">)</span> <span class="k">as</span> <span class="n">client</span><span class="p">:</span>
+        <span class="n">model_response</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">post</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">OPENFGA_URL</span><span class="si">}</span><span class="s2">/stores/</span><span class="si">{</span><span class="n">FGA_STORE_ID</span><span class="si">}</span><span class="s2">/authorization-models&quot;</span><span class="p">,</span>
+            <span class="n">json</span><span class="o">=</span><span class="n">FGA_MODEL</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">model_response</span><span class="o">.</span><span class="n">raise_for_status</span><span class="p">()</span>
+
+        <span class="k">global</span> <span class="n">FGA_MODEL_ID</span>
+        <span class="n">FGA_MODEL_ID</span> <span class="o">=</span> <span class="n">model_response</span><span class="o">.</span><span class="n">json</span><span class="p">()[</span><span class="s2">&quot;authorization_model_id&quot;</span><span class="p">]</span>
+
+        <span class="n">tuple_response</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">post</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">OPENFGA_URL</span><span class="si">}</span><span class="s2">/stores/</span><span class="si">{</span><span class="n">FGA_STORE_ID</span><span class="si">}</span><span class="s2">/write&quot;</span><span class="p">,</span>
+            <span class="n">json</span><span class="o">=</span><span class="p">{</span>
+                <span class="s2">&quot;authorization_model_id&quot;</span><span class="p">:</span> <span class="n">FGA_MODEL_ID</span><span class="p">,</span>
+                <span class="s2">&quot;writes&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;tuple_keys&quot;</span><span class="p">:</span> <span class="n">FGA_TUPLES</span><span class="p">},</span>
+            <span class="p">},</span>
+        <span class="p">)</span>
+        <span class="n">tuple_response</span><span class="o">.</span><span class="n">raise_for_status</span><span class="p">()</span>
+
+
+<span class="nd">@app</span><span class="o">.</span><span class="n">on_event</span><span class="p">(</span><span class="s2">&quot;startup&quot;</span><span class="p">)</span>
+<span class="k">async</span> <span class="k">def</span> <span class="nf">startup</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">await</span> <span class="n">init_openfga</span><span class="p">()</span>
+
+
+<span class="k">def</span> <span class="nf">build_authz_input</span><span class="p">(</span>
+    <span class="n">request</span><span class="p">:</span> <span class="n">Request</span><span class="p">,</span>
+    <span class="n">project</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">secret_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">action</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">&quot;user&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="n">request</span><span class="o">.</span><span class="n">headers</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;x-user&quot;</span><span class="p">,</span> <span class="s2">&quot;anonymous&quot;</span><span class="p">),</span>
+            <span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="n">request</span><span class="o">.</span><span class="n">headers</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;x-role&quot;</span><span class="p">,</span> <span class="s2">&quot;developer&quot;</span><span class="p">),</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;action&quot;</span><span class="p">:</span> <span class="n">action</span><span class="p">,</span>
+        <span class="s2">&quot;resource&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;secret&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;project&quot;</span><span class="p">:</span> <span class="n">project</span><span class="p">,</span>
+            <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="n">secret_name</span><span class="p">,</span>
+            <span class="s2">&quot;env&quot;</span><span class="p">:</span> <span class="s2">&quot;prod&quot;</span> <span class="k">if</span> <span class="n">project</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;prod&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="s2">&quot;dev&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;object&quot;</span><span class="p">:</span> <span class="n">secret_object</span><span class="p">(</span><span class="n">project</span><span class="p">,</span> <span class="n">secret_name</span><span class="p">),</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;request&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;mfa&quot;</span><span class="p">:</span> <span class="n">parse_bool</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">headers</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;x-mfa&quot;</span><span class="p">)),</span>
+            <span class="s2">&quot;ticket&quot;</span><span class="p">:</span> <span class="n">request</span><span class="o">.</span><span class="n">headers</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;x-ticket&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">),</span>
+            <span class="s2">&quot;source_ip&quot;</span><span class="p">:</span> <span class="n">request</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">host</span> <span class="k">if</span> <span class="n">request</span><span class="o">.</span><span class="n">client</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+        <span class="p">},</span>
+    <span class="p">}</span>
+
+
+<span class="k">async</span> <span class="k">def</span> <span class="nf">check_openfga</span><span class="p">(</span><span class="n">input_doc</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+    <span class="n">relation</span> <span class="o">=</span> <span class="s2">&quot;can_read&quot;</span>
+    <span class="k">if</span> <span class="n">input_doc</span><span class="p">[</span><span class="s2">&quot;action&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;secret.delete&quot;</span><span class="p">:</span>
+        <span class="n">relation</span> <span class="o">=</span> <span class="s2">&quot;can_delete&quot;</span>
+
+    <span class="n">body</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;authorization_model_id&quot;</span><span class="p">:</span> <span class="n">FGA_MODEL_ID</span><span class="p">,</span>
+        <span class="s2">&quot;tuple_key&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;user&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;user:</span><span class="si">{</span><span class="n">input_doc</span><span class="p">[</span><span class="s1">&#39;user&#39;</span><span class="p">][</span><span class="s1">&#39;id&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;relation&quot;</span><span class="p">:</span> <span class="n">relation</span><span class="p">,</span>
+            <span class="s2">&quot;object&quot;</span><span class="p">:</span> <span class="n">input_doc</span><span class="p">[</span><span class="s2">&quot;resource&quot;</span><span class="p">][</span><span class="s2">&quot;object&quot;</span><span class="p">],</span>
+        <span class="p">},</span>
+    <span class="p">}</span>
+
+    <span class="k">async</span> <span class="k">with</span> <span class="n">httpx</span><span class="o">.</span><span class="n">AsyncClient</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mf">2.0</span><span class="p">)</span> <span class="k">as</span> <span class="n">client</span><span class="p">:</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">post</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">OPENFGA_URL</span><span class="si">}</span><span class="s2">/stores/</span><span class="si">{</span><span class="n">FGA_STORE_ID</span><span class="si">}</span><span class="s2">/check&quot;</span><span class="p">,</span>
+            <span class="n">json</span><span class="o">=</span><span class="n">body</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">response</span><span class="o">.</span><span class="n">raise_for_status</span><span class="p">()</span>
+
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">&quot;relation&quot;</span><span class="p">:</span> <span class="n">relation</span><span class="p">,</span>
+        <span class="s2">&quot;allowed&quot;</span><span class="p">:</span> <span class="n">response</span><span class="o">.</span><span class="n">json</span><span class="p">()</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;allowed&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">),</span>
+    <span class="p">}</span>
+
+
+<span class="k">async</span> <span class="k">def</span> <span class="nf">authorize</span><span class="p">(</span><span class="n">input_doc</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+    <span class="n">input_doc</span><span class="p">[</span><span class="s2">&quot;relationship&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="k">await</span> <span class="n">check_openfga</span><span class="p">(</span><span class="n">input_doc</span><span class="p">)</span>
+
+    <span class="k">async</span> <span class="k">with</span> <span class="n">httpx</span><span class="o">.</span><span class="n">AsyncClient</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mf">2.0</span><span class="p">)</span> <span class="k">as</span> <span class="n">client</span><span class="p">:</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="n">OPA_URL</span><span class="p">,</span> <span class="n">json</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;input&quot;</span><span class="p">:</span> <span class="n">input_doc</span><span class="p">})</span>
+        <span class="n">response</span><span class="o">.</span><span class="n">raise_for_status</span><span class="p">()</span>
+
+    <span class="n">decision</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">json</span><span class="p">()</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;result&quot;</span><span class="p">,</span> <span class="p">{})</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">decision</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;allow&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="n">HTTPException</span><span class="p">(</span>
+            <span class="n">status_code</span><span class="o">=</span><span class="mi">403</span><span class="p">,</span>
+            <span class="n">detail</span><span class="o">=</span><span class="p">{</span>
+                <span class="s2">&quot;message&quot;</span><span class="p">:</span> <span class="s2">&quot;forbidden&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;decision&quot;</span><span class="p">:</span> <span class="n">decision</span><span class="p">,</span>
+                <span class="s2">&quot;input&quot;</span><span class="p">:</span> <span class="n">input_doc</span><span class="p">,</span>
+            <span class="p">},</span>
+        <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">decision</span>
+
+
+<span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;/projects/</span><span class="si">{project}</span><span class="s2">/secrets/</span><span class="si">{secret_name}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="k">async</span> <span class="k">def</span> <span class="nf">read_secret</span><span class="p">(</span><span class="n">project</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">secret_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">request</span><span class="p">:</span> <span class="n">Request</span><span class="p">):</span>
+    <span class="n">input_doc</span> <span class="o">=</span> <span class="n">build_authz_input</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">project</span><span class="p">,</span> <span class="n">secret_name</span><span class="p">,</span> <span class="s2">&quot;secret.read&quot;</span><span class="p">)</span>
+    <span class="n">decision</span> <span class="o">=</span> <span class="k">await</span> <span class="n">authorize</span><span class="p">(</span><span class="n">input_doc</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">&quot;secret&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">project</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">secret_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="s2">&quot;__REDACTED__&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;decision&quot;</span><span class="p">:</span> <span class="n">decision</span><span class="p">,</span>
+    <span class="p">}</span>
+
+
+<span class="nd">@app</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="s2">&quot;/projects/</span><span class="si">{project}</span><span class="s2">/secrets/</span><span class="si">{secret_name}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="k">async</span> <span class="k">def</span> <span class="nf">delete_secret</span><span class="p">(</span><span class="n">project</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">secret_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">request</span><span class="p">:</span> <span class="n">Request</span><span class="p">):</span>
+    <span class="n">input_doc</span> <span class="o">=</span> <span class="n">build_authz_input</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">project</span><span class="p">,</span> <span class="n">secret_name</span><span class="p">,</span> <span class="s2">&quot;secret.delete&quot;</span><span class="p">)</span>
+    <span class="n">decision</span> <span class="o">=</span> <span class="k">await</span> <span class="n">authorize</span><span class="p">(</span><span class="n">input_doc</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">&quot;deleted&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">project</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">secret_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;decision&quot;</span><span class="p">:</span> <span class="n">decision</span><span class="p">,</span>
+    <span class="p">}</span>
+</code></pre></div>
+
+<p>这段代码启动时会自动初始化 OpenFGA：</p>
+<ul>
+<li>创建一个 store；</li>
+<li>写入 authorization model；</li>
+<li>写入两条关系 tuple：<code>alice</code> 能读，<code>admin</code> 能删；</li>
+<li>每个 HTTP 请求先调用 OpenFGA <code>/check</code>，再调用 OPA <code>/decision</code>。</li>
+</ul>
+<h3 id="3-dockerfile">3. 写 Dockerfile</h3>
+<p>新建 <code>Dockerfile</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="k">FROM</span><span class="w"> </span><span class="s">python:3.12-slim</span>
+
+<span class="k">WORKDIR</span><span class="w"> </span><span class="s">/app</span>
+
+<span class="k">COPY</span><span class="w"> </span>requirements.txt<span class="w"> </span>.
+<span class="k">RUN</span><span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--no-cache-dir<span class="w"> </span>-r<span class="w"> </span>requirements.txt
+
+<span class="k">COPY</span><span class="w"> </span>app.py<span class="w"> </span>.
+
+<span class="k">CMD</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;uvicorn&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;app:app&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;--host&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;0.0.0.0&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;--port&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;8000&quot;</span><span class="p">]</span>
+</code></pre></div>
+
+<h3 id="4-docker-composeyml">4. 写 docker-compose.yml</h3>
+<p>新建 <code>docker-compose.yml</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">services</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">opa</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">openpolicyagent/opa:latest</span>
+<span class="w">    </span><span class="nt">command</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">run</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">--server</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">--addr</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.0.0.0:8181</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/policy.rego</span>
+<span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./policy.rego:/policy.rego:ro</span>
+<span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;8181:8181&quot;</span>
+
+<span class="w">  </span><span class="nt">openfga</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">openfga/openfga:latest</span>
+<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;run&quot;</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;8080:8080&quot;</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;8081:8081&quot;</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;3000:3000&quot;</span>
+
+<span class="w">  </span><span class="nt">api</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">build</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.</span>
+<span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">OPA_URL</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://opa:8181/v1/data/http/authz/decision</span>
+<span class="w">      </span><span class="nt">OPENFGA_URL</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://openfga:8080</span>
+<span class="w">    </span><span class="nt">depends_on</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">opa</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">openfga</span>
+<span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;8000:8000&quot;</span>
+</code></pre></div>
+
+<p>启动：</p>
+<div class="highlight"><pre><span></span><code>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>--build
+</code></pre></div>
+
+<p>几个端口分别是：</p>
+<ul>
+<li><code>8000</code>：FastAPI 业务 API。</li>
+<li><code>8181</code>：OPA REST API。</li>
+<li><code>8080</code>：OpenFGA HTTP API。</li>
+<li><code>3000</code>：OpenFGA Playground。</li>
+</ul>
+<h3 id="5-http-request">5. 发 HTTP Request 验证授权</h3>
+<p>读 secret，<code>alice</code> 在 OpenFGA 里有 <code>reader</code> 关系，允许：</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-i<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s1">&#39;X-User: alice&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s1">&#39;X-Role: developer&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>http://localhost:8000/projects/prod-123/secrets/db-password
+</code></pre></div>
+
+<p>预期是 <code>200 OK</code>。</p>
+<p>读 secret，<code>bob</code> 没有任何关系，OpenFGA check 不通过，拒绝：</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-i<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s1">&#39;X-User: bob&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s1">&#39;X-Role: developer&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>http://localhost:8000/projects/prod-123/secrets/db-password
+</code></pre></div>
+
+<p>预期是 <code>403 Forbidden</code>，返回里会看到：</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;forbidden&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;decision&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;allow&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;deny&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="s2">&quot;OpenFGA relationship check failed&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="s2">&quot;read requires can_read relationship&quot;</span>
+<span class="w">    </span><span class="p">]</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>删除生产 secret，developer 即使开了 MFA，也拒绝：</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-i<span class="w"> </span>-X<span class="w"> </span>DELETE<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s1">&#39;X-User: alice&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s1">&#39;X-Role: developer&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s1">&#39;X-MFA: true&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s1">&#39;X-Ticket: SEC-12345&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>http://localhost:8000/projects/prod-123/secrets/db-password
+</code></pre></div>
+
+<p>预期是 <code>403 Forbidden</code>。</p>
+<p>删除生产 secret，admin + MFA + ticket，允许：</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-i<span class="w"> </span>-X<span class="w"> </span>DELETE<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s1">&#39;X-User: admin&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s1">&#39;X-Role: admin&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s1">&#39;X-MFA: true&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s1">&#39;X-Ticket: SEC-12345&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>http://localhost:8000/projects/prod-123/secrets/db-password
+</code></pre></div>
+
+<p>预期是 <code>200 OK</code>。</p>
+<p>这个例子里，HTTP 请求没有直接进入业务逻辑。它先被 <code>authorize()</code> 拦住，变成标准的：</p>
+<div class="highlight"><pre><span></span><code>subject + action + resource + context
+</code></pre></div>
+
+<p>然后交给 OPA 判断。业务代码只关心“决策结果是什么”，不再把授权规则写成一堆散落的 <code>if</code>。</p>
+<h3 id="6-demo">6. 这个 demo 里三者怎么分工</h3>
+<p>这套 docker-compose 跑起来后，分工已经很接近真实系统：</p>
+<div class="highlight"><pre><span></span><code>FastAPI PEP
+  -&gt; OpenFGA check(user, can_read/can_delete, secret)
+  -&gt; OPA eval(subject/action/resource/context + relationship.allowed)
+  -&gt; allow / deny
+</code></pre></div>
+
+<p>也就是说：</p>
+<ul>
+<li>OpenFGA 负责回答“这个用户和这个 secret 有没有授权关系”。</li>
+<li>OPA 负责回答“在当前上下文里，这个动作是否允许”。</li>
+<li>FastAPI / Gateway 负责拦截 HTTP request 并执行决策。</li>
+</ul>
+<p>这就是 IAM 心智模型在自建系统里的落地版。</p>
+<hr>
+<h2 id="_3">九、落地时最容易踩的坑</h2>
+<h3 id="1">1. 把认证当授权</h3>
+<p>登录成功只说明“你是谁”，不说明“你能干什么”。</p>
+<p>很多事故的根源就是：</p>
+<div class="highlight"><pre><span></span><code>JWT valid -&gt; allow
+</code></pre></div>
+
+<p>这不叫授权，这叫验票后直接让乘客开火车。</p>
+<p>正确做法是：</p>
+<div class="highlight"><pre><span></span><code>Authentication -&gt; Identity
+Authorization -&gt; Decision
+</code></pre></div>
+
+<p>身份只是授权输入的一部分。</p>
+<h3 id="2">2. 把角色当万能钥匙</h3>
+<p>RBAC 很好，但单靠角色很快会失控。</p>
+<p><code>admin</code>、<code>super_admin</code>、<code>project_admin</code>、<code>regional_admin</code>、<code>temporary_admin</code>、<code>readonly_admin</code>……最后 admin 像便利店会员卡，人人都有一张。</p>
+<p>角色适合表达粗粒度职责；对象关系和上下文条件，要交给更细的模型。</p>
+<h3 id="3">3. 把策略写死在业务服务里</h3>
+<p>散落在代码里的授权逻辑，很难统一审计，也很难回答：</p>
+<ul>
+<li>哪些接口允许外包访问？</li>
+<li>哪些操作需要 MFA？</li>
+<li>某个用户为什么能看到这个文档？</li>
+<li>某条策略是谁改的，什么时候上线的？</li>
+</ul>
+<p>OPA 和 OpenFGA 的价值之一，就是把授权逻辑变成可管理资产。</p>
+<h3 id="4">4. 忘了性能和缓存</h3>
+<p>授权是热路径。每个 API 都查两三个远程系统，延迟会很感人。</p>
+<p>需要提前设计：</p>
+<ul>
+<li>OPA sidecar / library / centralized service 怎么部署。</li>
+<li>OpenFGA check 是否要批量调用。</li>
+<li>哪些决策能缓存，缓存 key 是什么。</li>
+<li>关系变更后如何失效。</li>
+<li>拒绝结果能不能缓存，缓存多久。</li>
+</ul>
+<p>授权系统不能只在安全评审里显得优雅，还要在 p99 延迟里活下来。</p>
+<h3 id="5">5. 没有解释能力</h3>
+<p>一个好的授权系统，不只返回：</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="w"> </span><span class="nt">&quot;allowed&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+
+<p>还应该告诉你：</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;allowed&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;reason&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;production delete requires approved ticket&quot;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>否则排障时大家只能围着屏幕念咒：“为什么 403？”</p>
+<hr>
+<h2 id="_4">十、明天就能做的实施清单</h2>
+<p>如果你准备搭一个开源版 IAM，我建议按这个顺序来。别一上来就写策略编辑器，那个东西最容易让人误以为自己在造 IAM，实际上只是在造一个漂亮的 JSON 输入框。</p>
+<ol>
+<li><strong>先接身份源</strong>：用 Keycloak / Dex / ORY Hydra 接 OIDC / SAML，先解决“你是谁”。</li>
+<li><strong>接 workload identity</strong>：用 SPIFFE/SPIRE 给服务、Pod、Job、Agent 发 SVID，先解决“这个工作负载是谁”。</li>
+<li><strong>设计 role 和 resource 模型</strong>：用户、workload、角色、组织、项目、文档、secret、环境，分别是什么对象。</li>
+<li><strong>实现最小 STS</strong>：支持 <code>AssumeRole</code> / <code>AssumeRoleWithSVID</code>，签发 15 分钟短期 token，别发长期万能 token。</li>
+<li><strong>用 OpenFGA 表达 trust 和 resource relationship</strong>：谁能 assume role，role 对哪些资源有关系。</li>
+<li><strong>用 OPA 表达 condition 和 explicit deny</strong>：MFA、VPN、ticket、risk、维护窗口、高危操作、SPIFFE trust domain。</li>
+<li><strong>定义 PEP 位置</strong>：API Gateway、middleware、service interceptor，至少有一个统一入口。</li>
+<li><strong>策略版本化</strong>：Rego、FGA model、migration、tuple 写入都进 Git 或变更系统。</li>
+<li><strong>加测试</strong>：授权策略必须有单元测试，覆盖 allow 和 deny，不要只测阳光路径。</li>
+<li><strong>加解释和审计</strong>：记录 subject、workload、session、role、action、resource、decision、reason、policy version、request id。</li>
+<li><strong>做性能预算</strong>：明确每次授权 check 的延迟目标、缓存策略和降级策略。</li>
+<li><strong>先从一个高价值场景试点</strong>：比如 secret 管理、文档权限、Agent 工具调用，不要一口吃全公司。</li>
+</ol>
+<p>一个最小的上线门槛可以是：</p>
+<div class="highlight"><pre><span></span><code>所有高危 API：
+1. 必须经过统一 PEP；
+2. 必须有 subject/workload/session/role/action/resource/context；
+3. 服务间调用必须有可验证 workload identity，例如 SPIFFE ID；
+4. 必须检查 OpenFGA relationship；
+5. 必须检查 OPA condition 和 explicit deny；
+6. 必须记录 allow/deny 和 reason；
+7. deny 默认安全，不允许策略服务失败时放行；
+8. 策略变更必须可 review、可回滚。
+</code></pre></div>
+
+<p>这几条不华丽，但够硬。</p>
+<hr>
+<h2 id="_5">总结</h2>
+<p>AWS IAM 给我们的启发，不是“所有系统都要写 JSON policy”，而是：授权应该被建模、被版本化、被审计、被测试，还要有短期凭证和清晰的信任边界。</p>
+<p>如果用开源组件搭一个 IAM-like 系统，我会把它拆成几块：</p>
+<ul>
+<li>Keycloak / Dex 负责身份登录。</li>
+<li>SPIFFE / SPIRE 负责工作负载身份和服务间 mTLS。</li>
+<li>STS 负责 AssumeRole 和短期 role session。</li>
+<li>OpenFGA 负责 trust relationship 和 resource relationship。</li>
+<li>OPA 负责 permission policy、condition、explicit deny 和 guardrail。</li>
+<li>PEP 负责在网关或服务入口真正拦截请求。</li>
+<li>Audit 负责把每一次授权判断变成可追溯证据。</li>
+</ul>
+<p>OpenFGA、OPA 和 SPIRE 不是互相替代，而是回答不同问题。OpenFGA 问“这个主体和对象之间有授权关系吗？”OPA 问“这个请求符合当前策略和条件吗？”SPIRE 问“这个工作负载是不是它声称的那个工作负载？”STS 则回答“这个主体现在能不能临时扮演某个角色？”</p>
+<p>真正成熟的授权系统，不是把所有人都变成 admin，也不是把所有判断都塞进业务代码。它应该像一个可靠的门禁系统：知道谁来了，知道他临时拿了哪张工牌，知道他要去哪，知道现在是不是合适的时间，也知道出了问题该翻哪本账。</p>
+<h3 id="_6">思维导图</h3>
+<div class="highlight"><pre><span></span><code>@startmindmap
+* OSS IAM-like 授权系统
+** AWS IAM 心智模型
+*** Principal
+*** Role / AssumeRole
+*** Trust Policy
+*** Permission Policy
+*** Resource Policy
+*** Condition / Explicit Deny
+*** CloudTrail
+** 开源组件
+*** Keycloak / Dex / ORY
+**** 身份登录和联邦
+*** SPIFFE / SPIRE
+**** workload identity
+**** X.509-SVID / JWT-SVID
+**** mTLS
+*** 自建 STS
+**** AssumeRole
+**** AssumeRoleWithSVID
+**** 短期 session token
+*** OpenFGA
+**** can_assume trust relationship
+**** resource relationship
+**** Check / Batch Check
+*** OPA
+**** permission policy
+**** condition
+**** explicit deny
+**** guardrail
+*** PEP
+**** API Gateway
+**** middleware
+*** Audit
+**** decision log
+**** reason / policy version
+** 授权流程
+*** Login
+*** Workload gets SVID
+*** AssumeRole
+*** STS verifies SPIFFE ID
+*** STS check OpenFGA
+*** STS eval OPA trust policy
+*** Issue short-lived token
+*** API PEP checks OpenFGA + OPA
+** 可运行 HTTP 示例
+*** docker-compose 启动 api / opa / openfga
+*** FastAPI 作为 PEP
+*** OpenFGA 初始化关系模型
+*** OPA REST API 决策
+*** curl 验证 200 / 403
+** 落地要点
+*** 先接身份源
+*** 接 SPIFFE/SPIRE
+*** 设计 role/resource 模型
+*** 最小 STS
+*** 策略版本化
+*** 单元测试
+*** 审计与解释
+*** 性能与缓存
+** 常见坑
+*** 认证当授权
+*** 长期 token 当 session
+*** OpenFGA 承担所有条件策略
+*** OPA 变成关系数据库
+*** 策略服务失败时默认放行
+@endmindmap
+</code></pre></div>
+
+<p><img alt="OSS IAM-like 授权系统思维导图" src="../images/journal_20260429_opa-openfga-authorization_mindmap.png"></p>
+<h2 id="_7">扩展阅读</h2>
+<ul>
+<li><a href="https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html">AWS IAM: Policies and permissions</a></li>
+<li><a href="https://www.openpolicyagent.org/docs/latest/">Open Policy Agent Documentation</a></li>
+<li><a href="https://www.openpolicyagent.org/docs/latest/policy-language/">OPA Policy Language</a></li>
+<li><a href="https://openfga.dev/docs/concepts">OpenFGA Concepts</a></li>
+<li><a href="https://openfga.dev/docs/modeling/getting-started">OpenFGA Modeling: Getting Started</a></li>
+<li><a href="https://openfga.dev/docs/getting-started/perform-check">OpenFGA Perform a Check</a></li>
+<li><a href="https://spiffe.io/docs/latest/spiffe-about/overview/">SPIFFE Overview</a></li>
+<li><a href="https://spiffe.io/docs/latest/spire-about/spire-concepts/">SPIRE Concepts</a></li>
+</ul>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。</p>
+  </div>
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/tag/authorization.html">authorization</a>
+      <a href="https://www.fanyamin.com/tag/iam.html">IAM</a>
+      <a href="https://www.fanyamin.com/tag/opa.html">OPA</a>
+      <a href="https://www.fanyamin.com/tag/openfga.html">OpenFGA</a>
+      <a href="https://www.fanyamin.com/tag/keycloak.html">Keycloak</a>
+      <a href="https://www.fanyamin.com/tag/sts.html">STS</a>
+      <a href="https://www.fanyamin.com/tag/spiffe.html">SPIFFE</a>
+      <a href="https://www.fanyamin.com/tag/spire.html">SPIRE</a>
+      <a href="https://www.fanyamin.com/tag/rbac.html">RBAC</a>
+      <a href="https://www.fanyamin.com/tag/abac.html">ABAC</a>
+      <a href="https://www.fanyamin.com/tag/rebac.html">ReBAC</a>
+      <a href="https://www.fanyamin.com/tag/security.html">security</a>
+    </p>
+  </div>
+
+
+  <div class="center social-share" style="margin: 1.5em 0; text-align: center;">
+    <p style="margin-bottom: 0.5em; color: #888;">📤 Share this article</p>
+    <a href="https://twitter.com/intent/tweet?text=%E7%94%A8%E5%BC%80%E6%BA%90%E7%BB%84%E4%BB%B6%E6%90%AD%E4%B8%80%E4%B8%AA%20AWS%20IAM%20%E9%A3%8E%E6%A0%BC%E7%9A%84%E6%8E%88%E6%9D%83%E7%B3%BB%E7%BB%9F&url=https://www.fanyamin.com/2026-04-29-oss-iam-authorization-system.html"
+       target="_blank" rel="noopener" title="Share on Twitter/X"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#1da1f2; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      𝕏 Twitter
+    </a>
+    <a href="https://www.linkedin.com/sharing/share-offsite/?url=https://www.fanyamin.com/2026-04-29-oss-iam-authorization-system.html"
+       target="_blank" rel="noopener" title="Share on LinkedIn"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#0077b5; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      💼 LinkedIn
+    </a>
+    <a href="javascript:void(0);" onclick="copyLink('https://www.fanyamin.com/2026-04-29-oss-iam-authorization-system.html')" title="Copy link"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#666; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em; cursor:pointer;">
+      🔗 Copy Link
+    </a>
+    <script>
+    function copyLink(url) {
+      navigator.clipboard.writeText(url).then(function() {
+        alert('链接已复制！');
+      });
+    }
+    </script>
+  </div>
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/agent-box-chu-tan-cong-openclaw-xiao-long-xia-an-quan-wen-ti-tan-agent-sandbox.html" title="Agent Box 初探：从 OpenClaw 小龙虾安全问题谈 Agent Sandbox">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/cong-11-chat-dao-qun-liao-rang-ren-he-duo-ge-ai-agent-yi-qi-kai-hui.html" title="从 1:1 Chat 到群聊：让人和多个 AI Agent 一起开会">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/2026-03-05-rbac-openfga-authorization.html">从 RBAC 到 OpenFGA：细粒度授权的架构、落地与取舍</a></li>
+      <li><a href="https://www.fanyamin.com/2026-01-25-eks-pod-iam-role.html">在 EKS 上给 Pod 绑 IAM Role：IRSA（ServiceAccount + OIDC）到底怎么回事</a></li>
+      <li><a href="https://www.fanyamin.com/spire-03-security-analysis.html">SPIRE 系列之三：安全性分析与加固清单</a></li>
+      <li><a href="https://www.fanyamin.com/workload-identitybie-zai-ba-yun-shang-shen-fen-sai-jin-secret-li-liao.html">Workload Identity：别再把云上身份塞进 Secret 里了</a></li>
+      <li><a href="https://www.fanyamin.com/spire-04-hands-on-lab.html">SPIRE 系列之四：实战 Lab — 用零信任身份替代数据库密码分发</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

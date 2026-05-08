@@ -1,0 +1,981 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'G-VZL08BHDPP', 'auto');
+  ga('send', 'pageview');
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="AI Agent 一旦从“会聊天”走向“会动手”，最大的问题就不再是模型够不够聪明，而是它在哪里动手、能碰什么、出错后谁来收拾。本文结合 OpenClaw 小龙虾近期暴露的 prompt injection、token/credential 暴露、工具权限和本地网关风险，聊聊为什么 Agent 需要一个隔离、持久、可编程的 Sandbox，以及如何用 Sandbox CRD、Template、Claim、WarmPool、KSA/RBAC 和 NetworkPolicy 搭出第一版。" />
+<meta name="keywords" content="AI Agent, Agent Sandbox, OpenClaw, Kubernetes, Sandbox, gVisor, Kata Containers, Security, RBAC, NetworkPolicy">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Agent Box 初探：从 OpenClaw 小龙虾安全问题谈 Agent Sandbox",
+  "description": "AI Agent 一旦从“会聊天”走向“会动手”，最大的问题就不再是模型够不够聪明，而是它在哪里动手、能碰什么、出错后谁来收拾。本文结合 OpenClaw 小龙虾近期暴露的 prompt injection、token/credential 暴露、工具权限和本地网关风险，聊聊为什么 Agent 需要一个隔离、持久、可编程的 Sandbox，以及如何用 Sandbox CRD、Template、Claim、WarmPool、KSA/RBAC 和 NetworkPolicy 搭出第一版。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-04-29T21:38:00+08:00",
+  "dateModified": "2026-04-29T22:10:00+08:00",
+  "url": "https://www.fanyamin.com/agent-box-chu-tan-cong-openclaw-xiao-long-xia-an-quan-wen-ti-tan-agent-sandbox.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/agent-box-chu-tan-cong-openclaw-xiao-long-xia-an-quan-wen-ti-tan-agent-sandbox.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "AI Agent, Agent Sandbox, OpenClaw, Kubernetes, Sandbox, gVisor, Kata Containers, Security, RBAC, NetworkPolicy"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="Agent Box 初探：从 OpenClaw 小龙虾安全问题谈 Agent Sandbox"/>
+  <meta property="og:description" content="AI Agent 一旦从“会聊天”走向“会动手”，最大的问题就不再是模型够不够聪明，而是它在哪里动手、能碰什么、出错后谁来收拾。本文结合 OpenClaw 小龙虾近期暴露的 prompt injection、token/credential 暴露、工具权限和本地网关风险，聊聊为什么 Agent 需要一个隔离、持久、可编程的 Sandbox，以及如何用 Sandbox CRD、Template、Claim、WarmPool、KSA/RBAC 和 NetworkPolicy 搭出第一版。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/agent-box-chu-tan-cong-openclaw-xiao-long-xia-an-quan-wen-ti-tan-agent-sandbox.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-04-29 21:38:00+08:00"/>
+  <meta property="article:modified_time" content="2026-04-29 22:10:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="AI Agent"/>
+  <meta property="article:tag" content="Agent Sandbox"/>
+  <meta property="article:tag" content="OpenClaw"/>
+  <meta property="article:tag" content="Kubernetes"/>
+  <meta property="article:tag" content="Sandbox"/>
+  <meta property="article:tag" content="gVisor"/>
+  <meta property="article:tag" content="Kata Containers"/>
+  <meta property="article:tag" content="Security"/>
+  <meta property="article:tag" content="RBAC"/>
+  <meta property="article:tag" content="NetworkPolicy"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; Agent Box 初探：从 OpenClaw 小龙虾安全问题谈 Agent Sandbox</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/">Walter Fan</a>
+    </h1>
+
+    <p>手握灵珠常奋笔, 心开天籁不吹箫</p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/search.html" role="search">
+      <input type="text" name="q" id="tipue_search_input" placeholder="Search...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank" href="tao.html" >tao</a>
+          </li>
+          <li>
+            <a target="_blank" href="article.html" >article</a>
+          </li>
+          <li>
+            <a target="_blank" href="manual.html" >manual</a>
+          </li>
+          <li>
+            <a target="_blank" href="interest.html" >interest</a>
+          </li>
+          <li>
+            <a target="_self" href="/wordpress" >notebook</a>
+          </li>
+          <li>
+            <a target="_blank" href="bookmark.html" >bookmark</a>
+          </li>
+          <li>
+            <a target="_self" href="/webrtc/examples/index.html" >webrtc</a>
+          </li>
+          <li>
+            <a target="_blank" href="https://github.com/walterfan" >github</a>
+          </li>
+          <li>
+            <a target="_blank" href="categories.html" >categories</a>
+          </li>
+          <li>
+            <a target="_blank" href="tags.html" >tags</a>
+          </li>
+      </ul>
+    </nav>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+</aside>
+  <main>
+
+
+<article class="single">
+  <header>
+      
+    <h1 id="agent-box-chu-tan-cong-openclaw-xiao-long-xia-an-quan-wen-ti-tan-agent-sandbox">Agent Box 初探：从 OpenClaw 小龙虾安全问题谈 Agent Sandbox</h1>
+    <p>
+      Posted on 三 29 4月 2026 in <a href="https://www.fanyamin.com/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>Agent Box 初探：从 OpenClaw 小龙虾安全问题谈 Agent Sandbox</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>tech note</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-04-29</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">先说一个不太浪漫的判断</h2>
+<p>AI Agent 最迷人的地方，是它终于不只是“嘴上很会”。它可以写代码、跑命令、装依赖、打开浏览器、读文件、改配置，甚至自己失败了还能重试。听起来像一个很积极的实习生。</p>
+<p>问题也在这里：一个积极但偶尔幻觉的实习生，如果直接坐在生产机器上敲命令，那就不是生产力工具，而是运维惊悚片。老程序员都懂，<code>rm -rf</code> 的杀伤力不取决于是谁敲的，取决于它敲在哪里。</p>
+<p>最近 OpenClaw 小龙虾相关的安全讨论，就像给这个问题打了一束很刺眼的追光。公开 issue 和官方博客里反复出现几类风险：外部消息被拼进 agent 上下文导致 prompt injection；本地 Gateway / WebSocket 过度信任 localhost；sandboxed agent 仍然能从配置里读到解析后的 API key；工具执行缺少 allowlist、审批和参数校验。很多问题后来已经修，但它们共同说明一件事：</p>
+<p><strong>Agent 的风险，不在于它会不会犯错，而在于它犯错时手里拿着什么权限、站在什么地方。</strong></p>
+<p>所以我认为 Agent 时代真正缺的不是又一个更会聊天的窗口，而是一个<strong>有边界、有状态、有生命周期的工作间</strong>。你可以把它叫 Agent Box，也可以按 Kubernetes SIGs 项目的名字叫 <a href="https://agent-sandbox.sigs.k8s.io/docs/">Agent Sandbox</a>。这篇文章基于我在 <strong>2026-04-29</strong> 查阅的官方文档，聊聊它的 why、what、how，再给一个小例子。</p>
+<p>一句话结论：</p>
+<p><strong>Agent Sandbox 的价值，不是让 Agent 更聪明，而是让 Agent 更敢动手，同时让平台更敢放手。</strong></p>
+<h2 id="why-agent-box">Why：为什么 Agent 需要一个 Box</h2>
+<p>过去我们写服务，大多数工作负载可以粗略分两类：</p>
+<ul>
+<li>无状态服务：开多个副本，用 Deployment 管，坏了重启，流量继续。</li>
+<li>有状态服务：用 StatefulSet、PVC、Service，一套标准组合拳。</li>
+</ul>
+<p>AI Agent 不完全属于这两类。它更像一个临时工位：今天要分析一个 CSV，明天要修一个 repo，后天要开一个浏览器查页面。它需要隔离，也需要保留现场；它应该可以快速创建，也应该能在不用时休眠；它要有自己的文件系统、进程和网络边界，还最好有一个稳定身份，方便后续连接。</p>
+<p>这就尴尬了。</p>
+<p>如果每次都临时起一个普通 Pod，状态容易丢，冷启动也慢。如果给每个 Agent 手工拼一个 StatefulSet、Service、PVC，平台同学会在 YAML 里提前退休。如果直接让 Agent 在共享环境里跑代码，那就更刺激了，刺激到安全团队半夜能梦见审计日志。</p>
+<p>Agent Sandbox 要解决的，就是这个中间地带：</p>
+<div class="highlight"><pre><span></span><code>短命一次性执行  &lt;----&gt;  长期有状态服务
+                  ^
+                  |
+            Agent 的工作间
+</code></pre></div>
+
+<p>官方文档里提到几个动机，我翻译成工程师能立刻感受到的语言：</p>
+<table>
+<thead>
+<tr>
+<th>痛点</th>
+<th>没有 Sandbox 时</th>
+<th>有 Sandbox 后</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>执行不可信代码</td>
+<td>容易碰到宿主机、共享网络或敏感数据</td>
+<td>在隔离 Pod 里执行，可叠加 gVisor 或 Kata</td>
+</tr>
+<tr>
+<td>多轮 Agent 工作</td>
+<td>每轮重新安装依赖、重新拉代码</td>
+<td>文件、依赖和中间结果可以留在同一个环境</td>
+</tr>
+<tr>
+<td>启动延迟</td>
+<td>冷启动等 Pod 调度和镜像拉取</td>
+<td><code>SandboxWarmPool</code> 可预热环境</td>
+</tr>
+<tr>
+<td>生命周期</td>
+<td>谁创建、谁清理、谁恢复都要自己写</td>
+<td>Controller 负责创建、删除、休眠和恢复</td>
+</tr>
+<tr>
+<td>平台治理</td>
+<td>开发者各写各的 Kubernetes 资源</td>
+<td>用 CRD 抽象成统一 API</td>
+</tr>
+</tbody>
+</table>
+<p>这背后的深层变化是：<strong>Agent 不是一个 API 调用，而是一段会持续活动的运行时。</strong> 既然它会活动，就应该被放进合适的容器里。</p>
+<h2 id="openclaw-agent-sandbox">OpenClaw 小龙虾给 Agent Sandbox 上的一课</h2>
+<p>我不想把 OpenClaw 小龙虾写成“反面教材”。恰恰相反，一个真实流行的 Agent 框架越多人用，就越容易被安全研究者、攻击者和热心用户从各种角度拧螺丝。问题暴露出来并被修掉，是开源生态成熟的必经阶段。</p>
+<p>但这些问题确实给 Agent Sandbox 提了一个醒：<strong>沙箱不是一个可选插件，而是 Agent runtime 的基本盘。</strong></p>
+<p>看公开资料里几类典型问题，背后的模式很清楚。</p>
+<h3 id="1">1. 外部输入不是“用户说的话”，而是潜在指令注入</h3>
+<p>OpenClaw 的一个公开 issue 提到，来自飞书、Telegram、Slack 等外部 channel 的消息如果被直接拼进 agent context，就可能出现 prompt injection：攻击者在公开群里发一段看起来像系统指令的文本，诱导主 agent 调用更高权限的 sub-agent 或执行工具。</p>
+<p>这类问题的根不是“模型太笨”，而是<strong>可信上下文和不可信输入混在一起</strong>。</p>
+<p>Agent Sandbox 给不了 prompt 注入的万能解药，但它能帮你把伤害关小：</p>
+<ul>
+<li>外部 channel 输入必须标记为 untrusted content，不能和 system prompt 混写。</li>
+<li>跨 agent 调用默认关闭，只有明确 allowlist 才能打开。</li>
+<li>被外部输入触发的任务，应该进入低权限 Sandbox，而不是直接调用高权限工具。</li>
+<li>tool invocation 不能只靠模型“理解不要执行”，要靠平台策略硬拦。</li>
+</ul>
+<p>一句话：<strong>prompt 边界和执行边界要同时存在。</strong></p>
+<h3 id="2-gateway">2. 本地 Gateway 不是天然安全区</h3>
+<p>ClawJacked 这类问题提醒我们：<code>localhost</code> 不是护身符。浏览器页面、恶意广告、被污染的网页脚本，都可能尝试连接本地服务。如果本地 Gateway 对 localhost 连接过度信任，又缺少 origin 校验、速率限制和设备确认，Agent 就可能被“隔壁网页”接管。</p>
+<p>这对 Agent Box 的启发很直接：</p>
+<ul>
+<li>Sandbox 控制面 API 不要裸露在用户浏览器可随便碰到的位置。</li>
+<li>WebSocket / local gateway 要校验 Origin、鉴权、限速和设备注册。</li>
+<li>“来自本机”不等于“来自可信用户”。</li>
+<li>Agent runtime 和控制面要分离，执行容器不能顺手拥有控制面管理权限。</li>
+</ul>
+<p>很多传统桌面软件喜欢相信 localhost。Agent 不行。Agent 手里有 shell、文件系统、浏览器会话和各种 API，localhost 一旦失守，就像把门禁卡贴在门口写着“自取”。</p>
+<h3 id="3">3. 沙箱里不能放明文钥匙</h3>
+<p>另一个公开 issue 提到，sandboxed agent 可以通过配置命令读到解析后的 API secrets。表面上 agent 被关进 sandbox 了，实际上钥匙串也被放进房间了。</p>
+<p>这说明一个常见误区：<strong>进程隔离不等于凭证隔离。</strong></p>
+<p>如果 Sandbox 里有长期 API key、云账号 token、GitHub PAT、Notion token，攻击者只要通过 prompt injection 让 agent 执行 <code>cat config</code> 或 <code>config get</code>，沙箱就变成自动提款机。</p>
+<p>更靠谱的模式是：</p>
+<div class="highlight"><pre><span></span><code>Sandbox -&gt; Gateway Tool / Credential Broker -&gt; Target API
+</code></pre></div>
+
+<p>Agent 只看到工具能力和返回结果，不直接看到长期凭证。短期 token 也应该绑定 <code>task_id</code>、<code>scope</code> 和 <code>ttl</code>。任务结束，权限自然消失。</p>
+<h3 id="4">4. 工具权限不能靠“默认善良”</h3>
+<p>还有一类问题是工具治理：没有 allowlist / denylist，没有 per-agent permission，没有参数校验，没有 rate limit。任何进入 agent 的消息，都可能触发任意注册工具。</p>
+<p>这和 Kubernetes 里把所有 Pod 都绑到 <code>cluster-admin</code> 差不多。平时很顺，出事很响。</p>
+<p>Agent Sandbox 应该把工具权限变成平台对象，而不是 prompt 里的温馨提示：</p>
+<ul>
+<li>模型看到哪些工具，先由 policy 过滤。</li>
+<li>每次 tool call 进入 <code>before_tool_call</code> 这类硬门禁。</li>
+<li>高风险工具需要 approval gate。</li>
+<li>destructive operation 默认 deny，除非任务类型明确需要。</li>
+<li>工具参数要校验，不允许模型随便拼 shell、URL、路径。</li>
+</ul>
+<p>这也是为什么我前面强调 KSA/RBAC、NetworkPolicy、admission policy 和 credential broker。它们听起来不是“AI 功能”，但正是 Agent 能安全动手的前提。</p>
+<p>OpenClaw 的这些讨论，本质上不是某个项目“写错几行代码”。它们暴露的是 Agent 工程的共同病灶：</p>
+<blockquote>
+<p><strong>Agent 把自然语言、外部输入、工具调用、凭证、文件系统和网络访问揉在一起。如果没有强边界，聪明会变成放大器，错误也会变成放大器。</strong></p>
+</blockquote>
+<h2 id="whatagent-sandbox">What：Agent Sandbox 到底是什么</h2>
+<p>Agent Sandbox 是一个 Kubernetes-native 平台，核心是 <code>Sandbox</code> 这个 CRD。官方对它的定位很明确：管理隔离的、有状态的、单例的工作负载，特别适合 AI agent runtime、开发环境、Notebook、代码执行等场景。</p>
+<p>别被 CRD 吓到。它的想法其实很朴素：</p>
+<blockquote>
+<p>你别再手工拼 StatefulSet、Service、PVC 了。你告诉 Kubernetes“我想要一个 Sandbox”，剩下的交给 controller。</p>
+</blockquote>
+<p>核心组件可以这样理解：</p>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>作用</th>
+<th>人话解释</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Sandbox</code></td>
+<td>声明一个单 Pod、有状态、有稳定身份的环境</td>
+<td>一个具体工位</td>
+</tr>
+<tr>
+<td><code>SandboxTemplate</code></td>
+<td>复用运行时配置</td>
+<td>工位装修模板</td>
+</tr>
+<tr>
+<td><code>SandboxClaim</code></td>
+<td>面向用户的申请入口</td>
+<td>“给我来一个 Python 工位”</td>
+</tr>
+<tr>
+<td><code>SandboxWarmPool</code></td>
+<td>预热一批环境</td>
+<td>提前把工位打开、电脑开机</td>
+</tr>
+<tr>
+<td>Python / Go SDK</td>
+<td>程序化创建、查询、操作 Sandbox</td>
+<td>Agent 调用 Box 的遥控器</td>
+</tr>
+</tbody>
+</table>
+<p>架构上，它走的是 Kubernetes controller pattern：用户创建 <code>Sandbox</code> 或 <code>SandboxClaim</code>，controller 再去管理底层 Pod 和 runtime。这个设计很 Kubernetes，也很现实。它不试图重造一套调度系统，而是把 Agent 需要的“单例、有状态、可隔离、可恢复”抽象出来，放回 Kubernetes 生态。</p>
+<p>一个最小的 Sandbox YAML 长这样：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">agents.x-k8s.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Sandbox</span>
+<span class="nt">metadata</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-sandbox</span>
+<span class="nt">spec</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">podTemplate</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">spec</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">containers</span><span class="p">:</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-container</span>
+<span class="w">          </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">python:3.13-slim</span>
+</code></pre></div>
+
+<p>这段配置的重点不是“又多了一个 YAML”，而是：平台开始拥有一个统一的对象来表达 Agent 的工作空间。</p>
+<h2 id="how">How：怎么把它用起来</h2>
+<p>我建议按三层来理解 Agent Sandbox。</p>
+<h3 id="box">第一层：平台层，先把 Box 管起来</h3>
+<p>平台侧先安装 controller 和 CRD。官方文档给的方式是基于 release manifest：</p>
+<div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">VERSION</span><span class="o">=</span><span class="s2">&quot;vX.Y.Z&quot;</span>
+
+kubectl<span class="w"> </span>apply<span class="w"> </span>-f<span class="w"> </span>https://github.com/kubernetes-sigs/agent-sandbox/releases/download/<span class="si">${</span><span class="nv">VERSION</span><span class="si">}</span>/manifest.yaml
+kubectl<span class="w"> </span>apply<span class="w"> </span>-f<span class="w"> </span>https://github.com/kubernetes-sigs/agent-sandbox/releases/download/<span class="si">${</span><span class="nv">VERSION</span><span class="si">}</span>/extensions.yaml
+</code></pre></div>
+
+<p>这里我建议生产环境一定要 pin 具体版本，不要图省事写 <code>main</code>。基础设施最怕“昨天还好好的，今天上游给你加了点惊喜”。</p>
+<p>平台层还要做几件事：</p>
+<ul>
+<li>配好 namespace、RBAC、ResourceQuota。</li>
+<li>定义 <code>SandboxTemplate</code>，比如 Python、Node、Browser、Jupyter、Coding Agent。</li>
+<li>根据风险选择 runtime：普通容器、gVisor 或 Kata Containers。</li>
+<li>配网络策略，默认不要让 Sandbox 随便访问内网。</li>
+<li>配 TTL、休眠、恢复和清理策略。</li>
+</ul>
+<p>这一层的目标不是“让开发者自由发挥”，而是把自由关进一个合理的边界里。</p>
+<h3 id="_2">第二层：模板层，把常见环境做成套餐</h3>
+<p>Agent 最讨厌“每次从零开始”。今天要 pandas，明天要 playwright，后天要 git、ripgrep、node、python、chromium。如果每个调用都现装依赖，用户等得心平气和，账单先不平静。</p>
+<p><code>SandboxTemplate</code> 的价值就是把常见运行时沉淀下来：</p>
+<ul>
+<li><code>python-sandbox-template</code>：适合代码解释器、数据分析、脚本执行。</li>
+<li><code>browser-sandbox-template</code>：适合 computer use、网页自动化。</li>
+<li><code>coding-agent-template</code>：带 repo、编译工具、测试工具和缓存。</li>
+<li><code>jupyter-template</code>：适合交互式分析和研究。</li>
+</ul>
+<p>这和云主机镜像、CI runner image 的道理差不多。环境标准化之后，Agent 的行为才容易复现，问题也容易定位。</p>
+<h3 id="agent-sandbox">第三层：Agent 层，把 Sandbox 当成工具</h3>
+<p>真正有意思的是这一层。Agent 不应该知道底层有多少 Service、PVC、Pod，它只需要一个工具：</p>
+<div class="highlight"><pre><span></span><code>create sandbox -&gt; write file -&gt; run command -&gt; read result -&gt; keep or terminate
+</code></pre></div>
+
+<p>官方 Python SDK 的最小用法大概是这样：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">k8s_agent_sandbox</span> <span class="kn">import</span> <span class="n">SandboxClient</span>
+
+<span class="n">client</span> <span class="o">=</span> <span class="n">SandboxClient</span><span class="p">()</span>
+
+<span class="n">sandbox</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">create_sandbox</span><span class="p">(</span>
+    <span class="n">template</span><span class="o">=</span><span class="s2">&quot;python-sandbox-template&quot;</span><span class="p">,</span>
+    <span class="n">namespace</span><span class="o">=</span><span class="s2">&quot;default&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">sandbox</span><span class="o">.</span><span class="n">files</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+        <span class="s2">&quot;run.py&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;print(sum(range(1, 101)))</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">sandbox</span><span class="o">.</span><span class="n">commands</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="s2">&quot;python3 run.py&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">stdout</span><span class="p">)</span>
+<span class="k">finally</span><span class="p">:</span>
+    <span class="n">sandbox</span><span class="o">.</span><span class="n">terminate</span><span class="p">()</span>
+</code></pre></div>
+
+<p>这段代码很小，但它背后的边界很重要：Agent 生成的代码没有在你的应用进程里跑，也没有在共享机器上裸奔，而是在一个可管理的 Sandbox 里执行。</p>
+<p>如果任务是一次性的，跑完就 <code>terminate()</code>。如果任务是多轮 coding agent，可以保留 Sandbox，让它在同一个工作目录里反复生成、执行、修错。两种模式都合理，关键是生命周期要明确。</p>
+<h2 id="example-agent">Example：一个“数据分析 Agent”的小场景</h2>
+<p>假设我们要做一个数据分析 Agent。用户上传一个 CSV，然后问：</p>
+<blockquote>
+<p>“帮我看一下最近 30 天哪些接口错误率最高，画个图，再给排查建议。”</p>
+</blockquote>
+<p>一个不负责任的实现可能是：把 CSV 传给应用服务，让 LLM 生成 Python，然后在应用服务容器里 <code>exec</code>。这就像在餐厅后厨修摩托车，理论上空间够，实践上厨师会报警。</p>
+<p>更像样的流程应该是：</p>
+<ol>
+<li>应用服务收到用户问题和 CSV。</li>
+<li>Agent 创建一个 <code>python-sandbox-template</code>。</li>
+<li>应用把 CSV 写入 Sandbox 文件系统。</li>
+<li>LLM 生成分析脚本。</li>
+<li>Sandbox 执行脚本，返回 stdout、stderr、exit code 和图表文件。</li>
+<li>Agent 根据结果整理解释。</li>
+<li>如果脚本报错，把 stderr 反馈给 LLM，最多重试 2-3 次。</li>
+<li>任务结束后按策略删除或休眠 Sandbox。</li>
+</ol>
+<p>伪代码可以写成这样：</p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span> <span class="nf">analyze_csv</span><span class="p">(</span><span class="n">question</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">csv_bytes</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="n">client</span> <span class="o">=</span> <span class="n">SandboxClient</span><span class="p">()</span>
+    <span class="n">sandbox</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">create_sandbox</span><span class="p">(</span>
+        <span class="n">template</span><span class="o">=</span><span class="s2">&quot;python-sandbox-template&quot;</span><span class="p">,</span>
+        <span class="n">namespace</span><span class="o">=</span><span class="s2">&quot;agent-runtime&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">sandbox</span><span class="o">.</span><span class="n">files</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;input.csv&quot;</span><span class="p">,</span> <span class="n">csv_bytes</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">))</span>
+
+        <span class="n">code</span> <span class="o">=</span> <span class="n">generate_python_code</span><span class="p">(</span><span class="n">question</span><span class="p">,</span> <span class="s2">&quot;input.csv&quot;</span><span class="p">)</span>
+        <span class="n">sandbox</span><span class="o">.</span><span class="n">files</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;analysis.py&quot;</span><span class="p">,</span> <span class="n">code</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">):</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="n">sandbox</span><span class="o">.</span><span class="n">commands</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="s2">&quot;python3 analysis.py&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">result</span><span class="o">.</span><span class="n">exit_code</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">chart</span> <span class="o">=</span> <span class="n">sandbox</span><span class="o">.</span><span class="n">files</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="s2">&quot;chart.png&quot;</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">summarize_result</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">stdout</span><span class="p">,</span> <span class="n">chart</span><span class="p">)</span>
+
+            <span class="n">code</span> <span class="o">=</span> <span class="n">fix_code_with_error</span><span class="p">(</span><span class="n">code</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">stderr</span><span class="p">)</span>
+            <span class="n">sandbox</span><span class="o">.</span><span class="n">files</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;analysis.py&quot;</span><span class="p">,</span> <span class="n">code</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="s2">&quot;脚本连续失败，请人工检查数据格式和生成代码。&quot;</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="n">sandbox</span><span class="o">.</span><span class="n">terminate</span><span class="p">()</span>
+</code></pre></div>
+
+<p>这段代码不是完整生产实现，但表达了一个关键模式：</p>
+<p><strong>LLM 可以犯错，Sandbox 负责把错误关在房间里；Agent 可以重试，平台负责把重试变成可治理的动作。</strong></p>
+<p>这里还可以加几个工程细节：</p>
+<ul>
+<li>CSV 大小限制，避免一上来把存储打爆。</li>
+<li>命令超时，避免死循环。</li>
+<li>网络默认关闭或只允许访问白名单。</li>
+<li>输出文件类型检查，避免把奇怪文件当图片返回。</li>
+<li>日志脱敏，避免用户数据进入模型日志或平台日志。</li>
+<li>每个 Sandbox 打上 <code>user_id</code>、<code>task_id</code>、<code>ttl</code> 标签，方便审计和清理。</li>
+</ul>
+<p>这些东西不酷，但救命。</p>
+<h2 id="_3">有深度的地方：它改变的是责任边界</h2>
+<p>很多人看 Agent Sandbox，第一反应是：“这不就是包了一层 Kubernetes 吗？”</p>
+<p>这话对一半。它确实没有逃离 Kubernetes，但重点不是包装，而是重新划分责任。</p>
+<p>以前做 Agent 执行环境，常见责任边界是这样的：</p>
+<div class="highlight"><pre><span></span><code>应用开发者：写 prompt、调模型、跑代码、管容器、管存储、管清理
+平台团队：给一个 Kubernetes 集群
+安全团队：上线前来皱眉
+</code></pre></div>
+
+<p>Agent Sandbox 想变成这样：</p>
+<div class="highlight"><pre><span></span><code>应用开发者：申请一个合适的 Sandbox，调用 SDK
+平台团队：定义模板、runtime、配额、生命周期
+安全团队：制定隔离级别、网络策略、审计规则
+</code></pre></div>
+
+<p>这才是它真正有启发的地方。</p>
+<p>好平台不是把所有复杂度消灭掉，而是把复杂度放到该放的位置。开发者不该每次都手写 PVC；安全团队也不该每次靠人工 review 祈祷；平台团队更不该把“执行不可信代码”当成普通 Pod 来糊弄。</p>
+<p>Agent 时代，<code>where to run</code> 会变成和 <code>which model to use</code> 一样重要的问题。</p>
+<h2 id="_4">和普通方案比一比</h2>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>适合场景</th>
+<th>问题</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>直接在应用容器里执行</td>
+<td>本地 demo、极可信脚本</td>
+<td>风险最高，边界最差</td>
+</tr>
+<tr>
+<td>每次起普通 Pod</td>
+<td>一次性短任务</td>
+<td>状态弱、冷启动慢、生命周期要自己管</td>
+</tr>
+<tr>
+<td>StatefulSet + Service + PVC</td>
+<td>长期稳定服务</td>
+<td>对临时 Agent 太重，模板化差</td>
+</tr>
+<tr>
+<td>独立 VM</td>
+<td>强隔离、重任务</td>
+<td>启动和资源成本高，Kubernetes 集成弱</td>
+</tr>
+<tr>
+<td>Agent Sandbox</td>
+<td>Agent runtime、代码执行、Notebook、开发环境</td>
+<td>需要 Kubernetes 能力和平台治理</td>
+</tr>
+</tbody>
+</table>
+<p>所以它不是银弹。它适合的是这类场景：</p>
+<ul>
+<li>Agent 会生成并执行代码。</li>
+<li>任务需要多轮迭代，而不是一次命令结束。</li>
+<li>运行环境需要保留文件、依赖或缓存。</li>
+<li>安全边界比裸跑重要。</li>
+<li>团队已经有 Kubernetes 基础设施，或者愿意为 Agent runtime 建平台。</li>
+</ul>
+<p>如果你只是做一个 FAQ bot，Agent Sandbox 可能太重。如果你让 Agent 修代码、跑测试、开浏览器、分析数据，它就开始有味道了。</p>
+<h2 id="agent">认证和授权：给 Agent 发“临时工牌”，不是万能钥匙</h2>
+<p>Agent Box 真正难的地方，不是把代码关进容器。容器只是房间，权限才是门禁。</p>
+<p>一个成熟的 Agent Box 访问内外部服务时，应该坚持一个原则：</p>
+<p><strong>Agent 不是用户本人，也不是平台管理员。它只是被用户委托完成某个任务的临时执行者。</strong></p>
+<p>这句话很重要。很多安全事故就是从这里滑坡的：用户登录了系统，于是系统把用户的长期 token 塞给 Agent；Agent 要查一个接口，于是平台给它开了半个内网；Agent 要跑测试，于是给它一个能改集群资源的 ServiceAccount。表面上事情跑通了，实际上是在给未来的自己埋彩蛋，还是那种拆开彩纸会爆的。</p>
+<p>我更建议把访问模型拆成五层：</p>
+<div class="highlight"><pre><span></span><code>用户身份 -&gt; 任务授权 -&gt; Sandbox 身份 -&gt; 网络边界 -&gt; 目标服务授权
+</code></pre></div>
+
+<p>每一层只解决一件事，不要混在一起。</p>
+<h3 id="_5">第一层：用户身份，回答“是谁委托了这个任务”</h3>
+<p>用户还是要按正常系统登录，比如 SSO、OIDC、企业内部 IAM。应用服务拿到用户身份后，不应该直接把用户 token 原样交给 Sandbox。原因很简单：Agent 会执行模型生成的代码，而模型生成的代码不值得拥有你的完整身份。</p>
+<p>正确做法是由控制面记录：</p>
+<ul>
+<li><code>user_id</code>：谁发起的任务。</li>
+<li><code>task_id</code>：这次任务是什么。</li>
+<li><code>template</code>：允许使用哪种 Sandbox 模板。</li>
+<li><code>scope</code>：这次任务能访问哪些服务和动作。</li>
+<li><code>ttl</code>：权限什么时候过期。</li>
+</ul>
+<p>也就是说，用户身份用于<strong>发起和审批</strong>，不直接用于<strong>执行和横向访问</strong>。</p>
+<h3 id="_6">第二层：任务授权，回答“这次任务能做什么”</h3>
+<p>Agent Box 不应该只问“这个用户是不是登录了”，还要问“这个任务被允许做什么”。</p>
+<p>例如同一个用户发起两个任务：</p>
+<table>
+<thead>
+<tr>
+<th>任务</th>
+<th>合理权限</th>
+<th>不该给的权限</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>分析 CSV</td>
+<td>读写当前 Sandbox 文件、调用 Python、访问模型网关</td>
+<td>访问生产数据库、访问 Kubernetes API</td>
+</tr>
+<tr>
+<td>修复 repo 测试</td>
+<td>读写指定 repo、跑测试、访问包管理源</td>
+<td>访问用户私有文档、扫描内网</td>
+</tr>
+<tr>
+<td>生成日报</td>
+<td>读取指定工单系统和指标 API</td>
+<td>执行 shell、访问任意外部 URL</td>
+</tr>
+</tbody>
+</table>
+<p>这里最好有一个 policy decision point，可以是简单配置，也可以是 OPA/Cedar/自研策略服务。它输出的不是一句“allow”，而是一组细粒度能力：</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;template&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;python-sandbox-template&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;ttlSeconds&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1800</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;tools&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;files.write&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;commands.run&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;files.read&quot;</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;egress&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;https://model-gateway.example.com&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;https://pypi.org&quot;</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;internalServices&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;metrics-reader&quot;</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;kubernetesApi&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这份授权应该随任务生成，随任务结束回收。不要让它变成“永久有效的方便面调料包”，谁拿都能撒。</p>
+<h3 id="sandbox">第三层：Sandbox 身份，回答“这个工作间在集群里是谁”</h3>
+<p>Kubernetes 里最自然的身份载体是 ServiceAccount。Agent Sandbox 官方也有 <code>Sandbox with Kubernetes Service Account</code> 示例：每个 sandboxed pod 可以绑定不同的 KSA，从而拥有不同的集群身份和 RBAC 权限。</p>
+<p>一个最小配置大概是这样：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">v1</span>
+<span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ServiceAccount</span>
+<span class="nt">metadata</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sandbox-metrics-reader</span>
+<span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">agent-runtime</span>
+<span class="nn">---</span>
+<span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rbac.authorization.k8s.io/v1</span>
+<span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Role</span>
+<span class="nt">metadata</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sandbox-metrics-reader</span>
+<span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">agent-runtime</span>
+<span class="nt">rules</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">apiGroups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;&quot;</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">resources</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;configmaps&quot;</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">verbs</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;get&quot;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&quot;list&quot;</span><span class="p p-Indicator">]</span>
+<span class="nn">---</span>
+<span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rbac.authorization.k8s.io/v1</span>
+<span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">RoleBinding</span>
+<span class="nt">metadata</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sandbox-metrics-reader</span>
+<span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">agent-runtime</span>
+<span class="nt">subjects</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ServiceAccount</span>
+<span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sandbox-metrics-reader</span>
+<span class="w">    </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">agent-runtime</span>
+<span class="nt">roleRef</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Role</span>
+<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sandbox-metrics-reader</span>
+<span class="w">  </span><span class="nt">apiGroup</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rbac.authorization.k8s.io</span>
+</code></pre></div>
+
+<p>然后在 Sandbox 里指定：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">agents.x-k8s.io/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Sandbox</span>
+<span class="nt">metadata</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">report-agent</span>
+<span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">agent-runtime</span>
+<span class="nt">spec</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">podTemplate</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">spec</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">serviceAccountName</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sandbox-metrics-reader</span>
+<span class="w">      </span><span class="nt">containers</span><span class="p">:</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">agent</span>
+<span class="w">          </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">python:3.13-slim</span>
+</code></pre></div>
+
+<p>几个经验规则：</p>
+<ul>
+<li>默认 <code>automountServiceAccountToken: false</code>，除非这个 Sandbox 确实需要访问 Kubernetes API。</li>
+<li>优先用 namespace 级 <code>Role</code>，谨慎使用 <code>ClusterRole</code>。</li>
+<li>一个任务类型一个 KSA，不要所有 Sandbox 共用 <code>default</code>。</li>
+<li>Role 里只给必要 verbs，比如 <code>get/list</code>，不要顺手给 <code>create/update/delete</code>。</li>
+<li>让 KSA 名称表达权限意图，例如 <code>sandbox-jira-reader</code>、<code>sandbox-build-runner</code>。</li>
+</ul>
+<p>换句话说，ServiceAccount 是 Agent 的“工牌”，RBAC 是工牌能刷哪些门。</p>
+<h3 id="_7">第四层：网络边界，回答“它能连到哪里”</h3>
+<p>RBAC 管 Kubernetes API，不管普通 HTTP 出站。Agent 如果能随便连内网，那就算没有 K8s 权限，也可能访问到不该访问的服务。</p>
+<p>Agent Sandbox 文档里有 <code>Composing Sandbox with Network Policies</code> 的例子，思路是把 <code>Sandbox</code> 和 <code>NetworkPolicy</code>、<code>Ingress</code>、<code>Service</code> 组合起来。我的建议是：<strong>默认 deny all，然后按任务放行最小出口。</strong></p>
+<p>例如只允许访问模型网关和一个内部 metrics 服务：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">networking.k8s.io/v1</span>
+<span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">NetworkPolicy</span>
+<span class="nt">metadata</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">report-agent-egress</span>
+<span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">agent-runtime</span>
+<span class="nt">spec</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">podSelector</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">matchLabels</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">agents.x-k8s.io/sandbox</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">report-agent</span>
+<span class="w">  </span><span class="nt">policyTypes</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Egress</span>
+<span class="w">  </span><span class="nt">egress</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">to</span><span class="p">:</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">namespaceSelector</span><span class="p">:</span>
+<span class="w">            </span><span class="nt">matchLabels</span><span class="p">:</span>
+<span class="w">              </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">platform</span>
+<span class="w">          </span><span class="nt">podSelector</span><span class="p">:</span>
+<span class="w">            </span><span class="nt">matchLabels</span><span class="p">:</span>
+<span class="w">              </span><span class="nt">app</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">model-gateway</span>
+<span class="w">      </span><span class="nt">ports</span><span class="p">:</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">protocol</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">TCP</span>
+<span class="w">          </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">443</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">to</span><span class="p">:</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">namespaceSelector</span><span class="p">:</span>
+<span class="w">            </span><span class="nt">matchLabels</span><span class="p">:</span>
+<span class="w">              </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">observability</span>
+<span class="w">          </span><span class="nt">podSelector</span><span class="p">:</span>
+<span class="w">            </span><span class="nt">matchLabels</span><span class="p">:</span>
+<span class="w">              </span><span class="nt">app</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">metrics-api</span>
+<span class="w">      </span><span class="nt">ports</span><span class="p">:</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">protocol</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">TCP</span>
+<span class="w">          </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">8443</span>
+</code></pre></div>
+
+<p>真实生产里，访问外部服务还可以再加一层 egress gateway 或 HTTP proxy：</p>
+<div class="highlight"><pre><span></span><code>Sandbox -&gt; Egress Proxy -&gt; External API
+</code></pre></div>
+
+<p>这样做的好处是：</p>
+<ul>
+<li>Sandbox 不直接出公网。</li>
+<li>代理可以做域名 allowlist、速率限制、审计和脱敏。</li>
+<li>外部 API key 不必进入 Sandbox 文件系统。</li>
+<li>可以把所有 LLM API 调用收口到 model gateway，统一做预算、日志和安全过滤。</li>
+</ul>
+<p>如果 Agent 需要访问内部业务服务，也不要让它直连一大片内网。更好的做法是让业务服务验证一个短期 token，token 里带上 <code>user_id</code>、<code>task_id</code>、<code>sandbox_id</code>、<code>scope</code>、<code>exp</code>。服务端只相信这些声明里的最小权限，不相信 Agent 自己说“我是来帮忙的”。</p>
+<h3 id="_8">第五层：凭证发放，回答“秘密怎么进来、什么时候消失”</h3>
+<p>最危险的做法，是把长期密钥写进镜像、环境变量或工作目录。Agent 会读文件，会跑命令，会打印日志，长期密钥进去之后，就像把银行卡放在共享打印机旁边。</p>
+<p>更稳的做法是引入一个 credential broker：</p>
+<div class="highlight"><pre><span></span><code>Agent Runtime -&gt; Credential Broker -&gt; Token Exchange -&gt; Target Service
+</code></pre></div>
+
+<p>它负责几件事：</p>
+<ul>
+<li>根据 <code>user_id/task_id/scope</code> 发放短期凭证。</li>
+<li>凭证只对特定服务、特定动作有效。</li>
+<li>凭证 TTL 短，任务结束立即撤销或自然过期。</li>
+<li>不把 refresh token、长期 API key 暴露给 Sandbox。</li>
+<li>所有发放和使用都进入审计日志。</li>
+</ul>
+<p>如果是云环境，可以用 Workload Identity、IRSA、SPIFFE/SPIRE、Vault dynamic secrets 或内部 STS 做这件事。具体用哪套不重要，关键是不要把“长期秘密”交给“会执行不确定代码的房间”。</p>
+<h3 id="_9">准入策略：防止权限被悄悄加大</h3>
+<p>上面这些设计，如果只靠开发者自觉，早晚会被“临时需求”冲垮。安全策略必须前移到 admission。</p>
+<p>Agent Sandbox 官方文档里有两个很有参考价值的方向：</p>
+<ul>
+<li><code>ValidatingAdmissionPolicy</code>：强制 Sandbox 满足基础安全要求，例如必须使用 <code>runtimeClassName: gvisor</code>、禁止 <code>hostNetwork</code>、关闭自动挂载 ServiceAccount token、非 root 运行、drop capabilities。</li>
+<li><code>OPA Gatekeeper</code>：阻止给正在被 Sandbox 使用的 ServiceAccount 追加 RoleBinding 或 ClusterRoleBinding，避免运行中的 Sandbox 被悄悄提权。</li>
+</ul>
+<p>这两个策略解决的是“别让权限在你没注意的时候长大”。尤其是 OPA Gatekeeper 那个例子很实用：如果一个 ServiceAccount 已经被某个 Sandbox 使用，就不要允许别人再给它绑定新权限。否则攻击路径会变成：</p>
+<div class="highlight"><pre><span></span><code>先创建低权限 Sandbox -&gt; 再给它的 KSA 绑定高权限 Role -&gt; Sandbox 立刻变身
+</code></pre></div>
+
+<p>这类“后门式提权”很隐蔽，靠人工 review 很难稳住。</p>
+<h3 id="_10">一个可落地的访问流程</h3>
+<p>把上面几层串起来，一个比较靠谱的流程是：</p>
+<ol>
+<li>用户通过 SSO 登录应用。</li>
+<li>用户提交任务，例如“分析这个 CSV，并生成图表”。</li>
+<li>控制面根据用户、任务类型、数据敏感度计算 policy。</li>
+<li>控制面创建 <code>SandboxClaim</code> 或 <code>Sandbox</code>，绑定专用 KSA、labels、TTL。</li>
+<li>Admission policy 检查 runtime、hostNetwork、ServiceAccount token、securityContext。</li>
+<li>Controller 创建 Pod，NetworkPolicy 按 label 限制入口和出口。</li>
+<li>Agent 需要访问服务时，向 credential broker 换短期 token。</li>
+<li>目标服务校验 token scope，只允许本次任务需要的动作。</li>
+<li>任务结束，Sandbox terminate 或 hibernate，短期 token 过期，审计日志落库。</li>
+</ol>
+<p>这套流程看起来比“给它一个 token 让它跑”麻烦，但这是必要的麻烦。工程里很多好设计，本质上都是把未来的事故提前变成今天的约束。</p>
+<h2 id="_11">安全这件事，不能只靠“隔离”两个字</h2>
+<p>Agent Sandbox 支持用 gVisor 或 Kata Containers 增强隔离。gVisor 通过用户态内核拦截系统调用，Kata 则提供更接近虚拟机级别的隔离。这些都很好，但别误会：隔离不是免死金牌。</p>
+<p>我会把安全策略分成四圈：</p>
+<h3 id="_12">第一圈：输入边界</h3>
+<p>用户上传的文件、URL、代码片段、prompt 都要限制大小、类型和格式。外部 channel 消息必须标记为 untrusted content，不允许伪装成 system instruction。不要让 Agent 一边读 5GB 文件，一边说“我感觉还行”。</p>
+<h3 id="_13">第二圈：执行边界</h3>
+<p>给 Sandbox 设置 CPU、内存、超时、磁盘容量。能不用 root 就不用 root。能只读挂载就只读挂载。能禁止特权容器就禁止。工具执行要有 allowlist、审批门和参数校验，不能因为模型“想调用”就真的调用。</p>
+<h3 id="_14">第三圈：网络边界</h3>
+<p>默认禁止访问内网敏感服务。需要访问外部网络时，用明确白名单。Gateway / WebSocket / local API 要做 origin 校验、鉴权和限速。Agent 最容易从“帮我查资料”滑到“顺手扫一下内网”，这条线不能靠模型自觉。</p>
+<h3 id="_15">第四圈：审计和清理</h3>
+<p>每次创建 Sandbox，都应该知道是谁、为了什么任务、从哪个模板来、什么时候过期、执行了哪些命令。日志里要避免打印 token、API key 和用户敏感数据。TTL 和 scheduled deletion 不是锦上添花，是防止环境越堆越多的基本卫生。</p>
+<p>安全设计的原则很简单：</p>
+<p><strong>把 Agent 当成一个会犯错的自动化账号，而不是一个永远善良的小助手。</strong></p>
+<h2 id="_16">落地清单：明天怎么开始</h2>
+<p>如果我要在团队里试点 Agent Sandbox，会按这个顺序来：</p>
+<ol>
+<li>先选一个低风险场景，例如 CSV 分析、测试执行、文档构建，不要一上来碰生产内网。</li>
+<li>定义一个最小模板，例如 <code>python-sandbox-template</code>，只放必要依赖。</li>
+<li>配 namespace、RBAC、ResourceQuota、NetworkPolicy。</li>
+<li>决定隔离级别：普通容器、gVisor，还是 Kata。</li>
+<li>给每类任务定义专用 KSA 和最小 RBAC，不要共用 <code>default</code>。</li>
+<li>配 admission policy，强制非 root、禁止 hostNetwork、按需关闭 ServiceAccount token 自动挂载。</li>
+<li>用 NetworkPolicy 或 egress proxy 做默认拒绝、按需放行。</li>
+<li>用 credential broker 发短期凭证，不把长期密钥放进 Sandbox。</li>
+<li>把外部 channel 输入统一包成 untrusted content，禁止伪造 system / assistant / tool 指令。</li>
+<li>本地 Gateway / WebSocket 做 origin 校验、限速和显式设备确认，不要默认相信 localhost。</li>
+<li>用 Python SDK 做一个最小闭环：创建、写文件、执行、读结果、清理。</li>
+<li>给每个 Sandbox 加 <code>task_id</code>、<code>owner</code>、<code>ttl</code> 标签。</li>
+<li>把失败重试次数写死在代码里，不要让 Agent 无限自我感动。</li>
+<li>记录 stdout、stderr、exit code，但注意脱敏。</li>
+<li>压测 WarmPool，看真实启动延迟和资源占用。</li>
+<li>最后再接入真正的 Agent loop。</li>
+</ol>
+<p>这里的关键是顺序：先把盒子做好，再把 Agent 放进去。不要反过来，先让 Agent 到处跑，等出事了再想起来买门锁。</p>
+<h2 id="agent_1">结论：Agent 的未来，不只是大脑，还有工位</h2>
+<p>过去一年，大家讨论 Agent，最爱聊模型、工具调用、规划、记忆。这些都重要。但越往工程落地走，越会发现另一个问题更基础：</p>
+<p><strong>Agent 到底在哪里工作？</strong></p>
+<p>如果它只聊天，浏览器窗口就够了。如果它要写代码、跑测试、装依赖、处理用户文件、打开 GUI、长期保持状态，那它需要一个认真设计过的工作间。这个工作间要隔离，要持久，要能快速分配，要能休眠和清理，还要能被程序化地创建和操作。</p>
+<p>这就是 Agent Sandbox 给我的启发。</p>
+<p>它不是一个花哨的“AI 产品外壳”，而是 Agent 工程化里很朴素的一块地基。地基通常不好看，也不适合做宣传海报，但楼能不能盖高，最后还得看它。</p>
+<h2 id="_17">参考资料</h2>
+<ul>
+<li><a href="https://github.com/openclaw/openclaw/issues/47052">OpenClaw Issue #47052: Sandbox external channel inputs to prevent prompt injection via agentToAgent</a></li>
+<li><a href="https://github.com/openclaw/openclaw/issues/13683">OpenClaw Issue #13683: Sandboxed agents can read resolved API secrets via config</a></li>
+<li><a href="https://github.com/openclaw/openclaw/issues/12565">OpenClaw Issue #12565: Unrestricted Tool Execution Leading to Privilege Escalation</a></li>
+<li><a href="https://openclawai.io/blog/clawjacked-vulnerability-what-happened">ClawJacked: How a Website Could Hijack Your OpenClaw Agent</a></li>
+<li><a href="https://agent-sandbox.sigs.k8s.io/docs/">Agent Sandbox Documentation</a></li>
+<li><a href="https://agent-sandbox.sigs.k8s.io/docs/overview/">Agent Sandbox Overview</a></li>
+<li><a href="https://agent-sandbox.sigs.k8s.io/docs/use-cases/">Agent Sandbox Use Cases</a></li>
+<li><a href="https://agent-sandbox.sigs.k8s.io/docs/getting_started/python-sdk-quickstart/">Python SDK Quickstart</a></li>
+<li><a href="https://agent-sandbox.sigs.k8s.io/docs/use-cases/code-execution/">Code Execution</a></li>
+<li><a href="https://agent-sandbox.sigs.k8s.io/docs/use-cases/coding-agents/">Coding Agents</a></li>
+<li><a href="https://agent-sandbox.sigs.k8s.io/docs/use-cases/gvisor-isolation/">gVisor Isolation</a></li>
+<li><a href="https://agent-sandbox.sigs.k8s.io/docs/use-cases/examples/sandbox-ksa/">Sandbox with Kubernetes Service Account</a></li>
+<li><a href="https://agent-sandbox.sigs.k8s.io/docs/use-cases/examples/network-policies/">Composing Sandbox with Network Policies</a></li>
+<li><a href="https://agent-sandbox.sigs.k8s.io/docs/use-cases/examples/opa-gatekeeper/">Protecting Agentic Sandboxes with OPA Gatekeeper</a></li>
+<li><a href="https://agent-sandbox.sigs.k8s.io/docs/use-cases/examples/secure-sandbox-vap/">Secure Sandbox Admission Policy (VAP)</a></li>
+</ul>
+  </div>
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/tag/ai-agent.html">AI Agent</a>
+      <a href="https://www.fanyamin.com/tag/agent-sandbox.html">Agent Sandbox</a>
+      <a href="https://www.fanyamin.com/tag/openclaw.html">OpenClaw</a>
+      <a href="https://www.fanyamin.com/tag/kubernetes.html">Kubernetes</a>
+      <a href="https://www.fanyamin.com/tag/sandbox.html">Sandbox</a>
+      <a href="https://www.fanyamin.com/tag/gvisor.html">gVisor</a>
+      <a href="https://www.fanyamin.com/tag/kata-containers.html">Kata Containers</a>
+      <a href="https://www.fanyamin.com/tag/security.html">Security</a>
+      <a href="https://www.fanyamin.com/tag/rbac.html">RBAC</a>
+      <a href="https://www.fanyamin.com/tag/networkpolicy.html">NetworkPolicy</a>
+    </p>
+  </div>
+
+
+  <div class="center social-share" style="margin: 1.5em 0; text-align: center;">
+    <p style="margin-bottom: 0.5em; color: #888;">📤 Share this article</p>
+    <a href="https://twitter.com/intent/tweet?text=Agent%20Box%20%E5%88%9D%E6%8E%A2%EF%BC%9A%E4%BB%8E%20OpenClaw%20%E5%B0%8F%E9%BE%99%E8%99%BE%E5%AE%89%E5%85%A8%E9%97%AE%E9%A2%98%E8%B0%88%20Agent%20Sandbox&url=https://www.fanyamin.com/agent-box-chu-tan-cong-openclaw-xiao-long-xia-an-quan-wen-ti-tan-agent-sandbox.html"
+       target="_blank" rel="noopener" title="Share on Twitter/X"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#1da1f2; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      𝕏 Twitter
+    </a>
+    <a href="https://www.linkedin.com/sharing/share-offsite/?url=https://www.fanyamin.com/agent-box-chu-tan-cong-openclaw-xiao-long-xia-an-quan-wen-ti-tan-agent-sandbox.html"
+       target="_blank" rel="noopener" title="Share on LinkedIn"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#0077b5; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      💼 LinkedIn
+    </a>
+    <a href="javascript:void(0);" onclick="copyLink('https://www.fanyamin.com/agent-box-chu-tan-cong-openclaw-xiao-long-xia-an-quan-wen-ti-tan-agent-sandbox.html')" title="Copy link"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#666; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em; cursor:pointer;">
+      🔗 Copy Link
+    </a>
+    <script>
+    function copyLink(url) {
+      navigator.clipboard.writeText(url).then(function() {
+        alert('链接已复制！');
+      });
+    }
+    </script>
+  </div>
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/podman-replace-docker-with-compose.html" title="用 Podman 替代 Docker：从迁移到跑通 docker-compose">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/2026-04-29-oss-iam-authorization-system.html" title="用开源组件搭一个 AWS IAM 风格的授权系统">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/hermes-agent-chu-tan-yi-ge-hui-chang-ji-xing-de-ge-ren-agentyi-ji-ta-he-openclaw-de-bi-jiao.html">Hermes Agent 初探：一个会长记性的个人 Agent，以及它和 OpenClaw 的比较</a></li>
+      <li><a href="https://www.fanyamin.com/zai-kubernetes-li-yong-cert-manager-venafi-zi-dong-qian-fa-he-lun-huan-zheng-shu.html">在 Kubernetes 里用 cert-manager + Venafi 自动签发和轮换证书</a></li>
+      <li><a href="https://www.fanyamin.com/workload-identitybie-zai-ba-yun-shang-shen-fen-sai-jin-secret-li-liao.html">Workload Identity：别再把云上身份塞进 Secret 里了</a></li>
+      <li><a href="https://www.fanyamin.com/2026-01-25-eks-pod-iam-role.html">在 EKS 上给 Pod 绑 IAM Role：IRSA（ServiceAccount + OIDC）到底怎么回事</a></li>
+      <li><a href="https://www.fanyamin.com/2026-04-29-oss-iam-authorization-system.html">用开源组件搭一个 AWS IAM 风格的授权系统</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

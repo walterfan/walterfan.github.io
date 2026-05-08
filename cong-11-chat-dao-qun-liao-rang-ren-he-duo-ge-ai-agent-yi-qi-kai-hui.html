@@ -1,0 +1,862 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'G-VZL08BHDPP', 'auto');
+  ga('send', 'pageview');
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="1:1 AI Chat 像请了一个聪明顾问，群聊式 Multi-Agent 则像把产品、架构、安全、测试和人类决策者拉到同一张桌子上。本文讨论如何从单 Agent 对话演进到多人多 Agent 群聊：消息模型、路由策略、Agent 互相对话、上下文隔离、权限治理和最小可用实现。" />
+<meta name="keywords" content="AI Agent, Multi-Agent, Group Chat, Conversation Architecture, Human-in-the-loop, LLM">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "从 1:1 Chat 到群聊：让人和多个 AI Agent 一起开会",
+  "description": "1:1 AI Chat 像请了一个聪明顾问，群聊式 Multi-Agent 则像把产品、架构、安全、测试和人类决策者拉到同一张桌子上。本文讨论如何从单 Agent 对话演进到多人多 Agent 群聊：消息模型、路由策略、Agent 互相对话、上下文隔离、权限治理和最小可用实现。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-04-30T22:10:00+08:00",
+  "dateModified": "2026-04-30T22:10:00+08:00",
+  "url": "https://www.fanyamin.com/cong-11-chat-dao-qun-liao-rang-ren-he-duo-ge-ai-agent-yi-qi-kai-hui.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/cong-11-chat-dao-qun-liao-rang-ren-he-duo-ge-ai-agent-yi-qi-kai-hui.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "AI Agent, Multi-Agent, Group Chat, Conversation Architecture, Human-in-the-loop, LLM"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="从 1:1 Chat 到群聊：让人和多个 AI Agent 一起开会"/>
+  <meta property="og:description" content="1:1 AI Chat 像请了一个聪明顾问，群聊式 Multi-Agent 则像把产品、架构、安全、测试和人类决策者拉到同一张桌子上。本文讨论如何从单 Agent 对话演进到多人多 Agent 群聊：消息模型、路由策略、Agent 互相对话、上下文隔离、权限治理和最小可用实现。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/cong-11-chat-dao-qun-liao-rang-ren-he-duo-ge-ai-agent-yi-qi-kai-hui.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-04-30 22:10:00+08:00"/>
+  <meta property="article:modified_time" content="2026-04-30 22:10:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="AI Agent"/>
+  <meta property="article:tag" content="Multi-Agent"/>
+  <meta property="article:tag" content="Group Chat"/>
+  <meta property="article:tag" content="Conversation Architecture"/>
+  <meta property="article:tag" content="Human-in-the-loop"/>
+  <meta property="article:tag" content="LLM"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 从 1:1 Chat 到群聊：让人和多个 AI Agent 一起开会</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/">Walter Fan</a>
+    </h1>
+
+    <p>手握灵珠常奋笔, 心开天籁不吹箫</p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/search.html" role="search">
+      <input type="text" name="q" id="tipue_search_input" placeholder="Search...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank" href="tao.html" >tao</a>
+          </li>
+          <li>
+            <a target="_blank" href="article.html" >article</a>
+          </li>
+          <li>
+            <a target="_blank" href="manual.html" >manual</a>
+          </li>
+          <li>
+            <a target="_blank" href="interest.html" >interest</a>
+          </li>
+          <li>
+            <a target="_self" href="/wordpress" >notebook</a>
+          </li>
+          <li>
+            <a target="_blank" href="bookmark.html" >bookmark</a>
+          </li>
+          <li>
+            <a target="_self" href="/webrtc/examples/index.html" >webrtc</a>
+          </li>
+          <li>
+            <a target="_blank" href="https://github.com/walterfan" >github</a>
+          </li>
+          <li>
+            <a target="_blank" href="categories.html" >categories</a>
+          </li>
+          <li>
+            <a target="_blank" href="tags.html" >tags</a>
+          </li>
+      </ul>
+    </nav>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+</aside>
+  <main>
+
+
+<article class="single">
+  <header>
+      
+    <h1 id="cong-11-chat-dao-qun-liao-rang-ren-he-duo-ge-ai-agent-yi-qi-kai-hui">从 1:1 Chat 到群聊：让人和多个 AI Agent 一起开会</h1>
+    <p>
+      Posted on 四 30 4月 2026 in <a href="https://www.fanyamin.com/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>从 1:1 Chat 到群聊：让人和多个 AI Agent 一起开会</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>tech note</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-04-30</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h1 id="11-chat-ai-agent">从 1:1 Chat 到群聊：让人和多个 AI Agent 一起开会</h1>
+<p>我们已经习惯了 1:1 AI Chat：我问一句，AI 回一句。这个模式很像找一位聪明同事私聊，适合解释概念、写一段代码、改一封邮件。它简单、直接、低摩擦。</p>
+<p>但工作里的真实问题通常不是一问一答。一个需求过来，产品要说目标，架构师要看边界，安全同学要挑风险，测试同学要问验收标准，最后还得有个人拍板。现实世界早就证明了：复杂问题靠单线程聊天很难收敛，哪怕对方很聪明。</p>
+<p>所以我越来越觉得，AI Agent 的下一个常见形态，不是更花哨的 1:1 窗口，而是<strong>人和多个 Agent 在一个群聊里协同</strong>。你可以问一个 Agent，也可以同时问几个 Agent；Agent 可以互相追问、补充、反驳；人类不再负责把每个答案复制粘贴给另一个 Agent，而是像主持会议一样控制节奏。</p>
+<p>一句话：</p>
+<p><strong>1:1 Chat 解决“我和 AI 怎么说话”，Group Chat 解决“人和一组 AI 怎么一起做事”。</strong></p>
+<h2 id="_1">先看一个场景</h2>
+<p>假设我想评审一个新的 API 设计。在 1:1 模式下，我可能这样干：</p>
+<ol>
+<li>问 Coding Agent：“帮我看这个接口设计。”</li>
+<li>复制回答，去问 Security Agent：“这里有什么安全问题？”</li>
+<li>再复制一遍，问 Test Agent：“怎么写测试用例？”</li>
+<li>最后自己开一个文档，把三份答案揉在一起。</li>
+</ol>
+<p>这当然能用，但很像上世纪的人工消息队列。人类成了中间件，负责转发、去重、压缩和兜底。老程序员看到这里会本能地想加个 broker。</p>
+<p>群聊模式应该是这样：</p>
+<div class="highlight"><pre><span></span><code>Human:
+  @architect @security @tester 请一起评审这个 API 设计，
+  重点看边界、鉴权、异常处理和测试策略。
+
+Architect Agent:
+  我先看资源模型和调用链……
+
+Security Agent:
+  我补充鉴权和敏感数据暴露风险……
+
+Tester Agent:
+  我基于你们的结论列验收测试……
+
+Human:
+  @architect 请根据 security 的意见改一下方案。
+</code></pre></div>
+
+<p>注意，这里不只是“把三个回答显示在同一个窗口”。真正的变化是：<strong>Agent 之间能看见彼此的观点，并在同一个任务上下文里继续推进。</strong></p>
+<h2 id="11">从 1:1 到群聊，真正变复杂的是状态</h2>
+<p>1:1 Chat 的系统模型非常朴素：</p>
+<div class="highlight"><pre><span></span><code>User -&gt; Conversation -&gt; Agent -&gt; Model -&gt; Response
+</code></pre></div>
+
+<p>你只要维护一个 conversation history，再加一点 memory、tool call 和权限控制，就能做出一个可用系统。</p>
+<p>群聊一来，事情马上变成这样：</p>
+<div class="highlight"><pre><span></span><code>Room
+  ├── Human
+  ├── Architect Agent
+  ├── Security Agent
+  ├── Tester Agent
+  └── Bot / Tool / Workflow
+</code></pre></div>
+
+<p>复杂度不在 UI，而在几个问题：</p>
+<ul>
+<li>谁应该回复这条消息？</li>
+<li>Agent 能不能主动发言？</li>
+<li>Agent 能不能呼叫另一个 Agent？</li>
+<li>每个 Agent 能看到多少上下文？</li>
+<li>哪些消息是事实，哪些只是建议？</li>
+<li>工具调用由谁授权？</li>
+<li>多个 Agent 同时说话时，怎么防止群聊变成菜市场？</li>
+</ul>
+<p>这就是从 Chatbot 到 Multi-Agent Collaboration 的分水岭。<strong>群聊不是把 N 个 1:1 窗口拼起来，而是要重新设计消息、路由、上下文和权限。</strong></p>
+<h2 id="_2">最小模型：把群聊看成一个可审计的消息总线</h2>
+<p>我建议先不要急着发明“群体智能”。第一版实现可以很工程化：把 group chat 当成一个可审计的 message bus。</p>
+<p>核心对象只有四个。</p>
+<table>
+<thead>
+<tr>
+<th>对象</th>
+<th>说明</th>
+<th>关键字段</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Room</code></td>
+<td>一次协作空间</td>
+<td><code>room_id</code>, <code>topic</code>, <code>participants</code>, <code>policy</code></td>
+</tr>
+<tr>
+<td><code>Participant</code></td>
+<td>人、Agent 或工具账号</td>
+<td><code>id</code>, <code>type</code>, <code>role</code>, <code>capabilities</code></td>
+</tr>
+<tr>
+<td><code>Message</code></td>
+<td>群聊里的事件</td>
+<td><code>sender</code>, <code>mentions</code>, <code>reply_to</code>, <code>content</code>, <code>visibility</code></td>
+</tr>
+<tr>
+<td><code>Task</code></td>
+<td>需要收敛的工作项</td>
+<td><code>owner</code>, <code>status</code>, <code>deadline</code>, <code>artifacts</code></td>
+</tr>
+</tbody>
+</table>
+<p>一个简化的消息结构可以这样设计：</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;message_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;msg_123&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;room_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;room_api_review&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;sender&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;human_walter&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;human&quot;</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;mentions&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;agent_architect&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;agent_security&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;agent_tester&quot;</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;reply_to&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;请一起评审这个 API 设计，重点看鉴权、异常处理和测试策略。&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;attachments&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;markdown&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;api_design.md&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;uri&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;artifact://api_design&quot;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;visibility&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;room&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;created_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-04-30T22:10:00+08:00&quot;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>关键点是：消息不是一段裸文本，而是带有发送者、提及对象、回复关系、附件和可见性的事件。后面所有路由、权限、审计、压缩都靠这些字段活着。</p>
+<h2 id="agent">第一步：从“单个 Agent 回复”改成“路由器决定谁回复”</h2>
+<p>1:1 Chat 里，用户发消息，唯一的 Agent 回复。群聊里，不能每条消息都让所有 Agent 回答。否则用户问一句“收到吗”，五个 Agent 一起写小作文，屏幕会立刻热闹得像线上事故群。</p>
+<p>所以需要一个 <code>Conversation Router</code>。</p>
+<p>路由规则可以先从简单开始：</p>
+<ol>
+<li>如果消息显式 <code>@agent</code>，只唤醒被提及的 Agent。</li>
+<li>如果消息 <code>@all-agents</code>，唤醒房间内所有可响应 Agent。</li>
+<li>如果消息是对某个 Agent 的 reply，优先唤醒原 Agent。</li>
+<li>如果没有 mention，则只进入 room history，不触发 Agent。</li>
+<li>如果 room policy 允许主动发言，再由 Agent 自己判断是否需要插话。</li>
+</ol>
+<p>伪代码大概是这样：</p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span> <span class="nf">route_message</span><span class="p">(</span><span class="n">room</span><span class="p">,</span> <span class="n">message</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">message</span><span class="o">.</span><span class="n">sender</span><span class="o">.</span><span class="n">type</span> <span class="o">==</span> <span class="s2">&quot;agent&quot;</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">room</span><span class="o">.</span><span class="n">policy</span><span class="o">.</span><span class="n">allow_agent_to_agent</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">if</span> <span class="n">message</span><span class="o">.</span><span class="n">mentions</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[</span>
+            <span class="n">p</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">room</span><span class="o">.</span><span class="n">participants</span>
+            <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">id</span> <span class="ow">in</span> <span class="n">message</span><span class="o">.</span><span class="n">mentions</span> <span class="ow">and</span> <span class="n">p</span><span class="o">.</span><span class="n">type</span> <span class="o">==</span> <span class="s2">&quot;agent&quot;</span>
+        <span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">message</span><span class="o">.</span><span class="n">reply_to</span><span class="p">:</span>
+        <span class="n">parent</span> <span class="o">=</span> <span class="n">load_message</span><span class="p">(</span><span class="n">message</span><span class="o">.</span><span class="n">reply_to</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">parent</span><span class="o">.</span><span class="n">sender</span><span class="o">.</span><span class="n">type</span> <span class="o">==</span> <span class="s2">&quot;agent&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[</span><span class="n">find_participant</span><span class="p">(</span><span class="n">room</span><span class="p">,</span> <span class="n">parent</span><span class="o">.</span><span class="n">sender</span><span class="o">.</span><span class="n">id</span><span class="p">)]</span>
+
+    <span class="k">if</span> <span class="n">message</span><span class="o">.</span><span class="n">content</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;@all-agents&quot;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">p</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">room</span><span class="o">.</span><span class="n">participants</span> <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">type</span> <span class="o">==</span> <span class="s2">&quot;agent&quot;</span><span class="p">]</span>
+
+    <span class="k">return</span> <span class="p">[]</span>
+</code></pre></div>
+
+<p>这里有一个产品取舍：<strong>默认静默，比默认热闹更好。</strong> AI Agent 很容易过度积极，系统要给它一点会议礼仪。人类已经参加过太多低效会议，不必再让 AI 帮我们复刻一遍。</p>
+<h2 id="agent_1">第二步：让 Agent 拥有自己的角色、记忆和工具</h2>
+<p>多个 Agent 的价值，来自“差异化视角”，不是来自“同一个模型换三个名字”。</p>
+<p>一个可用的 Agent 定义至少要包括：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">agent_security</span>
+<span class="nt">display_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Security Agent</span>
+<span class="nt">role_prompt</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<span class="w">  </span><span class="no">You are a security reviewer.</span>
+<span class="w">  </span><span class="no">Focus on authentication, authorization, data exposure,</span>
+<span class="w">  </span><span class="no">abuse prevention, logging safety, and threat modeling.</span>
+<span class="nt">tools</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">read_artifact</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">search_code</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">run_static_check</span>
+<span class="nt">memory_scope</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">room</span>
+<span class="nt">permission_level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">reviewer</span>
+<span class="nt">can_initiate_message</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+</code></pre></div>
+
+<p>我会把 Agent 的配置分成四层：</p>
+<table>
+<thead>
+<tr>
+<th>层次</th>
+<th>内容</th>
+<th>例子</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Persona</td>
+<td>它是谁，关心什么</td>
+<td>Architect / Security / Tester</td>
+</tr>
+<tr>
+<td>Context</td>
+<td>它能看到什么</td>
+<td>当前 room、相关文档、历史决策</td>
+</tr>
+<tr>
+<td>Tools</td>
+<td>它能做什么</td>
+<td>读文件、查代码、跑测试、搜索知识库</td>
+</tr>
+<tr>
+<td>Policy</td>
+<td>它不能做什么</td>
+<td>不能直接部署、不能读密钥、不能私聊外部用户</td>
+</tr>
+</tbody>
+</table>
+<p>这里最容易犯的错，是只写 Persona，不管 Tools 和 Policy。结果就是三个 Agent 都很会说，但谁也不能干活；或者更糟，谁都能干任何事。前者像顾问团，后者像权限事故预演。</p>
+<h2 id="agent_2">第三步：Agent 可以互相说话，但要有边界</h2>
+<p>用户提到一个很关键的点：<strong>AI Agent 可以和另一个 AI Agent 对话。</strong></p>
+<p>这非常有用。比如 Security Agent 发现接口缺少租户隔离，可以直接问 Architect Agent：</p>
+<div class="highlight"><pre><span></span><code>Security Agent:
+  @architect 当前设计里 tenant_id 是从 token claims 里取，
+  还是从 request body 里取？如果两者都有，以哪个为准？
+
+Architect Agent:
+  应该只信任 token claims，request body 里的 tenant_id 只能作为过滤条件，
+  不能作为授权依据。我会把这一点写进设计约束。
+</code></pre></div>
+
+<p>这类对话能减少人类转述成本，也能让结论更清楚。</p>
+<p>但 Agent-to-Agent 如果不加控制，也很容易陷入两个问题：</p>
+<ul>
+<li>循环对话：A 问 B，B 问 A，最后生成一部中篇小说。</li>
+<li>权限绕过：低权限 Agent 通过高权限 Agent 间接调用工具。</li>
+</ul>
+<p>所以需要几条硬规则：</p>
+<ol>
+<li>每个 Agent-to-Agent 消息必须在 room 内公开可见，默认不允许私聊。</li>
+<li>每个任务设置最大轮次，比如 <code>max_agent_turns = 6</code>。</li>
+<li>Agent 不能替另一个 Agent 调用工具，只能请求对方发表意见。</li>
+<li>高风险动作必须回到 human approval。</li>
+<li>Router 要检测重复问题和循环引用。</li>
+</ol>
+<p>这不是保守，而是工程经验。任何能自动循环的系统，最后都会找到一种方式把账单跑高。</p>
+<h2 id="_3">第四步：上下文不是越多越好，要按角色裁剪</h2>
+<p>群聊历史会很快变长。如果每个 Agent 每次都拿完整 room history 去问模型，成本、延迟和噪声都会上来。</p>
+<p>更合理的做法是为每个 Agent 构造自己的 context window：</p>
+<div class="highlight"><pre><span></span><code>Agent Context =
+  System Prompt
+  + Agent Role
+  + Room Objective
+  + Relevant Messages
+  + Mention Thread
+  + Selected Artifacts
+  + Tool Results
+  + Constraints / Policies
+</code></pre></div>
+
+<p>比如 Security Agent 不一定需要看到 Tester Agent 每条测试用例草稿，但一定要看到：</p>
+<ul>
+<li>原始需求</li>
+<li>API 设计</li>
+<li>鉴权相关讨论</li>
+<li>Architect Agent 的边界说明</li>
+<li>最新决策和未解决问题</li>
+</ul>
+<p>这需要一个 <code>Context Builder</code>，它的职责不是把所有内容塞给模型，而是做选择：</p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span> <span class="nf">build_context</span><span class="p">(</span><span class="n">room</span><span class="p">,</span> <span class="n">agent</span><span class="p">,</span> <span class="n">message</span><span class="p">):</span>
+    <span class="n">thread</span> <span class="o">=</span> <span class="n">load_thread</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+    <span class="n">relevant</span> <span class="o">=</span> <span class="n">retrieve_relevant_messages</span><span class="p">(</span>
+        <span class="n">room_id</span><span class="o">=</span><span class="n">room</span><span class="o">.</span><span class="n">id</span><span class="p">,</span>
+        <span class="n">query</span><span class="o">=</span><span class="n">message</span><span class="o">.</span><span class="n">content</span><span class="p">,</span>
+        <span class="n">filters</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;roles&quot;</span><span class="p">:</span> <span class="n">agent</span><span class="o">.</span><span class="n">interested_roles</span><span class="p">}</span>
+    <span class="p">)</span>
+    <span class="n">artifacts</span> <span class="o">=</span> <span class="n">select_artifacts</span><span class="p">(</span><span class="n">room</span><span class="p">,</span> <span class="n">agent</span><span class="p">,</span> <span class="n">message</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="p">[</span>
+        <span class="n">system_prompt</span><span class="p">(</span><span class="n">agent</span><span class="p">),</span>
+        <span class="n">room_objective</span><span class="p">(</span><span class="n">room</span><span class="p">),</span>
+        <span class="n">policy_block</span><span class="p">(</span><span class="n">room</span><span class="o">.</span><span class="n">policy</span><span class="p">,</span> <span class="n">agent</span><span class="p">),</span>
+        <span class="n">summarize_room_state</span><span class="p">(</span><span class="n">room</span><span class="p">),</span>
+        <span class="o">*</span><span class="n">thread</span><span class="p">,</span>
+        <span class="o">*</span><span class="n">relevant</span><span class="p">,</span>
+        <span class="o">*</span><span class="n">artifacts</span><span class="p">,</span>
+    <span class="p">]</span>
+</code></pre></div>
+
+<p>这里有个反直觉点：<strong>群聊越复杂，越需要有选择地遗忘。</strong> 不是丢掉审计记录，而是不把每一句废话都塞进模型上下文。人开会也一样，做会议纪要的人如果把每声“嗯嗯”都写进去，那不是负责，是报复。</p>
+<h2 id="moderator-agent">第五步：需要一个主持人，可以是人，也可以是 Moderator Agent</h2>
+<p>群聊式 Multi-Agent 最大的产品挑战，是收敛。</p>
+<p>多个 Agent 都能提出意见，但最后谁来合并？谁来判断冲突？谁来宣布“这个问题先这样定”？如果没有主持人，系统很容易从“协作”滑向“各说各话”。</p>
+<p>我建议保留一个明确的 <code>Moderator</code> 角色：</p>
+<ul>
+<li>默认由 human 担任。</li>
+<li>对低风险任务，可以由 Moderator Agent 协助整理。</li>
+<li>最终决策必须标记为 human-approved，除非房间策略明确允许自动决策。</li>
+</ul>
+<p>Moderator Agent 的职责不是装领导，而是做脏活：</p>
+<ul>
+<li>汇总不同 Agent 的观点。</li>
+<li>标记冲突和未决问题。</li>
+<li>提醒需要人类决策的点。</li>
+<li>把结论写成 artifact，比如设计文档、测试清单、执行计划。</li>
+</ul>
+<p>一个好的群聊系统，应该把人类从“复制粘贴和整理格式”里解放出来，但不要把人类从“判断和负责”里删除。前者是生产力，后者是甩锅。</p>
+<h2 id="_4">一个参考架构</h2>
+<p>如果从工程实现看，我会把系统拆成这些组件：</p>
+<div class="highlight"><pre><span></span><code>            ┌────────────────────┐
+            │  Chat UI / Channel │
+            └─────────┬──────────┘
+                      │
+                      v
+            ┌────────────────────┐
+            │  Message Service   │
+            └─────────┬──────────┘
+                      │ append event
+                      v
+            ┌────────────────────┐
+            │ Conversation Store │
+            └─────────┬──────────┘
+                      │
+                      v
+            ┌────────────────────┐
+            │ Conversation Router│
+            └─────────┬──────────┘
+                      │ dispatch
+        ┌─────────────┼─────────────┐
+        v             v             v
+ ┌────────────┐ ┌────────────┐ ┌────────────┐
+ │ Architect  │ │ Security   │ │ Tester     │
+ │ Agent      │ │ Agent      │ │ Agent      │
+ └─────┬──────┘ └─────┬──────┘ └─────┬──────┘
+       │              │              │
+       v              v              v
+ ┌──────────────────────────────────────────┐
+ │ Context Builder + Policy + Tool Gateway  │
+ └──────────────────────────────────────────┘
+</code></pre></div>
+
+<p>这里有几个关键边界：</p>
+<ul>
+<li><code>Message Service</code> 只负责接收和落库，不直接调用模型。</li>
+<li><code>Conversation Store</code> 是事实源，所有消息和 tool result 都可审计。</li>
+<li><code>Router</code> 负责决定唤醒谁，而不是 Agent 自己抢话筒。</li>
+<li><code>Context Builder</code> 负责按 Agent 裁剪上下文。</li>
+<li><code>Tool Gateway</code> 统一做鉴权、参数校验、审计和审批。</li>
+</ul>
+<p>如果做企业内部系统，我会再加三样东西：</p>
+<ol>
+<li><code>Policy Engine</code>：控制谁能进房间、Agent 能看什么、工具能不能调用。</li>
+<li><code>Artifact Store</code>：存设计文档、代码片段、测试结果、决策记录。</li>
+<li><code>Evaluation Hook</code>：记录每次 Agent 输出是否被采纳，用于后续改进。</li>
+</ol>
+<h2 id="agent_3">关键流程：一条消息如何变成多 Agent 协作</h2>
+<p>可以把一次群聊处理拆成八步：</p>
+<ol>
+<li>用户发送消息，带上 mentions、附件和 room id。</li>
+<li>Message Service 写入 Conversation Store。</li>
+<li>Router 根据 mention、reply、policy 决定要唤醒哪些 Agent。</li>
+<li>对每个 Agent，Context Builder 构造独立上下文。</li>
+<li>Policy Engine 检查该 Agent 是否允许处理这条消息。</li>
+<li>Agent 调用模型，必要时通过 Tool Gateway 调工具。</li>
+<li>Agent 输出作为新消息写回 room。</li>
+<li>Moderator 汇总结论，或等待 human 继续追问。</li>
+</ol>
+<p>用 sequence diagram 表示就是：</p>
+<div class="highlight"><pre><span></span><code>sequenceDiagram
+    participant H as Human
+    participant MS as Message Service
+    participant R as Router
+    participant A as Architect Agent
+    participant S as Security Agent
+    participant T as Tester Agent
+    participant G as Tool Gateway
+
+    H-&gt;&gt;MS: @architect @security @tester review API design
+    MS-&gt;&gt;R: message_created
+    R-&gt;&gt;A: dispatch with scoped context
+    R-&gt;&gt;S: dispatch with scoped context
+    R-&gt;&gt;T: dispatch with scoped context
+    A-&gt;&gt;MS: architecture review message
+    S-&gt;&gt;G: read artifact / check policy
+    G--&gt;&gt;S: tool result
+    S-&gt;&gt;MS: security findings
+    T-&gt;&gt;MS: test strategy
+    H-&gt;&gt;MS: approve decisions / ask follow-up
+</code></pre></div>
+
+<p>这个流程不神秘，难的是边界。只要边界清楚，第一版可以很小。</p>
+<h2 id="mvp">第一版 MVP 怎么做</h2>
+<p>如果让我从零开始做，我不会一上来就做“自主多 Agent 社会”。我会先做一个朴素但可用的 MVP。</p>
+<h3 id="mvp_1">MVP 目标</h3>
+<p>支持三件事：</p>
+<ol>
+<li>人可以在一个 room 里 <code>@一个 Agent</code> 提问。</li>
+<li>人可以 <code>@多个 Agent</code> 同时提问。</li>
+<li>Agent 可以在 room 内 <code>@另一个 Agent</code> 追问，但有轮次限制。</li>
+</ol>
+<h3 id="mvp_2">MVP 数据表</h3>
+<div class="highlight"><pre><span></span><code><span class="k">create</span><span class="w"> </span><span class="k">table</span><span class="w"> </span><span class="n">rooms</span><span class="w"> </span><span class="p">(</span>
+<span class="w">  </span><span class="n">id</span><span class="w"> </span><span class="nb">text</span><span class="w"> </span><span class="k">primary</span><span class="w"> </span><span class="k">key</span><span class="p">,</span>
+<span class="w">  </span><span class="n">title</span><span class="w"> </span><span class="nb">text</span><span class="w"> </span><span class="k">not</span><span class="w"> </span><span class="k">null</span><span class="p">,</span>
+<span class="w">  </span><span class="n">created_by</span><span class="w"> </span><span class="nb">text</span><span class="w"> </span><span class="k">not</span><span class="w"> </span><span class="k">null</span><span class="p">,</span>
+<span class="w">  </span><span class="n">policy_json</span><span class="w"> </span><span class="nb">text</span><span class="w"> </span><span class="k">not</span><span class="w"> </span><span class="k">null</span><span class="p">,</span>
+<span class="w">  </span><span class="n">created_at</span><span class="w"> </span><span class="k">timestamp</span><span class="w"> </span><span class="k">not</span><span class="w"> </span><span class="k">null</span>
+<span class="p">);</span>
+
+<span class="k">create</span><span class="w"> </span><span class="k">table</span><span class="w"> </span><span class="n">participants</span><span class="w"> </span><span class="p">(</span>
+<span class="w">  </span><span class="n">room_id</span><span class="w"> </span><span class="nb">text</span><span class="w"> </span><span class="k">not</span><span class="w"> </span><span class="k">null</span><span class="p">,</span>
+<span class="w">  </span><span class="n">participant_id</span><span class="w"> </span><span class="nb">text</span><span class="w"> </span><span class="k">not</span><span class="w"> </span><span class="k">null</span><span class="p">,</span>
+<span class="w">  </span><span class="n">participant_type</span><span class="w"> </span><span class="nb">text</span><span class="w"> </span><span class="k">not</span><span class="w"> </span><span class="k">null</span><span class="p">,</span><span class="w"> </span><span class="c1">-- human | agent</span>
+<span class="w">  </span><span class="k">role</span><span class="w"> </span><span class="nb">text</span><span class="w"> </span><span class="k">not</span><span class="w"> </span><span class="k">null</span><span class="p">,</span>
+<span class="w">  </span><span class="n">config_json</span><span class="w"> </span><span class="nb">text</span><span class="w"> </span><span class="k">not</span><span class="w"> </span><span class="k">null</span><span class="p">,</span>
+<span class="w">  </span><span class="k">primary</span><span class="w"> </span><span class="k">key</span><span class="w"> </span><span class="p">(</span><span class="n">room_id</span><span class="p">,</span><span class="w"> </span><span class="n">participant_id</span><span class="p">)</span>
+<span class="p">);</span>
+
+<span class="k">create</span><span class="w"> </span><span class="k">table</span><span class="w"> </span><span class="n">messages</span><span class="w"> </span><span class="p">(</span>
+<span class="w">  </span><span class="n">id</span><span class="w"> </span><span class="nb">text</span><span class="w"> </span><span class="k">primary</span><span class="w"> </span><span class="k">key</span><span class="p">,</span>
+<span class="w">  </span><span class="n">room_id</span><span class="w"> </span><span class="nb">text</span><span class="w"> </span><span class="k">not</span><span class="w"> </span><span class="k">null</span><span class="p">,</span>
+<span class="w">  </span><span class="n">sender_id</span><span class="w"> </span><span class="nb">text</span><span class="w"> </span><span class="k">not</span><span class="w"> </span><span class="k">null</span><span class="p">,</span>
+<span class="w">  </span><span class="n">sender_type</span><span class="w"> </span><span class="nb">text</span><span class="w"> </span><span class="k">not</span><span class="w"> </span><span class="k">null</span><span class="p">,</span>
+<span class="w">  </span><span class="n">content</span><span class="w"> </span><span class="nb">text</span><span class="w"> </span><span class="k">not</span><span class="w"> </span><span class="k">null</span><span class="p">,</span>
+<span class="w">  </span><span class="n">mentions_json</span><span class="w"> </span><span class="nb">text</span><span class="w"> </span><span class="k">not</span><span class="w"> </span><span class="k">null</span><span class="p">,</span>
+<span class="w">  </span><span class="n">reply_to</span><span class="w"> </span><span class="nb">text</span><span class="p">,</span>
+<span class="w">  </span><span class="n">turn_index</span><span class="w"> </span><span class="nb">integer</span><span class="w"> </span><span class="k">not</span><span class="w"> </span><span class="k">null</span><span class="p">,</span>
+<span class="w">  </span><span class="n">created_at</span><span class="w"> </span><span class="k">timestamp</span><span class="w"> </span><span class="k">not</span><span class="w"> </span><span class="k">null</span>
+<span class="p">);</span>
+</code></pre></div>
+
+<p>注意，<code>turn_index</code> 很重要。它可以帮你限制一次任务里的 Agent 轮次，防止循环对话。</p>
+<h3 id="mvp_3">MVP 路由策略</h3>
+<div class="highlight"><pre><span></span><code><span class="n">MAX_AGENT_TURNS</span> <span class="o">=</span> <span class="mi">6</span>
+
+<span class="k">def</span> <span class="nf">handle_message</span><span class="p">(</span><span class="n">room_id</span><span class="p">,</span> <span class="n">message</span><span class="p">):</span>
+    <span class="n">save_message</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">count_agent_turns</span><span class="p">(</span><span class="n">room_id</span><span class="p">,</span> <span class="n">root_message_id</span><span class="p">(</span><span class="n">message</span><span class="p">))</span> <span class="o">&gt;=</span> <span class="n">MAX_AGENT_TURNS</span><span class="p">:</span>
+        <span class="n">save_system_message</span><span class="p">(</span><span class="n">room_id</span><span class="p">,</span> <span class="s2">&quot;Agent turn limit reached. Waiting for human input.&quot;</span><span class="p">)</span>
+        <span class="k">return</span>
+
+    <span class="n">agents</span> <span class="o">=</span> <span class="n">route_message</span><span class="p">(</span><span class="n">load_room</span><span class="p">(</span><span class="n">room_id</span><span class="p">),</span> <span class="n">message</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">agent</span> <span class="ow">in</span> <span class="n">agents</span><span class="p">:</span>
+        <span class="n">context</span> <span class="o">=</span> <span class="n">build_context</span><span class="p">(</span><span class="n">room_id</span><span class="p">,</span> <span class="n">agent</span><span class="p">,</span> <span class="n">message</span><span class="p">)</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="n">run_agent</span><span class="p">(</span><span class="n">agent</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
+        <span class="n">save_message</span><span class="p">(</span><span class="n">response</span><span class="p">)</span>
+</code></pre></div>
+
+<p>第一版甚至可以不用复杂检索。先把 room objective、当前 thread、最近 N 条消息、被引用 artifact 放进去，就能跑起来。</p>
+<h2 id="_5">几个容易踩的坑</h2>
+<h3 id="1">1. 把群聊做成“自动回复风暴”</h3>
+<p>默认所有 Agent 都回复，是最常见也最烦人的错误。Agent 的积极性要被路由器管理，不能靠模型自觉。</p>
+<h3 id="2-agent">2. Agent 角色写得太虚</h3>
+<p>“你是一个有帮助的 AI 助手”这种角色，在群聊里没有意义。Architect、Security、Tester、Product、SRE 这些角色要有清晰关注点、输出格式和停止条件。</p>
+<h3 id="3-artifact">3. 没有 artifact，只有聊天记录</h3>
+<p>聊天是过程，不是结果。每次协作最好沉淀一个 artifact：设计文档、决策记录、测试清单、风险列表、PR 描述。否则群聊越聊越长，价值越藏越深。</p>
+<h3 id="4">4. 没有权限边界</h3>
+<p>群聊里最危险的不是 Agent 会说错话，而是它能做错事。工具调用必须经过统一 gateway，尤其是发消息、改代码、部署、访问密钥、调用外部 API 这类动作。</p>
+<h3 id="5">5. 人类没有最后控制权</h3>
+<p>Multi-Agent 系统容易给人一种“它们自己会商量好”的错觉。可以让 Agent 提建议、整理冲突、生成方案，但关键决策最好由人确认。系统要明确标记哪些结论是 <code>suggested</code>，哪些是 <code>approved</code>。</p>
+<h2 id="_6">我的设计原则</h2>
+<p>如果只能带走几条，我会选这几条：</p>
+<ul>
+<li><strong>Room 是边界</strong>：每个群聊都有主题、成员、权限和生命周期。</li>
+<li><strong>Message 是事实源</strong>：所有输入、输出、工具结果都落成可审计事件。</li>
+<li><strong>Router 控制发言权</strong>：不要让 Agent 自由抢答。</li>
+<li><strong>Context 按角色裁剪</strong>：不同 Agent 看到不同重点。</li>
+<li><strong>Tool Gateway 管动作</strong>：模型不能直接碰高风险能力。</li>
+<li><strong>Moderator 负责收敛</strong>：群聊必须产出 artifact 或 decision。</li>
+<li><strong>Human owns accountability</strong>：AI 可以协作，人类负责拍板。</li>
+</ul>
+<h2 id="prompt">可以直接抄的 Prompt 模板</h2>
+<p>给每个 Agent 一个群聊专用系统提示，会比普通 1:1 prompt 稳定很多。</p>
+<div class="highlight"><pre><span></span><code>You are {agent_name}, a participant in a group chat.
+
+Your role:
+- {role_description}
+
+Group chat rules:
+- Respond only when you are mentioned, replied to, or explicitly asked by the moderator.
+- Keep your response focused on your role.
+- If another agent made a useful point, build on it instead of repeating it.
+- If you disagree, explain the concrete reason and propose a fix.
+- Do not call tools unless the current room policy allows it.
+- Do not ask another agent to perform actions outside its role or permission.
+- When a human decision is required, mark it clearly as &quot;Needs human decision&quot;.
+
+Output format:
+- Findings
+- Questions
+- Recommendations
+- Risks
+</code></pre></div>
+
+<p>这个模板不华丽，但有用。群聊里的 Agent 最重要的不是“聪明地发挥”，而是知道什么时候说、说多少、什么时候停。</p>
+<h2 id="ai">结尾：把 AI 从“问答对象”变成“协作成员”</h2>
+<p>1:1 Chat 是 AI 产品的起点，因为它符合人的直觉：我问，你答。但工程协作从来不是单人单线。真实工作里，我们需要不同角色互相补位，也需要有人把分歧收敛成决定。</p>
+<p>多 Agent 群聊的价值，正在于把这个过程产品化：</p>
+<ul>
+<li>人可以同时询问多个 Agent。</li>
+<li>Agent 可以互相追问和补充。</li>
+<li>系统可以记录讨论、沉淀 artifact。</li>
+<li>工具调用和权限可以被统一治理。</li>
+<li>最后由人类把建议变成决策。</li>
+</ul>
+<p>我的判断是：未来很多 Agent 应用不会只长得像聊天框，而会更像一个“可编排的工作群”。只是这个群里，有人类、有 Agent、有工具、有记忆，也有边界。</p>
+<p>最后给一个小清单，方便明天开工。</p>
+<h3 id="multi-agent-group-chat">Multi-Agent Group Chat 检查清单</h3>
+<ul>
+<li>[ ] 是否定义了 <code>Room / Participant / Message / Task</code> 四个核心对象？</li>
+<li>[ ] 消息是否支持 <code>mentions</code>、<code>reply_to</code>、<code>attachments</code> 和 <code>visibility</code>？</li>
+<li>[ ] 是否有 Router 控制哪些 Agent 被唤醒？</li>
+<li>[ ] Agent-to-Agent 是否默认公开、可审计、有最大轮次？</li>
+<li>[ ] 每个 Agent 是否有清晰 role、tools、memory scope 和 permission？</li>
+<li>[ ] Context Builder 是否按角色裁剪上下文，而不是塞完整群聊历史？</li>
+<li>[ ] 高风险工具是否统一经过 Tool Gateway？</li>
+<li>[ ] 是否有 Moderator 汇总冲突、决策和 artifact？</li>
+<li>[ ] 系统能否区分 suggested decision 和 human-approved decision？</li>
+<li>[ ] 每次群聊是否最终沉淀一个可复用结果？</li>
+</ul>
+<p>如果 1:1 Chat 像找一个聪明人喝咖啡，那么 Multi-Agent Group Chat 更像开一场小型设计评审。咖啡可以随便喝，评审最好有议程、有主持、有纪要、有结论。AI 也一样。</p>
+  </div>
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/tag/ai-agent.html">AI Agent</a>
+      <a href="https://www.fanyamin.com/tag/multi-agent.html">Multi-Agent</a>
+      <a href="https://www.fanyamin.com/tag/group-chat.html">Group Chat</a>
+      <a href="https://www.fanyamin.com/tag/conversation-architecture.html">Conversation Architecture</a>
+      <a href="https://www.fanyamin.com/tag/human-in-the-loop.html">Human-in-the-loop</a>
+      <a href="https://www.fanyamin.com/tag/llm.html">LLM</a>
+    </p>
+  </div>
+
+
+  <div class="center social-share" style="margin: 1.5em 0; text-align: center;">
+    <p style="margin-bottom: 0.5em; color: #888;">📤 Share this article</p>
+    <a href="https://twitter.com/intent/tweet?text=%E4%BB%8E%201%3A1%20Chat%20%E5%88%B0%E7%BE%A4%E8%81%8A%EF%BC%9A%E8%AE%A9%E4%BA%BA%E5%92%8C%E5%A4%9A%E4%B8%AA%20AI%20Agent%20%E4%B8%80%E8%B5%B7%E5%BC%80%E4%BC%9A&url=https://www.fanyamin.com/cong-11-chat-dao-qun-liao-rang-ren-he-duo-ge-ai-agent-yi-qi-kai-hui.html"
+       target="_blank" rel="noopener" title="Share on Twitter/X"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#1da1f2; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      𝕏 Twitter
+    </a>
+    <a href="https://www.linkedin.com/sharing/share-offsite/?url=https://www.fanyamin.com/cong-11-chat-dao-qun-liao-rang-ren-he-duo-ge-ai-agent-yi-qi-kai-hui.html"
+       target="_blank" rel="noopener" title="Share on LinkedIn"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#0077b5; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      💼 LinkedIn
+    </a>
+    <a href="javascript:void(0);" onclick="copyLink('https://www.fanyamin.com/cong-11-chat-dao-qun-liao-rang-ren-he-duo-ge-ai-agent-yi-qi-kai-hui.html')" title="Copy link"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#666; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em; cursor:pointer;">
+      🔗 Copy Link
+    </a>
+    <script>
+    function copyLink(url) {
+      navigator.clipboard.writeText(url).then(function() {
+        alert('链接已复制！');
+      });
+    }
+    </script>
+  </div>
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/2026-04-29-oss-iam-authorization-system.html" title="用开源组件搭一个 AWS IAM 风格的授权系统">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/2026-05-05-ai-programming-taste.html" title="AI 编程时代，品味比经验更重要">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/2026-03-21-nanobot-memory-deep-dive.html">再聊 nanobot 的记忆机制：从消息计数到 Token 预算</a></li>
+      <li><a href="https://www.fanyamin.com/2026-03-15-nanobot-memory-mechanism.html">nanobot 的记忆机制：它为什么能记住你的习惯和喜好？</a></li>
+      <li><a href="https://www.fanyamin.com/she-ji-yi-ge-xue-xi-zhi-chang-ying-yu-de-ai-agentllm-agent-jia-gou-ri-chang-bi-huan-da-fen.html">设计一个学习职场英语的 AI Agent（LLM Agent 架构 + 日常闭环 + 打分）</a></li>
+      <li><a href="https://www.fanyamin.com/2026-01-16-prompt-engineering.html">Prompt 工程已死，上下文工程当立</a></li>
+      <li><a href="https://www.fanyamin.com/2026-01-15-pdca-paoe-ai-agent.html">从 PDCA 到 PAOE：AI Agent 大脑里的循环</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

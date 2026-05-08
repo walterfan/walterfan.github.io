@@ -1,0 +1,858 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'G-VZL08BHDPP', 'auto');
+  ga('send', 'pageview');
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="零停机服务不是一句“部署两套集群”就能实现的口号。真正可用的方案，是 active-active 流量、快速超时、跨集群重试、熔断摘除、共享幂等状态和无状态应用设计一起配合，让一次集群故障尽量止步于一次请求内部。" />
+<meta name="keywords" content="zero-downtime, high-availability, active-active, retry, idempotency, sre, architecture">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "如何做一个接近零停机的 HTTP 服务",
+  "description": "零停机服务不是一句“部署两套集群”就能实现的口号。真正可用的方案，是 active-active 流量、快速超时、跨集群重试、熔断摘除、共享幂等状态和无状态应用设计一起配合，让一次集群故障尽量止步于一次请求内部。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-05-08T11:04:00+08:00",
+  "dateModified": "2026-05-08T11:04:00+08:00",
+  "url": "https://www.fanyamin.com/zero-downtime-http-service.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/zero-downtime-http-service.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "zero-downtime, high-availability, active-active, retry, idempotency, sre, architecture"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="如何做一个接近零停机的 HTTP 服务"/>
+  <meta property="og:description" content="零停机服务不是一句“部署两套集群”就能实现的口号。真正可用的方案，是 active-active 流量、快速超时、跨集群重试、熔断摘除、共享幂等状态和无状态应用设计一起配合，让一次集群故障尽量止步于一次请求内部。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/zero-downtime-http-service.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-05-08 11:04:00+08:00"/>
+  <meta property="article:modified_time" content="2026-05-08 11:04:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="zero-downtime"/>
+  <meta property="article:tag" content="high-availability"/>
+  <meta property="article:tag" content="active-active"/>
+  <meta property="article:tag" content="retry"/>
+  <meta property="article:tag" content="idempotency"/>
+  <meta property="article:tag" content="sre"/>
+  <meta property="article:tag" content="architecture"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 如何做一个接近零停机的 HTTP 服务</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/">Walter Fan</a>
+    </h1>
+
+    <p>手握灵珠常奋笔, 心开天籁不吹箫</p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/search.html" role="search">
+      <input type="text" name="q" id="tipue_search_input" placeholder="Search...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank" href="tao.html" >tao</a>
+          </li>
+          <li>
+            <a target="_blank" href="article.html" >article</a>
+          </li>
+          <li>
+            <a target="_blank" href="manual.html" >manual</a>
+          </li>
+          <li>
+            <a target="_blank" href="interest.html" >interest</a>
+          </li>
+          <li>
+            <a target="_self" href="/wordpress" >notebook</a>
+          </li>
+          <li>
+            <a target="_blank" href="bookmark.html" >bookmark</a>
+          </li>
+          <li>
+            <a target="_self" href="/webrtc/examples/index.html" >webrtc</a>
+          </li>
+          <li>
+            <a target="_blank" href="https://github.com/walterfan" >github</a>
+          </li>
+          <li>
+            <a target="_blank" href="categories.html" >categories</a>
+          </li>
+          <li>
+            <a target="_blank" href="tags.html" >tags</a>
+          </li>
+      </ul>
+    </nav>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+</aside>
+  <main>
+
+
+<article class="single">
+  <header>
+      
+    <h1 id="zero-downtime-http-service">如何做一个接近零停机的 HTTP 服务</h1>
+    <p>
+      Posted on 五 08 5月 2026 in <a href="https://www.fanyamin.com/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>如何做一个接近零停机的 HTTP 服务</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-05-08</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">短大纲</h2>
+<details>
+<summary>展开看看</summary>
+
+- **核心观点**：零停机不是系统永不故障，而是故障发生时，用户尽量看不见。
+- **基本架构**：两个集群 active-active，对外由 Global Edge / Gateway 统一接入。
+- **止血手段**：短超时、每请求跨集群重试、被动故障检测、熔断和慢启动。
+- **安全边界**：GET 可以自动重试，POST 必须靠 `Idempotency-Key` 兜底。
+- **状态要求**：应用尽量无状态，会话、幂等记录、数据库写入和后台任务要跨集群设计。
+- **落地清单**：给出默认参数、健康检查设计和上线前检查卡。
+
+</details>
+
+<hr>
+<h2 id="_2">正文</h2>
+<p>线上服务最尴尬的时刻，不是机器真的坏了。</p>
+<p>机器坏了，至少事情很明确。真正让人头大的是：某个集群开始半死不活，偶尔超时，偶尔 502，监控刚抬头，客户已经截图发来了。你看着仪表盘，心里默念：“再给健康检查五秒钟，它应该能发现。”可用户不会等你的健康检查。</p>
+<p>所以我对“零停机”的理解比较朴素：<strong>不是让系统永不失败，而是让失败尽量被挡在用户看见之前。</strong></p>
+<p>如果是 HTTP 服务，最实用的一套打法是：</p>
+<div class="highlight"><pre><span></span><code>active-active traffic
++ fast request timeout
++ retry to another cluster
++ circuit breaker
++ shared idempotency state
++ stateless app design
+</code></pre></div>
+
+<p>一句话，健康检查负责最终把坏集群摘掉，每请求 failover 负责把故障窗口藏起来，幂等负责让重试不会把业务做两遍。</p>
+<p>这篇文章就讲一个具体场景：<strong>Cluster A 和 Cluster B 两套集群同时对外服务，边缘层按请求做重试和故障转移，目标是把用户可见错误降到最低。</strong></p>
+<h2 id="_3">先看架构：两套集群都在干活</h2>
+<p>不要一上来就做 active-passive。</p>
+<p>active-passive 看起来简单：A 平时干活，B 平时待命。问题是，B 长期不吃真实流量，一到真出事，大家才发现它证书过期、缓存没热、配置少了一行、数据库权限不对。备胎系统最大的问题是，平时太像备胎，关键时刻也容易像备胎。</p>
+<p>更实用的方式是 active-active：</p>
+<div class="highlight"><pre><span></span><code>                ┌──────────────┐
+Client ───────▶ │ Global Edge  │
+                │ LB / Gateway │
+                └──────┬───────┘
+                       │
+        ┌──────────────┴──────────────┐
+        ▼                             ▼
+┌──────────────┐              ┌──────────────┐
+│  Cluster A   │              │  Cluster B   │
+│ Local LB/API │              │ Local LB/API │
+└──────────────┘              └──────────────┘
+</code></pre></div>
+
+<p>正常状态：</p>
+<div class="highlight"><pre><span></span><code>Cluster A: 50%
+Cluster B: 50%
+</code></pre></div>
+
+<p>Cluster A 不健康时：</p>
+<div class="highlight"><pre><span></span><code>Cluster A: 0%
+Cluster B: 100%
+</code></pre></div>
+
+<p>这要求全局入口层具备几类能力：</p>
+<table>
+<thead>
+<tr>
+<th>能力</th>
+<th>解决的问题</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Weighted load balancing</td>
+<td>正常状态下按权重分流，例如 50/50</td>
+</tr>
+<tr>
+<td>Active health check</td>
+<td>定期探测 <code>/ready</code>，判断集群是否能接流量</td>
+</tr>
+<tr>
+<td>Passive failure detection</td>
+<td>根据真实请求的超时、reset、5xx 判断异常</td>
+</tr>
+<tr>
+<td>Retry to alternate cluster</td>
+<td>当前请求失败时，尝试另一个集群</td>
+</tr>
+<tr>
+<td>Circuit breaker / outlier ejection</td>
+<td>某个集群连续异常后，临时摘除</td>
+</tr>
+<tr>
+<td>Request timeout control</td>
+<td>控制每次尝试和整体请求的时间预算</td>
+</tr>
+</tbody>
+</table>
+<p>可选的边缘层很多，云厂商和自建网关都有成熟方案，例如 AWS Global Accelerator + ALB/NLB、Cloudflare Load Balancing、Akamai GTM、GCP Global External HTTP(S) LB、Azure Front Door、Envoy / Istio Gateway、HAProxy / NGINX Plus 等。具体选哪一个，看团队已有基础设施和运维能力，不必为了“高大上”重造一套轮子。</p>
+<h2 id="_4">不要只相信健康检查</h2>
+<p>健康检查很有用，但它不是神仙。</p>
+<p>一个常见配置是：</p>
+<div class="highlight"><pre><span></span><code>health check interval: 5s
+unhealthy threshold: 3
+</code></pre></div>
+
+<p>这意味着最坏情况下，边缘层可能要 15 秒左右才确认某个集群不健康。15 秒在架构图上很短，在用户面前很长。一个登录接口卡 15 秒，用户不会说“你们的故障检测窗口设计合理”，他只会刷新、投诉，或者换产品。</p>
+<p>所以要同时使用两种信号：</p>
+<div class="highlight"><pre><span></span><code>Active health check:
+  周期性访问 /health 或 /ready。
+
+Passive health check:
+  边缘层观察真实请求的失败、超时、连接重置和 5xx 峰值。
+</code></pre></div>
+
+<p>一个更贴近生产的流程是：</p>
+<div class="highlight"><pre><span></span><code>Cluster A 开始超时：
+  1. 当前请求快速失败。
+  2. Edge 把符合条件的请求重试到 Cluster B。
+  3. Edge 增加 Cluster A 的失败分。
+  4. 达到阈值后，Cluster A 被临时摘除。
+  5. 健康检查继续探测，恢复后再逐步放流量。
+</code></pre></div>
+
+<p>这样，停机窗口不再完全取决于“健康检查间隔 × 阈值”，而是更接近“一次快速失败 + 一次跨集群重试”的时间。</p>
+<h2 id="_5">超时要短，而且要分层</h2>
+<p>很多 failover 方案看起来没效果，罪魁祸首不是没有重试，而是第一次尝试等太久。</p>
+<p>如果上游超时是 30 秒，客户端超时也是 30 秒，那边缘层即使有重试能力，也没有时间重试。就像你约了两辆出租车，第一辆迟到半小时才想起叫第二辆，面试早结束了。</p>
+<p>更合理的设计是短超时、分层超时：</p>
+<div class="highlight"><pre><span></span><code>TCP connect timeout:        200-500ms
+TLS handshake timeout:      500ms-1s
+upstream request timeout:   1-2s for normal APIs
+total request timeout:      3-5s
+retry budget:               1 retry to another cluster
+</code></pre></div>
+
+<p>关键规则只有一句：</p>
+<blockquote>
+<p>第一次尝试必须失败得足够快，第二次尝试才有机会成功。</p>
+</blockquote>
+<p>举个例子：</p>
+<div class="highlight"><pre><span></span><code>client timeout: 5s
+edge total timeout: 4s
+
+attempt 1 to Cluster A:
+  timeout after 1s
+
+retry to Cluster B:
+  allowed up to 2s
+
+edge still has time to return a successful response
+</code></pre></div>
+
+<p>当然，不是所有 API 都能用 1 秒超时。报表导出、视频转码、批量任务提交，这类接口本来就不该被设计成同步等待到底。它们更适合异步任务模型：先返回 task id，再由客户端轮询或服务端推送结果。</p>
+<p>零停机不是用网关掩盖所有慢接口。慢接口要从 API 设计上治。</p>
+<h2 id="_6">重试不是越多越好</h2>
+<p>重试是稳定性工具，也是放大器。</p>
+<p>用得好，它挡住一次短暂故障；用不好，它把一个小毛病放大成雪崩。尤其是跨集群 active-active 场景，最怕所有客户端、网关、服务内部都在重试，大家一起“热心帮忙”，最后把唯一健康的集群也打趴下。</p>
+<p>我的默认建议是：</p>
+<div class="highlight"><pre><span></span><code>max retries: 1
+retry target: different cluster only
+retry backoff: 20-100ms jitter
+retry budget: max 5-10% of total traffic
+</code></pre></div>
+
+<p>这里有两个要点。</p>
+<p>第一个，<strong>只重试一次</strong>。如果一次跨集群重试还失败，多半不是靠第三次、第四次能救的。继续重试只会占用线程、连接和队列。</p>
+<p>第二个，<strong>只重试到另一个集群</strong>。Cluster A 正在失败，你再打 Cluster A 一次，大概率只是把宝贵的时间窗口浪费掉。</p>
+<h2 id="_7">哪些请求可以重试</h2>
+<p>重试策略的核心不是 HTTP method，而是业务语义。</p>
+<p>可以用下面这张表作为默认规则：</p>
+<table>
+<thead>
+<tr>
+<th>请求类型</th>
+<th>默认策略</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET</code> / <code>HEAD</code> / <code>OPTIONS</code></td>
+<td>可自动重试</td>
+</tr>
+<tr>
+<td><code>PUT</code> / <code>DELETE</code></td>
+<td>只有 API 明确幂等时才重试</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td>只有带 <code>Idempotency-Key</code> 时才重试</td>
+</tr>
+</tbody>
+</table>
+<p>常见可重试失败：</p>
+<div class="highlight"><pre><span></span><code>- connection refused
+- connection reset
+- upstream timeout
+- HTTP 502
+- HTTP 503
+- HTTP 504
+</code></pre></div>
+
+<p>通常不要重试：</p>
+<div class="highlight"><pre><span></span><code>- HTTP 400
+- HTTP 401
+- HTTP 403
+- HTTP 404
+- HTTP 409
+- HTTP 422
+- 已经完成但副作用未知的请求，除非有幂等保护
+</code></pre></div>
+
+<p>这里最危险的是 POST。比如创建订单、扣款、发券、开通权限，这些操作一旦执行两次，系统就不是零停机了，是零理智。</p>
+<p>所以，凡是有业务副作用的接口，都要认真设计幂等。</p>
+<h2 id="_8">幂等：让重试不变成重复扣款</h2>
+<p>对写请求来说，<code>Idempotency-Key</code> 是零停机方案里最不起眼、也最要命的一块。</p>
+<p>客户端发起请求：</p>
+<div class="highlight"><pre><span></span><code><span class="err">POST /api/orders</span>
+<span class="err">Idempotency-Key: 01J9Z7S3H5VZ9XK8FZ2M</span>
+<span class="err">Content-Type: application/json</span>
+</code></pre></div>
+
+<p>服务端存一条幂等记录：</p>
+<div class="highlight"><pre><span></span><code>idempotency_key
+request_hash
+operation_name
+tenant_id / user_id
+status
+response_code
+response_body
+created_at
+expires_at
+</code></pre></div>
+
+<p>处理流程可以这样设计：</p>
+<div class="highlight"><pre><span></span><code>1. 收到带 Idempotency-Key 的请求。
+2. 计算 request hash。
+3. 尝试插入幂等记录，status=PROCESSING。
+4. 如果插入成功：
+     执行业务操作。
+     保存最终响应。
+     返回响应。
+5. 如果 key 已存在：
+     比较 request hash。
+     如果 hash 不同，返回 409 Conflict。
+     如果 status=SUCCESS/FAILED，返回已保存的响应。
+     如果 status=PROCESSING，短暂等待，或返回 409/425/202，取决于 API 语义。
+</code></pre></div>
+
+<p>一个简化版表结构大概长这样：</p>
+<div class="highlight"><pre><span></span><code><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">api_idempotency</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="n">idempotency_key</span><span class="w"> </span><span class="nb">VARCHAR</span><span class="p">(</span><span class="mi">128</span><span class="p">)</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">tenant_id</span><span class="w">       </span><span class="nb">VARCHAR</span><span class="p">(</span><span class="mi">64</span><span class="p">)</span><span class="w">  </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">operation_name</span><span class="w">  </span><span class="nb">VARCHAR</span><span class="p">(</span><span class="mi">64</span><span class="p">)</span><span class="w">  </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">request_hash</span><span class="w">    </span><span class="nb">CHAR</span><span class="p">(</span><span class="mi">64</span><span class="p">)</span><span class="w">     </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">status</span><span class="w">          </span><span class="nb">VARCHAR</span><span class="p">(</span><span class="mi">16</span><span class="p">)</span><span class="w">  </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">response_code</span><span class="w">   </span><span class="nb">INT</span><span class="p">,</span>
+<span class="w">    </span><span class="n">response_body</span><span class="w">   </span><span class="n">JSON</span><span class="p">,</span>
+<span class="w">    </span><span class="n">created_at</span><span class="w">      </span><span class="k">TIMESTAMP</span><span class="w">    </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">expires_at</span><span class="w">      </span><span class="k">TIMESTAMP</span><span class="w">    </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="p">(</span><span class="n">tenant_id</span><span class="p">,</span><span class="w"> </span><span class="n">operation_name</span><span class="p">,</span><span class="w"> </span><span class="n">idempotency_key</span><span class="p">)</span>
+<span class="p">);</span>
+</code></pre></div>
+
+<p>注意，<code>tenant_id</code> 和 <code>operation_name</code> 通常要进入唯一键。否则不同租户、不同操作之间可能误伤。<code>request_hash</code> 也不是可有可无，它用来防止同一个 key 搭配不同请求体，被系统错误复用。</p>
+<p>幂等能挡住几类真实问题：</p>
+<div class="highlight"><pre><span></span><code>- edge retry after timeout
+- client retry
+- duplicate POST from network failure
+- cluster failover during write
+</code></pre></div>
+
+<p>但有一个硬要求：<strong>幂等存储必须跨集群共享。</strong></p>
+<p>可选方案有：</p>
+<div class="highlight"><pre><span></span><code>- globally replicated database table
+- strongly consistent primary database
+- Redis with cross-cluster replication, if consistency is acceptable
+</code></pre></div>
+
+<p>如果是支付、权限、安全配置这类高价值操作，我更倾向于数据库幂等表，而不是只靠最终一致的缓存。缓存可以快，钱和权限不能“差不多”。</p>
+<h2 id="active-active">状态设计：active-active 最怕“本地真相”</h2>
+<p>很多 active-active 方案最后失败，不是因为流量切不过去，而是状态切不过去。</p>
+<p>要让两个集群都能接同一个请求，至少要满足这些条件：</p>
+<div class="highlight"><pre><span></span><code>- both clusters can serve the same hostname
+- both clusters have valid TLS certs
+- app instances are stateless
+- sessions are shared or token-based
+- idempotency records are shared
+- database writes are safe under retry
+- background jobs are leader-elected or partitioned
+</code></pre></div>
+
+<p>反过来，下面这些设计会让 failover 变得很脆：</p>
+<div class="highlight"><pre><span></span><code>- sticky sessions required for correctness
+- cluster-local cache as source of truth
+- cluster-local idempotency table
+- duplicate scheduled jobs running in both clusters without locks
+</code></pre></div>
+
+<p>会话最好用 JWT 或其他无状态 token。确实需要服务端 session，也要放到跨集群共享的 session store 中，并明确一致性要求。</p>
+<p>缓存只能是缓存，不能是事实来源。这个原则听起来像废话，但产线里很多事故就是从“我们以为缓存里一定有”开始的。缓存一旦成为事实来源，切流量时就会出现玄学问题：A 集群知道，B 集群不知道，用户夹在中间像参加猜谜节目。</p>
+<p>后台任务也要特别小心。两个集群 active-active，不代表定时任务也能随便跑两份。清算、发邮件、发券、数据同步，都要用 leader election、分片、分布式锁或任务队列来约束。</p>
+<h2 id="_9">健康检查：活着不等于能接流量</h2>
+<p>健康检查至少要拆成两个端点：</p>
+<div class="highlight"><pre><span></span><code>/live
+  Process is alive.
+  Used by local orchestrator.
+
+/ready
+  Instance can serve traffic.
+  Used by load balancers.
+</code></pre></div>
+
+<p><code>/live</code> 回答“进程是不是还活着”。<code>/ready</code> 回答“现在能不能接真实流量”。这两个问题不能混在一起。</p>
+<p><code>/ready</code> 可以检查：</p>
+<div class="highlight"><pre><span></span><code>- database connectivity
+- required cache connectivity
+- downstream critical services
+- migration/version compatibility
+- local app warm-up complete
+</code></pre></div>
+
+<p>但 readiness 也不能太脆。</p>
+<p>如果一个非关键推荐服务挂了，就把整个订单服务摘掉，可能反而扩大故障。readiness 应该关注“没有它就无法正确服务”的依赖，例如：</p>
+<div class="highlight"><pre><span></span><code>/ready returns unhealthy if:
+  - DB unavailable
+  - app cannot authenticate requests
+  - required secrets/config missing
+  - local server is overloaded beyond threshold
+</code></pre></div>
+
+<p>一句话，readiness 不是全家桶体检报告，而是“我现在接真实流量会不会害人”的判断。</p>
+<h2 id="_10">熔断和慢启动：摘掉坏的，温柔地放回来</h2>
+<p>边缘层要能根据真实请求快速摘除异常集群。</p>
+<p>一个参考策略：</p>
+<div class="highlight"><pre><span></span><code>consecutive 5xx: 5
+consecutive gateway failures: 3
+success rate below: 80%
+ejection time: 30s
+max ejection percent: 100%
+recovery: slow start over 1-5 minutes
+</code></pre></div>
+
+<p>流程大概是：</p>
+<div class="highlight"><pre><span></span><code>Cluster A starts failing
+  ↓
+Edge sees timeouts/502/503
+  ↓
+Retry eligible requests to Cluster B
+  ↓
+Cluster A gets temporarily ejected
+  ↓
+Health checks continue
+  ↓
+Cluster A recovers
+  ↓
+Traffic ramps back gradually
+</code></pre></div>
+
+<p>这里“慢启动”很重要。刚恢复的集群，不要立刻吃回 50% 流量。它可能缓存还是冷的，连接池还没建好，JIT 还没热，甚至某些依赖刚刚恢复。慢慢放量，就像病人刚出院，别马上拉去跑半马。</p>
+<h2 id="_11">三个请求怎么走</h2>
+<p>正常请求：</p>
+<div class="highlight"><pre><span></span><code>Client → Global Edge → Cluster A → 200 OK
+</code></pre></div>
+
+<p>Cluster A 超时，但请求可重试：</p>
+<div class="highlight"><pre><span></span><code>Client → Global Edge → Cluster A
+                         timeout after 1s
+       → Global Edge retries → Cluster B → 200 OK
+       ← Client receives 200 OK
+</code></pre></div>
+
+<p>带幂等键的 POST：</p>
+<div class="highlight"><pre><span></span><code>Client → POST /payment Idempotency-Key: abc123
+       → Global Edge → Cluster A
+                         timeout after 1s
+       → retry → Cluster B
+       → Cluster B checks idempotency table
+       → returns stored result or safely completes operation
+</code></pre></div>
+
+<p>第三个场景最值得反复演练。因为读请求失败，最多用户刷新一下；写请求做错，可能要客服、财务、合规一起陪你过周末。</p>
+<h2 id="_12">推荐默认参数</h2>
+<p>下面这份默认值不是圣旨，但可以作为第一版配置的起点：</p>
+<div class="highlight"><pre><span></span><code>Routing:
+  active-active 50/50
+
+Health check:
+  interval: 5s
+  timeout: 1s
+  unhealthy threshold: 2-3
+  healthy threshold: 2
+
+Retry:
+  max retries: 1
+  retry to alternate cluster only
+  retry on: connect failure, reset, 502, 503, 504
+  retry GET/HEAD by default
+  retry POST only with Idempotency-Key
+
+Timeouts:
+  connect timeout: 300ms
+  upstream response timeout: 1-2s
+  total edge timeout: 4s
+  client timeout: 5s+
+
+Circuit breaker:
+  eject after 3-5 consecutive gateway failures
+  ejection duration: 30s
+  slow start after recovery: 1-5min
+</code></pre></div>
+
+<p>真正上线前，要用压测和故障演练验证这些数字。不同业务的 P99 延迟、数据库写入时延、下游依赖情况都不一样，直接复制参数只能算“起步”，不能算“负责”。</p>
+<h2 id="_13">常见坑</h2>
+<h3 id="1">1. 只做双集群，不做跨集群重试</h3>
+<p>这叫“架构图高可用”，不是用户体验高可用。</p>
+<p>健康检查摘除集群之前，用户仍然会撞到坏集群。没有每请求 failover，就只能等检测窗口过去。</p>
+<h3 id="2-post">2. POST 没有幂等，还敢自动重试</h3>
+<p>这是典型的稳定性方案把业务搞坏。重试不是免费的，写请求一定要先设计幂等。</p>
+<h3 id="3">3. 所有层都在重试</h3>
+<p>客户端重试、Edge 重试、Service A 重试、SDK 重试、数据库驱动还重试。每一层都觉得自己在救火，最后一起往火里倒汽油。</p>
+<p>要有统一的 retry budget，明确谁重试、重试几次、哪些错误能重试。</p>
+<h3 id="4-readiness">4. Readiness 检查太重</h3>
+<p><code>/ready</code> 每次都查十几个下游，任何一个小依赖抖一下就摘流量。这样不是健康检查，是故障制造机。</p>
+<h3 id="5">5. 恢复后立刻全量放流</h3>
+<p>坏集群刚好，马上打满流量，很容易二次故障。慢启动不是保守，是对系统恢复过程的尊重。</p>
+<h2 id="_14">上线前自查卡</h2>
+<p>最后给一张可以直接抄走的检查卡。</p>
+<table>
+<thead>
+<tr>
+<th>检查项</th>
+<th>问题</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>流量入口</td>
+<td>是否有统一 Global Edge / Gateway？是否支持按集群权重分流？</td>
+</tr>
+<tr>
+<td>健康检查</td>
+<td>是否区分 <code>/live</code> 和 <code>/ready</code>？readiness 是否只检查关键依赖？</td>
+</tr>
+<tr>
+<td>被动检测</td>
+<td>是否根据真实请求的 timeout/reset/5xx 快速降权或摘除？</td>
+</tr>
+<tr>
+<td>超时预算</td>
+<td>第一次尝试失败后，是否还留有足够时间重试另一个集群？</td>
+</tr>
+<tr>
+<td>重试策略</td>
+<td>是否限制 <code>max retries=1</code>？是否只重试到另一个集群？</td>
+</tr>
+<tr>
+<td>Retry budget</td>
+<td>重试流量是否有上限，避免雪崩？</td>
+</tr>
+<tr>
+<td>幂等设计</td>
+<td>POST / 写操作是否强制 <code>Idempotency-Key</code>？</td>
+</tr>
+<tr>
+<td>幂等存储</td>
+<td>幂等表是否跨集群共享？是否校验 request hash？</td>
+</tr>
+<tr>
+<td>会话状态</td>
+<td>session 是否无状态或跨集群共享？</td>
+</tr>
+<tr>
+<td>数据一致性</td>
+<td>数据库写入是否能承受超时后的重试和重复请求？</td>
+</tr>
+<tr>
+<td>后台任务</td>
+<td>定时任务是否有 leader election、分片或锁？</td>
+</tr>
+<tr>
+<td>证书配置</td>
+<td>两个集群是否都能服务同一个 hostname 和 TLS 证书？</td>
+</tr>
+<tr>
+<td>观测指标</td>
+<td>是否按 cluster 维度观测 QPS、错误率、超时率、重试率、熔断次数？</td>
+</tr>
+<tr>
+<td>演练</td>
+<td>是否做过单集群断网、5xx 注入、慢响应、数据库抖动演练？</td>
+</tr>
+<tr>
+<td>安全与隐私</td>
+<td>日志和错误响应是否避免泄露 token、用户隐私和幂等请求体？</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_15">明天就能做的三件事</h2>
+<p>如果现在还没有完整方案，不妨先做三件小事：</p>
+<ol>
+<li>给所有关键 HTTP API 梳理一遍：哪些能重试，哪些必须加 <code>Idempotency-Key</code>。</li>
+<li>在网关上把超时拆开：connect timeout、upstream timeout、total timeout，不要一个 30 秒打天下。</li>
+<li>做一次小型演练：让 Cluster A 对某个接口连续超时，观察 Edge 能不能把请求重试到 Cluster B。</li>
+</ol>
+<p>很多稳定性工程不是一口气建成罗马，而是先把最危险的洞补上。</p>
+<p>零停机服务也是如此。它不是某个神奇组件，也不是一张漂亮架构图。它是一组朴素但严格的约定：流量能切，失败能快，重试有界，写入幂等，状态共享，恢复慢放。</p>
+<p>无他，提前把失败当成正常路径设计。</p>
+  </div>
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/tag/zero-downtime.html">zero-downtime</a>
+      <a href="https://www.fanyamin.com/tag/high-availability.html">high-availability</a>
+      <a href="https://www.fanyamin.com/tag/active-active.html">active-active</a>
+      <a href="https://www.fanyamin.com/tag/retry.html">retry</a>
+      <a href="https://www.fanyamin.com/tag/idempotency.html">idempotency</a>
+      <a href="https://www.fanyamin.com/tag/sre.html">sre</a>
+      <a href="https://www.fanyamin.com/tag/architecture.html">architecture</a>
+    </p>
+  </div>
+
+
+  <div class="center social-share" style="margin: 1.5em 0; text-align: center;">
+    <p style="margin-bottom: 0.5em; color: #888;">📤 Share this article</p>
+    <a href="https://twitter.com/intent/tweet?text=%E5%A6%82%E4%BD%95%E5%81%9A%E4%B8%80%E4%B8%AA%E6%8E%A5%E8%BF%91%E9%9B%B6%E5%81%9C%E6%9C%BA%E7%9A%84%20HTTP%20%E6%9C%8D%E5%8A%A1&url=https://www.fanyamin.com/zero-downtime-http-service.html"
+       target="_blank" rel="noopener" title="Share on Twitter/X"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#1da1f2; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      𝕏 Twitter
+    </a>
+    <a href="https://www.linkedin.com/sharing/share-offsite/?url=https://www.fanyamin.com/zero-downtime-http-service.html"
+       target="_blank" rel="noopener" title="Share on LinkedIn"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#0077b5; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      💼 LinkedIn
+    </a>
+    <a href="javascript:void(0);" onclick="copyLink('https://www.fanyamin.com/zero-downtime-http-service.html')" title="Copy link"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#666; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em; cursor:pointer;">
+      🔗 Copy Link
+    </a>
+    <script>
+    function copyLink(url) {
+      navigator.clipboard.writeText(url).then(function() {
+        alert('链接已复制！');
+      });
+    }
+    </script>
+  </div>
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/rag-optimization-best-practices.html" title="RAG 知识库优化：别让 AI 一本正经地胡说八道">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/llm-api-token-cost-control.html" title="LLM API 越来越贵，别让 token 像自来水一样哗哗流">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/incident-response-runbook-timeline-checklist.html">产线故障应对：Runbook、时间线、决策树、检查表怎么用才不慌</a></li>
+      <li><a href="https://www.fanyamin.com/chaosblade-chaos-engineering-reliability.html">ChaosBlade：把混沌工程从口号变成可回滚的实验</a></li>
+      <li><a href="https://www.fanyamin.com/fu-wu-wen-ding-xing-zhi-lmat-he-usedbie-deng-zhao-bao-jing-xian-xue-hui-kan-bing-li.html">服务稳定性之 LMAT 和 USED：别等着报警, 先学会"看病历"</a></li>
+      <li><a href="https://www.fanyamin.com/2026-03-06-service-stability-lmat-used.html">服务稳定性之 LMAT 和 USED</a></li>
+      <li><a href="https://www.fanyamin.com/spire-02-architecture.html">SPIRE 系列之二：架构深度解析</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

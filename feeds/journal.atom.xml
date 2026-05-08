@@ -1,5 +1,1584 @@
 <?xml version="1.0" encoding="utf-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom"><title>Walter Fan's Blog - Journal</title><link href="https://www.fanyamin.com/" rel="alternate"/><link href="https://www.fanyamin.com/feeds/journal.atom.xml" rel="self"/><id>https://www.fanyamin.com/</id><updated>2026-04-26T22:18:00+08:00</updated><subtitle>手握灵珠常奋笔, 心开天籁不吹箫</subtitle><entry><title>SPIRE 系列之四：实战 Lab — 用零信任身份替代数据库密码分发</title><link href="https://www.fanyamin.com/spire-04-hands-on-lab.html" rel="alternate"/><published>2026-04-26T20:30:00+08:00</published><updated>2026-04-26T22:18:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-04-26:/spire-04-hands-on-lab.html</id><summary type="html">&lt;p&gt;SPIRE 系列第四篇：用一个迷你 Python 实验把 Workload Identity 落地，用 JWT-SVID 替代应用侧数据库密码分发，并串起 SPIFFE、SPIRE、Zero Trust 的完整链路。&lt;/p&gt;</summary><content type="html">&lt;h1 id="spire-lab"&gt;SPIRE 系列之四：实战 Lab — 用零信任身份替代数据库密码分发&lt;/h1&gt;
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Walter Fan's Blog - Journal</title><link href="https://www.fanyamin.com/" rel="alternate"/><link href="https://www.fanyamin.com/feeds/journal.atom.xml" rel="self"/><id>https://www.fanyamin.com/</id><updated>2026-05-08T21:25:00+08:00</updated><subtitle>手握灵珠常奋笔, 心开天籁不吹箫</subtitle><entry><title>LLM API 越来越贵，别让 token 像自来水一样哗哗流</title><link href="https://www.fanyamin.com/llm-api-token-cost-control.html" rel="alternate"/><published>2026-05-08T15:44:00+08:00</published><updated>2026-05-08T21:18:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-05-08:/llm-api-token-cost-control.html</id><summary type="html">&lt;p&gt;LLM API 的成本控制不是少用 AI，而是把 token 当工程资源来管。先度量，再分级选模型，压缩上下文，复用缓存，限制输出，离线任务走批处理，最后拿检查清单管住那些看不见的浪费。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;LLM API 越来越贵，别让 token 像自来水一样哗哗流&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;Journal&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Status&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;v1.0&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;2026-05-08&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 id="_1"&gt;短大纲&lt;/h2&gt;
+&lt;details&gt;
+&lt;summary&gt;展开看看&lt;/summary&gt;
+
+- **核心观点**：省 token 不是少用 LLM，而是把 LLM 当成昂贵的计算资源来调度。
+- **第一个动作**：先把 token 用量打点，别凭感觉优化。
+- **模型分级**：小模型做分类、抽取、改写，大模型做推理、设计、复杂判断。
+- **Prompt 瘦身**：固定规则放前面，变量放后面，删掉礼貌废话和重复上下文。
+- **上下文控制**：RAG 不要把整本书塞给模型，只给当前问题真正需要的材料。
+- **成本工具箱**：prompt caching、response cache、Batch API、输出长度限制、预算告警。
+- **模式与反模式**：模型路由、预算盒、上下文漏斗是好模式；一把梭、自来水、资料倾倒是反模式。
+- **落地清单**：一张能直接抄走的 token 成本自查表。
+
+&lt;/details&gt;
+
+&lt;hr&gt;
+&lt;h2 id="_2"&gt;正文&lt;/h2&gt;
+&lt;p&gt;有一种账单，平时安安静静，月底突然跳出来给你一巴掌。&lt;/p&gt;
+&lt;p&gt;LLM API 就是这种账单。&lt;/p&gt;
+&lt;p&gt;刚开始大家都挺开心："这个需求让 AI 写吧"，"这批文档让 AI 总结吧"，"这个工单让 AI 分类吧"。跑 Demo 的时候一切美好，效果不错，老板点头，同事鼓掌，连你自己都觉得生产力革命已经到门口了。&lt;/p&gt;
+&lt;p&gt;然后月底账单来了。你盯着那串数字，心里只剩一句话：这哪是 AI 助手，这是会说话的碎钞机。&lt;/p&gt;
+&lt;p&gt;问题不在于 LLM 不能用。恰恰相反，我觉得 LLM 该用，而且要用得更深。但它不是免费的魔法，也不是随便开的自来水。&lt;strong&gt;token 是一种工程资源，和 CPU、内存、带宽一样，需要度量、预算和治理。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;一句话：&lt;strong&gt;不要为了省钱少用 AI，要为了做成事聪明地用 AI。&lt;/strong&gt;&lt;/p&gt;
+&lt;h2 id="token"&gt;先弄清楚：token 到底花在哪里&lt;/h2&gt;
+&lt;p&gt;很多团队一说降本，第一反应是换便宜模型。有用，但经常不是第一步。第一步该看账。&lt;/p&gt;
+&lt;p&gt;LLM API 的成本一般来自这几个地方：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;成本来源&lt;/th&gt;
+&lt;th&gt;常见浪费&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;Input tokens&lt;/td&gt;
+&lt;td&gt;system prompt 太长，历史消息无限追加，RAG 塞太多上下文&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Output tokens&lt;/td&gt;
+&lt;td&gt;没限制回答长度，模型写成小作文&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Reasoning tokens&lt;/td&gt;
+&lt;td&gt;简单任务用了强推理模型，杀鸡用牛刀&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Embedding tokens&lt;/td&gt;
+&lt;td&gt;文档重复索引，chunk 切太碎，增量更新没做好&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Retry tokens&lt;/td&gt;
+&lt;td&gt;超时重试、解析失败重试、Agent 循环调用&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Tool call tokens&lt;/td&gt;
+&lt;td&gt;工具列表太多，每次都传完整 schema&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;没有这些拆分，优化就是玄学。玄学降本的常见姿势是：今天换模型，明天改 prompt，后天禁止大家用。最后成本好像下来了，效果也一起下去了。&lt;/p&gt;
+&lt;p&gt;这就像看病不验血，直接让病人少吃饭。体重是降了，人也快没了。&lt;/p&gt;
+&lt;h2 id="token_1"&gt;第一步：给 token 上仪表盘&lt;/h2&gt;
+&lt;p&gt;省 token 之前，先把 token 量出来。每次调用至少记录这些字段：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;request_id
+user_id / tenant_id
+feature_name
+model
+prompt_tokens
+completion_tokens
+cached_tokens
+reasoning_tokens
+latency_ms
+success / failure
+retry_count
+estimated_cost
+created_at
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;然后按几个维度看：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;按功能看：哪个 feature 最烧钱？
+按用户看：是否有少数用户占了大头？
+按模型看：大模型是否被滥用？
+按失败看：失败重试吃掉了多少 token？
+按时间看：批处理任务是否在高峰期挤占预算？
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;如果你用 OpenAI 这类 API，返回的 usage 字段里通常有 prompt tokens、completion tokens，有些模型还会返回 cached tokens 或 reasoning tokens。不要只把它当日志看，要把它当账本。&lt;/p&gt;
+&lt;p&gt;一个简单的成本日志长这样：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;feature&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;ticket_summary&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;model&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;gpt-4.1-mini&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;prompt_tokens&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="mi"&gt;1820&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;completion_tokens&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="mi"&gt;360&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;cached_tokens&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="mi"&gt;1024&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;latency_ms&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="mi"&gt;1280&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;retry_count&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;estimated_cost_usd&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="mf"&gt;0.0031&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;别嫌麻烦。没有账本的系统，迟早靠拍脑袋治理。拍脑袋在工程里通常有个别名，叫事故预备役。&lt;/p&gt;
+&lt;h2 id="_3"&gt;第二步：别拿大模型干所有活&lt;/h2&gt;
+&lt;p&gt;LLM 不是越强越好，任务要和模型匹配。&lt;/p&gt;
+&lt;p&gt;我比较喜欢把任务分成四层：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;任务类型&lt;/th&gt;
+&lt;th&gt;例子&lt;/th&gt;
+&lt;th&gt;模型选择&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;规则型&lt;/td&gt;
+&lt;td&gt;格式校验、字段映射、简单分类&lt;/td&gt;
+&lt;td&gt;尽量不用 LLM，用代码&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;轻语义&lt;/td&gt;
+&lt;td&gt;文本分类、关键词提取、短摘要、query 改写&lt;/td&gt;
+&lt;td&gt;小模型&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;中等理解&lt;/td&gt;
+&lt;td&gt;文档摘要、客服回复草稿、工单归因&lt;/td&gt;
+&lt;td&gt;中等模型&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;复杂推理&lt;/td&gt;
+&lt;td&gt;架构设计、故障分析、复杂代码 review、法律/财务风险判断&lt;/td&gt;
+&lt;td&gt;强模型&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;很多 token 浪费不是 prompt 太长，而是任务分配错了。&lt;/p&gt;
+&lt;p&gt;比如判断一句话是不是投诉，没必要上最强模型；抽取工单里的产品名，正则、词典、轻量分类器可能就够了。反过来，复杂事故复盘、跨文档推理、代码审查这类任务，硬上小模型省钱，最后会得到一堆"看起来差不多"的答案——最贵的不是大模型，最贵的是便宜模型给了错误答案，然后人再花半天返工。&lt;/p&gt;
+&lt;!-- ✍️ 建议亲自改写：如果你有"因为模型选错导致返工"的真实经历，在这里补一两句会特别有说服力 --&gt;
+
+&lt;p&gt;我的建议是做一张模型路由表：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;if task == &amp;quot;format_check&amp;quot;:
+    use code
+elif task in [&amp;quot;classify&amp;quot;, &amp;quot;extract&amp;quot;, &amp;quot;rewrite_query&amp;quot;]:
+    use small_model
+elif task in [&amp;quot;summarize&amp;quot;, &amp;quot;draft_reply&amp;quot;]:
+    use medium_model
+else:
+    use strong_model
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;不是为了优雅，是为了可控。否则每个调用点都自由发挥，成本曲线会像青春期的孩子，长得快，还不听话。&lt;/p&gt;
+&lt;h2 id="prompt"&gt;第三步：Prompt 要减肥&lt;/h2&gt;
+&lt;p&gt;很多 prompt 的问题不是写得不好，而是写得太胖。&lt;/p&gt;
+&lt;p&gt;常见肥胖来源：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;- system prompt 里堆了十几条重复规则
+- 每轮对话都带完整历史
+- RAG 上下文里塞了大量无关段落
+- 给模型讲太多背景故事
+- 工具 schema 又长又多，每次全量发送
+- 输出格式要求写了三遍，生怕模型看不见
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;Prompt 要像函数参数——能少传就少传，能结构化就结构化，能复用就复用。&lt;/p&gt;
+&lt;h3 id="_4"&gt;一个瘦身例子&lt;/h3&gt;
+&lt;p&gt;胖的写法：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;你是一个专业、优秀、有经验的客服专家。
+请你仔细阅读下面的大量背景资料，并结合用户的问题，
+给出一个详尽、完整、专业、有帮助、语气友好的回答。
+如果资料中没有答案，也请尽量根据你的经验回答。
+......
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;瘦的写法：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;角色：客服助手
+规则：
+1. 只基于参考资料回答
+2. 资料不足时回答：&amp;quot;根据现有资料无法确认&amp;quot;
+3. 输出不超过 200 字
+4. 必须给出来源编号
+
+参考资料：
+{context}
+
+用户问题：
+{question}
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;少一点文学，多一点约束。模型不需要你夸它"专业优秀"，它需要你告诉它边界在哪里。&lt;/p&gt;
+&lt;h3 id="_5"&gt;固定内容放前面，变量放后面&lt;/h3&gt;
+&lt;p&gt;如果服务商支持 prompt caching，prompt 的结构会直接影响成本和延迟。以 OpenAI 为例，prompt caching 更容易命中完全一致的前缀，所以静态内容应该放前面，用户问题、临时上下文这类变量放后面：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;固定部分：
+  - 角色
+  - 输出格式
+  - 安全边界
+  - 示例
+  - 工具定义
+
+变量部分：
+  - 用户问题
+  - 当前检索结果
+  - 当前会话状态
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这件事看起来像小优化，流量一大就不小了。就像写代码时把循环里的常量挪出去，单次看不出什么，跑一百万次就知道差别了。&lt;/p&gt;
+&lt;h2 id="rag"&gt;第四步：RAG 上下文别乱塞&lt;/h2&gt;
+&lt;p&gt;RAG 是 token 消耗大户。&lt;/p&gt;
+&lt;p&gt;很多系统的思路是：怕模型答不出来，那就多塞点文档。结果模型像一个被塞了十本参考书的学生——书是都有了，人也懵了。&lt;/p&gt;
+&lt;p&gt;RAG 的核心不是"给模型更多内容"，而是"只给模型当前问题需要的内容"。可以按这个顺序优化：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;先粗召回&lt;/strong&gt;：从向量索引、BM25、元数据过滤里找候选。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;再重排序&lt;/strong&gt;：用 reranker 把最相关的 3-5 个 chunk 排前面。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;做去重和压缩&lt;/strong&gt;：重复段落不要塞两遍，长段落先摘要。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;保留引用信息&lt;/strong&gt;：来源、章节、更新时间必须跟着 chunk 走。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;按预算截断&lt;/strong&gt;：超过 token budget 就丢弃低分内容，别平均主义。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;一个上下文预算可以这样定：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;total_context_budget = 6000 tokens
+
+system_prompt: 1000
+user_question: 200
+retrieved_context: 3500
+output_budget: 1000
+reserve: 300
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;reserve 很重要。没有余量的系统，就像出门只带刚刚好的钱，路上多买一瓶水都尴尬。&lt;/p&gt;
+&lt;h2 id="_6"&gt;第五步：限制输出，别让模型写散文&lt;/h2&gt;
+&lt;p&gt;很多人盯着 input tokens，却忘了 output tokens 也要钱。&lt;/p&gt;
+&lt;p&gt;模型很听话。你让它"详细说明"，它就详细；你让它"全面分析"，它就全面；你让它"给出完整方案"，它能给你写出一篇小论文。&lt;/p&gt;
+&lt;p&gt;所以输出也要有预算：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;普通问答：100-300 字
+工单摘要：5 条 bullet
+代码解释：先给结论，再给不超过 3 个关键点
+风险分析：高/中/低 + 证据 + 建议动作
+长文生成：先生成大纲，确认后再展开
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;尤其是长文生成，不要一上来就让模型写全文。更稳的方式：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;Step 1: 生成大纲
+Step 2: 人或程序检查大纲
+Step 3: 分章节生成
+Step 4: 最后统一润色
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这样不仅省 token，也更容易控制质量。一口气让模型写全文，像让一个实习生关进会议室写 20 页方案，中间不检查——出来以后你会发现他很努力，也很离题。&lt;/p&gt;
+&lt;h2 id="_7"&gt;第六步：缓存，缓存，还是缓存&lt;/h2&gt;
+&lt;p&gt;缓存是工程师的老朋友，到了 LLM 时代依然管用。&lt;/p&gt;
+&lt;p&gt;可以分三层：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;缓存类型&lt;/th&gt;
+&lt;th&gt;缓存什么&lt;/th&gt;
+&lt;th&gt;适合场景&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;Prompt cache&lt;/td&gt;
+&lt;td&gt;固定 prompt 前缀、工具定义、示例&lt;/td&gt;
+&lt;td&gt;大量请求共享同一系统提示&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Response cache&lt;/td&gt;
+&lt;td&gt;完整问题对应的答案&lt;/td&gt;
+&lt;td&gt;FAQ、制度查询、高频问题&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Retrieval cache&lt;/td&gt;
+&lt;td&gt;query 对应的检索结果&lt;/td&gt;
+&lt;td&gt;RAG 检索成本高，知识库变化不频繁&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;Response cache 要小心。缓存答案必须考虑：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;- 用户权限是否相同？
+- 知识库是否更新？
+- 问题是否真的等价？
+- 答案里是否包含个人信息或敏感信息？
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;千万不要把 A 用户的权限答案缓存后返回给 B 用户——那不是省钱，是给安全事故预热。&lt;/p&gt;
+&lt;p&gt;一个可用的缓存 key 通常要包含：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;tenant_id
+user_role / permission_scope
+normalized_query
+knowledge_base_version
+prompt_version
+model
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;缓存不是简单的 &lt;code&gt;hash(question)&lt;/code&gt;。在企业系统里，权限和数据版本永远要放进设计里。&lt;/p&gt;
+&lt;h2 id="batch"&gt;第七步：离线任务用 Batch，不要全走同步&lt;/h2&gt;
+&lt;p&gt;有些任务不需要立即返回：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;- 批量文档摘要
+- 历史工单分类
+- 离线评估集打分
+- 大规模 embedding
+- 每日知识库质量检查
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这些如果全部走同步 API，不但成本高，还会挤占在线请求的配额。更合理的做法是用 Batch API 或类似的异步队列。&lt;/p&gt;
+&lt;p&gt;OpenAI 的 Batch API 文档明确写了，适合不需要立即响应的任务，成本更低，速率限制也独立。具体数字会随平台政策变化，真正用之前看最新文档，但思路不变：&lt;strong&gt;在线请求要快，离线任务要便宜。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;这和后台任务不要挤占前台流量是一个道理。用户正在等回答，你却让离线摘要任务把额度吃满——这不叫智能系统，这叫内部抢饭。&lt;/p&gt;
+&lt;h2 id="agent"&gt;第八步：管住 Agent 的手&lt;/h2&gt;
+&lt;p&gt;Agent 很迷人，也很烧钱。&lt;/p&gt;
+&lt;p&gt;一个普通问答也许只调用一次模型；一个 Agent 可能这样干：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;思考一次
+调用搜索
+再思考一次
+调用工具
+解析工具结果
+发现不够
+继续搜索
+再调用模型总结
+最后输出答案
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;每一步都在花 token。更麻烦的是，如果没有边界，它可能绕圈。&lt;/p&gt;
+&lt;p&gt;Agent 必须有护栏：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;max_steps: 5
+max_tool_calls: 3
+max_total_tokens: 8000
+max_wall_time: 10s
+stop_when_confidence_high: true
+fallback_to_human: true
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;还要记录每一步的 token 和工具调用。否则你只看到最终答案，不知道它在后台跑了一场马拉松。&lt;/p&gt;
+&lt;p&gt;我不反对 Agent——复杂任务里 Agent 很有价值。但 Agent 应该像实习生：有任务、有预算、有截止时间、有复盘。不能给它一张公司信用卡然后说"你看着办"。&lt;/p&gt;
+&lt;h2 id="llm"&gt;第九步：把"不用 LLM"也当成一种能力&lt;/h2&gt;
+&lt;p&gt;不是所有问题都需要 LLM。很多场景，传统方法更稳、更快、更便宜：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;场景&lt;/th&gt;
+&lt;th&gt;更合适的方案&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;固定格式校验&lt;/td&gt;
+&lt;td&gt;JSON Schema / 正则 / 代码&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;精确字段抽取&lt;/td&gt;
+&lt;td&gt;Parser / 规则引擎&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;高并发 FAQ&lt;/td&gt;
+&lt;td&gt;搜索 + 模板答案&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;权限判断&lt;/td&gt;
+&lt;td&gt;后端授权服务&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;金额计算&lt;/td&gt;
+&lt;td&gt;业务代码&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;审计记录&lt;/td&gt;
+&lt;td&gt;结构化日志&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;LLM 擅长语言理解、生成和模糊推理，不擅长当数据库、计算器和权限系统。把所有问题都扔给 LLM，就像家里买了个电钻，从此拧螺丝、切菜、刷牙都想用它。&lt;/p&gt;
+&lt;p&gt;工具好不好，看你怎么用。&lt;/p&gt;
+&lt;!-- ✍️ 建议亲自改写：如果你有"用 LLM 做了本不该用 LLM 做的事、后来换回规则反而更好"的真实案例，在这里补一两句会很 Walter --&gt;
+
+&lt;h2 id="_8"&gt;最佳实践、常见错误与反模式速查&lt;/h2&gt;
+&lt;p&gt;前面讲的东西不少，这里收束成三张表。做设计评审的时候拿出来对一遍比看完全文管用。&lt;/p&gt;
+&lt;h3 id="_9"&gt;最佳实践&lt;/h3&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;做法&lt;/th&gt;
+&lt;th&gt;说明&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;先度量，再优化&lt;/td&gt;
+&lt;td&gt;记录 &lt;code&gt;prompt_tokens&lt;/code&gt;、&lt;code&gt;completion_tokens&lt;/code&gt;、&lt;code&gt;cached_tokens&lt;/code&gt;、&lt;code&gt;latency_ms&lt;/code&gt;、&lt;code&gt;estimated_cost&lt;/code&gt;，按 feature 归因&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;任务分级用模型&lt;/td&gt;
+&lt;td&gt;规则能解决的不用 LLM，小模型做抽取和分类，大模型做复杂推理&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Prompt 模板化与版本化&lt;/td&gt;
+&lt;td&gt;每个 prompt 有版本号，方便 A/B 测试成本和效果&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;固定前缀 + 动态后缀&lt;/td&gt;
+&lt;td&gt;固定规则放前面，变量放后面，利于 prompt caching&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;限制输出长度&lt;/td&gt;
+&lt;td&gt;明确字数、结构、字段，不让模型自由发挥&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;RAG 上下文预算化&lt;/td&gt;
+&lt;td&gt;只传 top-k 高质量 chunk，做去重、rerank 和截断&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;离线任务走 Batch&lt;/td&gt;
+&lt;td&gt;摘要、分类、评估、embedding 等不急的任务，不要挤在线 API&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;缓存带权限边界&lt;/td&gt;
+&lt;td&gt;cache key 必须包含 tenant、role、knowledge version，避免串数据&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h3 id="_10"&gt;常见错误&lt;/h3&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;错误&lt;/th&gt;
+&lt;th&gt;后果&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;没有 token 账本&lt;/td&gt;
+&lt;td&gt;月底才知道钱花哪了，排查像考古&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;所有任务都上大模型&lt;/td&gt;
+&lt;td&gt;分类、抽取、格式化也用强模型，典型"杀鸡用牛刀"&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;历史消息无限追加&lt;/td&gt;
+&lt;td&gt;对话越聊越贵，最后模型也迷路&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;RAG 什么都塞&lt;/td&gt;
+&lt;td&gt;以为上下文越多越好，噪声把答案淹了&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;不限制输出&lt;/td&gt;
+&lt;td&gt;一句"详细分析"换来一篇收费小论文&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Agent 没有步数限制&lt;/td&gt;
+&lt;td&gt;工具调用绕圈，token 在后台悄悄烧&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;缓存只按 question hash&lt;/td&gt;
+&lt;td&gt;忽略权限、租户、知识库版本，省钱省出安全事故&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;只看单次调用成本&lt;/td&gt;
+&lt;td&gt;忽略重试、失败、批量任务和工具调用的链式成本&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h3 id="vs"&gt;模式 vs 反模式&lt;/h3&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;好模式&lt;/th&gt;
+&lt;th&gt;坏模式&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;模型路由&lt;/strong&gt;：按任务难度选模型&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;一把梭&lt;/strong&gt;：所有请求打最强模型&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;预算盒&lt;/strong&gt;：每个功能有 token budget&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;自来水&lt;/strong&gt;：调用点想用多少用多少&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;上下文漏斗&lt;/strong&gt;：召回、重排、压缩后再喂模型&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;资料倾倒&lt;/strong&gt;：整本知识库塞进 prompt&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;缓存分层&lt;/strong&gt;：prompt、retrieval、response 分别缓存&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;裸奔&lt;/strong&gt;：同样问题每次重新算&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;人机分工&lt;/strong&gt;：规则、搜索、LLM 各做擅长的事&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;LLM 万能&lt;/strong&gt;：数据库、计算器、权限判断都交给模型&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;离线批处理&lt;/strong&gt;：不急的任务异步跑&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;在线堵车&lt;/strong&gt;：批量任务和用户请求抢额度&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Agent 护栏&lt;/strong&gt;：限制步数、工具调用和总 token&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;Agent 放羊&lt;/strong&gt;：让它自己"看着办"&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;版本实验&lt;/strong&gt;：prompt/model 变更可比较&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;拍脑袋&lt;/strong&gt;：改了不知道效果变好还是变坏&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;这张表的价值不在于背下来，而在于做设计评审时能拿出来问一句：咱们现在是在用模式，还是在制造反模式？&lt;/p&gt;
+&lt;h2 id="token_2"&gt;一张可以抄走的 token 成本检查表&lt;/h2&gt;
+&lt;p&gt;上线前拿这张表过一遍：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;检查项&lt;/th&gt;
+&lt;th&gt;问题&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;用量打点&lt;/td&gt;
+&lt;td&gt;是否记录 prompt、completion、cached、reasoning tokens？&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;成本归因&lt;/td&gt;
+&lt;td&gt;能否按 feature、tenant、user、model 看成本？&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;模型路由&lt;/td&gt;
+&lt;td&gt;简单任务是否用了小模型或规则代码？&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Prompt 版本&lt;/td&gt;
+&lt;td&gt;prompt 有没有版本号，方便比较成本和效果？&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Prompt 结构&lt;/td&gt;
+&lt;td&gt;静态内容放前面了吗，变量放后面了吗？&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;历史消息&lt;/td&gt;
+&lt;td&gt;是否限制对话历史长度，做了摘要压缩？&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;RAG 上下文&lt;/td&gt;
+&lt;td&gt;有没有 top-k、rerank、去重、截断和来源信息？&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;输出预算&lt;/td&gt;
+&lt;td&gt;是否限制 max output tokens 和回答格式？&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;缓存策略&lt;/td&gt;
+&lt;td&gt;是否区分 prompt cache、response cache、retrieval cache？&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;权限隔离&lt;/td&gt;
+&lt;td&gt;缓存 key 包含 tenant、role、数据版本了吗？&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Batch 任务&lt;/td&gt;
+&lt;td&gt;离线任务走异步或批处理了吗？&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Agent 护栏&lt;/td&gt;
+&lt;td&gt;限制了 max steps、tool calls、total tokens 吗？&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;重试策略&lt;/td&gt;
+&lt;td&gt;解析失败是否无限重试？有没有退避和上限？&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;预算告警&lt;/td&gt;
+&lt;td&gt;成本异常时能及时发现吗？&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;敏感数据&lt;/td&gt;
+&lt;td&gt;是否避免把 secrets、token、隐私数据发给模型？&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 id="_11"&gt;明天就能做的五件小事&lt;/h2&gt;
+&lt;p&gt;如果你还没时间搭一套完整治理体系，先做五件小事：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;给所有 LLM 调用加上 usage 日志，至少能按 feature 聚合。&lt;/li&gt;
+&lt;li&gt;把最贵的 10 个 prompt 打印出来，人工砍掉废话和重复上下文。&lt;/li&gt;
+&lt;li&gt;给每个调用点标注任务类型：规则、小模型、中模型、强模型。&lt;/li&gt;
+&lt;li&gt;给 RAG 设一个上下文 budget，不允许无限塞 chunk。&lt;/li&gt;
+&lt;li&gt;给 Agent 加上 &lt;code&gt;max_steps&lt;/code&gt;、&lt;code&gt;max_tool_calls&lt;/code&gt; 和 &lt;code&gt;max_total_tokens&lt;/code&gt;。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;这些事情不花哨，但能马上见效。很多成本不是被大模型吃掉的，是被"没人管"吃掉的。&lt;/p&gt;
+&lt;h2 id="_12"&gt;总结&lt;/h2&gt;
+&lt;p&gt;LLM API 贵不贵？贵。值不值得用？当然值得。&lt;/p&gt;
+&lt;p&gt;关键是别把它当许愿池——许愿池里丢硬币，响一下就没了；LLM API 里丢 token，响得更小，账单更大。&lt;/p&gt;
+&lt;p&gt;靠谱的做法是把 LLM 当成一套工程系统来管：度量、预算、路由、缓存、降级、安全边界、持续评估，一个都不能少。&lt;/p&gt;
+&lt;p&gt;好钢用在刀刃上。token 也是。&lt;/p&gt;
+&lt;h3 id="_13"&gt;思维导图&lt;/h3&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap
+* LLM API 成本控制
+** 先度量
+*** usage 日志
+*** feature / tenant / model 归因
+*** 成本告警
+** 选对模型
+*** 规则优先
+*** 小模型处理轻任务
+*** 强模型处理复杂推理
+** Prompt 瘦身
+*** 删除废话
+*** 固定前缀
+*** 变量后置
+*** 限制输出
+** 控制上下文
+*** RAG top-k
+*** Rerank
+*** 去重压缩
+*** token budget
+** 复用结果
+*** Prompt cache
+*** Response cache
+*** Retrieval cache
+** 异步处理
+*** Batch API
+*** 离线评估
+*** 批量摘要
+** 模式与反模式
+*** 模型路由 vs 一把梭
+*** 预算盒 vs 自来水
+*** 上下文漏斗 vs 资料倾倒
+*** Agent 护栏 vs Agent 放羊
+** 管住 Agent
+*** max steps
+*** max tool calls
+*** max total tokens
+*** fallback to human
+** 安全边界
+*** 不上传 secrets
+*** 权限进入 cache key
+*** 敏感数据脱敏
+@endmindmap
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;img alt="LLM API 成本控制思维导图" src="../images/journal_20260508_llm_api_token_cost_control_mindmap.png"&gt;&lt;/p&gt;
+&lt;h2 id="_14"&gt;扩展阅读&lt;/h2&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;a href="https://platform.openai.com/docs/guides/prompt-caching"&gt;OpenAI Prompt Caching&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://platform.openai.com/docs/guides/batch"&gt;OpenAI Batch API&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/prompt-engineering"&gt;Azure OpenAI Prompt Engineering&lt;/a&gt;&lt;/li&gt;
+&lt;/ol&gt;
+&lt;hr/&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Journal"/><category term="LLM"/><category term="AI"/><category term="token"/><category term="cost-control"/><category term="prompt-engineering"/><category term="productivity"/></entry><entry><title>RAG 知识库优化：别让 AI 一本正经地胡说八道</title><link href="https://www.fanyamin.com/rag-optimization-best-practices.html" rel="alternate"/><published>2026-05-08T00:00:00+08:00</published><updated>2026-05-08T21:25:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-05-08:/rag-optimization-best-practices.html</id><summary type="html">&lt;p&gt;RAG 看起来不过是"先检索，再生成"，真正做起来才知道坑不少。分块、检索、重排序、Prompt、引用、评估，任何一环偷懒，最后都可能变成一个很自信的胡说八道机器。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;RAG 知识库优化：别让 AI 一本正经地胡说八道&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;Journal&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Status&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;v1.0&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;2026-05-08&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;div class="toc"&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="#rag"&gt;引言：RAG 最怕一本正经地错&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="#rag_1"&gt;一、RAG 架构回顾&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="#_1"&gt;二、数据准备：垃圾进，垃圾出&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a href="#_2"&gt;先把材料收拾干净&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a href="#1"&gt;1. 分块策略是基石&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="#2"&gt;2. 文档预处理别偷懒&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="#3"&gt;3. 不要只建一个大索引&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a href="#_3"&gt;容易踩的坑&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a href="#_4"&gt;三、检索优化：找到对的内容&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a href="#_5"&gt;先别急着让模型回答&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a href="#1_1"&gt;1. 混合检索&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="#2-query"&gt;2. Query 改写&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="#3-reranking"&gt;3. Reranking 往往最划算&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="#4"&gt;4. 元数据过滤&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a href="#_6"&gt;容易踩的坑&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a href="#llm"&gt;四、生成优化：让 LLM 少发挥&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a href="#_7"&gt;规则要写清楚&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a href="#1-prompt"&gt;1. Prompt 不是装饰，是边界&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="#2_1"&gt;2. 上下文不是越多越好&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="#3_1"&gt;3. 引用溯源不是锦上添花&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a href="#_8"&gt;容易踩的坑&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a href="#_9"&gt;五、评估与监控：别靠感觉上线&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a href="#demo"&gt;Demo 好看不等于系统可用&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a href="#1_2"&gt;1. 先有评估数据集&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="#2_2"&gt;2. 检索和生成分开评估&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="#3_2"&gt;3. 线上要盯这些数&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a href="#_10"&gt;容易踩的坑&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a href="#_11"&gt;六、进阶技巧&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a href="#1-agentic-rag"&gt;1. Agentic RAG&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="#2_3"&gt;2. 知识图谱增强&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="#3_3"&gt;3. 缓存&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a href="#_12"&gt;七、检查清单&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="#_13"&gt;参考资料&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;h2 id="rag"&gt;引言：RAG 最怕一本正经地错&lt;/h2&gt;
+&lt;p&gt;你有没有遇到过这样的场景：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;花了两周搭了一套 RAG 系统，接上公司知识库，兴冲冲演示给老板看。老板随口问了一句："我们 Q1 的营收是多少？" 系统很快回答了一个数字，语气坚定，格式漂亮。问题是，数字是错的。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;这不是段子，这是无数 RAG 项目的真实写照。&lt;/p&gt;
+&lt;p&gt;RAG (Retrieval-Augmented Generation，检索增强生成) 的原理不复杂：先从知识库里找材料，再让 LLM 基于材料回答。听起来很像开卷考试。&lt;/p&gt;
+&lt;p&gt;可是开卷考试也会翻错页、抄错段，甚至没看书就开始发挥。RAG 也一样——分块不当、检索不准、上下文塞太多、Prompt 没约束、引用没溯源、上线后不评估，每一项都能把"知识库助手"变成"知识库造谣机"。&lt;/p&gt;
+&lt;p&gt;我把 RAG 优化拆成四件事：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;数据准备  →  检索优化  →  生成约束  →  评估监控
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这四件事做扎实，RAG 才有资格谈"可用"。否则 Demo 再漂亮，也只是一个会说漂亮话的概率玩具。&lt;/p&gt;
+&lt;h2 id="rag_1"&gt;一、RAG 架构回顾&lt;/h2&gt;
+&lt;p&gt;先把基本流程摆出来。流程不复杂，复杂的是每一步都可能埋坑。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;用户提问
+  │
+  ▼
+┌─────────────┐    ┌──────────────┐    ┌─────────────┐
+│  Query 理解  │───▶│  检索/召回    │───▶│  重排序      │
+│  &amp;amp; 改写      │    │  (Retrieval)  │    │  (Reranking) │
+└─────────────┘    └──────────────┘    └─────────────┘
+                                              │
+                                              ▼
+                                       ┌─────────────┐
+                                       │  上下文组装   │
+                                       │  &amp;amp; Prompt    │
+                                       └─────────────┘
+                                              │
+                                              ▼
+                                       ┌─────────────┐
+                                       │  LLM 生成    │
+                                       │  (Generation)│
+                                       └─────────────┘
+                                              │
+                                              ▼
+                                       ┌─────────────┐
+                                       │  后处理 &amp;amp;    │
+                                       │  引用溯源    │
+                                       └─────────────┘
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;每个环节都有优化空间，也都有翻车机会。RAG 的麻烦就在这里：它不是一个单点模型问题，而是一条链路问题。链路上任何一环松了，最后都会体现在答案质量上。&lt;/p&gt;
+&lt;h2 id="_1"&gt;二、数据准备：垃圾进，垃圾出&lt;/h2&gt;
+&lt;h3 id="_2"&gt;先把材料收拾干净&lt;/h3&gt;
+&lt;h4 id="1"&gt;1. 分块策略是基石&lt;/h4&gt;
+&lt;p&gt;分块是 RAG 里最容易被低估、却最影响体验的环节。很多系统不是模型不行，是把知识切碎的时候就已经切坏了。&lt;/p&gt;
+&lt;p&gt;固定长度分块省事，但它不关心句子、段落、标题和上下文。就像切菜只看尺子不看菜，最后切出来能不能下锅，全凭运气。&lt;/p&gt;
+&lt;p&gt;更靠谱的做法是按语义边界切：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# 固定长度分块——省事但粗暴&lt;/span&gt;
+&lt;span class="n"&gt;chunks&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="n"&gt;text&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="n"&gt;i&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="n"&gt;i&lt;/span&gt;&lt;span class="o"&gt;+&lt;/span&gt;&lt;span class="mi"&gt;512&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt; &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;i&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="nb"&gt;range&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="nb"&gt;len&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;text&lt;/span&gt;&lt;span class="p"&gt;),&lt;/span&gt; &lt;span class="mi"&gt;512&lt;/span&gt;&lt;span class="p"&gt;)]&lt;/span&gt;
+
+&lt;span class="c1"&gt;# 按语义边界分块——多花几行代码，少踩很多坑&lt;/span&gt;
+&lt;span class="kn"&gt;from&lt;/span&gt; &lt;span class="nn"&gt;langchain.text_splitter&lt;/span&gt; &lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="n"&gt;RecursiveCharacterTextSplitter&lt;/span&gt;
+
+&lt;span class="n"&gt;splitter&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;RecursiveCharacterTextSplitter&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+    &lt;span class="n"&gt;chunk_size&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;500&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="n"&gt;chunk_overlap&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;100&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="n"&gt;separators&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="se"&gt;\n&lt;/span&gt;&lt;span class="s2"&gt;## &amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="se"&gt;\n&lt;/span&gt;&lt;span class="s2"&gt;### &amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="se"&gt;\n\n&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="se"&gt;\n&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;。&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;.&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot; &amp;quot;&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;
+    &lt;span class="n"&gt;length_function&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="nb"&gt;len&lt;/span&gt;
+&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="n"&gt;chunks&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;splitter&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;split_text&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;text&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;先按这几条原则做：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;原则&lt;/th&gt;
+&lt;th&gt;说明&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;语义完整性&lt;/td&gt;
+&lt;td&gt;一个 chunk 应该包含一个完整的语义单元&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;适当重叠&lt;/td&gt;
+&lt;td&gt;10-20% 的重叠率，避免上下文断裂&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;保留元数据&lt;/td&gt;
+&lt;td&gt;每个 chunk 附带来源文档、章节、页码&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;大小适中&lt;/td&gt;
+&lt;td&gt;通常 200-800 tokens，太小缺上下文，太大噪声多&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h4 id="2"&gt;2. 文档预处理别偷懒&lt;/h4&gt;
+&lt;p&gt;PDF 解析、网页抓取、Office 文档导入，看起来都是"把文档变成文本"，实际效果差很多。页眉页脚、水印、目录、乱码、断行、表格错位，这些都会进入检索链路。&lt;/p&gt;
+&lt;p&gt;脏数据进了向量库，不会因为套了一层 AI 就自动变干净。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;preprocess_document&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;doc&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+    &lt;span class="n"&gt;doc&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;remove_headers_footers&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;doc&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="n"&gt;tables&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;extract_tables&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;doc&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="n"&gt;images&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;extract_and_describe_images&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;doc&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="n"&gt;metadata&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;extract_metadata&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;doc&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;doc&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;tables&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;images&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;metadata&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h4 id="3"&gt;3. 不要只建一个大索引&lt;/h4&gt;
+&lt;p&gt;不要把所有内容一股脑塞进一个向量索引。文档、章节、句子、表格、图片，信息形态不同，检索方式也该不同。&lt;/p&gt;
+&lt;p&gt;一种常见做法是父子文档索引 (Parent-Child)：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;文档层 (Document)  →  摘要索引 (用于粗召回)
+  │
+  ├── 段落层 (Section)  →  主索引 (用于精确检索)
+  │     │
+  │     └── 句子层 (Sentence)  →  细粒度索引 (用于精确匹配)
+  │
+  └── 表格/图片  →  结构化索引 (单独处理)
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h3 id="_3"&gt;容易踩的坑&lt;/h3&gt;
+&lt;p&gt;&lt;strong&gt;坑 1：不洗数据，直接灌&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;PDF 原样解析，页眉页脚、目录、版权声明全进了向量库。检索时这些噪声频繁被召回，严重拉低质量。我之前就碰到过，检索 top-5 里有两条是页眉里的 "Confidential - Do Not Distribute"。&lt;/p&gt;
+&lt;!-- ✍️ 建议亲自改写：上面那个"我之前碰到过"是我帮你加的占位。如果你有自己的脏数据踩坑经历，请替换成真实场景。 --&gt;
+
+&lt;p&gt;&lt;strong&gt;坑 2：分块大小一刀切&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;所有文档统一用 512 tokens 分块。FAQ 类文档需要小块 (100-200)，技术手册需要大块 (500-800)，一刀切顾此失彼。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;坑 3：忽略文档之间的关系&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;公司制度文档 A 引用了文档 B 的条款，但分块后这种引用关系丢失了。用户问到相关问题，系统只能给出片面回答。&lt;/p&gt;
+&lt;h2 id="_4"&gt;三、检索优化：找到对的内容&lt;/h2&gt;
+&lt;h3 id="_5"&gt;先别急着让模型回答&lt;/h3&gt;
+&lt;h4 id="1_1"&gt;1. 混合检索&lt;/h4&gt;
+&lt;p&gt;很多 RAG 项目一开始只上向量检索，觉得语义相似就够了。实际并不够。&lt;/p&gt;
+&lt;p&gt;向量检索擅长找"意思接近"的内容，BM25 这类关键词检索擅长打中精确词。有人问 "ISO 27001"，有人问 "报销制度 v2.1"，这种问题如果只靠语义相似，很容易把路走偏。&lt;/p&gt;
+&lt;p&gt;所以更稳妥的方式是两条路一起走：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="kn"&gt;from&lt;/span&gt; &lt;span class="nn"&gt;typing&lt;/span&gt; &lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="n"&gt;List&lt;/span&gt;
+
+&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;hybrid_search&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;query&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;top_k&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;int&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="mi"&gt;10&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;List&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="nb"&gt;dict&lt;/span&gt;&lt;span class="p"&gt;]:&lt;/span&gt;
+    &lt;span class="n"&gt;vector_results&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;vector_store&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;similarity_search&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;query&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;k&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;top_k&lt;/span&gt; &lt;span class="o"&gt;*&lt;/span&gt; &lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="n"&gt;bm25_results&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;bm25_index&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;search&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;query&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;k&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;top_k&lt;/span&gt; &lt;span class="o"&gt;*&lt;/span&gt; &lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+    &lt;span class="c1"&gt;# Reciprocal Rank Fusion&lt;/span&gt;
+    &lt;span class="n"&gt;fused&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;reciprocal_rank_fusion&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+        &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="n"&gt;vector_results&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;bm25_results&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;
+        &lt;span class="n"&gt;weights&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mf"&gt;0.6&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mf"&gt;0.4&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+    &lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;fused&lt;/span&gt;&lt;span class="p"&gt;[:&lt;/span&gt;&lt;span class="n"&gt;top_k&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+
+
+&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;reciprocal_rank_fusion&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;result_lists&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;weights&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="kc"&gt;None&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;k&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;60&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+    &lt;span class="n"&gt;scores&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;{}&lt;/span&gt;
+    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;weights&lt;/span&gt; &lt;span class="ow"&gt;is&lt;/span&gt; &lt;span class="kc"&gt;None&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;weights&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mf"&gt;1.0&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt; &lt;span class="o"&gt;*&lt;/span&gt; &lt;span class="nb"&gt;len&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;result_lists&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+    &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;results&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;weight&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="nb"&gt;zip&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;result_lists&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;weights&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+        &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;rank&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;doc&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="nb"&gt;enumerate&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;results&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+            &lt;span class="n"&gt;doc_id&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;doc&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;id&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+            &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;doc_id&lt;/span&gt; &lt;span class="ow"&gt;not&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;scores&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+                &lt;span class="n"&gt;scores&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="n"&gt;doc_id&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;
+            &lt;span class="n"&gt;scores&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="n"&gt;doc_id&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt; &lt;span class="o"&gt;+=&lt;/span&gt; &lt;span class="n"&gt;weight&lt;/span&gt; &lt;span class="o"&gt;*&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mf"&gt;1.0&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;k&lt;/span&gt; &lt;span class="o"&gt;+&lt;/span&gt; &lt;span class="n"&gt;rank&lt;/span&gt; &lt;span class="o"&gt;+&lt;/span&gt; &lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="p"&gt;))&lt;/span&gt;
+
+    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="nb"&gt;sorted&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;scores&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;items&lt;/span&gt;&lt;span class="p"&gt;(),&lt;/span&gt; &lt;span class="n"&gt;key&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="k"&gt;lambda&lt;/span&gt; &lt;span class="n"&gt;x&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;x&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt; &lt;span class="n"&gt;reverse&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="kc"&gt;True&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h4 id="2-query"&gt;2. Query 改写&lt;/h4&gt;
+&lt;p&gt;用户的问题是面向人的，不一定适合检索系统。人会省略上下文，会用简称，会问得很口语。检索系统可没那么善解人意。&lt;/p&gt;
+&lt;p&gt;可以把一个原始问题改写成几个检索友好的 query：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;query_rewrite&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;original_query&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;llm&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;List&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;]:&lt;/span&gt;
+    &lt;span class="n"&gt;prompt&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&amp;quot;&amp;quot;请将以下用户问题改写为3个不同角度的检索查询：&lt;/span&gt;
+
+&lt;span class="s2"&gt;    原始问题：&lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;original_query&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;
+
+&lt;span class="s2"&gt;    要求：&lt;/span&gt;
+&lt;span class="s2"&gt;    1. 一个保持原意但更精确的版本&lt;/span&gt;
+&lt;span class="s2"&gt;    2. 一个使用同义词/近义词的版本  &lt;/span&gt;
+&lt;span class="s2"&gt;    3. 一个更宽泛的版本&lt;/span&gt;
+&lt;span class="s2"&gt;    &amp;quot;&amp;quot;&amp;quot;&lt;/span&gt;
+    &lt;span class="n"&gt;queries&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;llm&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;generate&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;prompt&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="n"&gt;original_query&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt; &lt;span class="o"&gt;+&lt;/span&gt; &lt;span class="n"&gt;queries&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h4 id="3-reranking"&gt;3. Reranking 往往最划算&lt;/h4&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="kn"&gt;from&lt;/span&gt; &lt;span class="nn"&gt;sentence_transformers&lt;/span&gt; &lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="n"&gt;CrossEncoder&lt;/span&gt;
+
+&lt;span class="n"&gt;reranker&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;CrossEncoder&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;BAAI/bge-reranker-v2-m3&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;rerank&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;query&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;candidates&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;List&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt; &lt;span class="n"&gt;top_k&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;int&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="mi"&gt;5&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+    &lt;span class="n"&gt;pairs&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;[[&lt;/span&gt;&lt;span class="n"&gt;query&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;doc&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt; &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;doc&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;candidates&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+    &lt;span class="n"&gt;scores&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;reranker&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;predict&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;pairs&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+    &lt;span class="n"&gt;ranked&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nb"&gt;sorted&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+        &lt;span class="nb"&gt;zip&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;candidates&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;scores&lt;/span&gt;&lt;span class="p"&gt;),&lt;/span&gt; 
+        &lt;span class="n"&gt;key&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="k"&gt;lambda&lt;/span&gt; &lt;span class="n"&gt;x&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;x&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt; 
+        &lt;span class="n"&gt;reverse&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="kc"&gt;True&lt;/span&gt;
+    &lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;ranked&lt;/span&gt;&lt;span class="p"&gt;[:&lt;/span&gt;&lt;span class="n"&gt;top_k&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;经验法则&lt;/strong&gt;：先粗召回 20-50 条，再用 Reranker 精排到 3-5 条。很多时候这一步比盲目换大模型更划算。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;!-- ✍️ 建议亲自改写：如果你有 rerank 前后效果对比的数据（比如 top-k 命中率或答案准确率提升了多少），补一句数字会很有力。 --&gt;
+
+&lt;h4 id="4"&gt;4. 元数据过滤&lt;/h4&gt;
+&lt;p&gt;不要什么问题都去全库里搜。用户问财务制度，就先限定部门；问最新政策，就过滤更新时间；问某个产品线，就缩到对应文档集合。&lt;/p&gt;
+&lt;p&gt;不花哨，但很管用。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="n"&gt;results&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;vector_store&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;similarity_search&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+    &lt;span class="n"&gt;query&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="n"&gt;k&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;10&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="nb"&gt;filter&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="s2"&gt;&amp;quot;department&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;finance&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+        &lt;span class="s2"&gt;&amp;quot;doc_type&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;policy&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+        &lt;span class="s2"&gt;&amp;quot;updated_after&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;2025-01-01&amp;quot;&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h3 id="_6"&gt;容易踩的坑&lt;/h3&gt;
+&lt;p&gt;&lt;strong&gt;坑 4：只用向量检索&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;用户问 "ISO 27001 认证流程"，向量检索返回一堆关于"认证"和"流程"的无关内容——语义相似但主题不同。加上 BM25 关键词匹配后，"ISO 27001" 这种关键字才能被精确命中。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;坑 5：不做 Reranking&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;向量检索的 top-10 结果中，真正相关的可能排在第 5-8 位。不做重排序直接取 top-3，大概率丢失关键信息。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;坑 6：Embedding 模型选错&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;用英文 Embedding 模型处理中文知识库，或者用通用模型处理专业领域文档。要选与语言和领域匹配的模型，必要时做 fine-tuning。&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;场景&lt;/th&gt;
+&lt;th&gt;推荐模型&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;中文通用&lt;/td&gt;
+&lt;td&gt;BAAI/bge-large-zh-v1.5&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;英文通用&lt;/td&gt;
+&lt;td&gt;text-embedding-3-large&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;多语言&lt;/td&gt;
+&lt;td&gt;BAAI/bge-m3&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;代码&lt;/td&gt;
+&lt;td&gt;voyage-code-3&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 id="llm"&gt;四、生成优化：让 LLM 少发挥&lt;/h2&gt;
+&lt;h3 id="_7"&gt;规则要写清楚&lt;/h3&gt;
+&lt;h4 id="1-prompt"&gt;1. Prompt 不是装饰，是边界&lt;/h4&gt;
+&lt;p&gt;RAG 里的 Prompt 不是为了让回答更"优雅"，是给模型划边界：哪些能答，哪些不能答，引用怎么给，资料不够时怎么说。&lt;/p&gt;
+&lt;p&gt;尤其是企业知识库，宁可回答"根据现有资料无法回答"，也不要编一个听起来像真的答案。编出来的答案如果被人当真，后果比不回答严重得多。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="n"&gt;RAG_SYSTEM_PROMPT&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;&amp;quot;&amp;quot;你是一个专业的知识库问答助手。请严格基于以下检索到的参考资料回答用户问题。&lt;/span&gt;
+
+&lt;span class="s2"&gt;## 规则&lt;/span&gt;
+&lt;span class="s2"&gt;1. **只基于参考资料回答**，不要使用你的训练知识&lt;/span&gt;
+&lt;span class="s2"&gt;2. 如果参考资料不足以回答问题，明确说&amp;quot;根据现有资料无法回答&amp;quot;&lt;/span&gt;
+&lt;span class="s2"&gt;3. 回答中引用来源，格式为 [来源: 文档名称]&lt;/span&gt;
+&lt;span class="s2"&gt;4. 如果多个来源有矛盾，指出差异并说明各自来源&lt;/span&gt;
+&lt;span class="s2"&gt;5. 保持回答简洁、结构化&lt;/span&gt;
+
+&lt;span class="s2"&gt;## 参考资料&lt;/span&gt;
+&lt;span class="si"&gt;{context}&lt;/span&gt;
+
+&lt;span class="s2"&gt;## 用户问题&lt;/span&gt;
+&lt;span class="si"&gt;{question}&lt;/span&gt;
+&lt;span class="s2"&gt;&amp;quot;&amp;quot;&amp;quot;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h4 id="2_1"&gt;2. 上下文不是越多越好&lt;/h4&gt;
+&lt;p&gt;调 RAG 时有个常见冲动：怕漏信息，那就多塞点上下文。听起来合理，实际很危险。上下文越多，噪声也越多，模型越容易抓不住重点。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;build_context&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;chunks&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;List&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="nb"&gt;dict&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt; &lt;span class="n"&gt;max_tokens&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;int&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="mi"&gt;4000&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;context_parts&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;[]&lt;/span&gt;
+    &lt;span class="n"&gt;current_tokens&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;
+
+    &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;i&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;chunk&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="nb"&gt;enumerate&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;chunks&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+        &lt;span class="n"&gt;chunk_tokens&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;count_tokens&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;chunk&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;text&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;])&lt;/span&gt;
+        &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;current_tokens&lt;/span&gt; &lt;span class="o"&gt;+&lt;/span&gt; &lt;span class="n"&gt;chunk_tokens&lt;/span&gt; &lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;max_tokens&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+            &lt;span class="k"&gt;break&lt;/span&gt;
+
+        &lt;span class="n"&gt;context_parts&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;append&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+            &lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;[参考&lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;i&lt;/span&gt;&lt;span class="o"&gt;+&lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;] (来源: &lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;chunk&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;source&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;, &amp;quot;&lt;/span&gt;
+            &lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;更新: &lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;chunk&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;date&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;)&lt;/span&gt;&lt;span class="se"&gt;\n&lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;chunk&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;text&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;
+        &lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="n"&gt;current_tokens&lt;/span&gt; &lt;span class="o"&gt;+=&lt;/span&gt; &lt;span class="n"&gt;chunk_tokens&lt;/span&gt;
+
+    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="se"&gt;\n\n&lt;/span&gt;&lt;span class="s2"&gt;---&lt;/span&gt;&lt;span class="se"&gt;\n\n&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;join&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;context_parts&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h4 id="3_1"&gt;3. 引用溯源不是锦上添花&lt;/h4&gt;
+&lt;p&gt;RAG 系统和普通聊天机器人最大的区别，是它该让用户追到来源。答案后面没有引用，用户就只能选择信或不信——这不是知识库系统该有的样子。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="n"&gt;CITATION_PROMPT&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;&amp;quot;&amp;quot;回答问题时，请在每个关键信息后标注来源编号。&lt;/span&gt;
+
+&lt;span class="s2"&gt;格式示例：&lt;/span&gt;
+&lt;span class="s2"&gt;公司的年假政策规定，入职满1年的员工享有5天年假[1]，&lt;/span&gt;
+&lt;span class="s2"&gt;满5年的员工享有10天年假[2]。&lt;/span&gt;
+
+&lt;span class="s2"&gt;最后列出参考来源：&lt;/span&gt;
+&lt;span class="s2"&gt;[1] 《员工手册v3.2》第四章第二节&lt;/span&gt;
+&lt;span class="s2"&gt;[2] 《2025年度假期政策更新》&lt;/span&gt;
+&lt;span class="s2"&gt;&amp;quot;&amp;quot;&amp;quot;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h3 id="_8"&gt;容易踩的坑&lt;/h3&gt;
+&lt;p&gt;&lt;strong&gt;坑 7：不限制 LLM 的"创造力"&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;Prompt 里没要求"只基于检索内容回答"，LLM 就开始脑补，把训练数据里的过时信息混入答案。这就是所谓的幻觉——它不是故意骗你，它是真觉得自己说得对。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;坑 8：上下文塞太多&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;把检索到的 20 个 chunk 全塞进 Prompt，LLM 反而被噪声干扰，抓不住重点。实践中，&lt;strong&gt;3-5 个高质量 chunk 往往优于 10+ 个中等质量 chunk&lt;/strong&gt;。&lt;/p&gt;
+&lt;!-- ✍️ 建议亲自改写：这里如果有你在什么业务场景下验证过"3-5 个 chunk 更好"的经历，补一句会把结论从教科书拉到实战。 --&gt;
+
+&lt;p&gt;&lt;strong&gt;坑 9：忽略 "Lost in the Middle"&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;LLM 对上下文中间部分的注意力较弱。最匹配的内容应该放在上下文的&lt;strong&gt;开头和结尾&lt;/strong&gt;，不是中间。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;reorder_for_attention&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;chunks&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;List&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="nb"&gt;dict&lt;/span&gt;&lt;span class="p"&gt;])&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;List&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="nb"&gt;dict&lt;/span&gt;&lt;span class="p"&gt;]:&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="sd"&gt;&amp;quot;&amp;quot;&amp;quot;最匹配的放开头和结尾，次匹配的放中间&amp;quot;&amp;quot;&amp;quot;&lt;/span&gt;
+    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="nb"&gt;len&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;chunks&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;&amp;lt;=&lt;/span&gt; &lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;chunks&lt;/span&gt;
+
+    &lt;span class="n"&gt;sorted_chunks&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nb"&gt;sorted&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;chunks&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;key&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="k"&gt;lambda&lt;/span&gt; &lt;span class="n"&gt;x&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;x&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;score&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt; &lt;span class="n"&gt;reverse&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="kc"&gt;True&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="n"&gt;result&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;[]&lt;/span&gt;
+    &lt;span class="n"&gt;left&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;right&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;[],&lt;/span&gt; &lt;span class="p"&gt;[]&lt;/span&gt;
+
+    &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;i&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;chunk&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="nb"&gt;enumerate&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;sorted_chunks&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+        &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;i&lt;/span&gt; &lt;span class="o"&gt;%&lt;/span&gt; &lt;span class="mi"&gt;2&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+            &lt;span class="n"&gt;left&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;append&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;chunk&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="k"&gt;else&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+            &lt;span class="n"&gt;right&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;append&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;chunk&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;left&lt;/span&gt; &lt;span class="o"&gt;+&lt;/span&gt; &lt;span class="nb"&gt;list&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nb"&gt;reversed&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;right&lt;/span&gt;&lt;span class="p"&gt;))&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h2 id="_9"&gt;五、评估与监控：别靠感觉上线&lt;/h2&gt;
+&lt;h3 id="demo"&gt;Demo 好看不等于系统可用&lt;/h3&gt;
+&lt;h4 id="1_2"&gt;1. 先有评估数据集&lt;/h4&gt;
+&lt;p&gt;RAG 项目最容易犯的错，是 Demo 能跑就上线。Demo 里问的十个问题，往往都是开发者自己挑的——怎么挑怎么准。真用户的问题一来，表达方式、背景信息、边界条件全变了。&lt;/p&gt;
+&lt;p&gt;所以要先有一套评估数据集。不需要一开始很完美，但至少要覆盖常见场景、关键业务和容易出错的问题。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="n"&gt;eval_dataset&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;
+    &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="s2"&gt;&amp;quot;question&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;公司的报销流程是什么？&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+        &lt;span class="s2"&gt;&amp;quot;expected_answer&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;提交申请→主管审批→财务审核→打款&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+        &lt;span class="s2"&gt;&amp;quot;expected_sources&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;报销制度v2.1&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;
+        &lt;span class="s2"&gt;&amp;quot;category&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;policy&amp;quot;&lt;/span&gt;
+    &lt;span class="p"&gt;},&lt;/span&gt;
+    &lt;span class="c1"&gt;# ... 至少 50-100 条覆盖不同场景&lt;/span&gt;
+&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h4 id="2_2"&gt;2. 检索和生成分开评估&lt;/h4&gt;
+&lt;p&gt;RAG 答错了，不一定是模型生成错，也可能是检索没召回；检索召回了，也可能是重排序丢了；上下文都对，也可能是 Prompt 没约束住。&lt;/p&gt;
+&lt;p&gt;所以评估指标要拆开看：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;class&lt;/span&gt; &lt;span class="nc"&gt;RAGEvaluator&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+    &lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;evaluate&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;question&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;generated&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;expected&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;retrieved_docs&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+            &lt;span class="c1"&gt;# 检索质量&lt;/span&gt;
+            &lt;span class="s2"&gt;&amp;quot;retrieval_precision&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;calc_precision&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;retrieved_docs&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;expected_sources&lt;/span&gt;&lt;span class="p"&gt;),&lt;/span&gt;
+            &lt;span class="s2"&gt;&amp;quot;retrieval_recall&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;calc_recall&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;retrieved_docs&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;expected_sources&lt;/span&gt;&lt;span class="p"&gt;),&lt;/span&gt;
+
+            &lt;span class="c1"&gt;# 生成质量&lt;/span&gt;
+            &lt;span class="s2"&gt;&amp;quot;answer_relevance&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;llm_judge_relevance&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;question&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;generated&lt;/span&gt;&lt;span class="p"&gt;),&lt;/span&gt;
+            &lt;span class="s2"&gt;&amp;quot;faithfulness&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;llm_judge_faithfulness&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;generated&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;retrieved_docs&lt;/span&gt;&lt;span class="p"&gt;),&lt;/span&gt;
+            &lt;span class="s2"&gt;&amp;quot;correctness&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;llm_judge_correctness&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;generated&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;expected&lt;/span&gt;&lt;span class="p"&gt;),&lt;/span&gt;
+
+            &lt;span class="c1"&gt;# 实用指标&lt;/span&gt;
+            &lt;span class="s2"&gt;&amp;quot;has_citation&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;bool&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;re&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;search&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="sa"&gt;r&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;\[.*?\]&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;generated&lt;/span&gt;&lt;span class="p"&gt;)),&lt;/span&gt;
+            &lt;span class="s2"&gt;&amp;quot;response_length&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;len&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;generated&lt;/span&gt;&lt;span class="p"&gt;),&lt;/span&gt;
+            &lt;span class="s2"&gt;&amp;quot;latency_ms&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;last_latency&lt;/span&gt;
+        &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h4 id="3_2"&gt;3. 线上要盯这些数&lt;/h4&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;指标&lt;/th&gt;
+&lt;th&gt;目标&lt;/th&gt;
+&lt;th&gt;告警阈值&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;检索召回率&lt;/td&gt;
+&lt;td&gt;&amp;gt; 85%&lt;/td&gt;
+&lt;td&gt;&amp;lt; 70%&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;答案准确率&lt;/td&gt;
+&lt;td&gt;&amp;gt; 80%&lt;/td&gt;
+&lt;td&gt;&amp;lt; 65%&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;幻觉率&lt;/td&gt;
+&lt;td&gt;&amp;lt; 5%&lt;/td&gt;
+&lt;td&gt;&amp;gt; 15%&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;用户满意度 (好评率)&lt;/td&gt;
+&lt;td&gt;&amp;gt; 75%&lt;/td&gt;
+&lt;td&gt;&amp;lt; 60%&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;P95 延迟&lt;/td&gt;
+&lt;td&gt;&amp;lt; 5s&lt;/td&gt;
+&lt;td&gt;&amp;gt; 10s&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;"无法回答"率&lt;/td&gt;
+&lt;td&gt;&amp;lt; 20%&lt;/td&gt;
+&lt;td&gt;&amp;gt; 40%&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h3 id="_10"&gt;容易踩的坑&lt;/h3&gt;
+&lt;p&gt;&lt;strong&gt;坑 10：没评估就上线&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;"Demo 看着挺好的，上线吧！"——这是 RAG 项目挂掉的头号原因。没有系统评估，你不知道系统在哪些场景下会出错，上线就是盲人骑瞎马。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;坑 11：只评估一次&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;知识库在更新，用户问法在变，模型在迭代。评估应该是&lt;strong&gt;持续的&lt;/strong&gt;，不是一次性的。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;坑 12：不看用户反馈&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;用户点了"差评"但没人分析原因。每一个差评都在告诉你系统哪里不对——可能是检索不准，可能是分块不当，也可能是 Prompt 有漏洞。这些信息不用花钱买，但很多团队就是不看。&lt;/p&gt;
+&lt;h2 id="_11"&gt;六、进阶技巧&lt;/h2&gt;
+&lt;h3 id="1-agentic-rag"&gt;1. Agentic RAG&lt;/h3&gt;
+&lt;p&gt;基础 RAG 跑稳之后，可以考虑 Agentic RAG：让 LLM 先分析问题，再决定检索策略。适合复杂问题，但也会增加延迟、成本和不可控性。不要一上来就用它解决所有问题——先把基础链路做到 80 分再说。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;agentic_rag&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;question&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+    &lt;span class="c1"&gt;# Step 1: LLM 分析问题，决定检索策略&lt;/span&gt;
+    &lt;span class="n"&gt;plan&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;llm&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;generate&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&amp;quot;&amp;quot;分析这个问题需要什么信息：&lt;/span&gt;
+&lt;span class="s2"&gt;    问题：&lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;question&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;
+
+&lt;span class="s2"&gt;    输出：&lt;/span&gt;
+&lt;span class="s2"&gt;    - 需要检索的子问题列表&lt;/span&gt;
+&lt;span class="s2"&gt;    - 每个子问题的检索策略 (向量/关键词/结构化查询)&lt;/span&gt;
+&lt;span class="s2"&gt;    &amp;quot;&amp;quot;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+    &lt;span class="c1"&gt;# Step 2: 执行多轮检索&lt;/span&gt;
+    &lt;span class="n"&gt;all_contexts&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;[]&lt;/span&gt;
+    &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;sub_query&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;plan&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;sub_queries&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;results&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;search&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;sub_query&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="n"&gt;all_contexts&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;extend&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;results&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+    &lt;span class="c1"&gt;# Step 3: 判断信息是否充分&lt;/span&gt;
+    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;llm&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;judge_sufficient&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;question&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;all_contexts&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;llm&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;generate_answer&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;question&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;all_contexts&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;else&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;additional&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;llm&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;generate_followup_queries&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;question&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;all_contexts&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="c1"&gt;# ... 继续检索&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h3 id="2_3"&gt;2. 知识图谱增强&lt;/h3&gt;
+&lt;p&gt;对于实体关系很强的知识库，可以抽取实体和关系，构建知识图谱作为向量检索的补充。&lt;/p&gt;
+&lt;p&gt;组织架构、产品依赖、权限关系、合同条款——这些内容只靠向量相似度往往不够。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;向量检索 → 找到相关段落
+    +
+知识图谱 → 找到关联实体和关系
+    ↓
+更完整的上下文
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h3 id="3_3"&gt;3. 缓存&lt;/h3&gt;
+&lt;p&gt;RAG 的成本不低，延迟也不低。高频问题、稳定知识库、固定答案，都可以缓存。但缓存一定要带失效策略，否则知识库更新了，系统还在回答旧答案。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="nn"&gt;hashlib&lt;/span&gt;
+
+&lt;span class="k"&gt;class&lt;/span&gt; &lt;span class="nc"&gt;RAGCache&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+    &lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="fm"&gt;__init__&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;ttl&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;3600&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+        &lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;cache&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;{}&lt;/span&gt;
+        &lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;ttl&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;ttl&lt;/span&gt;
+
+    &lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;get_or_compute&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;query&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;search_fn&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;generate_fn&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+        &lt;span class="n"&gt;key&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;hashlib&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;md5&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;query&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;encode&lt;/span&gt;&lt;span class="p"&gt;())&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;hexdigest&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+
+        &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;key&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;cache&lt;/span&gt; &lt;span class="ow"&gt;and&lt;/span&gt; &lt;span class="ow"&gt;not&lt;/span&gt; &lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;is_expired&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;key&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+            &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;cache&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="n"&gt;key&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+
+        &lt;span class="n"&gt;results&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;search_fn&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;query&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="n"&gt;answer&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;generate_fn&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;query&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;results&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+        &lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;cache&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="n"&gt;key&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;answer&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;answer&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;sources&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;results&lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;cache&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="n"&gt;key&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h2 id="_12"&gt;七、检查清单&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;□ 数据准备
+  □ 文档清洗 (去噪声、格式统一)
+  □ 语义分块 (非固定长度)
+  □ 分块重叠 (10-20%)
+  □ 元数据保留 (来源、日期、分类)
+  □ 多层索引架构
+
+□ 检索优化
+  □ 混合检索 (向量 + BM25)
+  □ Query 改写与扩展
+  □ Reranking 重排序
+  □ 元数据过滤
+  □ 匹配的 Embedding 模型
+
+□ 生成优化
+  □ 严格的 Prompt 约束
+  □ 上下文数量控制 (3-5 个)
+  □ 注意力友好的排列顺序
+  □ 引用溯源
+  □ 兜底策略 (无法回答时的处理)
+
+□ 评估监控
+  □ 评估数据集 (50-100 条+)
+  □ 多维度指标 (检索+生成+实用)
+  □ 持续评估 pipeline
+  □ 用户反馈收集与分析
+  □ 线上监控告警
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;最后说一句不中听但有用的话：&lt;strong&gt;RAG 不是一个项目，是一个产品。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;项目可以交付，产品要持续运营。知识库会更新，用户问法会变，模型会升级，业务规则也在变。你不能指望一次上线，从此岁月静好。&lt;/p&gt;
+&lt;p&gt;如果只记住一件事：RAG 的质量不只取决于 LLM，而取决于整条链路。数据要干净，检索要准，生成要有边界，答案要能溯源，评估要持续跑。&lt;/p&gt;
+&lt;p&gt;无他，少一点玄学，多一点工程。&lt;/p&gt;
+&lt;h2 id="_13"&gt;参考资料&lt;/h2&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;a href="https://blog.langchain.dev/rag-best-practices/"&gt;RAG Optimization Best Practices - LangChain Blog&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://towardsdatascience.com/12-rag-pain-points-and-proposed-solutions/"&gt;Twelve RAG Pain Points and Solutions&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://arxiv.org/abs/2307.03172"&gt;Lost in the Middle: How Language Models Use Long Contexts&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://huggingface.co/BAAI"&gt;BAAI BGE Embedding Models&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf"&gt;Reciprocal Rank Fusion&lt;/a&gt;&lt;/li&gt;
+&lt;/ol&gt;
+&lt;hr/&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Journal"/><category term="RAG"/><category term="AI"/><category term="LLM"/><category term="知识库"/><category term="向量检索"/><category term="最佳实践"/></entry><entry><title>AI 编程时代，品味比经验更重要</title><link href="https://www.fanyamin.com/2026-05-05-ai-programming-taste.html" rel="alternate"/><published>2026-05-05T21:59:00+08:00</published><updated>2026-05-05T22:15:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-05-05:/2026-05-05-ai-programming-taste.html</id><summary type="html">&lt;p&gt;AI 把写代码的门槛拉低了，把判断代码好坏的门槛拉高了。经验不会自动变成优势，反而容易变成包袱。咱们要做的，是用 DDD 守住业务语言，用 ROI 算清楚账，再用品味在多个可行方案里挑那个"长期最少后悔"的。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;AI 编程时代，品味比经验更重要&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;Journal&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Status&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;v1.0&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;2026-05-05&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h1 id="ai"&gt;AI 编程时代，品味比经验更重要&lt;/h1&gt;
+&lt;h2 id="_1"&gt;短大纲&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;AI 让写代码更快，也让"选什么、不选什么"更难&lt;/li&gt;
+&lt;li&gt;经验的价值，不在于记住过去，而在于识别今天的约束&lt;/li&gt;
+&lt;li&gt;判断力要盯几个慢变量：领域、边界、代价、失败模式&lt;/li&gt;
+&lt;li&gt;用 DDD 给 AI 一张图纸，用 ROI 给技术判断算笔账&lt;/li&gt;
+&lt;li&gt;品味不是玄学，是一套能练出来的偏好&lt;/li&gt;
+&lt;li&gt;让经验不变成包袱，靠的是"拆旧账、做小实验、写决策日志"&lt;/li&gt;
+&lt;li&gt;末尾附一份明天就能用的工程品味清单&lt;/li&gt;
+&lt;/ul&gt;
+&lt;hr&gt;
+&lt;h2 id="ai_1"&gt;一、AI 把键盘踩冒烟，锅还是人来背&lt;/h2&gt;
+&lt;p&gt;以前写代码，慢在手上。一个接口、一个 SQL、一个单元测试，敲敲改改半天过去了。现在有了 AI，慢的地方换了。&lt;/p&gt;
+&lt;p&gt;你让它写一个缓存层，它能甩出三种方案；你让它重构一段代码，它能顺手再造一个小型框架；你让它修个 bug，它有时真能修好，有时只是把异常从日志里挪到数据一致性里——问题还在，只是更难发现。&lt;/p&gt;
+&lt;p&gt;这时候，真正拉开差距的，不再只是"我会不会写"，而是这一句:&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;这段代码该不该存在。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;这话听着有点扫兴。AI 都能生成了，老程序员还在旁边念叨"可维护性""边界""长期成本"，像极了饭桌上劝年轻人少喝冰奶茶的长辈。可是做过几年系统的人都懂，代码不是写完就完事。它会进仓库，会跑上线，会被同事接手，还会在凌晨三点给你打电话。&lt;/p&gt;
+&lt;p&gt;一句话, AI 把生成代码的门槛拉低了，却把判断代码好坏的门槛拉高了。&lt;/p&gt;
+&lt;p&gt;经验、判断和品味, 反倒比以前更值钱。只是这里有个坑: 经验也会过期，判断也会偷懒，品味也可能滑成"我以前就是这么干的"。&lt;/p&gt;
+&lt;p&gt;接下来我想聊的就是这件事——怎么把经验养成望远镜, 而不是后视镜。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_2"&gt;二、经验不是老黄历，是约束识别器&lt;/h2&gt;
+&lt;p&gt;经验最容易被误用的方式，就是把过去的答案直接搬到今天用。&lt;/p&gt;
+&lt;p&gt;比如, 一个老系统曾经被 ORM 坑过, 查询慢、事务乱、对象关系缠成毛线团。于是有人从此一看到 ORM 就皱眉, 像看见欠钱不还的老同学。可今天的场景也许只是一个内部小工具, 数据量不大, 团队熟悉框架, ORM 反而能省下不少重复代码。&lt;/p&gt;
+&lt;p&gt;再比如, 十年前我们说"不要过早抽象", 是因为很多人写到第二个用例都还没遇上, 就急着搞插件系统。现在 AI 写重复代码飞快, 复制三份不像以前那么肉疼, "先重复、再抽象"的账面也变了。不是原则失效, 而是原则背后的约束变了。&lt;/p&gt;
+&lt;p&gt;经验真正有用的地方, 不是告诉你"以前怎么做", 而是提醒你先问几个问题:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;这个系统的寿命, 是三周、三个月, 还是三年?&lt;/li&gt;
+&lt;li&gt;谁会维护它, 一个人, 还是一个团队?&lt;/li&gt;
+&lt;li&gt;最容易出事的地方, 是性能、权限、数据一致性, 还是需求反复横跳?&lt;/li&gt;
+&lt;li&gt;这段代码一旦错了, 是页面丑一点, 还是钱算错、数据泄露、线上事故?&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;一句话, 经验不是答案库, 是约束识别器。&lt;/p&gt;
+&lt;p&gt;老程序员的优势, 固然有"见过很多坑", 可是更要紧的是知道坑为什么会冒出来。只记得"某技术不行", 容易长成偏见; 记得"在什么约束下它不行", 才是经验。&lt;/p&gt;
+&lt;h2 id="_3"&gt;三、判断力, 看几个慢变量&lt;/h2&gt;
+&lt;p&gt;AI 给出的方案常常快到一种程度: 你还没想清楚, 它已经写完了一堆代码。快不是坏事, 坏的是人跟着快, 脑子没跟上。&lt;/p&gt;
+&lt;p&gt;我越来越觉得, 工程判断力, 要盯住几个慢变量。&lt;/p&gt;
+&lt;h3 id="1-ddd-ai"&gt;1. 领域: 先用 DDD 给 AI 一张图纸&lt;/h3&gt;
+&lt;p&gt;AI 编程的方式变了很多, 可业务本身变化没那么快。&lt;/p&gt;
+&lt;p&gt;电商还是要把货卖出去, 协作软件还是要让人少开点无效会议, 安全系统还是要把不该看的人挡在门外。再往大处说, 赚钱的方法归根结底还是那一句: 满足人的需求。有些是物质的, 比如更便宜、更快、更可靠; 有些是精神的, 比如更省心、更有成就感、更被尊重。&lt;/p&gt;
+&lt;p&gt;所以, 让 AI 写代码之前, 不妨先用 DDD 把业务讲清楚。Martin Fowler 在 &lt;a href="https://martinfowler.com/bliki/DomainDrivenDesign.html"&gt;Domain-Driven Design&lt;/a&gt; 里说过, DDD 的核心是围绕领域模型组织软件, 并把统一语言嵌进系统。放到 AI 编程里, 这条更重要: 你不给它领域语言, 它就按通用模板发挥; 你不给它边界上下文, 它就可能把"订单""账单""发票""支付流水"和成一锅粥。&lt;/p&gt;
+&lt;p&gt;我现在更喜欢先这样问 AI:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;先不要写代码。
+请根据下面的业务描述，提取：
+1. 核心领域对象
+2. 关键业务规则
+3. 不变量
+4. 可能的边界上下文
+5. 哪些概念容易混淆
+
+等我确认领域模型后，再生成实现方案。
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这不是仪式感, 是防止 AI 带着我们跑偏。代码生成得越快, 越要先把"业务到底是什么"钉住。否则就好比请了一个手速飞快的装修队, 图纸还没定, 人家已经把墙砸了。&lt;/p&gt;
+&lt;h3 id="2"&gt;2. 边界: 这段代码该管什么, 不该管什么&lt;/h3&gt;
+&lt;p&gt;很多坏代码不是因为写得丑, 而是因为边界糊。一个函数既查数据库, 又拼返回值, 又发消息, 还顺手记日志。AI 也很容易这么干, 因为它的目标是"把任务做完", 不是替你守住系统边界。&lt;/p&gt;
+&lt;p&gt;判断一个方案, 先问边界:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;输入从哪儿来, 可信不可信?&lt;/li&gt;
+&lt;li&gt;输出给谁用, 是否会被二次消费?&lt;/li&gt;
+&lt;li&gt;错误在哪一层处理, 哪一层只负责传递?&lt;/li&gt;
+&lt;li&gt;这个模块知道的事情, 是不是太多了?&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;边界清楚, 代码长一点还能活; 边界糊了, 再漂亮的命名也像新刷的墙, 里头还是潮的。&lt;/p&gt;
+&lt;h3 id="3"&gt;3. 代价: 今天省下的时间, 明天要不要还&lt;/h3&gt;
+&lt;p&gt;Martin Fowler 有个说法叫 &lt;a href="https://martinfowler.com/bliki/DesignStaminaHypothesis.html"&gt;Design Stamina Hypothesis&lt;/a&gt;, 意思是好设计能让项目跑得更久。刚开始不做设计可能更快, 可是技术债会慢慢拖慢你。&lt;/p&gt;
+&lt;p&gt;这事放到 AI 编程里更明显。以前写烂代码还得自己敲, 现在一句 prompt 就能生成一大片, "借债"这件事变得太容易了。&lt;/p&gt;
+&lt;p&gt;所以判断一个方案, 不妨问一句不中听的话:&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;这段代码明天需求变了, 我是愿意改它, 还是想装作没看见?&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;要是答案是后者, 它就不是生产力, 是债务自动化。&lt;/p&gt;
+&lt;p&gt;技术账之外, 还得算经济账。ROI 不是老板和产品经理的专利, 工程师也该会用。这个方案多花两周, 换来的是收入增长、成本下降、风险降低, 还是只换来"架构看起来更高级"? 说不清楚, 就先别急着上强度。&lt;/p&gt;
+&lt;h3 id="4"&gt;4. 失败模式: 它怎么坏, 坏了谁先知道&lt;/h3&gt;
+&lt;p&gt;很多方案乍一看都能跑, 真正的区别在出事时能不能兜得住。&lt;/p&gt;
+&lt;p&gt;缓存会不会读到脏数据? 重试会不会把下游打死? 批处理失败后能不能重跑? 权限判断挂了, 是默认放行还是默认拒绝? 日志里有没有顺手把用户数据暴出去?&lt;/p&gt;
+&lt;p&gt;AI 生成代码时, 常常把 happy path 写得顺顺当当, 失败路径写得像赶末班车。经验的价值, 就在于你会盯住那些"不好看但要命"的地方。&lt;/p&gt;
+&lt;p&gt;好判断力, 不是每次都选最复杂的方案, 是知道哪些地方不能赌。&lt;/p&gt;
+&lt;h2 id="_4"&gt;四、品味不是玄学, 是可以练出来的偏好&lt;/h2&gt;
+&lt;p&gt;一说"品味", 有些人就紧张, 觉得这是审美问题, 像讨论咖啡该不该加糖, 各执一词没结果。&lt;/p&gt;
+&lt;p&gt;Paul Graham 写过一篇 &lt;a href="https://www.paulgraham.com/taste.html"&gt;Taste for Makers&lt;/a&gt;, 聊创造者的品味。放到软件里, 我理解的品味不是"我喜欢这种写法", 而是这一句:&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;在多个都能跑的方案里, 挑那个长期更少后悔的。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;工程品味, 至少有四层:&lt;/p&gt;
+&lt;p&gt;第一层是 &lt;strong&gt;读得懂&lt;/strong&gt;。代码不是写给机器看的, 机器看字节码就够了。代码是写给下一个维护者看的, 而下一个维护者, 通常就是三个月后的自己——那时候的自己脾气未必比现在好。&lt;/p&gt;
+&lt;p&gt;第二层是 &lt;strong&gt;改得动&lt;/strong&gt;。一个方案要是只能凑合当前需求, 把下一次变化堵死, 它就像一次性雨衣, 看着便宜, 用完满地狼藉。&lt;/p&gt;
+&lt;p&gt;第三层是 &lt;strong&gt;错得起&lt;/strong&gt;。系统不可能永远对, 关键是错了以后, 能不能隔离、回滚、补偿、追踪。&lt;/p&gt;
+&lt;p&gt;第四层是 &lt;strong&gt;少造概念&lt;/strong&gt;。概念越多, 读者脑子里要加载的"包"就越多。一个只有两个用例的东西, 不必急着起名 &lt;code&gt;AbstractUniversalStrategyFactory&lt;/code&gt;。要是你真这么命名, AI 还会礼貌地点头称赞, 这也是它让人害怕的地方。&lt;/p&gt;
+&lt;p&gt;品味不是天生的, 也不是熬年头熬出来的。很多人工作十年, 只是把第一年的写法重复了九年, 顺便攒了一点脾气。&lt;/p&gt;
+&lt;p&gt;品味要练。&lt;/p&gt;
+&lt;h2 id="_5"&gt;五、练品味的三件小事&lt;/h2&gt;
+&lt;h3 id="1"&gt;1. 做"代码回访", 不止做代码评审&lt;/h3&gt;
+&lt;p&gt;代码评审通常发生在合并前, 那会儿大家关心的是能不能进主干。可很多设计选择好不好, 要过一阵子才显出原形。&lt;/p&gt;
+&lt;p&gt;我建议每个月挑一两个自己参与过的改动, 做一次"代码回访":&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;当初为什么这么设计?&lt;/li&gt;
+&lt;li&gt;后来需求改过没有?&lt;/li&gt;
+&lt;li&gt;改起来顺不顺?&lt;/li&gt;
+&lt;li&gt;线上有没有报警、工单、性能问题?&lt;/li&gt;
+&lt;li&gt;如果重来一次, 会删掉什么, 会保留什么?&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这就像体检, 平时没感觉不代表指标好。代码也一样。&lt;/p&gt;
+&lt;h3 id="2-ai"&gt;2. 让 AI 给多个方案, 但拍板的事自己来&lt;/h3&gt;
+&lt;p&gt;不要只问 AI 一句"帮我实现这个功能"。&lt;/p&gt;
+&lt;p&gt;更好的问法, 是这样:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;给我三个方案：
+1. 最简单能上线的方案
+2. 更适合长期维护的方案
+3. 性能和可靠性更强但成本更高的方案
+
+请分别说明：
+- 适用场景
+- 主要风险
+- 未来改动成本
+- 你不推荐它的情况
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;AI 很会摊开选项, 拍板这件事还得人来。&lt;/p&gt;
+&lt;p&gt;这个动作的价值, 不在于 AI 的答案一定对, 而在于它逼你比较。比较, 才是品味的训练场。没有比较, 就容易把"能跑"误当成"合适"。&lt;/p&gt;
+&lt;h3 id="3_1"&gt;3. 写决策日志, 给未来的自己留个证词&lt;/h3&gt;
+&lt;p&gt;很多技术争论之所以变成口水仗, 是因为大家只记得结论, 不记得当时的约束。&lt;/p&gt;
+&lt;p&gt;一段很短的决策日志就够用:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="gu"&gt;## Decision&lt;/span&gt;
+
+我们选择方案 B，而不是方案 A。
+
+&lt;span class="gu"&gt;## Context&lt;/span&gt;
+
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;需求预计会在两个月内变化三次以上
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;团队只有两个人熟悉底层实现
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;当前性能瓶颈不在这里
+
+&lt;span class="gu"&gt;## Trade-offs&lt;/span&gt;
+
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;接受多一次网络调用
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;换取更清楚的模块边界
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;后续如果 QPS 超过 X，再引入缓存
+
+&lt;span class="gu"&gt;## Review&lt;/span&gt;
+
+一个月后回看：是否真的出现了预期变化？
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;别写成长篇论文。写太长没人看, 最后跟某些会议纪要一样, 存在的意义主要是证明有人曾经很努力。&lt;/p&gt;
+&lt;p&gt;决策日志真正的好处, 是让经验有出处。以后复盘时, 你会知道自己当时是判断错了, 还是前提变了——这两件事差得远。&lt;/p&gt;
+&lt;h2 id="_6"&gt;六、让经验不变成桎梏&lt;/h2&gt;
+&lt;p&gt;经验最大的敌人, 不是无知, 是懒得更新。&lt;/p&gt;
+&lt;p&gt;年轻时, 我们容易相信新东西能解决一切; 年纪大了点, 又容易相信旧原则能解释一切。两种都危险——前者像没刹车的新车, 后者像只看后视镜开车, 都能动, 但不一定能到。&lt;/p&gt;
+&lt;p&gt;让经验不变成包袱, 我觉得有三条原则。&lt;/p&gt;
+&lt;p&gt;第一, &lt;strong&gt;把结论还原成条件&lt;/strong&gt;。不要说"微服务不好", 要说"在团队运维能力弱、边界未稳定、调用链观测不足时, 微服务会放大复杂度"。这样经验就不会沦为口号。&lt;/p&gt;
+&lt;p&gt;第二, &lt;strong&gt;允许小规模推翻自己&lt;/strong&gt;。选一个低风险场景, 去试试过去不喜欢的工具或写法。不是为了赶时髦, 是为了更新样本。老中医也要看新化验单, 不能只靠把脉。&lt;/p&gt;
+&lt;p&gt;第三, &lt;strong&gt;用结果校准口味&lt;/strong&gt;。你喜欢的设计, 后来是不是更容易改? 你讨厌的方案, 后来是不是真的出过事? 事实反复打脸, 就别硬撑。工程师的面子不值钱, 线上稳定才值钱。&lt;/p&gt;
+&lt;p&gt;一句话, 经验不是用来证明自己对的, 是用来让团队少走弯路的。&lt;/p&gt;
+&lt;p&gt;说起来容易, 做起来要点修养。毕竟承认"我以前那套不适合这里", 有时比修一个复杂 bug 还难。bug 不会顶嘴, 人的自尊会。&lt;/p&gt;
+&lt;h2 id="checklist"&gt;七、工程品味 CheckList&lt;/h2&gt;
+&lt;p&gt;下次让 AI 动手之前, 或者看完它给你的实现之后, 不妨快速过一遍这张表:&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;问题&lt;/th&gt;
+&lt;th&gt;自查要点&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;这段代码该存在吗?&lt;/td&gt;
+&lt;td&gt;能不能靠配置、已有框架, 或者干脆删需求解决&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;业务价值站得住吗?&lt;/td&gt;
+&lt;td&gt;是否真的满足用户需求, ROI 算不算得过来&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;领域语言清楚吗?&lt;/td&gt;
+&lt;td&gt;DDD 的对象、规则、不变量、边界上下文是否说清楚&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;边界清楚吗?&lt;/td&gt;
+&lt;td&gt;输入、输出、错误、权限、依赖是否分开&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;改动成本高吗?&lt;/td&gt;
+&lt;td&gt;需求变化时要动几个地方, 会不会牵一发动全身&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;失败路径完整吗?&lt;/td&gt;
+&lt;td&gt;超时、重试、回滚、补偿、告警有没有安排&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;概念过多吗?&lt;/td&gt;
+&lt;td&gt;有没有为了一个小问题, 引入一串新名词&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;日志安全吗?&lt;/td&gt;
+&lt;td&gt;是否漏出 token、用户数据、业务敏感信息&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;测试覆盖关键风险吗?&lt;/td&gt;
+&lt;td&gt;别盯覆盖率数字, 先覆盖最容易出事故的那条路径&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;一个月后能看懂吗?&lt;/td&gt;
+&lt;td&gt;命名、结构和注释, 能不能帮未来那个人省点脑子&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;如果只能挑一个问题, 我会选第一个: 这段代码该存在吗?&lt;/p&gt;
+&lt;p&gt;因为写代码最难的部分, 常常不是怎么写, 而是忍住不写。&lt;/p&gt;
+&lt;h2 id="_7"&gt;总结&lt;/h2&gt;
+&lt;p&gt;AI 编程让"生成"变便宜了, 也让"判断"变贵了。会写代码固然重要, 可更重要的是知道什么该写、什么该删、什么该先放一放。&lt;/p&gt;
+&lt;p&gt;经验有价值, 可是要不断校准; 判断很稀缺, 可是能通过复盘练出来; 品味听起来玄, 落到工程里, 不过是这一句——在多个可行方案里, 挑那个长期最少后悔的。DDD 帮咱们守住业务语言, ROI 帮咱们守住投入产出。一个管"做对事", 一个管"值不值得做"。&lt;/p&gt;
+&lt;p&gt;最后送给自己, 也送给还在键盘前敲代码的老伙计们一句话:&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;工具越聪明, 人越要清醒。&lt;br&gt;
+经验不是护身符, 品味才是方向盘。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h3 id="_8"&gt;思维导图&lt;/h3&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap
+* AI 编程时代的工程品味
+** 核心变化
+*** 写代码更快
+*** 选择更多
+*** 判断更贵
+** 经验
+*** 不是答案库
+*** 是约束识别器
+*** 把结论还原成条件
+** 业务锚点
+*** DDD 统一语言
+*** 边界上下文
+*** 满足人的真实需求
+*** ROI 判断投入产出
+** 判断力
+*** 看领域
+*** 看边界
+*** 算代价
+*** 查失败模式
+*** 区分 happy path 和真实系统
+** 品味
+*** 读得懂
+*** 改得动
+*** 错得起
+*** 少制造概念
+** 训练方法
+*** 代码回访
+*** 让 AI 给多个方案
+*** 写决策日志
+*** 用结果校准偏好
+** 避免包袱
+*** 小规模推翻自己
+*** 不拿过去压今天
+*** 让经验服务团队
+@endmindmap
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;img alt="AI 编程时代的工程品味思维导图" src="../images/journal_20260505_ai-programming-taste_mindmap.png"&gt;&lt;/p&gt;
+&lt;h3 id="_9"&gt;扩展阅读&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://www.paulgraham.com/taste.html"&gt;Paul Graham: Taste for Makers&lt;/a&gt;&lt;br&gt;
+  聊创造者的品味, 虽是讲设计与创作, 放到软件工程里同样有启发。&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://martinfowler.com/bliki/DesignStaminaHypothesis.html"&gt;Martin Fowler: Design Stamina Hypothesis&lt;/a&gt;&lt;br&gt;
+  好设计不是为了显得优雅, 是为了让项目跑得更久。&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://martinfowler.com/bliki/DomainDrivenDesign.html"&gt;Martin Fowler: Domain Driven Design&lt;/a&gt;&lt;br&gt;
+  DDD 的核心不是画几张图, 而是用领域模型和统一语言组织复杂业务。&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://www.joelonsoftware.com/2002/11/11/the-law-of-leaky-abstractions/"&gt;Joel Spolsky: The Law of Leaky Abstractions&lt;/a&gt;&lt;br&gt;
+  抽象总会漏水。AI 生成代码时, 这道理并没有失效。&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://www.oreilly.com/radar/the-end-of-programming-as-we-know-it/"&gt;Tim O'Reilly: The End of Programming as We Know It&lt;/a&gt;&lt;br&gt;
+  从更宏观的角度看 AI 对编程工作的影响, 当背景读物挺合适。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;hr/&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Journal"/><category term="AI"/><category term="programming"/><category term="engineering"/><category term="taste"/><category term="career"/><category term="methodology"/></entry><entry><title>SPIRE 系列之四：实战 Lab — 用零信任身份替代数据库密码分发</title><link href="https://www.fanyamin.com/spire-04-hands-on-lab.html" rel="alternate"/><published>2026-04-26T20:30:00+08:00</published><updated>2026-04-26T22:18:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-04-26:/spire-04-hands-on-lab.html</id><summary type="html">&lt;p&gt;SPIRE 系列第四篇：用一个迷你 Python 实验把 Workload Identity 落地，用 JWT-SVID 替代应用侧数据库密码分发，并串起 SPIFFE、SPIRE、Zero Trust 的完整链路。&lt;/p&gt;</summary><content type="html">&lt;h1 id="spire-lab"&gt;SPIRE 系列之四：实战 Lab — 用零信任身份替代数据库密码分发&lt;/h1&gt;
 &lt;blockquote&gt;
 &lt;p&gt;SPIRE 系列第 4 篇 — 前三篇讲概念、架构和安全，这一篇动手做个小实验：应用启动时没有数据库密码，只靠 SPIFFE 身份向 Secret Server 证明“我是谁”。纸上得来终觉浅，配置跑一遍，很多概念就落地了。&lt;/p&gt;
 &lt;p&gt;系列导航：
@@ -32301,318 +33880,4 @@ OpenTelemetry 是新一代的可观测性框架，统一了追踪、指标、日
 &lt;ul&gt;
 &lt;li&gt;https://github.com/openai/openai-cookbook/&lt;/li&gt;
 &lt;li&gt;https://platform.openai.com/docs/api-reference&lt;/li&gt;
-&lt;/ul&gt;</content><category term="Journal"/><category term="journal"/><category term="blog"/></entry><entry><title>GStreamer 的插件黑名单</title><link href="https://www.fanyamin.com/2024-10-28-gstreamer.html" rel="alternate"/><published>2024-10-28T10:20:00+08:00</published><updated>2024-10-28T19:30:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2024-10-28:/2024-10-28-gstreamer.html</id><summary type="html">&lt;p&gt;| Abstract  | Journal on 2024-10-28  | | --------------|------------------------| | Authors   | Walter Fan       | | Category  | learning note  | | St...&lt;/p&gt;</summary><content type="html">&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
-&lt;th&gt;Journal on 2024-10-28&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt; &lt;strong&gt;Category&lt;/strong&gt;  &lt;/td&gt;
-&lt;td&gt; learning note  &lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Status&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;v1.0&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;2024-10-28&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;p&gt;GStreamer 的插件黑名单是一种机制，用于存储加载失败的插件列表，以避免重复尝试加载有问题的插件。这样在初始化或运行 GStreamer 应用时，可以减少加载失败的插件带来的性能开销。GStreamer 会将这些失败的插件记录在一个文件中，通常位于用户目录的缓存下，例如 ~/.cache/gstreamer-1.0/registry.x86_64.bin 文件中。&lt;/p&gt;
-&lt;p&gt;清除 GStreamer 插件黑名单的方法&lt;/p&gt;
-&lt;p&gt;要清除插件黑名单，可以直接删除缓存文件 registry，这样 GStreamer 会在下次运行时重新扫描并加载所有插件。操作步骤如下：&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;
-&lt;p&gt;定位缓存文件：&lt;/p&gt;
-&lt;/li&gt;
-&lt;li&gt;
-&lt;p&gt;大多数系统上该文件位于 ~/.cache/gstreamer-1.0/ 目录中，文件名类似 registry.x86_64.bin。&lt;/p&gt;
-&lt;/li&gt;
-&lt;li&gt;可以在终端中运行以下命令来找到该文件：&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;find ~/.cache -name 'registry*.bin'&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;
-&lt;p&gt;删除缓存文件：&lt;/p&gt;
-&lt;/li&gt;
-&lt;li&gt;
-&lt;p&gt;运行以下命令删除缓存文件：&lt;/p&gt;
-&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;rm ~/.cache/gstreamer-1.0/registry*.bin&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;
-&lt;p&gt;重启 GStreamer 应用：&lt;/p&gt;
-&lt;/li&gt;
-&lt;li&gt;
-&lt;p&gt;删除缓存文件后，重新启动使用 GStreamer 的应用程序。GStreamer 会重新扫描并加载所有插件，不再受之前黑名单的影响。&lt;/p&gt;
-&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;通过清除这个文件，就能让 GStreamer 重新尝试加载所有插件，包括之前可能由于加载失败而被列入黑名单的插件。&lt;/p&gt;</content><category term="Journal"/><category term="journal"/><category term="blog"/></entry><entry><title>cypher vs. sql</title><link href="https://www.fanyamin.com/cypher-vs-sql.html" rel="alternate"/><published>2024-10-09T10:20:00+08:00</published><updated>2024-10-09T19:30:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2024-10-09:/cypher-vs-sql.html</id><summary type="html">&lt;p&gt;| Abstract  | cypher vs. sql  | | --------------|------------------------| | Authors   | Walter Fan       | | Category  | learning note  | | Status...&lt;/p&gt;</summary><content type="html">&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
-&lt;th&gt;cypher vs. sql&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt; &lt;strong&gt;Category&lt;/strong&gt;  &lt;/td&gt;
-&lt;td&gt; learning note  &lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Status&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;v1.0&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;2024-10-09&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;h2 id="cypher-vs-sql"&gt;Cypher vs. SQL&lt;/h2&gt;
-&lt;p&gt;在图数据库和关系数据库中，Cypher 和 SQL 都是用于数据操作的查询语言，但它们的设计和应用方式有所不同。Cypher 是为图数据库（如 Neo4j 和 Memgraph）设计的，适用于处理节点和边的图状结构；SQL 则是关系型数据库的查询语言，专为操作表格数据而设计。下面是两种语言在 CRUD 操作上的对比：&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;创建 (Create)&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;Cypher（在图数据库中创建节点和关系）：&lt;/p&gt;
-&lt;p&gt;// 创建一个 Person 节点
-CREATE (p:Person {name: "Alice", age: 30})&lt;/p&gt;
-&lt;p&gt;// 创建一个节点和它之间的关系
-CREATE (p1:Person {name: "Alice"})
-CREATE (p2:Person {name: "Bob"})
-CREATE (p1)-[:FRIEND]-&amp;gt;(p2)&lt;/p&gt;
-&lt;p&gt;SQL（在关系数据库中创建记录）：&lt;/p&gt;
-&lt;p&gt;-- 创建 Person 表中的一条记录
-INSERT INTO Person (name, age) VALUES ("Alice", 30);&lt;/p&gt;
-&lt;p&gt;-- 在 Friend 表中表示 Alice 和 Bob 是朋友
-INSERT INTO Person (name) VALUES ("Alice"), ("Bob");
-INSERT INTO Friend (person1, person2) VALUES ("Alice", "Bob");&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;读取 (Read)&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;Cypher：&lt;/p&gt;
-&lt;p&gt;// 查找所有名为 "Alice" 的 Person 节点
-MATCH (p:Person {name: "Alice"})
-RETURN p&lt;/p&gt;
-&lt;p&gt;// 查找 Alice 的所有朋友
-MATCH (p1:Person {name: "Alice"})-[:FRIEND]-&amp;gt;(p2:Person)
-RETURN p2&lt;/p&gt;
-&lt;p&gt;SQL：&lt;/p&gt;
-&lt;p&gt;-- 查询所有名为 "Alice" 的 Person 记录
-SELECT * FROM Person WHERE name = "Alice";&lt;/p&gt;
-&lt;p&gt;-- 查找 Alice 的所有朋友
-SELECT p2.* 
-FROM Person p1 
-JOIN Friend f ON p1.name = f.person1 
-JOIN Person p2 ON f.person2 = p2.name 
-WHERE p1.name = "Alice";&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;更新 (Update)&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;Cypher：&lt;/p&gt;
-&lt;p&gt;// 将名为 "Alice" 的 Person 节点的年龄更新为 31
-MATCH (p:Person {name: "Alice"})
-SET p.age = 31&lt;/p&gt;
-&lt;p&gt;SQL：&lt;/p&gt;
-&lt;p&gt;-- 将 Person 表中名为 "Alice" 的记录的年龄更新为 31
-UPDATE Person
-SET age = 31
-WHERE name = "Alice";&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;删除 (Delete)&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;Cypher：&lt;/p&gt;
-&lt;p&gt;// 删除名为 "Alice" 的 Person 节点以及其所有关系
-MATCH (p:Person {name: "Alice"})
-DETACH DELETE p&lt;/p&gt;
-&lt;p&gt;SQL：&lt;/p&gt;
-&lt;p&gt;-- 删除 Person 表中名为 "Alice" 的记录
-DELETE FROM Person WHERE name = "Alice";&lt;/p&gt;
-&lt;p&gt;-- 删除 Friend 表中涉及 Alice 的关系
-DELETE FROM Friend WHERE person1 = "Alice" OR person2 = "Alice";&lt;/p&gt;
-&lt;h2 id="tips"&gt;tips&lt;/h2&gt;
-&lt;p&gt;在 Neo4j 中，如果你想查询从 A 类节点到 B 类节点之间经过若干节点和边的所有路径，并取出所有 B 类节点，你可以使用 Cypher 的可变长度路径查询。假设 A 类节点有标签 &lt;code&gt;A&lt;/code&gt;，B 类节点有标签 &lt;code&gt;B&lt;/code&gt;，你可以通过以下查询来实现：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;MATCH&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;a&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="n"&gt;A&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="o"&gt;-[&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="n"&gt;RELATIONSHIP&lt;/span&gt;&lt;span class="p"&gt;*&lt;/span&gt;&lt;span class="o"&gt;]-&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;b&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="n"&gt;B&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
-&lt;span class="k"&gt;RETURN&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="n"&gt;b&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;在这个查询中：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;code&gt;(a:A)&lt;/code&gt; 匹配具有 &lt;code&gt;A&lt;/code&gt; 标签的节点。&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;[:RELATIONSHIP*]&lt;/code&gt; 表示路径中可能经过任意数量的关系（&lt;code&gt;RELATIONSHIP&lt;/code&gt; 是关系的类型，你可以根据实际情况更改）。&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;(b:B)&lt;/code&gt; 匹配具有 &lt;code&gt;B&lt;/code&gt; 标签的节点。&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;RETURN b&lt;/code&gt; 返回所有符合条件的 B 类节点。&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3 id="_1"&gt;说明&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;code&gt;[:RELATIONSHIP*]&lt;/code&gt;：可变长度的路径，表示可以经过 0 到任意数量的中间节点和关系。如果你只想匹配特定长度的路径，可以限制长度，如 &lt;code&gt;[:RELATIONSHIP*1..3]&lt;/code&gt;（表示路径长度为 1 到 3）。&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;RELATIONSHIP&lt;/code&gt; 是关系类型，你可以替换为实际的关系名，或者使用 &lt;code&gt;[:]&lt;/code&gt; 表示任何关系类型。&lt;/li&gt;
-&lt;li&gt;查询返回的是所有与 A 类节点有连接路径的 B 类节点。&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3 id="a-b"&gt;示例：查找 A 类用户到 B 类产品的路径&lt;/h3&gt;
-&lt;p&gt;如果你有一个社交网络，其中 A 类节点表示用户，B 类节点表示产品，并且用户和产品之间有多种关系（例如，&lt;code&gt;PURCHASED&lt;/code&gt;、&lt;code&gt;LIKED&lt;/code&gt; 等），你可以用以下查询找出所有连接到 A 类用户的 B 类产品：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;MATCH&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;a&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="n"&gt;A&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="o"&gt;-[&lt;/span&gt;&lt;span class="p"&gt;*&lt;/span&gt;&lt;span class="o"&gt;]-&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;b&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="n"&gt;B&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
-&lt;span class="k"&gt;RETURN&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="k"&gt;DISTINCT&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="n"&gt;b&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;这里 &lt;code&gt;[*]&lt;/code&gt; 匹配任意类型的关系和任意数量的中间节点，&lt;code&gt;DISTINCT&lt;/code&gt; 确保返回的 B 类节点不重复。&lt;/p&gt;
-&lt;h3 id="_2"&gt;限制路径长度&lt;/h3&gt;
-&lt;p&gt;如果你只关心从 A 类节点到 B 类节点的特定长度的路径，可以用以下查询。例如，限制路径长度在 2 到 4 之间：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;MATCH&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;a&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="n"&gt;A&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="o"&gt;-[&lt;/span&gt;&lt;span class="p"&gt;*&lt;/span&gt;&lt;span class="m"&gt;2&lt;/span&gt;&lt;span class="p"&gt;..&lt;/span&gt;&lt;span class="m"&gt;4&lt;/span&gt;&lt;span class="o"&gt;]-&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;b&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="n"&gt;B&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
-&lt;span class="k"&gt;RETURN&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="k"&gt;DISTINCT&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="n"&gt;b&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;这个查询将返回所有从 A 类节点到 B 类节点的长度为 2 到 4 的路径。&lt;/p&gt;</content><category term="Journal"/><category term="journal"/><category term="blog"/></entry><entry><title>asyncio summary</title><link href="https://www.fanyamin.com/asyncio-summary.html" rel="alternate"/><published>2024-10-07T10:20:00+08:00</published><updated>2024-10-07T19:30:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2024-10-07:/asyncio-summary.html</id><summary type="html">&lt;p&gt;| Abstract  | asyncio summary  | | --------------|------------------------| | Authors   | Walter Fan       | | Category  | learning note  | | Status...&lt;/p&gt;</summary><content type="html">&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
-&lt;th&gt;asyncio summary&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt; &lt;strong&gt;Category&lt;/strong&gt;  &lt;/td&gt;
-&lt;td&gt; learning note  &lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Status&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;v1.0&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;2024-10-07&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;p&gt;asyncio 是一个使用 async/await 语法编写并发代码的库。&lt;/p&gt;
-&lt;p&gt;它是多个 Python 异步框架的基础，这些框架提供高性能的网络和 web-servers、数据库连接库、分布式任务队列等。&lt;/p&gt;
-&lt;p&gt;asyncio 非常适合处理 IO-bound 和高层次的结构化网络代码。&lt;/p&gt;
-&lt;p&gt;asyncio 提供了一套高级 API，可以：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;并发运行 Python 协程，并完全控制其执行；&lt;/li&gt;
-&lt;li&gt;进行网络 IO 和 IPC；&lt;/li&gt;
-&lt;li&gt;控制子进程；&lt;/li&gt;
-&lt;li&gt;通过队列分发任务；&lt;/li&gt;
-&lt;li&gt;同步并发代码；&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;此外，asyncio 还提供了一些低级 API，供库和框架开发者使用，主要用于：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;创建和管理事件循环，提供异步的网络、子进程、操作系统信号处理等 API；&lt;/li&gt;
-&lt;li&gt;使用 transports 实现高效的协议；&lt;/li&gt;
-&lt;li&gt;将基于回调的库和代码与 async/await 语法结合使用。&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;下面是几个典型的 &lt;code&gt;asyncio&lt;/code&gt; 用法示例，展示如何使用 &lt;code&gt;async/await&lt;/code&gt; 来处理并发任务。&lt;/p&gt;
-&lt;h3 id="1"&gt;1. 基本的协程执行&lt;/h3&gt;
-&lt;p&gt;这是一个简单的示例，演示如何定义和运行协程任务。&lt;/p&gt;
-&lt;p&gt;```python
-import asyncio&lt;/p&gt;
-&lt;p&gt;async def say_hello():
-    print("Hello")
-    await asyncio.sleep(1)
-    print("World")&lt;/p&gt;
-&lt;h1 id="_1"&gt;运行协程&lt;/h1&gt;
-&lt;p&gt;asyncio.run(say_hello())&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;并发运行多个协程&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;使用 asyncio.gather 可以并发运行多个协程。&lt;/p&gt;
-&lt;p&gt;import asyncio&lt;/p&gt;
-&lt;p&gt;async def task_one():
-    await asyncio.sleep(1)
-    print("Task One completed")&lt;/p&gt;
-&lt;p&gt;async def task_two():
-    await asyncio.sleep(2)
-    print("Task Two completed")&lt;/p&gt;
-&lt;p&gt;async def main():
-    await asyncio.gather(task_one(), task_two())&lt;/p&gt;
-&lt;p&gt;asyncio.run(main())&lt;/p&gt;
-&lt;p&gt;输出:&lt;/p&gt;
-&lt;p&gt;Task One completed
-Task Two completed&lt;/p&gt;
-&lt;p&gt;在这个例子中，task_one 和 task_two 会并发执行，执行总时间约为 2 秒（task_two 的延迟时间）。&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;创建和管理事件循环&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;你可以通过 asyncio.get_event_loop 来创建和管理事件循环，在事件循环中运行协程。&lt;/p&gt;
-&lt;p&gt;import asyncio&lt;/p&gt;
-&lt;p&gt;async def main():
-    print("Running in the event loop")&lt;/p&gt;
-&lt;p&gt;loop = asyncio.get_event_loop()
-loop.run_until_complete(main())
-loop.close()&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;异步网络请求&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;asyncio 可以用于异步网络请求，通常搭配 aiohttp 等库来处理网络请求。以下是一个简单示例：&lt;/p&gt;
-&lt;p&gt;import asyncio
-import aiohttp&lt;/p&gt;
-&lt;p&gt;async def fetch(url):
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as response:
-            return await response.text()&lt;/p&gt;
-&lt;p&gt;async def main():
-    html = await fetch("http://example.com")
-    print(html)&lt;/p&gt;
-&lt;p&gt;asyncio.run(main())&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;异步队列&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;使用 asyncio.Queue 实现生产者-消费者模式。下面是一个生产者和消费者协同工作的示例。&lt;/p&gt;
-&lt;p&gt;import asyncio&lt;/p&gt;
-&lt;p&gt;async def producer(queue):
-    for i in range(5):
-        await queue.put(i)
-        print(f"Produced {i}")
-        await asyncio.sleep(1)&lt;/p&gt;
-&lt;p&gt;async def consumer(queue):
-    while True:
-        item = await queue.get()
-        print(f"Consumed {item}")
-        queue.task_done()&lt;/p&gt;
-&lt;p&gt;async def main():
-    queue = asyncio.Queue()
-    await asyncio.gather(producer(queue), consumer(queue))&lt;/p&gt;
-&lt;p&gt;asyncio.run(main())&lt;/p&gt;
-&lt;p&gt;输出:&lt;/p&gt;
-&lt;p&gt;Produced 0
-Consumed 0
-Produced 1
-Consumed 1
-...&lt;/p&gt;
-&lt;p&gt;在此示例中，producer 将项目放入队列，consumer 从队列中取出并处理项目。&lt;/p&gt;
-&lt;h2 id="reference"&gt;Reference&lt;/h2&gt;
-&lt;ul&gt;
-&lt;li&gt;https://docs.python.org/3/library/asyncio.html&lt;/li&gt;
-&lt;/ul&gt;
-&lt;hr/&gt;
-&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Journal"/><category term="journal"/><category term="blog"/></entry></feed>
+&lt;/ul&gt;</content><category term="Journal"/><category term="journal"/><category term="blog"/></entry></feed>

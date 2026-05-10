@@ -79,7 +79,7 @@
     "name": "Walter Fan"
   },
   "datePublished": "2026-05-08T00:00:00+08:00",
-  "dateModified": "2026-05-08T21:25:00+08:00",
+  "dateModified": "2026-05-10T22:47:00+08:00",
   "url": "https://www.fanyamin.com/rag-optimization-best-practices.html",
   "mainEntityOfPage": {
     "@type": "WebPage",
@@ -106,7 +106,7 @@
   <meta property="og:url" content="https://www.fanyamin.com/rag-optimization-best-practices.html"/>
   <meta property="og:type" content="article"/>
   <meta property="article:published_time" content="2026-05-08 00:00:00+08:00"/>
-  <meta property="article:modified_time" content="2026-05-08 21:25:00+08:00"/>
+  <meta property="article:modified_time" content="2026-05-10 22:47:00+08:00"/>
   <meta property="article:author" content="https://www.fanyamin.com/author/walter-fan.html">
   <meta property="article:section" content="Journal"/>
   <meta property="article:tag" content="RAG"/>
@@ -226,7 +226,7 @@
 </tr>
 <tr>
 <td><strong>Updated</strong></td>
-<td>2026-05-08</td>
+<td>2026-05-10</td>
 </tr>
 <tr>
 <td><strong>License</strong></td>
@@ -304,31 +304,32 @@
 <p>这四件事做扎实，RAG 才有资格谈"可用"。否则 Demo 再漂亮，也只是一个会说漂亮话的概率玩具。</p>
 <h2 id="rag_1">一、RAG 架构回顾</h2>
 <p>先把基本流程摆出来。流程不复杂，复杂的是每一步都可能埋坑。</p>
-<div class="highlight"><pre><span></span><code>用户提问
-  │
-  ▼
-┌─────────────┐    ┌──────────────┐    ┌─────────────┐
-│  Query 理解  │───▶│  检索/召回    │───▶│  重排序      │
-│  &amp; 改写      │    │  (Retrieval)  │    │  (Reranking) │
-└─────────────┘    └──────────────┘    └─────────────┘
-                                              │
-                                              ▼
-                                       ┌─────────────┐
-                                       │  上下文组装   │
-                                       │  &amp; Prompt    │
-                                       └─────────────┘
-                                              │
-                                              ▼
-                                       ┌─────────────┐
-                                       │  LLM 生成    │
-                                       │  (Generation)│
-                                       └─────────────┘
-                                              │
-                                              ▼
-                                       ┌─────────────┐
-                                       │  后处理 &amp;    │
-                                       │  引用溯源    │
-                                       └─────────────┘
+<div class="highlight"><pre><span></span><code>@startuml
+
+top to bottom direction
+skinparam defaultTextAlignment center
+skinparam shadowing false
+skinparam rectangle {
+    RoundCorner 15
+}
+
+rectangle &quot;用户提问&quot; as User
+
+rectangle &quot;Query 理解\n&amp; 改写&quot; as QueryRewrite
+rectangle &quot;检索/召回\n(Retrieval)&quot; as Retrieval
+rectangle &quot;重排序\n(Reranking)&quot; as Reranking
+rectangle &quot;上下文组装\n&amp; Prompt&quot; as PromptAssembly
+rectangle &quot;LLM 生成\n(Generation)&quot; as Generation
+rectangle &quot;后处理 &amp;\n引用溯源&quot; as PostProcess
+
+User --&gt; QueryRewrite
+QueryRewrite --&gt; Retrieval
+Retrieval --&gt; Reranking
+Reranking --&gt; PromptAssembly
+PromptAssembly --&gt; Generation
+Generation --&gt; PostProcess
+
+@enduml
 </code></pre></div>
 
 <p>每个环节都有优化空间，也都有翻车机会。RAG 的麻烦就在这里：它不是一个单点模型问题，而是一条链路问题。链路上任何一环松了，最后都会体现在答案质量上。</p>
@@ -405,13 +406,107 @@
 
 <h3 id="_3">容易踩的坑</h3>
 <p><strong>坑 1：不洗数据，直接灌</strong></p>
-<p>PDF 原样解析，页眉页脚、目录、版权声明全进了向量库。检索时这些噪声频繁被召回，严重拉低质量。我之前就碰到过，检索 top-5 里有两条是页眉里的 "Confidential - Do Not Distribute"。</p>
-<!-- ✍️ 建议亲自改写：上面那个"我之前碰到过"是我帮你加的占位。如果你有自己的脏数据踩坑经历，请替换成真实场景。 -->
-
+<p>PDF 原样解析，页眉页脚、目录、版权声明全进了向量库。检索时这些噪声频繁被召回，严重拉低质量。典型情况是：用户问一个具体流程，top-5 里却混进两条页眉里的 "Confidential - Do Not Distribute"。</p>
+<p>清洗数据可以按四步走。不要一开始就上"全家桶"，先把最脏、最重复、最影响检索的东西干掉：</p>
+<table>
+<thead>
+<tr>
+<th>步骤</th>
+<th>具体怎么做</th>
+<th>常用工具</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>去模板噪声</td>
+<td>统计每页重复出现的文本，删除页眉页脚、水印、版权声明、导航菜单、重复目录；网页内容先做正文抽取，别把侧边栏和广告一起塞进去</td>
+<td><code>PyMuPDF</code> / <code>pdfplumber</code>、<code>trafilatura</code>、<code>readability-lxml</code>、<code>BeautifulSoup</code></td>
+</tr>
+<tr>
+<td>修版式问题</td>
+<td>合并异常断行，修复乱码和全半角混用，去掉多余空格，恢复项目符号；PDF 里跨页断开的句子要重新拼起来</td>
+<td><code>ftfy</code>、正则、<code>unstructured</code>、<code>Docling</code>、<code>MarkItDown</code></td>
+</tr>
+<tr>
+<td>保留结构信息</td>
+<td>把标题层级、表格、代码块、图片说明、来源页码保存到 metadata；表格不要粗暴拍平成一坨文本，最好转成 Markdown 表格或结构化 JSON</td>
+<td><code>pandas</code>、<code>camelot</code> / <code>tabula</code>、<code>markdownify</code></td>
+</tr>
+<tr>
+<td>抽样验收</td>
+<td>随机抽几十个 chunk，看语义是否完整、来源是否清楚、噪声是否重复；再用几条典型问题做 smoke test，看召回结果是不是"看起来就靠谱"</td>
+<td>自己写脚本、<code>pytest</code>、简单的检索评测集</td>
+</tr>
+</tbody>
+</table>
 <p><strong>坑 2：分块大小一刀切</strong></p>
 <p>所有文档统一用 512 tokens 分块。FAQ 类文档需要小块 (100-200)，技术手册需要大块 (500-800)，一刀切顾此失彼。</p>
+<p>分块策略也可以做成一张配置表，不要把所有文档都塞进同一个 splitter：</p>
+<table>
+<thead>
+<tr>
+<th>文档类型</th>
+<th>具体怎么做</th>
+<th>常用工具</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FAQ / 问答</td>
+<td>一问一答尽量保持在同一个 chunk，chunk 可以小一点，通常 100-200 tokens 就够；不要把多个无关问题硬拼在一起</td>
+<td><code>RecursiveCharacterTextSplitter</code>、自定义 Q/A parser</td>
+</tr>
+<tr>
+<td>技术手册 / 设计文档</td>
+<td>按标题层级、段落和代码块切，保留 10-20% overlap；代码块不要从中间切断</td>
+<td><code>MarkdownHeaderTextSplitter</code>、<code>RecursiveCharacterTextSplitter</code></td>
+</tr>
+<tr>
+<td>长 PDF / 规章制度</td>
+<td>先按章节切，再在章节内按段落切；每个 chunk 带上章节名、页码、版本号</td>
+<td><code>LangChain</code> splitters、<code>LlamaIndex</code> node parser</td>
+</tr>
+<tr>
+<td>表格 / 配置项</td>
+<td>不要按 token 硬切，优先按行、按字段或按业务实体切；必要时转成结构化 JSON 单独入库</td>
+<td><code>pandas</code>、<code>camelot</code> / <code>tabula</code>、自定义 parser</td>
+</tr>
+</tbody>
+</table>
 <p><strong>坑 3：忽略文档之间的关系</strong></p>
 <p>公司制度文档 A 引用了文档 B 的条款，但分块后这种引用关系丢失了。用户问到相关问题，系统只能给出片面回答。</p>
+<p>文档关系要在入库时就显式保存，否则检索阶段很难凭空猜出来：</p>
+<table>
+<thead>
+<tr>
+<th>关系类型</th>
+<th>具体怎么做</th>
+<th>常用工具</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>引用关系</td>
+<td>解析"见第 X 条"、"参考文档 B"、URL 链接、附件名，把被引用文档 ID 写进 metadata</td>
+<td>正则、<code>BeautifulSoup</code>、自定义 link extractor</td>
+</tr>
+<tr>
+<td>层级关系</td>
+<td>保存 <code>document -&gt; section -&gt; chunk</code> 的父子结构；召回子 chunk 后，可以把父章节一起带出来补上下文</td>
+<td><code>LlamaIndex</code> Parent-Child retriever、LangChain Parent Document Retriever</td>
+</tr>
+<tr>
+<td>版本关系</td>
+<td>保存文档版本、发布日期、失效日期；检索时优先召回最新版，避免旧政策压过新政策</td>
+<td>metadata filter、向量库过滤条件</td>
+</tr>
+<tr>
+<td>主题关系</td>
+<td>给文档打业务标签，比如产品线、部门、系统、模块；用户问题先缩小范围，再做向量检索</td>
+<td>embedding 聚类、人工标签、<code>spaCy</code> / <code>KeyBERT</code></td>
+</tr>
+</tbody>
+</table>
 <h2 id="_4">三、检索优化：找到对的内容</h2>
 <h3 id="_5">先别急着让模型回答</h3>
 <h4 id="1_1">1. 混合检索</h4>
@@ -484,8 +579,17 @@
 <blockquote>
 <p><strong>经验法则</strong>：先粗召回 20-50 条，再用 Reranker 精排到 3-5 条。很多时候这一步比盲目换大模型更划算。</p>
 </blockquote>
-<!-- ✍️ 建议亲自改写：如果你有 rerank 前后效果对比的数据（比如 top-k 命中率或答案准确率提升了多少），补一句数字会很有力。 -->
+<p>如果前面用了 <strong>Hybrid Retrieval</strong>，通常会先分别跑两路召回：</p>
+<div class="highlight"><pre><span></span><code>BM25 / 关键词检索   →  擅长命中专有名词、编号、错误码
+向量检索 / Dense    →  擅长命中语义相近的表达
+</code></pre></div>
 
+<p>两路结果合并时，一个常用办法是 <strong>RRF</strong>（Reciprocal Rank Fusion）。它不直接比较 BM25 分数和向量相似度，因为这两个分数不是一个量纲；它只看排名：</p>
+<div class="highlight"><pre><span></span><code>RRF_score(d) = Σ 1 / (k + rank_i(d))
+</code></pre></div>
+
+<p>其中 <code>d</code> 是某个文档或 chunk，<code>rank_i(d)</code> 是它在第 <code>i</code> 路检索结果里的排名，<code>k</code> 是平滑参数，常见取值是 <code>60</code>。一个 chunk 如果在 BM25 和向量检索里都排得靠前，RRF 分数就会更高；如果只在一路里偶然靠前，分数就不会太夸张。</p>
+<p>这招朴素，但很实用。它像开会时听两个人投票：关键词检索说"这个很像"，向量检索也说"这个也像"，那就优先拿出来给 reranker 精排。</p>
 <h4 id="4">4. 元数据过滤</h4>
 <p>不要什么问题都去全库里搜。用户问财务制度，就先限定部门；问最新政策，就过滤更新时间；问某个产品线，就缩到对应文档集合。</p>
 <p>不花哨，但很管用。</p>
@@ -503,33 +607,108 @@
 <h3 id="_6">容易踩的坑</h3>
 <p><strong>坑 4：只用向量检索</strong></p>
 <p>用户问 "ISO 27001 认证流程"，向量检索返回一堆关于"认证"和"流程"的无关内容——语义相似但主题不同。加上 BM25 关键词匹配后，"ISO 27001" 这种关键字才能被精确命中。</p>
+<p>混合检索不要只喊口号，可以按问题类型拆：</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>具体怎么做</th>
+<th>常用工具</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>有明确关键词</td>
+<td>对产品名、标准号、错误码、人名、工单号走 BM25 或精确匹配，先保证关键字不丢</td>
+<td><code>Elasticsearch</code> / <code>OpenSearch</code>、<code>PostgreSQL</code> full-text search</td>
+</tr>
+<tr>
+<td>语义描述类问题</td>
+<td>用户说的是"怎么申请权限"、"系统为什么变慢"这类自然语言问题，用向量检索找相近语义</td>
+<td><code>FAISS</code>、<code>Milvus</code>、<code>Qdrant</code>、<code>pgvector</code></td>
+</tr>
+<tr>
+<td>两者都有</td>
+<td>BM25 和向量检索各召回一批，再用 RRF 或加权分数合并，避免一边独大</td>
+<td>Reciprocal Rank Fusion、<code>Elasticsearch</code> hybrid search、<code>LlamaIndex</code> retrievers</td>
+</tr>
+<tr>
+<td>带结构条件</td>
+<td>先用 metadata 过滤部门、产品线、版本、时间，再做混合检索，别在全库里大海捞针</td>
+<td>向量库 metadata filter、<code>where</code> 条件、业务标签</td>
+</tr>
+</tbody>
+</table>
 <p><strong>坑 5：不做 Reranking</strong></p>
 <p>向量检索的 top-10 结果中，真正相关的可能排在第 5-8 位。不做重排序直接取 top-3，大概率丢失关键信息。</p>
+<p>Reranking 的核心是：<strong>召回阶段宁可多捞一点，排序阶段再精挑细选</strong>。</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>具体怎么做</th>
+<th>常用工具</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>通用文本重排</td>
+<td>先召回 20-50 条，再用 reranker 精排到 3-5 条；这一步通常比盲目增大 top_k 更有效</td>
+<td><code>BAAI/bge-reranker-large</code>、<code>Cohere Rerank</code>、<code>Jina Reranker</code></td>
+</tr>
+<tr>
+<td>中文知识库</td>
+<td>选中文或多语言 reranker，不要默认拿英文 cross-encoder 硬套</td>
+<td><code>bge-reranker-v2-m3</code>、<code>bge-reranker-large</code></td>
+</tr>
+<tr>
+<td>专业领域文档</td>
+<td>准备一小批真实问答对，用人工标注的相关性样本评估 reranker；效果不够再考虑微调</td>
+<td><code>sentence-transformers</code> CrossEncoder、评测集、<code>pytest</code></td>
+</tr>
+<tr>
+<td>防止结果太单一</td>
+<td>top-5 里不要全是同一章节的近似 chunk，可以加 MMR 或按文档去重</td>
+<td>MMR、按 <code>doc_id</code> 去重、自定义 post-rank 规则</td>
+</tr>
+</tbody>
+</table>
 <p><strong>坑 6：Embedding 模型选错</strong></p>
 <p>用英文 Embedding 模型处理中文知识库，或者用通用模型处理专业领域文档。要选与语言和领域匹配的模型，必要时做 fine-tuning。</p>
+<p>选模型别只看榜单，先看你的语料和问题长什么样：</p>
 <table>
 <thead>
 <tr>
 <th>场景</th>
 <th>推荐模型</th>
+<th>注意点</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td>中文通用</td>
-<td>BAAI/bge-large-zh-v1.5</td>
+<td><code>BAAI/bge-large-zh-v1.5</code></td>
+<td>适合中文知识库的基线模型，先用它跑一版评测再说</td>
 </tr>
 <tr>
 <td>英文通用</td>
-<td>text-embedding-3-large</td>
+<td><code>text-embedding-3-large</code></td>
+<td>效果好，但要考虑 API 成本、数据出境和隐私要求</td>
 </tr>
 <tr>
 <td>多语言</td>
-<td>BAAI/bge-m3</td>
+<td><code>BAAI/bge-m3</code></td>
+<td>中英混合、跨语言检索时更稳，适合国际化文档</td>
 </tr>
 <tr>
 <td>代码</td>
-<td>voyage-code-3</td>
+<td><code>voyage-code-3</code></td>
+<td>代码检索不要只靠自然语言 embedding，最好保留函数名、类名、文件路径等 metadata</td>
+</tr>
+<tr>
+<td>垂直领域</td>
+<td>通用模型 + 小评测集，必要时再 fine-tuning</td>
+<td>先做 50-100 条真实查询评测，别上来就训练模型</td>
 </tr>
 </tbody>
 </table>
@@ -592,12 +771,106 @@
 <h3 id="_8">容易踩的坑</h3>
 <p><strong>坑 7：不限制 LLM 的"创造力"</strong></p>
 <p>Prompt 里没要求"只基于检索内容回答"，LLM 就开始脑补，把训练数据里的过时信息混入答案。这就是所谓的幻觉——它不是故意骗你，它是真觉得自己说得对。</p>
+<p>生成阶段要把边界写死，尤其是企业知识库，别让模型自由发挥：</p>
+<table>
+<thead>
+<tr>
+<th>风险场景</th>
+<th>具体怎么做</th>
+<th>常用工具 / 机制</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>资料不足</td>
+<td>明确要求"资料不足就说无法回答"，不要让模型凭常识补全</td>
+<td>System Prompt、拒答模板</td>
+</tr>
+<tr>
+<td>来源混乱</td>
+<td>要求每个关键结论都带引用编号，没有引用的句子不输出或标记为不确定</td>
+<td>Citation Prompt、后处理校验</td>
+</tr>
+<tr>
+<td>多来源冲突</td>
+<td>如果多个来源说法不一致，要求模型列出差异，而不是自行裁判</td>
+<td>Prompt 规则、conflict detection</td>
+</tr>
+<tr>
+<td>输出跑偏</td>
+<td>限定回答格式，比如结论、依据、注意事项、来源；复杂场景用 JSON Schema 约束</td>
+<td>structured output、Pydantic、Guardrails</td>
+</tr>
+</tbody>
+</table>
 <p><strong>坑 8：上下文塞太多</strong></p>
 <p>把检索到的 20 个 chunk 全塞进 Prompt，LLM 反而被噪声干扰，抓不住重点。实践中，<strong>3-5 个高质量 chunk 往往优于 10+ 个中等质量 chunk</strong>。</p>
-<!-- ✍️ 建议亲自改写：这里如果有你在什么业务场景下验证过"3-5 个 chunk 更好"的经历，补一句会把结论从教科书拉到实战。 -->
-
+<p>上下文组装要像打包行李：该带的带上，"也许有用"的先放下：</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>具体怎么做</th>
+<th>常用工具 / 机制</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>chunk 太多</td>
+<td>先 rerank，再只取 top 3-5 个高质量 chunk；不要把 top 20 原样塞进 Prompt</td>
+<td>reranker、top_k 控制</td>
+</tr>
+<tr>
+<td>chunk 太长</td>
+<td>对长 chunk 做摘要或二次切分，只保留与问题相关的段落</td>
+<td>map-reduce summarize、自定义 trimmer</td>
+</tr>
+<tr>
+<td>信息重复</td>
+<td>同一文档连续命中的多个相似 chunk，按 <code>doc_id</code> 和相似度去重</td>
+<td>MMR、dedup by metadata</td>
+</tr>
+<tr>
+<td>token 超限</td>
+<td>给上下文设置 token budget，超过预算就按相关性和新鲜度裁剪</td>
+<td><code>tiktoken</code>、token counter、context budget</td>
+</tr>
+</tbody>
+</table>
 <p><strong>坑 9：忽略 "Lost in the Middle"</strong></p>
 <p>LLM 对上下文中间部分的注意力较弱。最匹配的内容应该放在上下文的<strong>开头和结尾</strong>，不是中间。</p>
+<p>上下文排序不是排队买奶茶，最重要的内容不要站在中间被淹没：</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>具体怎么做</th>
+<th>常用工具 / 机制</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>最相关 chunk 很少</td>
+<td>把最高分 chunk 放在上下文开头，必要时在结尾再放一次简短摘要</td>
+<td>attention-aware reorder</td>
+</tr>
+<tr>
+<td>多个来源都重要</td>
+<td>开头放主证据，结尾放补充证据，中间放背景材料</td>
+<td>自定义 context assembler</td>
+</tr>
+<tr>
+<td>长上下文模型</td>
+<td>即使用长上下文，也按相关性排序，不要把原文顺序当成唯一顺序</td>
+<td>rerank score、position strategy</td>
+</tr>
+<tr>
+<td>需要引用溯源</td>
+<td>保留 chunk 编号和来源编号，重排后不要丢失引用关系</td>
+<td>source map、citation metadata</td>
+</tr>
+</tbody>
+</table>
 <div class="highlight"><pre><span></span><code><span class="k">def</span> <span class="nf">reorder_for_attention</span><span class="p">(</span><span class="n">chunks</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">dict</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;最匹配的放开头和结尾，次匹配的放中间&quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">chunks</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">2</span><span class="p">:</span>
@@ -699,10 +972,106 @@
 <h3 id="_10">容易踩的坑</h3>
 <p><strong>坑 10：没评估就上线</strong></p>
 <p>"Demo 看着挺好的，上线吧！"——这是 RAG 项目挂掉的头号原因。没有系统评估，你不知道系统在哪些场景下会出错，上线就是盲人骑瞎马。</p>
+<p>上线前至少做一轮小而硬的评估，不求完美，但要能暴露问题：</p>
+<table>
+<thead>
+<tr>
+<th>评估对象</th>
+<th>具体怎么做</th>
+<th>常用工具 / 机制</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>检索质量</td>
+<td>准备 50-100 条真实问题，标注期望来源，计算 recall、precision、MRR</td>
+<td><code>RAGAS</code>、<code>TruLens</code>、自定义 pytest</td>
+</tr>
+<tr>
+<td>生成质量</td>
+<td>检查答案是否基于来源、是否答到问题、是否有幻觉</td>
+<td>LLM-as-judge、人工抽检</td>
+</tr>
+<tr>
+<td>引用质量</td>
+<td>验证引用是否存在、是否支持对应结论，别只看有没有 <code>[1]</code></td>
+<td>citation checker、自定义脚本</td>
+</tr>
+<tr>
+<td>线上风险</td>
+<td>用边界问题、过期政策、冲突文档做回归测试</td>
+<td>regression test set、CI job</td>
+</tr>
+</tbody>
+</table>
 <p><strong>坑 11：只评估一次</strong></p>
 <p>知识库在更新，用户问法在变，模型在迭代。评估应该是<strong>持续的</strong>，不是一次性的。</p>
+<p>RAG 的评估要接进日常流水线，不然一次评估只能证明"当时没坏"：</p>
+<table>
+<thead>
+<tr>
+<th>变化来源</th>
+<th>具体怎么做</th>
+<th>常用工具 / 机制</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>文档更新</td>
+<td>每次知识库重建索引后跑一遍核心评测集，观察召回率和答案准确率是否下降</td>
+<td>CI/CD、scheduled eval</td>
+</tr>
+<tr>
+<td>模型升级</td>
+<td>Embedding、reranker、LLM 版本变化时做 A/B 对比，不要凭感觉切换</td>
+<td>experiment tracking、A/B test</td>
+</tr>
+<tr>
+<td>用户问法变化</td>
+<td>定期抽样线上问题，把高频问法加入评测集</td>
+<td>query log sampling</td>
+</tr>
+<tr>
+<td>指标漂移</td>
+<td>监控幻觉率、无法回答率、差评率、P95 延迟，超过阈值就回滚或降级</td>
+<td>dashboard、alerting</td>
+</tr>
+</tbody>
+</table>
 <p><strong>坑 12：不看用户反馈</strong></p>
 <p>用户点了"差评"但没人分析原因。每一个差评都在告诉你系统哪里不对——可能是检索不准，可能是分块不当，也可能是 Prompt 有漏洞。这些信息不用花钱买，但很多团队就是不看。</p>
+<p>用户反馈不是客服噪声，是最便宜的线上评测数据：</p>
+<table>
+<thead>
+<tr>
+<th>反馈类型</th>
+<th>具体怎么做</th>
+<th>常用工具 / 机制</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>点赞 / 点踩</td>
+<td>点踩必须记录问题、答案、召回 chunk、模型版本，方便复盘</td>
+<td>feedback log、trace ID</td>
+</tr>
+<tr>
+<td>用户改写问题</td>
+<td>用户连续追问或换问法，说明第一次没答好；把这些 query 加进评测集</td>
+<td>conversation log、query mining</td>
+</tr>
+<tr>
+<td>人工纠错</td>
+<td>允许用户标注"正确来源"或"正确答案"，沉淀成训练和评估样本</td>
+<td>review queue、labeling workflow</td>
+</tr>
+<tr>
+<td>高频差评主题</td>
+<td>按部门、产品线、文档类型聚合差评，定位到底是数据问题、检索问题还是生成问题</td>
+<td>analytics dashboard、issue tracker</td>
+</tr>
+</tbody>
+</table>
 <h2 id="_11">六、进阶技巧</h2>
 <h3 id="1-agentic-rag">1. Agentic RAG</h3>
 <p>基础 RAG 跑稳之后，可以考虑 Agentic RAG：让 LLM 先分析问题，再决定检索策略。适合复杂问题，但也会增加延迟、成本和不可控性。不要一上来就用它解决所有问题——先把基础链路做到 80 分再说。</p>

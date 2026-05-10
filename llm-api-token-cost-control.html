@@ -79,7 +79,7 @@
     "name": "Walter Fan"
   },
   "datePublished": "2026-05-08T15:44:00+08:00",
-  "dateModified": "2026-05-08T21:18:00+08:00",
+  "dateModified": "2026-05-10T22:39:00+08:00",
   "url": "https://www.fanyamin.com/llm-api-token-cost-control.html",
   "mainEntityOfPage": {
     "@type": "WebPage",
@@ -106,7 +106,7 @@
   <meta property="og:url" content="https://www.fanyamin.com/llm-api-token-cost-control.html"/>
   <meta property="og:type" content="article"/>
   <meta property="article:published_time" content="2026-05-08 15:44:00+08:00"/>
-  <meta property="article:modified_time" content="2026-05-08 21:18:00+08:00"/>
+  <meta property="article:modified_time" content="2026-05-10 22:39:00+08:00"/>
   <meta property="article:author" content="https://www.fanyamin.com/author/walter-fan.html">
   <meta property="article:section" content="Journal"/>
   <meta property="article:tag" content="LLM"/>
@@ -226,7 +226,7 @@
 </tr>
 <tr>
 <td><strong>Updated</strong></td>
-<td>2026-05-08</td>
+<td>2026-05-10</td>
 </tr>
 <tr>
 <td><strong>License</strong></td>
@@ -372,8 +372,125 @@ created_at
 </table>
 <p>很多 token 浪费不是 prompt 太长，而是任务分配错了。</p>
 <p>比如判断一句话是不是投诉，没必要上最强模型；抽取工单里的产品名，正则、词典、轻量分类器可能就够了。反过来，复杂事故复盘、跨文档推理、代码审查这类任务，硬上小模型省钱，最后会得到一堆"看起来差不多"的答案——最贵的不是大模型，最贵的是便宜模型给了错误答案，然后人再花半天返工。</p>
-<!-- ✍️ 建议亲自改写：如果你有"因为模型选错导致返工"的真实经历，在这里补一两句会特别有说服力 -->
+<p>如果你的模型网关把模型封装成类似下面这种命名，就可以直接拿来做路由规则：</p>
+<div class="highlight"><pre><span></span><code>xxx-{low|medium|high|xhigh}-[fast]
+xxx-thinking-{low|medium|high|xhigh}
+</code></pre></div>
 
+<p>这里的 <code>xxx</code> 可以是 <code>gpt</code>，也可以是 <code>claude-4.7-opus</code>、<code>claude-4.7-sonnect</code> 这类模型族名称。先不纠结名字是否漂亮，关键是把它们当成不同的"计算档位"，而不是一堆随手可点的下拉选项。</p>
+<p>这里的 <code>low / medium / high / xhigh</code> 不是厂商标准，而是模型网关里的能力和成本分层。也有团队把 <code>xhigh</code> 叫 <code>max</code>，意思差不多：都是最高档。</p>
+<table>
+<thead>
+<tr>
+<th>档位</th>
+<th>大致含义</th>
+<th>典型用途</th>
+<th>成本特征</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>low</code></td>
+<td>便宜、快、能力够用，但上下文理解和复杂推理有限</td>
+<td>分类、抽取、格式转换、短文本改写</td>
+<td>适合高频低风险任务</td>
+</tr>
+<tr>
+<td><code>medium</code></td>
+<td>质量和成本比较均衡，适合做默认工作档</td>
+<td>query 改写、普通摘要、客服草稿、FAQ 生成</td>
+<td>大多数日常任务先从这里试</td>
+</tr>
+<tr>
+<td><code>high</code></td>
+<td>理解能力、稳定性和长上下文处理更好</td>
+<td>长文档总结、复杂工单归因、代码解释</td>
+<td>适合中高价值任务，要控制调用量</td>
+</tr>
+<tr>
+<td><code>xhigh</code></td>
+<td>最高能力档，也可能叫 <code>max</code></td>
+<td>架构评审、事故复盘、复杂代码 review、高风险决策</td>
+<td>贵，应该有明确使用理由</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>模型形态</th>
+<th>适合做什么</th>
+<th>不适合做什么</th>
+<th>成本提醒</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>xxx-low-fast</code></td>
+<td>格式检查、简单分类、短文本改写、标题生成</td>
+<td>复杂推理、长文档总结、代码 review</td>
+<td>便宜、快，但别指望它懂太多上下文</td>
+</tr>
+<tr>
+<td><code>xxx-medium-fast</code></td>
+<td>query 改写、FAQ 初稿、普通摘要、轻量客服回复</td>
+<td>高风险判断、跨文档推理</td>
+<td>很适合作为默认工作马，先从这里起步</td>
+</tr>
+<tr>
+<td><code>xxx-high</code></td>
+<td>长文档总结、复杂工单归因、较复杂的代码解释</td>
+<td>大批量低价值任务</td>
+<td>质量更稳，但要配合 token budget</td>
+</tr>
+<tr>
+<td><code>xxx-xhigh</code></td>
+<td>架构设计、事故复盘、复杂代码 review、法律/财务等高风险分析</td>
+<td>日常分类、字段抽取、模板化生成</td>
+<td>贵，应该像生产变更一样有使用理由</td>
+</tr>
+<tr>
+<td><code>xxx-thinking-low/medium</code></td>
+<td>需要一点推理的规划、分步分析、复杂 prompt 自检</td>
+<td>简单问答、固定格式转换</td>
+<td>reasoning tokens 会额外烧钱，别默认开启</td>
+</tr>
+<tr>
+<td><code>xxx-thinking-high/xhigh</code></td>
+<td>多约束决策、疑难故障分析、跨系统方案评审</td>
+<td>高频在线请求、低风险批处理</td>
+<td>适合"少量高价值问题"，不适合当自来水</td>
+</tr>
+</tbody>
+</table>
+<p>模型族也要分工。一个粗略但实用的判断是：</p>
+<table>
+<thead>
+<tr>
+<th>模型族</th>
+<th>适合场景</th>
+<th>使用建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>gpt-*</code></td>
+<td>通用问答、结构化输出、工具调用、批量自动化任务</td>
+<td>适合作为默认通用模型族，配合 low/medium/high 做成本分层</td>
+</tr>
+<tr>
+<td><code>claude-4.7-sonnect-*</code></td>
+<td>日常写作、总结、需求分析、代码解释、较长上下文处理</td>
+<td>适合作为主力工作模型，质量和成本之间比较容易平衡</td>
+</tr>
+<tr>
+<td><code>claude-4.7-opus-*</code></td>
+<td>复杂推理、架构评审、深度代码 review、重要文档润色</td>
+<td>适合关键任务兜底，不建议所有请求都直接打到 Opus 档</td>
+</tr>
+</tbody>
+</table>
+<p>一句话：<strong>先选任务档位，再选模型家族，最后才决定要不要 thinking。</strong> 顺序反了，就容易变成"这个模型最强，所以全都用它"。这在 Demo 阶段很爽，在账单阶段很疼。</p>
 <p>我的建议是做一张模型路由表：</p>
 <div class="highlight"><pre><span></span><code>if task == &quot;format_check&quot;:
     use code
@@ -603,8 +720,44 @@ fallback_to_human: true
 </table>
 <p>LLM 擅长语言理解、生成和模糊推理，不擅长当数据库、计算器和权限系统。把所有问题都扔给 LLM，就像家里买了个电钻，从此拧螺丝、切菜、刷牙都想用它。</p>
 <p>工具好不好，看你怎么用。</p>
-<!-- ✍️ 建议亲自改写：如果你有"用 LLM 做了本不该用 LLM 做的事、后来换回规则反而更好"的真实案例，在这里补一两句会很 Walter -->
-
+<p>尤其是那些<strong>重复、确定、不需要推理</strong>的常规任务，脚本通常比 LLM 更经济、更稳定，也更容易审计。LLM 每次回答都像请了个聪明外包，脚本则像一台自动售货机：投币、出货、少废话。</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>更合适的做法</th>
+<th>为什么别优先用 LLM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>去除个人敏感信息</td>
+<td>用正则、NER、字段白名单做脱敏，比如邮箱、手机号、身份证、IP、access token</td>
+<td>规则清晰，必须稳定；LLM 漏掉一次就是事故</td>
+</tr>
+<tr>
+<td>政治正确 / 合规敏感词</td>
+<td>用词库、Trie、Aho-Corasick、规则引擎做匹配，再配人工复核</td>
+<td>需要可解释、可回溯、可配置；LLM 判断会漂</td>
+</tr>
+<tr>
+<td>模板生成文件</td>
+<td>用 <code>Jinja2</code>、Handlebars、Mustache 这类模板引擎生成配置、报告、代码骨架</td>
+<td>输入输出结构固定，用 LLM 反而可能改坏格式</td>
+</tr>
+<tr>
+<td>批量字段转换</td>
+<td>用脚本、SQL、ETL、JSON Schema 校验</td>
+<td>成本低，结果可重复，失败原因清楚</td>
+</tr>
+<tr>
+<td>固定业务判断</td>
+<td>用业务规则或决策表，比如金额区间、权限开关、状态流转</td>
+<td>这是系统逻辑，不该交给概率模型临场发挥</td>
+</tr>
+</tbody>
+</table>
+<p>我的经验法则是：<strong>如果规则能写清楚、输入输出能定义、失败后要追责，就先写脚本。</strong> LLM 更适合处理模糊语言、复杂上下文和开放式推理，不要让它去抢正则表达式和模板引擎的饭碗。</p>
 <h2 id="_8">最佳实践、常见错误与反模式速查</h2>
 <p>前面讲的东西不少，这里收束成三张表。做设计评审的时候拿出来对一遍比看完全文管用。</p>
 <h3 id="_9">最佳实践</h3>
@@ -920,6 +1073,9 @@ fallback_to_human: true
   <div class="neighbors">
     <a class="btn float-left" href="https://www.fanyamin.com/zero-downtime-http-service.html" title="如何做一个接近零停机的 HTTP 服务">
       <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/programmer-ai-replacement-anxiety.html" title="程序员如何看待 AI 取代焦虑">
+      Next Post <i class="fa fa-angle-right"></i>
     </a>
   </div>
 

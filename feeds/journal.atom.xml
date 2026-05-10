@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom"><title>Walter Fan's Blog - Journal</title><link href="https://www.fanyamin.com/" rel="alternate"/><link href="https://www.fanyamin.com/feeds/journal.atom.xml" rel="self"/><id>https://www.fanyamin.com/</id><updated>2026-05-08T21:25:00+08:00</updated><subtitle>手握灵珠常奋笔, 心开天籁不吹箫</subtitle><entry><title>LLM API 越来越贵，别让 token 像自来水一样哗哗流</title><link href="https://www.fanyamin.com/llm-api-token-cost-control.html" rel="alternate"/><published>2026-05-08T15:44:00+08:00</published><updated>2026-05-08T21:18:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-05-08:/llm-api-token-cost-control.html</id><summary type="html">&lt;p&gt;LLM API 的成本控制不是少用 AI，而是把 token 当工程资源来管。先度量，再分级选模型，压缩上下文，复用缓存，限制输出，离线任务走批处理，最后拿检查清单管住那些看不见的浪费。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Walter Fan's Blog - Journal</title><link href="https://www.fanyamin.com/" rel="alternate"/><link href="https://www.fanyamin.com/feeds/journal.atom.xml" rel="self"/><id>https://www.fanyamin.com/</id><updated>2026-05-10T22:47:00+08:00</updated><subtitle>手握灵珠常奋笔, 心开天籁不吹箫</subtitle><entry><title>LLM API 越来越贵，别让 token 像自来水一样哗哗流</title><link href="https://www.fanyamin.com/llm-api-token-cost-control.html" rel="alternate"/><published>2026-05-08T15:44:00+08:00</published><updated>2026-05-10T22:39:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-05-08:/llm-api-token-cost-control.html</id><summary type="html">&lt;p&gt;LLM API 的成本控制不是少用 AI，而是把 token 当工程资源来管。先度量，再分级选模型，压缩上下文，复用缓存，限制输出，离线任务走批处理，最后拿检查清单管住那些看不见的浪费。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
 &lt;thead&gt;
 &lt;tr&gt;
 &lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
@@ -21,7 +21,7 @@
 &lt;/tr&gt;
 &lt;tr&gt;
 &lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;2026-05-08&lt;/td&gt;
+&lt;td&gt;2026-05-10&lt;/td&gt;
 &lt;/tr&gt;
 &lt;tr&gt;
 &lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
@@ -167,8 +167,125 @@ created_at
 &lt;/table&gt;
 &lt;p&gt;很多 token 浪费不是 prompt 太长，而是任务分配错了。&lt;/p&gt;
 &lt;p&gt;比如判断一句话是不是投诉，没必要上最强模型；抽取工单里的产品名，正则、词典、轻量分类器可能就够了。反过来，复杂事故复盘、跨文档推理、代码审查这类任务，硬上小模型省钱，最后会得到一堆"看起来差不多"的答案——最贵的不是大模型，最贵的是便宜模型给了错误答案，然后人再花半天返工。&lt;/p&gt;
-&lt;!-- ✍️ 建议亲自改写：如果你有"因为模型选错导致返工"的真实经历，在这里补一两句会特别有说服力 --&gt;
+&lt;p&gt;如果你的模型网关把模型封装成类似下面这种命名，就可以直接拿来做路由规则：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;xxx-{low|medium|high|xhigh}-[fast]
+xxx-thinking-{low|medium|high|xhigh}
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 
+&lt;p&gt;这里的 &lt;code&gt;xxx&lt;/code&gt; 可以是 &lt;code&gt;gpt&lt;/code&gt;，也可以是 &lt;code&gt;claude-4.7-opus&lt;/code&gt;、&lt;code&gt;claude-4.7-sonnect&lt;/code&gt; 这类模型族名称。先不纠结名字是否漂亮，关键是把它们当成不同的"计算档位"，而不是一堆随手可点的下拉选项。&lt;/p&gt;
+&lt;p&gt;这里的 &lt;code&gt;low / medium / high / xhigh&lt;/code&gt; 不是厂商标准，而是模型网关里的能力和成本分层。也有团队把 &lt;code&gt;xhigh&lt;/code&gt; 叫 &lt;code&gt;max&lt;/code&gt;，意思差不多：都是最高档。&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;档位&lt;/th&gt;
+&lt;th&gt;大致含义&lt;/th&gt;
+&lt;th&gt;典型用途&lt;/th&gt;
+&lt;th&gt;成本特征&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;low&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;便宜、快、能力够用，但上下文理解和复杂推理有限&lt;/td&gt;
+&lt;td&gt;分类、抽取、格式转换、短文本改写&lt;/td&gt;
+&lt;td&gt;适合高频低风险任务&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;medium&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;质量和成本比较均衡，适合做默认工作档&lt;/td&gt;
+&lt;td&gt;query 改写、普通摘要、客服草稿、FAQ 生成&lt;/td&gt;
+&lt;td&gt;大多数日常任务先从这里试&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;high&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;理解能力、稳定性和长上下文处理更好&lt;/td&gt;
+&lt;td&gt;长文档总结、复杂工单归因、代码解释&lt;/td&gt;
+&lt;td&gt;适合中高价值任务，要控制调用量&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;xhigh&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;最高能力档，也可能叫 &lt;code&gt;max&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;架构评审、事故复盘、复杂代码 review、高风险决策&lt;/td&gt;
+&lt;td&gt;贵，应该有明确使用理由&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;模型形态&lt;/th&gt;
+&lt;th&gt;适合做什么&lt;/th&gt;
+&lt;th&gt;不适合做什么&lt;/th&gt;
+&lt;th&gt;成本提醒&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;xxx-low-fast&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;格式检查、简单分类、短文本改写、标题生成&lt;/td&gt;
+&lt;td&gt;复杂推理、长文档总结、代码 review&lt;/td&gt;
+&lt;td&gt;便宜、快，但别指望它懂太多上下文&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;xxx-medium-fast&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;query 改写、FAQ 初稿、普通摘要、轻量客服回复&lt;/td&gt;
+&lt;td&gt;高风险判断、跨文档推理&lt;/td&gt;
+&lt;td&gt;很适合作为默认工作马，先从这里起步&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;xxx-high&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;长文档总结、复杂工单归因、较复杂的代码解释&lt;/td&gt;
+&lt;td&gt;大批量低价值任务&lt;/td&gt;
+&lt;td&gt;质量更稳，但要配合 token budget&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;xxx-xhigh&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;架构设计、事故复盘、复杂代码 review、法律/财务等高风险分析&lt;/td&gt;
+&lt;td&gt;日常分类、字段抽取、模板化生成&lt;/td&gt;
+&lt;td&gt;贵，应该像生产变更一样有使用理由&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;xxx-thinking-low/medium&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;需要一点推理的规划、分步分析、复杂 prompt 自检&lt;/td&gt;
+&lt;td&gt;简单问答、固定格式转换&lt;/td&gt;
+&lt;td&gt;reasoning tokens 会额外烧钱，别默认开启&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;xxx-thinking-high/xhigh&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;多约束决策、疑难故障分析、跨系统方案评审&lt;/td&gt;
+&lt;td&gt;高频在线请求、低风险批处理&lt;/td&gt;
+&lt;td&gt;适合"少量高价值问题"，不适合当自来水&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;模型族也要分工。一个粗略但实用的判断是：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;模型族&lt;/th&gt;
+&lt;th&gt;适合场景&lt;/th&gt;
+&lt;th&gt;使用建议&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;gpt-*&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;通用问答、结构化输出、工具调用、批量自动化任务&lt;/td&gt;
+&lt;td&gt;适合作为默认通用模型族，配合 low/medium/high 做成本分层&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;claude-4.7-sonnect-*&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;日常写作、总结、需求分析、代码解释、较长上下文处理&lt;/td&gt;
+&lt;td&gt;适合作为主力工作模型，质量和成本之间比较容易平衡&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;claude-4.7-opus-*&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;复杂推理、架构评审、深度代码 review、重要文档润色&lt;/td&gt;
+&lt;td&gt;适合关键任务兜底，不建议所有请求都直接打到 Opus 档&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;一句话：&lt;strong&gt;先选任务档位，再选模型家族，最后才决定要不要 thinking。&lt;/strong&gt; 顺序反了，就容易变成"这个模型最强，所以全都用它"。这在 Demo 阶段很爽，在账单阶段很疼。&lt;/p&gt;
 &lt;p&gt;我的建议是做一张模型路由表：&lt;/p&gt;
 &lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;if task == &amp;quot;format_check&amp;quot;:
     use code
@@ -398,8 +515,44 @@ fallback_to_human: true
 &lt;/table&gt;
 &lt;p&gt;LLM 擅长语言理解、生成和模糊推理，不擅长当数据库、计算器和权限系统。把所有问题都扔给 LLM，就像家里买了个电钻，从此拧螺丝、切菜、刷牙都想用它。&lt;/p&gt;
 &lt;p&gt;工具好不好，看你怎么用。&lt;/p&gt;
-&lt;!-- ✍️ 建议亲自改写：如果你有"用 LLM 做了本不该用 LLM 做的事、后来换回规则反而更好"的真实案例，在这里补一两句会很 Walter --&gt;
-
+&lt;p&gt;尤其是那些&lt;strong&gt;重复、确定、不需要推理&lt;/strong&gt;的常规任务，脚本通常比 LLM 更经济、更稳定，也更容易审计。LLM 每次回答都像请了个聪明外包，脚本则像一台自动售货机：投币、出货、少废话。&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;场景&lt;/th&gt;
+&lt;th&gt;更合适的做法&lt;/th&gt;
+&lt;th&gt;为什么别优先用 LLM&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;去除个人敏感信息&lt;/td&gt;
+&lt;td&gt;用正则、NER、字段白名单做脱敏，比如邮箱、手机号、身份证、IP、access token&lt;/td&gt;
+&lt;td&gt;规则清晰，必须稳定；LLM 漏掉一次就是事故&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;政治正确 / 合规敏感词&lt;/td&gt;
+&lt;td&gt;用词库、Trie、Aho-Corasick、规则引擎做匹配，再配人工复核&lt;/td&gt;
+&lt;td&gt;需要可解释、可回溯、可配置；LLM 判断会漂&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;模板生成文件&lt;/td&gt;
+&lt;td&gt;用 &lt;code&gt;Jinja2&lt;/code&gt;、Handlebars、Mustache 这类模板引擎生成配置、报告、代码骨架&lt;/td&gt;
+&lt;td&gt;输入输出结构固定，用 LLM 反而可能改坏格式&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;批量字段转换&lt;/td&gt;
+&lt;td&gt;用脚本、SQL、ETL、JSON Schema 校验&lt;/td&gt;
+&lt;td&gt;成本低，结果可重复，失败原因清楚&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;固定业务判断&lt;/td&gt;
+&lt;td&gt;用业务规则或决策表，比如金额区间、权限开关、状态流转&lt;/td&gt;
+&lt;td&gt;这是系统逻辑，不该交给概率模型临场发挥&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;我的经验法则是：&lt;strong&gt;如果规则能写清楚、输入输出能定义、失败后要追责，就先写脚本。&lt;/strong&gt; LLM 更适合处理模糊语言、复杂上下文和开放式推理，不要让它去抢正则表达式和模板引擎的饭碗。&lt;/p&gt;
 &lt;h2 id="_8"&gt;最佳实践、常见错误与反模式速查&lt;/h2&gt;
 &lt;p&gt;前面讲的东西不少，这里收束成三张表。做设计评审的时候拿出来对一遍比看完全文管用。&lt;/p&gt;
 &lt;h3 id="_9"&gt;最佳实践&lt;/h3&gt;
@@ -673,7 +826,7 @@ fallback_to_human: true
 &lt;li&gt;&lt;a href="https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/prompt-engineering"&gt;Azure OpenAI Prompt Engineering&lt;/a&gt;&lt;/li&gt;
 &lt;/ol&gt;
 &lt;hr/&gt;
-&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Journal"/><category term="LLM"/><category term="AI"/><category term="token"/><category term="cost-control"/><category term="prompt-engineering"/><category term="productivity"/></entry><entry><title>RAG 知识库优化：别让 AI 一本正经地胡说八道</title><link href="https://www.fanyamin.com/rag-optimization-best-practices.html" rel="alternate"/><published>2026-05-08T00:00:00+08:00</published><updated>2026-05-08T21:25:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-05-08:/rag-optimization-best-practices.html</id><summary type="html">&lt;p&gt;RAG 看起来不过是"先检索，再生成"，真正做起来才知道坑不少。分块、检索、重排序、Prompt、引用、评估，任何一环偷懒，最后都可能变成一个很自信的胡说八道机器。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Journal"/><category term="LLM"/><category term="AI"/><category term="token"/><category term="cost-control"/><category term="prompt-engineering"/><category term="productivity"/></entry><entry><title>RAG 知识库优化：别让 AI 一本正经地胡说八道</title><link href="https://www.fanyamin.com/rag-optimization-best-practices.html" rel="alternate"/><published>2026-05-08T00:00:00+08:00</published><updated>2026-05-10T22:47:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-05-08:/rag-optimization-best-practices.html</id><summary type="html">&lt;p&gt;RAG 看起来不过是"先检索，再生成"，真正做起来才知道坑不少。分块、检索、重排序、Prompt、引用、评估，任何一环偷懒，最后都可能变成一个很自信的胡说八道机器。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
 &lt;thead&gt;
 &lt;tr&gt;
 &lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
@@ -695,7 +848,7 @@ fallback_to_human: true
 &lt;/tr&gt;
 &lt;tr&gt;
 &lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;2026-05-08&lt;/td&gt;
+&lt;td&gt;2026-05-10&lt;/td&gt;
 &lt;/tr&gt;
 &lt;tr&gt;
 &lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
@@ -773,31 +926,32 @@ fallback_to_human: true
 &lt;p&gt;这四件事做扎实，RAG 才有资格谈"可用"。否则 Demo 再漂亮，也只是一个会说漂亮话的概率玩具。&lt;/p&gt;
 &lt;h2 id="rag_1"&gt;一、RAG 架构回顾&lt;/h2&gt;
 &lt;p&gt;先把基本流程摆出来。流程不复杂，复杂的是每一步都可能埋坑。&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;用户提问
-  │
-  ▼
-┌─────────────┐    ┌──────────────┐    ┌─────────────┐
-│  Query 理解  │───▶│  检索/召回    │───▶│  重排序      │
-│  &amp;amp; 改写      │    │  (Retrieval)  │    │  (Reranking) │
-└─────────────┘    └──────────────┘    └─────────────┘
-                                              │
-                                              ▼
-                                       ┌─────────────┐
-                                       │  上下文组装   │
-                                       │  &amp;amp; Prompt    │
-                                       └─────────────┘
-                                              │
-                                              ▼
-                                       ┌─────────────┐
-                                       │  LLM 生成    │
-                                       │  (Generation)│
-                                       └─────────────┘
-                                              │
-                                              ▼
-                                       ┌─────────────┐
-                                       │  后处理 &amp;amp;    │
-                                       │  引用溯源    │
-                                       └─────────────┘
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startuml
+
+top to bottom direction
+skinparam defaultTextAlignment center
+skinparam shadowing false
+skinparam rectangle {
+    RoundCorner 15
+}
+
+rectangle &amp;quot;用户提问&amp;quot; as User
+
+rectangle &amp;quot;Query 理解\n&amp;amp; 改写&amp;quot; as QueryRewrite
+rectangle &amp;quot;检索/召回\n(Retrieval)&amp;quot; as Retrieval
+rectangle &amp;quot;重排序\n(Reranking)&amp;quot; as Reranking
+rectangle &amp;quot;上下文组装\n&amp;amp; Prompt&amp;quot; as PromptAssembly
+rectangle &amp;quot;LLM 生成\n(Generation)&amp;quot; as Generation
+rectangle &amp;quot;后处理 &amp;amp;\n引用溯源&amp;quot; as PostProcess
+
+User --&amp;gt; QueryRewrite
+QueryRewrite --&amp;gt; Retrieval
+Retrieval --&amp;gt; Reranking
+Reranking --&amp;gt; PromptAssembly
+PromptAssembly --&amp;gt; Generation
+Generation --&amp;gt; PostProcess
+
+@enduml
 &lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 
 &lt;p&gt;每个环节都有优化空间，也都有翻车机会。RAG 的麻烦就在这里：它不是一个单点模型问题，而是一条链路问题。链路上任何一环松了，最后都会体现在答案质量上。&lt;/p&gt;
@@ -874,13 +1028,107 @@ fallback_to_human: true
 
 &lt;h3 id="_3"&gt;容易踩的坑&lt;/h3&gt;
 &lt;p&gt;&lt;strong&gt;坑 1：不洗数据，直接灌&lt;/strong&gt;&lt;/p&gt;
-&lt;p&gt;PDF 原样解析，页眉页脚、目录、版权声明全进了向量库。检索时这些噪声频繁被召回，严重拉低质量。我之前就碰到过，检索 top-5 里有两条是页眉里的 "Confidential - Do Not Distribute"。&lt;/p&gt;
-&lt;!-- ✍️ 建议亲自改写：上面那个"我之前碰到过"是我帮你加的占位。如果你有自己的脏数据踩坑经历，请替换成真实场景。 --&gt;
-
+&lt;p&gt;PDF 原样解析，页眉页脚、目录、版权声明全进了向量库。检索时这些噪声频繁被召回，严重拉低质量。典型情况是：用户问一个具体流程，top-5 里却混进两条页眉里的 "Confidential - Do Not Distribute"。&lt;/p&gt;
+&lt;p&gt;清洗数据可以按四步走。不要一开始就上"全家桶"，先把最脏、最重复、最影响检索的东西干掉：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;步骤&lt;/th&gt;
+&lt;th&gt;具体怎么做&lt;/th&gt;
+&lt;th&gt;常用工具&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;去模板噪声&lt;/td&gt;
+&lt;td&gt;统计每页重复出现的文本，删除页眉页脚、水印、版权声明、导航菜单、重复目录；网页内容先做正文抽取，别把侧边栏和广告一起塞进去&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;PyMuPDF&lt;/code&gt; / &lt;code&gt;pdfplumber&lt;/code&gt;、&lt;code&gt;trafilatura&lt;/code&gt;、&lt;code&gt;readability-lxml&lt;/code&gt;、&lt;code&gt;BeautifulSoup&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;修版式问题&lt;/td&gt;
+&lt;td&gt;合并异常断行，修复乱码和全半角混用，去掉多余空格，恢复项目符号；PDF 里跨页断开的句子要重新拼起来&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;ftfy&lt;/code&gt;、正则、&lt;code&gt;unstructured&lt;/code&gt;、&lt;code&gt;Docling&lt;/code&gt;、&lt;code&gt;MarkItDown&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;保留结构信息&lt;/td&gt;
+&lt;td&gt;把标题层级、表格、代码块、图片说明、来源页码保存到 metadata；表格不要粗暴拍平成一坨文本，最好转成 Markdown 表格或结构化 JSON&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;pandas&lt;/code&gt;、&lt;code&gt;camelot&lt;/code&gt; / &lt;code&gt;tabula&lt;/code&gt;、&lt;code&gt;markdownify&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;抽样验收&lt;/td&gt;
+&lt;td&gt;随机抽几十个 chunk，看语义是否完整、来源是否清楚、噪声是否重复；再用几条典型问题做 smoke test，看召回结果是不是"看起来就靠谱"&lt;/td&gt;
+&lt;td&gt;自己写脚本、&lt;code&gt;pytest&lt;/code&gt;、简单的检索评测集&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
 &lt;p&gt;&lt;strong&gt;坑 2：分块大小一刀切&lt;/strong&gt;&lt;/p&gt;
 &lt;p&gt;所有文档统一用 512 tokens 分块。FAQ 类文档需要小块 (100-200)，技术手册需要大块 (500-800)，一刀切顾此失彼。&lt;/p&gt;
+&lt;p&gt;分块策略也可以做成一张配置表，不要把所有文档都塞进同一个 splitter：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;文档类型&lt;/th&gt;
+&lt;th&gt;具体怎么做&lt;/th&gt;
+&lt;th&gt;常用工具&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;FAQ / 问答&lt;/td&gt;
+&lt;td&gt;一问一答尽量保持在同一个 chunk，chunk 可以小一点，通常 100-200 tokens 就够；不要把多个无关问题硬拼在一起&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;RecursiveCharacterTextSplitter&lt;/code&gt;、自定义 Q/A parser&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;技术手册 / 设计文档&lt;/td&gt;
+&lt;td&gt;按标题层级、段落和代码块切，保留 10-20% overlap；代码块不要从中间切断&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;MarkdownHeaderTextSplitter&lt;/code&gt;、&lt;code&gt;RecursiveCharacterTextSplitter&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;长 PDF / 规章制度&lt;/td&gt;
+&lt;td&gt;先按章节切，再在章节内按段落切；每个 chunk 带上章节名、页码、版本号&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;LangChain&lt;/code&gt; splitters、&lt;code&gt;LlamaIndex&lt;/code&gt; node parser&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;表格 / 配置项&lt;/td&gt;
+&lt;td&gt;不要按 token 硬切，优先按行、按字段或按业务实体切；必要时转成结构化 JSON 单独入库&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;pandas&lt;/code&gt;、&lt;code&gt;camelot&lt;/code&gt; / &lt;code&gt;tabula&lt;/code&gt;、自定义 parser&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
 &lt;p&gt;&lt;strong&gt;坑 3：忽略文档之间的关系&lt;/strong&gt;&lt;/p&gt;
 &lt;p&gt;公司制度文档 A 引用了文档 B 的条款，但分块后这种引用关系丢失了。用户问到相关问题，系统只能给出片面回答。&lt;/p&gt;
+&lt;p&gt;文档关系要在入库时就显式保存，否则检索阶段很难凭空猜出来：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;关系类型&lt;/th&gt;
+&lt;th&gt;具体怎么做&lt;/th&gt;
+&lt;th&gt;常用工具&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;引用关系&lt;/td&gt;
+&lt;td&gt;解析"见第 X 条"、"参考文档 B"、URL 链接、附件名，把被引用文档 ID 写进 metadata&lt;/td&gt;
+&lt;td&gt;正则、&lt;code&gt;BeautifulSoup&lt;/code&gt;、自定义 link extractor&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;层级关系&lt;/td&gt;
+&lt;td&gt;保存 &lt;code&gt;document -&amp;gt; section -&amp;gt; chunk&lt;/code&gt; 的父子结构；召回子 chunk 后，可以把父章节一起带出来补上下文&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;LlamaIndex&lt;/code&gt; Parent-Child retriever、LangChain Parent Document Retriever&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;版本关系&lt;/td&gt;
+&lt;td&gt;保存文档版本、发布日期、失效日期；检索时优先召回最新版，避免旧政策压过新政策&lt;/td&gt;
+&lt;td&gt;metadata filter、向量库过滤条件&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;主题关系&lt;/td&gt;
+&lt;td&gt;给文档打业务标签，比如产品线、部门、系统、模块；用户问题先缩小范围，再做向量检索&lt;/td&gt;
+&lt;td&gt;embedding 聚类、人工标签、&lt;code&gt;spaCy&lt;/code&gt; / &lt;code&gt;KeyBERT&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
 &lt;h2 id="_4"&gt;三、检索优化：找到对的内容&lt;/h2&gt;
 &lt;h3 id="_5"&gt;先别急着让模型回答&lt;/h3&gt;
 &lt;h4 id="1_1"&gt;1. 混合检索&lt;/h4&gt;
@@ -953,8 +1201,17 @@ fallback_to_human: true
 &lt;blockquote&gt;
 &lt;p&gt;&lt;strong&gt;经验法则&lt;/strong&gt;：先粗召回 20-50 条，再用 Reranker 精排到 3-5 条。很多时候这一步比盲目换大模型更划算。&lt;/p&gt;
 &lt;/blockquote&gt;
-&lt;!-- ✍️ 建议亲自改写：如果你有 rerank 前后效果对比的数据（比如 top-k 命中率或答案准确率提升了多少），补一句数字会很有力。 --&gt;
+&lt;p&gt;如果前面用了 &lt;strong&gt;Hybrid Retrieval&lt;/strong&gt;，通常会先分别跑两路召回：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;BM25 / 关键词检索   →  擅长命中专有名词、编号、错误码
+向量检索 / Dense    →  擅长命中语义相近的表达
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 
+&lt;p&gt;两路结果合并时，一个常用办法是 &lt;strong&gt;RRF&lt;/strong&gt;（Reciprocal Rank Fusion）。它不直接比较 BM25 分数和向量相似度，因为这两个分数不是一个量纲；它只看排名：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;RRF_score(d) = Σ 1 / (k + rank_i(d))
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;其中 &lt;code&gt;d&lt;/code&gt; 是某个文档或 chunk，&lt;code&gt;rank_i(d)&lt;/code&gt; 是它在第 &lt;code&gt;i&lt;/code&gt; 路检索结果里的排名，&lt;code&gt;k&lt;/code&gt; 是平滑参数，常见取值是 &lt;code&gt;60&lt;/code&gt;。一个 chunk 如果在 BM25 和向量检索里都排得靠前，RRF 分数就会更高；如果只在一路里偶然靠前，分数就不会太夸张。&lt;/p&gt;
+&lt;p&gt;这招朴素，但很实用。它像开会时听两个人投票：关键词检索说"这个很像"，向量检索也说"这个也像"，那就优先拿出来给 reranker 精排。&lt;/p&gt;
 &lt;h4 id="4"&gt;4. 元数据过滤&lt;/h4&gt;
 &lt;p&gt;不要什么问题都去全库里搜。用户问财务制度，就先限定部门；问最新政策，就过滤更新时间；问某个产品线，就缩到对应文档集合。&lt;/p&gt;
 &lt;p&gt;不花哨，但很管用。&lt;/p&gt;
@@ -972,33 +1229,108 @@ fallback_to_human: true
 &lt;h3 id="_6"&gt;容易踩的坑&lt;/h3&gt;
 &lt;p&gt;&lt;strong&gt;坑 4：只用向量检索&lt;/strong&gt;&lt;/p&gt;
 &lt;p&gt;用户问 "ISO 27001 认证流程"，向量检索返回一堆关于"认证"和"流程"的无关内容——语义相似但主题不同。加上 BM25 关键词匹配后，"ISO 27001" 这种关键字才能被精确命中。&lt;/p&gt;
+&lt;p&gt;混合检索不要只喊口号，可以按问题类型拆：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;场景&lt;/th&gt;
+&lt;th&gt;具体怎么做&lt;/th&gt;
+&lt;th&gt;常用工具&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;有明确关键词&lt;/td&gt;
+&lt;td&gt;对产品名、标准号、错误码、人名、工单号走 BM25 或精确匹配，先保证关键字不丢&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;Elasticsearch&lt;/code&gt; / &lt;code&gt;OpenSearch&lt;/code&gt;、&lt;code&gt;PostgreSQL&lt;/code&gt; full-text search&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;语义描述类问题&lt;/td&gt;
+&lt;td&gt;用户说的是"怎么申请权限"、"系统为什么变慢"这类自然语言问题，用向量检索找相近语义&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;FAISS&lt;/code&gt;、&lt;code&gt;Milvus&lt;/code&gt;、&lt;code&gt;Qdrant&lt;/code&gt;、&lt;code&gt;pgvector&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;两者都有&lt;/td&gt;
+&lt;td&gt;BM25 和向量检索各召回一批，再用 RRF 或加权分数合并，避免一边独大&lt;/td&gt;
+&lt;td&gt;Reciprocal Rank Fusion、&lt;code&gt;Elasticsearch&lt;/code&gt; hybrid search、&lt;code&gt;LlamaIndex&lt;/code&gt; retrievers&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;带结构条件&lt;/td&gt;
+&lt;td&gt;先用 metadata 过滤部门、产品线、版本、时间，再做混合检索，别在全库里大海捞针&lt;/td&gt;
+&lt;td&gt;向量库 metadata filter、&lt;code&gt;where&lt;/code&gt; 条件、业务标签&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
 &lt;p&gt;&lt;strong&gt;坑 5：不做 Reranking&lt;/strong&gt;&lt;/p&gt;
 &lt;p&gt;向量检索的 top-10 结果中，真正相关的可能排在第 5-8 位。不做重排序直接取 top-3，大概率丢失关键信息。&lt;/p&gt;
+&lt;p&gt;Reranking 的核心是：&lt;strong&gt;召回阶段宁可多捞一点，排序阶段再精挑细选&lt;/strong&gt;。&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;场景&lt;/th&gt;
+&lt;th&gt;具体怎么做&lt;/th&gt;
+&lt;th&gt;常用工具&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;通用文本重排&lt;/td&gt;
+&lt;td&gt;先召回 20-50 条，再用 reranker 精排到 3-5 条；这一步通常比盲目增大 top_k 更有效&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;BAAI/bge-reranker-large&lt;/code&gt;、&lt;code&gt;Cohere Rerank&lt;/code&gt;、&lt;code&gt;Jina Reranker&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;中文知识库&lt;/td&gt;
+&lt;td&gt;选中文或多语言 reranker，不要默认拿英文 cross-encoder 硬套&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;bge-reranker-v2-m3&lt;/code&gt;、&lt;code&gt;bge-reranker-large&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;专业领域文档&lt;/td&gt;
+&lt;td&gt;准备一小批真实问答对，用人工标注的相关性样本评估 reranker；效果不够再考虑微调&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;sentence-transformers&lt;/code&gt; CrossEncoder、评测集、&lt;code&gt;pytest&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;防止结果太单一&lt;/td&gt;
+&lt;td&gt;top-5 里不要全是同一章节的近似 chunk，可以加 MMR 或按文档去重&lt;/td&gt;
+&lt;td&gt;MMR、按 &lt;code&gt;doc_id&lt;/code&gt; 去重、自定义 post-rank 规则&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
 &lt;p&gt;&lt;strong&gt;坑 6：Embedding 模型选错&lt;/strong&gt;&lt;/p&gt;
 &lt;p&gt;用英文 Embedding 模型处理中文知识库，或者用通用模型处理专业领域文档。要选与语言和领域匹配的模型，必要时做 fine-tuning。&lt;/p&gt;
+&lt;p&gt;选模型别只看榜单，先看你的语料和问题长什么样：&lt;/p&gt;
 &lt;table&gt;
 &lt;thead&gt;
 &lt;tr&gt;
 &lt;th&gt;场景&lt;/th&gt;
 &lt;th&gt;推荐模型&lt;/th&gt;
+&lt;th&gt;注意点&lt;/th&gt;
 &lt;/tr&gt;
 &lt;/thead&gt;
 &lt;tbody&gt;
 &lt;tr&gt;
 &lt;td&gt;中文通用&lt;/td&gt;
-&lt;td&gt;BAAI/bge-large-zh-v1.5&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;BAAI/bge-large-zh-v1.5&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;适合中文知识库的基线模型，先用它跑一版评测再说&lt;/td&gt;
 &lt;/tr&gt;
 &lt;tr&gt;
 &lt;td&gt;英文通用&lt;/td&gt;
-&lt;td&gt;text-embedding-3-large&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;text-embedding-3-large&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;效果好，但要考虑 API 成本、数据出境和隐私要求&lt;/td&gt;
 &lt;/tr&gt;
 &lt;tr&gt;
 &lt;td&gt;多语言&lt;/td&gt;
-&lt;td&gt;BAAI/bge-m3&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;BAAI/bge-m3&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;中英混合、跨语言检索时更稳，适合国际化文档&lt;/td&gt;
 &lt;/tr&gt;
 &lt;tr&gt;
 &lt;td&gt;代码&lt;/td&gt;
-&lt;td&gt;voyage-code-3&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;voyage-code-3&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;代码检索不要只靠自然语言 embedding，最好保留函数名、类名、文件路径等 metadata&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;垂直领域&lt;/td&gt;
+&lt;td&gt;通用模型 + 小评测集，必要时再 fine-tuning&lt;/td&gt;
+&lt;td&gt;先做 50-100 条真实查询评测，别上来就训练模型&lt;/td&gt;
 &lt;/tr&gt;
 &lt;/tbody&gt;
 &lt;/table&gt;
@@ -1061,12 +1393,106 @@ fallback_to_human: true
 &lt;h3 id="_8"&gt;容易踩的坑&lt;/h3&gt;
 &lt;p&gt;&lt;strong&gt;坑 7：不限制 LLM 的"创造力"&lt;/strong&gt;&lt;/p&gt;
 &lt;p&gt;Prompt 里没要求"只基于检索内容回答"，LLM 就开始脑补，把训练数据里的过时信息混入答案。这就是所谓的幻觉——它不是故意骗你，它是真觉得自己说得对。&lt;/p&gt;
+&lt;p&gt;生成阶段要把边界写死，尤其是企业知识库，别让模型自由发挥：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;风险场景&lt;/th&gt;
+&lt;th&gt;具体怎么做&lt;/th&gt;
+&lt;th&gt;常用工具 / 机制&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;资料不足&lt;/td&gt;
+&lt;td&gt;明确要求"资料不足就说无法回答"，不要让模型凭常识补全&lt;/td&gt;
+&lt;td&gt;System Prompt、拒答模板&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;来源混乱&lt;/td&gt;
+&lt;td&gt;要求每个关键结论都带引用编号，没有引用的句子不输出或标记为不确定&lt;/td&gt;
+&lt;td&gt;Citation Prompt、后处理校验&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;多来源冲突&lt;/td&gt;
+&lt;td&gt;如果多个来源说法不一致，要求模型列出差异，而不是自行裁判&lt;/td&gt;
+&lt;td&gt;Prompt 规则、conflict detection&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;输出跑偏&lt;/td&gt;
+&lt;td&gt;限定回答格式，比如结论、依据、注意事项、来源；复杂场景用 JSON Schema 约束&lt;/td&gt;
+&lt;td&gt;structured output、Pydantic、Guardrails&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
 &lt;p&gt;&lt;strong&gt;坑 8：上下文塞太多&lt;/strong&gt;&lt;/p&gt;
 &lt;p&gt;把检索到的 20 个 chunk 全塞进 Prompt，LLM 反而被噪声干扰，抓不住重点。实践中，&lt;strong&gt;3-5 个高质量 chunk 往往优于 10+ 个中等质量 chunk&lt;/strong&gt;。&lt;/p&gt;
-&lt;!-- ✍️ 建议亲自改写：这里如果有你在什么业务场景下验证过"3-5 个 chunk 更好"的经历，补一句会把结论从教科书拉到实战。 --&gt;
-
+&lt;p&gt;上下文组装要像打包行李：该带的带上，"也许有用"的先放下：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;场景&lt;/th&gt;
+&lt;th&gt;具体怎么做&lt;/th&gt;
+&lt;th&gt;常用工具 / 机制&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;chunk 太多&lt;/td&gt;
+&lt;td&gt;先 rerank，再只取 top 3-5 个高质量 chunk；不要把 top 20 原样塞进 Prompt&lt;/td&gt;
+&lt;td&gt;reranker、top_k 控制&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;chunk 太长&lt;/td&gt;
+&lt;td&gt;对长 chunk 做摘要或二次切分，只保留与问题相关的段落&lt;/td&gt;
+&lt;td&gt;map-reduce summarize、自定义 trimmer&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;信息重复&lt;/td&gt;
+&lt;td&gt;同一文档连续命中的多个相似 chunk，按 &lt;code&gt;doc_id&lt;/code&gt; 和相似度去重&lt;/td&gt;
+&lt;td&gt;MMR、dedup by metadata&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;token 超限&lt;/td&gt;
+&lt;td&gt;给上下文设置 token budget，超过预算就按相关性和新鲜度裁剪&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;tiktoken&lt;/code&gt;、token counter、context budget&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
 &lt;p&gt;&lt;strong&gt;坑 9：忽略 "Lost in the Middle"&lt;/strong&gt;&lt;/p&gt;
 &lt;p&gt;LLM 对上下文中间部分的注意力较弱。最匹配的内容应该放在上下文的&lt;strong&gt;开头和结尾&lt;/strong&gt;，不是中间。&lt;/p&gt;
+&lt;p&gt;上下文排序不是排队买奶茶，最重要的内容不要站在中间被淹没：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;场景&lt;/th&gt;
+&lt;th&gt;具体怎么做&lt;/th&gt;
+&lt;th&gt;常用工具 / 机制&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;最相关 chunk 很少&lt;/td&gt;
+&lt;td&gt;把最高分 chunk 放在上下文开头，必要时在结尾再放一次简短摘要&lt;/td&gt;
+&lt;td&gt;attention-aware reorder&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;多个来源都重要&lt;/td&gt;
+&lt;td&gt;开头放主证据，结尾放补充证据，中间放背景材料&lt;/td&gt;
+&lt;td&gt;自定义 context assembler&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;长上下文模型&lt;/td&gt;
+&lt;td&gt;即使用长上下文，也按相关性排序，不要把原文顺序当成唯一顺序&lt;/td&gt;
+&lt;td&gt;rerank score、position strategy&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;需要引用溯源&lt;/td&gt;
+&lt;td&gt;保留 chunk 编号和来源编号，重排后不要丢失引用关系&lt;/td&gt;
+&lt;td&gt;source map、citation metadata&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
 &lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;reorder_for_attention&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;chunks&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;List&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="nb"&gt;dict&lt;/span&gt;&lt;span class="p"&gt;])&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;List&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="nb"&gt;dict&lt;/span&gt;&lt;span class="p"&gt;]:&lt;/span&gt;
 &lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="sd"&gt;&amp;quot;&amp;quot;&amp;quot;最匹配的放开头和结尾，次匹配的放中间&amp;quot;&amp;quot;&amp;quot;&lt;/span&gt;
     &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="nb"&gt;len&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;chunks&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;&amp;lt;=&lt;/span&gt; &lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
@@ -1168,10 +1594,106 @@ fallback_to_human: true
 &lt;h3 id="_10"&gt;容易踩的坑&lt;/h3&gt;
 &lt;p&gt;&lt;strong&gt;坑 10：没评估就上线&lt;/strong&gt;&lt;/p&gt;
 &lt;p&gt;"Demo 看着挺好的，上线吧！"——这是 RAG 项目挂掉的头号原因。没有系统评估，你不知道系统在哪些场景下会出错，上线就是盲人骑瞎马。&lt;/p&gt;
+&lt;p&gt;上线前至少做一轮小而硬的评估，不求完美，但要能暴露问题：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;评估对象&lt;/th&gt;
+&lt;th&gt;具体怎么做&lt;/th&gt;
+&lt;th&gt;常用工具 / 机制&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;检索质量&lt;/td&gt;
+&lt;td&gt;准备 50-100 条真实问题，标注期望来源，计算 recall、precision、MRR&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;RAGAS&lt;/code&gt;、&lt;code&gt;TruLens&lt;/code&gt;、自定义 pytest&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;生成质量&lt;/td&gt;
+&lt;td&gt;检查答案是否基于来源、是否答到问题、是否有幻觉&lt;/td&gt;
+&lt;td&gt;LLM-as-judge、人工抽检&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;引用质量&lt;/td&gt;
+&lt;td&gt;验证引用是否存在、是否支持对应结论，别只看有没有 &lt;code&gt;[1]&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;citation checker、自定义脚本&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;线上风险&lt;/td&gt;
+&lt;td&gt;用边界问题、过期政策、冲突文档做回归测试&lt;/td&gt;
+&lt;td&gt;regression test set、CI job&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
 &lt;p&gt;&lt;strong&gt;坑 11：只评估一次&lt;/strong&gt;&lt;/p&gt;
 &lt;p&gt;知识库在更新，用户问法在变，模型在迭代。评估应该是&lt;strong&gt;持续的&lt;/strong&gt;，不是一次性的。&lt;/p&gt;
+&lt;p&gt;RAG 的评估要接进日常流水线，不然一次评估只能证明"当时没坏"：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;变化来源&lt;/th&gt;
+&lt;th&gt;具体怎么做&lt;/th&gt;
+&lt;th&gt;常用工具 / 机制&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;文档更新&lt;/td&gt;
+&lt;td&gt;每次知识库重建索引后跑一遍核心评测集，观察召回率和答案准确率是否下降&lt;/td&gt;
+&lt;td&gt;CI/CD、scheduled eval&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;模型升级&lt;/td&gt;
+&lt;td&gt;Embedding、reranker、LLM 版本变化时做 A/B 对比，不要凭感觉切换&lt;/td&gt;
+&lt;td&gt;experiment tracking、A/B test&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;用户问法变化&lt;/td&gt;
+&lt;td&gt;定期抽样线上问题，把高频问法加入评测集&lt;/td&gt;
+&lt;td&gt;query log sampling&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;指标漂移&lt;/td&gt;
+&lt;td&gt;监控幻觉率、无法回答率、差评率、P95 延迟，超过阈值就回滚或降级&lt;/td&gt;
+&lt;td&gt;dashboard、alerting&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
 &lt;p&gt;&lt;strong&gt;坑 12：不看用户反馈&lt;/strong&gt;&lt;/p&gt;
 &lt;p&gt;用户点了"差评"但没人分析原因。每一个差评都在告诉你系统哪里不对——可能是检索不准，可能是分块不当，也可能是 Prompt 有漏洞。这些信息不用花钱买，但很多团队就是不看。&lt;/p&gt;
+&lt;p&gt;用户反馈不是客服噪声，是最便宜的线上评测数据：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;反馈类型&lt;/th&gt;
+&lt;th&gt;具体怎么做&lt;/th&gt;
+&lt;th&gt;常用工具 / 机制&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;点赞 / 点踩&lt;/td&gt;
+&lt;td&gt;点踩必须记录问题、答案、召回 chunk、模型版本，方便复盘&lt;/td&gt;
+&lt;td&gt;feedback log、trace ID&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;用户改写问题&lt;/td&gt;
+&lt;td&gt;用户连续追问或换问法，说明第一次没答好；把这些 query 加进评测集&lt;/td&gt;
+&lt;td&gt;conversation log、query mining&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;人工纠错&lt;/td&gt;
+&lt;td&gt;允许用户标注"正确来源"或"正确答案"，沉淀成训练和评估样本&lt;/td&gt;
+&lt;td&gt;review queue、labeling workflow&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;高频差评主题&lt;/td&gt;
+&lt;td&gt;按部门、产品线、文档类型聚合差评，定位到底是数据问题、检索问题还是生成问题&lt;/td&gt;
+&lt;td&gt;analytics dashboard、issue tracker&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
 &lt;h2 id="_11"&gt;六、进阶技巧&lt;/h2&gt;
 &lt;h3 id="1-agentic-rag"&gt;1. Agentic RAG&lt;/h3&gt;
 &lt;p&gt;基础 RAG 跑稳之后，可以考虑 Agentic RAG：让 LLM 先分析问题，再决定检索策略。适合复杂问题，但也会增加延迟、成本和不可控性。不要一上来就用它解决所有问题——先把基础链路做到 80 分再说。&lt;/p&gt;
@@ -6443,8 +6965,6 @@ endif
 &lt;/tbody&gt;
 &lt;/table&gt;
 &lt;p&gt;这一档适合平台团队，前提是你们真有训练资源，也有安全合规闭环，更重要的是，业务上真的值得为"repo 级专用大脑"单独投钱。否则的话，第二档往往已经够用到下一轮模型换代了。&lt;/p&gt;
-&lt;!-- ✍️ 建议亲自改写：这里如果能补一句你所在团队的语言栈、仓库规模和 CI 约束，路线图会更接地气。 --&gt;
-
 &lt;hr&gt;
 &lt;h2 id="_6"&gt;五、路线图(建议按季度想，不要按周末想)&lt;/h2&gt;
 &lt;p&gt;&lt;strong&gt;Q0(1-2 周)&lt;/strong&gt;: 先把 &lt;a href="https://github.com/codefuse-ai/CodeFuse-CGM"&gt;CodeFuse-CGM&lt;/a&gt; 跑通。别急着谈平台化，先选 3-5 个你们真实仓库里的历史 issue 做"离线回放"，对比现有纯 RAG 或 Agent 方案。先看有没有肉眼可见的差别。&lt;/p&gt;
@@ -10015,7 +10535,7 @@ cmctl&lt;span class="w"&gt; &lt;/span&gt;renew&lt;span class="w"&gt; &lt;/span&g
 &lt;hr&gt;
 &lt;hr/&gt;
 
-&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Journal"/><category term="Kubernetes"/><category term="cert-manager"/><category term="Venafi"/><category term="TLS"/><category term="certificate"/><category term="security"/><category term="DevOps"/></entry><entry><title>Obsidian 加 LLM，个人知识库的正确打开方式</title><link href="https://www.fanyamin.com/obsidian-jia-llmge-ren-zhi-shi-ku-de-zheng-que-da-kai-fang-shi.html" rel="alternate"/><published>2026-04-08T10:00:00+08:00</published><updated>2026-04-08T10:00:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-04-08:/obsidian-jia-llmge-ren-zhi-shi-ku-de-zheng-que-da-kai-fang-shi.html</id><summary type="html">&lt;p&gt;笔记散落各处，AI 却帮不了你？聊聊怎么用 Obsidian 的本地 Markdown 文件，配合 LLM 插件、MCP 和编译式知识库，把"一堆文件"变成"能回答问题的第二大脑"。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Journal"/><category term="Kubernetes"/><category term="cert-manager"/><category term="Venafi"/><category term="TLS"/><category term="certificate"/><category term="security"/><category term="DevOps"/></entry><entry><title>Obsidian 加 LLM，个人知识库的正确打开方式</title><link href="https://www.fanyamin.com/obsidian-jia-llmge-ren-zhi-shi-ku-de-zheng-que-da-kai-fang-shi.html" rel="alternate"/><published>2026-04-08T10:00:00+08:00</published><updated>2026-05-10T22:44:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-04-08:/obsidian-jia-llmge-ren-zhi-shi-ku-de-zheng-que-da-kai-fang-shi.html</id><summary type="html">&lt;p&gt;笔记散落各处，AI 却帮不了你？聊聊怎么用 Obsidian 的本地 Markdown 文件，配合 LLM 插件、MCP 和编译式知识库，把"一堆文件"变成"能回答问题的第二大脑"。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
 &lt;thead&gt;
 &lt;tr&gt;
 &lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
@@ -10037,7 +10557,7 @@ cmctl&lt;span class="w"&gt; &lt;/span&gt;renew&lt;span class="w"&gt; &lt;/span&g
 &lt;/tr&gt;
 &lt;tr&gt;
 &lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;2026-04-08&lt;/td&gt;
+&lt;td&gt;2026-05-10&lt;/td&gt;
 &lt;/tr&gt;
 &lt;tr&gt;
 &lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
@@ -10206,8 +10726,9 @@ cmctl&lt;span class="w"&gt; &lt;/span&gt;renew&lt;span class="w"&gt; &lt;/span&g
 &lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 
 &lt;p&gt;这只是一个起步版本。实际用的时候，你还需要增量检测（只编译新增或修改过的文件）、冲突处理（wiki 页面已存在时怎么合并）、以及定期的"lint"步骤——让 LLM 检查 wiki 的一致性和完整性。&lt;/p&gt;
-&lt;!-- ✍️ 建议亲自改写：这里如果能补一段你用这个流程实际编译过什么内容（比如把一堆 WebRTC 相关的技术文档编译成 wiki），会更有说服力。 --&gt;
-
+&lt;p&gt;我自己就用类似流程整理过一批 WebRTC 相关笔记。原来它们是一堆散落的 Markdown 文件：有的是 ICE、DTLS、SRTP 的概念摘录，有的是 SDP offer/answer 的排查记录，还有一些是会议媒体链路里的零碎经验。单独看每篇都还有点用，放在一起就像一个没人整理过的仓库，东西都在，但找起来全靠缘分。&lt;/p&gt;
+&lt;p&gt;后来我把这些原始笔记先按主题粗分，再让 LLM 编译成 wiki 页面：每篇页面只讲一个核心概念，保留来源文件，并用双向链接把相关主题串起来，比如 &lt;code&gt;[[ICE]]&lt;/code&gt;、&lt;code&gt;[[DTLS]]&lt;/code&gt;、&lt;code&gt;[[SRTP]]&lt;/code&gt;、&lt;code&gt;[[SDP]]&lt;/code&gt;、&lt;code&gt;[[Jitter Buffer]]&lt;/code&gt;。编译完之后，知识不再是"一堆文件"，而变成了一张能顺着查下去的网。要排查一个媒体连接问题时，我可以从 &lt;code&gt;[[ICE Candidate]]&lt;/code&gt; 一路跳到 &lt;code&gt;[[NAT Traversal]]&lt;/code&gt;、&lt;code&gt;[[TURN]]&lt;/code&gt;、&lt;code&gt;[[Connectivity Check]]&lt;/code&gt;，比在文件夹里翻旧笔记舒服多了。&lt;/p&gt;
+&lt;p&gt;这件事让我意识到：LLM 最有价值的地方，不是替我凭空写知识，而是把我已经积累的碎片重新编排成结构。它像一个有耐心的图书管理员，不一定比你更懂 WebRTC，但它很擅长把散落在地上的书捡起来、分类、贴标签、放回架子。&lt;/p&gt;
 &lt;h3 id="_6"&gt;我自己的搭配&lt;/h3&gt;
 &lt;p&gt;说了三种模式，我自己怎么用的？坦白说，没有哪一种是银弹，我是组合着来的：&lt;/p&gt;
 &lt;ul&gt;
@@ -10340,8 +10861,6 @@ pandoc&lt;span class="w"&gt; &lt;/span&gt;input.pdf&lt;span class="w"&gt; &lt;/s
 &lt;p&gt;Karpathy 的 LLM Wiki 思路很好，但它不是装好就能自动跑的。你得定期喂它新材料，定期检查 wiki 页面的质量，定期更新编译脚本来适配新的模型和 prompt。这更像是养一个花园，不是装一个电器。&lt;/p&gt;
 &lt;p&gt;&lt;strong&gt;5. 隐私和安全不能马虎&lt;/strong&gt;&lt;/p&gt;
 &lt;p&gt;用云端 API（OpenAI、Claude）时，你的笔记内容会被传到服务器上。如果笔记里有敏感信息（公司机密、个人隐私），要么用本地模型，要么在发送前做脱敏处理。MCP 模式下，AI Agent 有读写 vault 的权限，要确保它的操作范围是你预期内的。&lt;/p&gt;
-&lt;!-- ✍️ 建议亲自改写：如果能加一两句你自己在用 AI 插件时踩过的具体的坑（比如某个插件把笔记格式搞乱了），会更有体感。 --&gt;
-
 &lt;hr&gt;
 &lt;h2 id="_11"&gt;总结&lt;/h2&gt;
 &lt;ul&gt;
@@ -11016,8 +11535,6 @@ pandoc&lt;span class="w"&gt; &lt;/span&gt;input.pdf&lt;span class="w"&gt; &lt;/s
 &lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 
 &lt;p&gt;不过话说回来，&lt;strong&gt;如果你已经在一个 gevent 服务里认真地封装批量 async HTTP 调用了，这通常说明你离"把这一块拆出去，或者改成 ASGI"只差领导点头了。&lt;/strong&gt; 技术债这个东西，就像家里阳台上的杂物柜，先能塞就塞，塞到后来门就关不上了。&lt;/p&gt;
-&lt;!-- ✍️ 建议亲自改写：这一节如果能补一段你自己在老项目里桥接 async 库的亲历小故事，会更像你，也更有说服力。 --&gt;
-
 &lt;h4 id="_7"&gt;几条别踩的坑&lt;/h4&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;strong&gt;不要混着共享 loop 里的对象&lt;/strong&gt;：例如某个 &lt;code&gt;AsyncClient&lt;/code&gt;、异步连接池、async session，最好只在它所属的 event loop 线程里创建和使用。&lt;/li&gt;
@@ -11121,8 +11638,6 @@ pandoc&lt;span class="w"&gt; &lt;/span&gt;input.pdf&lt;span class="w"&gt; &lt;/s
 &lt;li&gt;做选型前，先把你最慢的两个接口画出来，看看时间到底花在 &lt;strong&gt;等下游&lt;/strong&gt; 还是 &lt;strong&gt;本地计算&lt;/strong&gt;。&lt;/li&gt;
 &lt;li&gt;无论哪条：给 &lt;strong&gt;P99 延迟、错误率、worker 数&lt;/strong&gt; 设告警，用数据说话。&lt;/li&gt;
 &lt;/ol&gt;
-&lt;!-- ✍️ 建议亲自改写：如果你能把第 4 条换成你自己踩过的一个坑，例如连接池没关、某个 async client 用错线程，味道会更对。 --&gt;
-
 &lt;hr&gt;
 &lt;h2 id="_10"&gt;扩展阅读&lt;/h2&gt;
 &lt;ul&gt;
@@ -13024,8 +13539,6 @@ skinparam backgroundColor #FEFEFE
 &lt;/tr&gt;
 &lt;/tbody&gt;
 &lt;/table&gt;
-&lt;!-- ✍️ 建议亲自改写：GCP 这一行里“临时权限交换”的具体路径随产品组合会变，最好按你正在用的官方文档核对表述，避免读者对号入座错场景。 --&gt;
-
 &lt;p&gt;理解这张表的重点不是记名字，而是记住共同模式：&lt;strong&gt;工作负载先证明自己，再换取短期权限。&lt;/strong&gt;&lt;/p&gt;
 &lt;h2 id="_15"&gt;如果你要开始做，建议按这个顺序推进&lt;/h2&gt;
 &lt;p&gt;别一上来全量改。安全改造最怕理想很丰满，回滚很频繁。&lt;/p&gt;

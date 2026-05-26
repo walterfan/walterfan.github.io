@@ -1,5 +1,993 @@
 <?xml version="1.0" encoding="utf-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom"><title>Walter Fan's Blog - Tech</title><link href="https://www.fanyamin.com/" rel="alternate"/><link href="https://www.fanyamin.com/feeds/tech.atom.xml" rel="self"/><id>https://www.fanyamin.com/</id><updated>2026-05-17T21:54:00+08:00</updated><subtitle>手握灵珠常奋笔, 心开天籁不吹箫</subtitle><entry><title>从纯文本生成 docx/pdf：难点从来不在“转换”两个字</title><link href="https://www.fanyamin.com/plain-text-docx-pdf.html" rel="alternate"/><published>2026-05-17T21:31:00+08:00</published><updated>2026-05-17T21:54:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-05-17:/plain-text-docx-pdf.html</id><summary type="html">&lt;p&gt;从 Markdown、AsciiDoc、reStructuredText、LaTeX、Typst 到结构化 JSON，纯文本生成 docx/pdf 看起来只是格式转换，真正麻烦的是源格式选型、样式契约、版式一致性、Web 在线编辑、安全沙箱和多人协作。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Walter Fan's Blog - Tech</title><link href="https://www.fanyamin.com/" rel="alternate"/><link href="https://www.fanyamin.com/feeds/tech.atom.xml" rel="self"/><id>https://www.fanyamin.com/</id><updated>2026-05-23T10:20:00+08:00</updated><subtitle>手握灵珠常奋笔, 心开天籁不吹箫</subtitle><entry><title>gstack 拆机报告：AI 编程脚手架做对了什么，又栽在哪里</title><link href="https://www.fanyamin.com/gstack-teardown-what-it-got-right-and-wrong.html" rel="alternate"/><published>2026-05-23T10:20:00+08:00</published><updated>2026-05-23T10:20:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-05-23:/gstack-teardown-what-it-got-right-and-wrong.html</id><summary type="html">&lt;p&gt;拆 gstack 这个 Claude Code 脚手架——它把 sprint 拆成了 30+ 个 slash command，工程上有真功夫，方法论上更值得抄；但工具栏拥堵和文档膨胀，也是 AI 时代项目的通病。这篇讲哪些值得偷师，哪些要警惕，以及自己做类似项目时怎么避坑。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;gstack 拆机报告&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;Tech&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Status&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;v1.0&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;2026-05-23&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;周六上午我把 &lt;a href="https://github.com/garrytan/gstack"&gt;gstack&lt;/a&gt; clone 下来看，本来想十分钟扫一眼就关。结果一个上午没出书房——这玩意值得拆。&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;gstack&lt;/code&gt; 是 Y Combinator 的 Garry Tan 开源的 Claude Code 脚手架。一句话讲：&lt;strong&gt;它把一个工程团队的每个角色——CEO、Eng Manager、Designer、Reviewer、QA、Release Engineer——都做成了 slash command，AI 写代码时按 sprint 一关关跑过去&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;跑了一两次之后，我有几个矛盾的感受：方法论很硬，工程基本功扎实，但工具栏拥堵到让我这种老程序员也会犯怵。这篇拆给你看哪些值得偷师，哪些是 AI 时代项目的通病，以及自己做类似项目时怎么避坑。&lt;/p&gt;
+&lt;p&gt;立场先放在前面：&lt;strong&gt;我不是粉、也不是黑&lt;/strong&gt;。Garry 是真正在大量产出的人，方法论有现场感。但工程归工程，方法论归方法论，拆的时候按工程标准看。&lt;/p&gt;
+&lt;h2 id="_1"&gt;一、做对的事&lt;/h2&gt;
+&lt;h3 id="1-sprint-as-skills"&gt;1. Sprint as Skills：把流程角色化&lt;/h3&gt;
+&lt;p&gt;这是 gstack 最锋利的一刀。&lt;/p&gt;
+&lt;p&gt;传统 AI 编程是一个对话框：你说"帮我加个限流"，AI 一口气写代码、写测试、写文档，全在一个 context 里。问题是 AI 的角色被你压扁了——它既当架构师又当码农，既负责出主意又负责挑毛病，最后哪个角色都不到位。&lt;/p&gt;
+&lt;p&gt;gstack 的做法是把 sprint 解耦：&lt;/p&gt;
+&lt;p&gt;&lt;img alt="gstack sprint flow" src="../images/gstack_sprint_flow.png"&gt;&lt;/p&gt;
+&lt;p&gt;每个阶段是一个 slash command，每个 command 对应一个明确的"虚拟角色"和一份 SKILL.md。&lt;code&gt;/office-hours&lt;/code&gt; 是 YC 风格的产品反向追问，&lt;code&gt;/plan-ceo-review&lt;/code&gt; 是 CEO 视角挑大方向，&lt;code&gt;/plan-eng-review&lt;/code&gt; 落架构和测试，&lt;code&gt;/review&lt;/code&gt; 是 Staff Engineer 找代码气味，&lt;code&gt;/cso&lt;/code&gt; 跑 OWASP + STRIDE。&lt;/p&gt;
+&lt;p&gt;好处是显而易见的：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;AI 的注意力被框住&lt;/strong&gt;。一次只扮一个角色，不会自己跟自己绕&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;流程可暂停、可重入&lt;/strong&gt;。每一关有产出物（design doc / plan / review report），下一关读它&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;责任清晰&lt;/strong&gt;。&lt;code&gt;/review&lt;/code&gt; 没挑出的 bug，是 review 这一关的事，不是 QA 的事&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这件事的本质，是把"AI 写代码"从对话题升级成了&lt;strong&gt;有工序的流水线&lt;/strong&gt;。这条思路本身比 gstack 这个具体实现重要。&lt;/p&gt;
+&lt;h3 id="2-ethos-ai"&gt;2. ETHOS 注入：给 AI 写一份"为什么"&lt;/h3&gt;
+&lt;p&gt;gstack 仓库里有一份 &lt;a href="https://github.com/garrytan/gstack/blob/main/ETHOS.md"&gt;&lt;code&gt;ETHOS.md&lt;/code&gt;&lt;/a&gt;——160 多行的"建造者信条"，会被自动注入到每个 workflow skill 的 preamble 里。&lt;/p&gt;
+&lt;p&gt;里面真正有营养的有三条：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Boil the Lake&lt;/strong&gt;：AI 时代"完整实现"的边际成本几乎为零，要做就做完整的，别再为了省时间留 90% 的方案&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Search Before Building&lt;/strong&gt;：把知识分成三层（Tried-and-true / New-and-popular / First principles），动手前先搜，搜完再判断&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;User Sovereignty&lt;/strong&gt;：两个 AI 模型意见一致也不是真理，用户永远拥有最终决定权，AI 只能 recommend&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这三条不是装饰。它们决定了 AI 在每个 skill 里&lt;strong&gt;怎么思考&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;我最欣赏的是 &lt;strong&gt;User Sovereignty&lt;/strong&gt;：明确写了"当 Claude 和 Codex 都说应该合并这两个东西，而用户说不要——用户永远是对的"。Karpathy 那句"Iron Man suit" 的隐喻很贴切：AI 是钢铁侠的盔甲，不是钢铁侠本人。&lt;/p&gt;
+&lt;p&gt;这条原则对每个想做 AI 工具的人都是必修课：&lt;strong&gt;别让 AI 越权&lt;/strong&gt;。&lt;/p&gt;
+&lt;h3 id="3-daemon"&gt;3. 工程基本功：daemon、双端口、版本自动重启&lt;/h3&gt;
+&lt;p&gt;掀开引擎盖，gstack 的工程不是花架子。&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Bun + 编译型二进制&lt;/strong&gt;：避免 &lt;code&gt;node_modules&lt;/code&gt; 在用户机器上闹脾气，启动也比 Node 快一个量级&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;浏览器守护进程&lt;/strong&gt;：第一次启动 3 秒，后续每个 &lt;code&gt;$B &amp;lt;command&amp;gt;&lt;/code&gt; 只要 100-200ms。AI 跟浏览器交互这种高频场景，没有 daemon 就是灾难&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;双 HTTP 监听端口&lt;/strong&gt;：本地端口暴露完整能力，ngrok 隧道端口只暴露白名单（&lt;code&gt;/connect&lt;/code&gt;、&lt;code&gt;/command&lt;/code&gt;、&lt;code&gt;/sidebar-chat&lt;/code&gt;），靠&lt;strong&gt;物理端口隔离&lt;/strong&gt;做安全，而不是靠 header 推断&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;版本号自动重启&lt;/strong&gt;：编译时写入 &lt;code&gt;git rev-parse HEAD&lt;/code&gt;，CLI 发现 binary 跟 server 版本不一致就自动 kill 再起。"陈旧二进制"这类坑直接断根&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这些细节单拎出来都不新鲜，但凑在一起说明一件事：&lt;strong&gt;作者真的在用这个工具，并且踩过坑&lt;/strong&gt;。AI 编程时代很多项目"看起来都对"，跑起来全是漏，gstack 不是。&lt;/p&gt;
+&lt;h3 id="4-agent"&gt;4. 跨 agent 适配：方法论高于宿主&lt;/h3&gt;
+&lt;p&gt;gstack 不绑死 Claude Code，一份 &lt;code&gt;./setup --host &amp;lt;name&amp;gt;&lt;/code&gt; 能把 skill 安到 Codex、Cursor、OpenCode、Factory、Kiro 等十个 AI agent 的对应目录下。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;~/.claude/skills/gstack-*/   # Claude Code
+~/.codex/skills/gstack-*/    # OpenAI Codex CLI
+~/.cursor/skills/gstack-*/   # Cursor
+~/.config/opencode/skills/gstack-*/  # OpenCode
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这件事看着是个安装脚本的小事，本质却是一个&lt;strong&gt;抽象层选择&lt;/strong&gt;：作者把 sprint 方法论当成一等公民，把 AI agent 当成可替换的宿主。这跟当年 LSP（Language Server Protocol）把语言能力从编辑器里抽出来是一个套路。&lt;/p&gt;
+&lt;p&gt;赌的是什么？&lt;strong&gt;赌方法论比工具活得久&lt;/strong&gt;。我赞同这个赌局。&lt;/p&gt;
+&lt;h3 id="5"&gt;5. 安全意识在线&lt;/h3&gt;
+&lt;p&gt;AI agent + 浏览器是个高危组合，gstack 在这件事上没偷懒：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;CDP allowlist&lt;/strong&gt;：原始 Chrome DevTools Protocol 调用走 deny-default 白名单，每个 method 加进白名单要附一句 justification&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Prompt injection 防御&lt;/strong&gt;：22MB 本地 ML 分类器 + Haiku 全文检查 + system prompt 里的随机 canary token，两个分类器同意才阻断（防止单模型误杀）&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Scoped token&lt;/strong&gt;：&lt;code&gt;/pair-agent&lt;/code&gt; 给远端 agent 的 token 只能调白名单 command，不能访问 &lt;code&gt;/health&lt;/code&gt; 这种敏感端点&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这些设计在 ARCHITECTURE.md 里说得很清楚。普通 AI 工具项目能做到一半就不错了。&lt;/p&gt;
+&lt;h2 id="_2"&gt;二、待提高的地方&lt;/h2&gt;
+&lt;h3 id="1"&gt;1. 工具栏拥堵&lt;/h3&gt;
+&lt;p&gt;&lt;code&gt;AGENTS.md&lt;/code&gt; 里列了 50+ 个 slash command，README 里又列了一遍。光是 &lt;code&gt;/plan-&lt;/code&gt; 开头的就有 &lt;code&gt;plan-ceo-review&lt;/code&gt;、&lt;code&gt;plan-eng-review&lt;/code&gt;、&lt;code&gt;plan-design-review&lt;/code&gt;、&lt;code&gt;plan-devex-review&lt;/code&gt;、&lt;code&gt;plan-tune&lt;/code&gt;、&lt;code&gt;autoplan&lt;/code&gt;六个。&lt;/p&gt;
+&lt;!-- 建议亲自改写：把"十几分钟"换成你跑第一次时的真实感受，比如卡在哪个具体命令上 --&gt;
+&lt;p&gt;对老用户是富矿，对新用户是迷宫。我装上跑第一次的时候，光是判断"我现在该用哪个 command" 就花了十几分钟。&lt;/p&gt;
+&lt;p&gt;更深层的问题是：&lt;strong&gt;当工具栏比业务还复杂时，开发者的认知负载是反向被推高的&lt;/strong&gt;。AI 本应替你管这些选择，结果你先得替 AI 把选择题做完。&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;/autoplan&lt;/code&gt;（自动跑一组 review）是个聪明的折衷，但它的存在本身就承认了"散装命令太多"。&lt;/p&gt;
+&lt;h3 id="2"&gt;2. 文档膨胀&lt;/h3&gt;
+&lt;p&gt;仓库里几个核心文档的体量：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;文件&lt;/th&gt;
+&lt;th&gt;行数&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;CHANGELOG.md&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;732 KB&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;BROWSER.md&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;60 KB&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;CLAUDE.md&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;49 KB&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;ARCHITECTURE.md&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;32 KB&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;单个 &lt;code&gt;office-hours/SKILL.md&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;2092 行&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;文档很全，每一份单看都有理由。但&lt;strong&gt;一个 SKILL.md 写到 2000 行&lt;/strong&gt;，已经超过了人能"读一遍记住"的体量。&lt;/p&gt;
+&lt;p&gt;这是 AI 项目的通病：因为生成成本低，文档容易膨胀。膨胀之后没人通读，新功能往里堆，旧功能没人删——慢慢就变成了考古现场。&lt;/p&gt;
+&lt;p&gt;我自己的经验：超过 500 行的 prompt 文件，AI 自己也会注意力涣散。&lt;/p&gt;
+&lt;h3 id="3"&gt;3. 默认开关偏激进&lt;/h3&gt;
+&lt;p&gt;跑 &lt;code&gt;setup&lt;/code&gt; 的时候，gstack 会问要不要给当前项目也装一份、要不要给 CLAUDE.md 加一段"必须用 gstack 的指引"。这些选择本身没错，但默认走向是"全部开启"。&lt;/p&gt;
+&lt;p&gt;对于已经"all-in" 的人很爽，对于"先试试"的人就是入侵感。第一次跑完，CLAUDE.md 多了一大段我并不完全理解的指令，CI 里多了一些我没确认的钩子。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;我的偏好是"默认保守，进阶才打开"&lt;/strong&gt;。让用户能小步试，再决定要不要 all in。&lt;/p&gt;
+&lt;h3 id="4-changelog"&gt;4. CHANGELOG 即历史诗&lt;/h3&gt;
+&lt;p&gt;732KB 的 CHANGELOG 本身是个信号。版本号已经走到 &lt;code&gt;1.43.3.0&lt;/code&gt;（四段式版本号也是一个观察点），说明迭代密度极高、破坏性变更不少。&lt;/p&gt;
+&lt;p&gt;迭代快是好事。但作为"想长期依赖它"的工程师，我会顾虑：&lt;strong&gt;今天跑通的 workflow，下周 upgrade 之后还在不在？&lt;/strong&gt;&lt;/p&gt;
+&lt;h2 id="_3"&gt;三、自己做类似项目时，能借鉴什么&lt;/h2&gt;
+&lt;p&gt;这一段是这次拆机我最在意的部分。哪怕你完全不用 gstack，下面这些可以直接抄进你自己的项目。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;1. 给你的 AI Agent 写一份 ETHOS&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;不是 prompt，是信条。三五条就够：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;边际成本变低之后，要做完整的事&lt;/li&gt;
+&lt;li&gt;动手之前先搜，把知识分三层&lt;/li&gt;
+&lt;li&gt;用户拥有最终决定权&lt;/li&gt;
+&lt;li&gt;……（你团队的语境）&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;把它注入到每个 workflow 入口。这比你 prompt 里反复说"请仔细思考"管用得多。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;2. 把方法论压成 slash command，但克制总数&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;把你团队最常做的 5-8 件事——比如"提一个 design proposal"、"做一次 code review"、"加一个 feature flag"——做成 skill。不要超过十个。十个以上就开始挤了。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;3. 给每个流程一个明确的产出物&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;/office-hours&lt;/code&gt; 产出 design doc，&lt;code&gt;/plan-eng-review&lt;/code&gt; 产出测试矩阵，&lt;code&gt;/review&lt;/code&gt; 产出 review report。&lt;strong&gt;下一关读上一关的产出物&lt;/strong&gt;，AI 的注意力就被串起来了。&lt;/p&gt;
+&lt;p&gt;这是把 Pipeline 思想搬到 AI 编程里的关键一步。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;4. "第二意见"模式&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;让另一个 AI——最好是不同模型——用不同 prompt 审视同一份代码。gstack 的 &lt;code&gt;/codex&lt;/code&gt; 是这个思路。一行 shell 脚本的事，但挡住的坑很真实。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;5. 复盘自动化&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;/retro&lt;/code&gt; 自动按人、按项目、按周做复盘统计。手动写月度总结的人都知道，最难的不是写，是收集数据。把数据收集自动化，复盘的门槛就降到了"愿意花十分钟"。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;6. 守护进程化高频操作&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;浏览器、数据库连接、LSP server——任何 AI 调用频次高于 1 次/分钟的依赖，都应该是 daemon。冷启动 3 秒 vs 热调用 100ms，对体验是数量级差异。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;7. 把宿主当成可换的&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;哪怕你今天只用 Claude，也按"将来可能换"的姿势写 skill。这跟当年写代码不绑 DB 是一个道理。AI 模型/agent 的演化速度比数据库快得多。&lt;/p&gt;
+&lt;h2 id="_4"&gt;四、收尾&lt;/h2&gt;
+&lt;p&gt;&lt;img alt="gstack 拆机思维导图" src="../images/gstack_mindmap.png"&gt;&lt;/p&gt;
+&lt;p&gt;二十多年写代码的体会是：&lt;strong&gt;工具不是答案，方法才是&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;gstack 最大的价值不在那 30 多个 slash command，而在它&lt;strong&gt;把 AI 编程从对话框升级成了流水线&lt;/strong&gt;这个思路。工具栏会拥堵，文档会膨胀，版本号会跳跃，但 sprint as skills 这个抽象会留下来。&lt;/p&gt;
+&lt;p&gt;如果你是想用好 AI 的工程师，建议你装一次跑一遍 &lt;code&gt;/office-hours → /autoplan → /review → /qa → /ship&lt;/code&gt;，体验"流水线"的感觉，再回头按自己的项目做减法。&lt;/p&gt;
+&lt;p&gt;如果你是创业者，更值得抄的是 ETHOS：&lt;strong&gt;给你团队的 AI 写一份"我们是怎么思考的"&lt;/strong&gt;——这比塞一堆 prompt 模板有用一万倍。&lt;/p&gt;
+&lt;p&gt;最后留一个问题：你团队现在用 AI 编程，是已经在跑流水线，还是还在跟对话框打字？&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap
+* gstack 拆机
+** 做对了
+*** Sprint as Skills\n把流程角色化
+*** ETHOS 注入\nBoil the Lake / Search First / User Sovereignty
+*** 跨 agent 适配\nClaude / Codex / OpenCode / Cursor ...
+*** 工程基本功\nBun 单体 / 守护进程 / 双监听端口
+*** 安全意识\nCDP allowlist / prompt injection 防御
+** 可借鉴
+*** 把方法论压成 slash command
+*** 给 AI 写一份 ETHOS
+*** &amp;quot;第二意见&amp;quot; 模式\n换模型审视
+*** 复盘自动化
+** 待提高
+*** 工具栏拥堵\n30+ slash command
+*** 文档膨胀\n730K CHANGELOG
+*** SKILL.md 单文件 2000 行
+*** 默认开关激进\n新手要&amp;quot;做减法&amp;quot;
+@endmindmap
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;hr/&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Tech"/><category term="ai-coding"/><category term="claude-code"/><category term="gstack"/><category term="methodology"/><category term="teardown"/><category term="slash-commands"/></entry><entry><title>Harness Pipeline：给 AI 编程套一条带护栏的跑道</title><link href="https://www.fanyamin.com/harness-pipeline-for-ai-coding.html" rel="alternate"/><published>2026-05-21T22:05:00+08:00</published><updated>2026-05-21T22:20:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-05-21:/harness-pipeline-for-ai-coding.html</id><summary type="html">&lt;p&gt;传统 Build Pipeline 是为"人写代码、机器构建"设计的；AI 编程时代需要一条新流水线——SDD（OpenSpec + DDD）→ TDD → BDD → MDD，配上静态分析、AI Review、规则检查，把"AI 生成"变成"AI 可交付"。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;Harness Pipeline：给 AI 编程套一条带护栏的跑道&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;Tech&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Status&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;v1.0&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;2026-05-21&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;周五下午四点，AI 半小时帮我写完一个 feature，单元测试一片绿。&lt;/p&gt;
+&lt;p&gt;我盯着 diff 看了五分钟，没看出什么毛病。点了合并按钮的那一刻，心里却没底——不是怕它写错了，是怕它"对得太工整"，工整到我没办法判断它有没有偷偷绕过某个边界条件。&lt;/p&gt;
+&lt;p&gt;这种心虚，过去十几年写代码很少有。以前 Code Review 看一段陌生代码，至少知道"作者大概是怎么想的"，看几眼就能判断要不要追问。AI 写的代码不一样：它没有"想法"，只有"模式"。模式对了，逻辑可能错；模式眼熟，安全可能塌。&lt;/p&gt;
+&lt;p&gt;所以我越来越确信一件事：&lt;strong&gt;AI 让"写代码"变快了，却让"交付代码"变难了&lt;/strong&gt;。难的不是技术，是责任——谁为这段代码上线后的行为负责？&lt;/p&gt;
+&lt;p&gt;这篇文章想聊的，就是怎么用一条更严的流水线把这份责任接住。我把它叫做 &lt;strong&gt;Harness Pipeline&lt;/strong&gt;——给 AI 编程套一条带护栏的跑道，骨架是 SDD → TDD → BDD → MDD，闸门是静态分析、AI Review、规则检查。&lt;/p&gt;
+&lt;h2 id="build-pipeline"&gt;一、Build Pipeline 不够用了&lt;/h2&gt;
+&lt;p&gt;传统 Build Pipeline 解决的是一个很朴素的问题：&lt;strong&gt;这段代码能不能跑、跑起来对不对&lt;/strong&gt;。它的假设是：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;代码由人写，每一行都有人能讲清楚为什么这么写&lt;/li&gt;
+&lt;li&gt;测试由人维护，覆盖的是人能想到的场景&lt;/li&gt;
+&lt;li&gt;出了问题，能追溯到具体的人和具体的提交&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;AI 编程把这三条假设全打乱了：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;代码是 AI 生成的，"为什么这么写"的答案是"训练数据里这么写的"&lt;/li&gt;
+&lt;li&gt;测试也可能是 AI 顺手写的，覆盖的是"AI 觉得该测的"&lt;/li&gt;
+&lt;li&gt;出了问题，提交人是你，但你只 review 了一部分&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Build Pipeline 还在管"构建是否成功"，但现在的风险点早就变了。变成了：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;意图是否对齐&lt;/strong&gt;：AI 理解的需求和你理解的是不是同一件事？&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;行为是否对路&lt;/strong&gt;：测试全绿，但用户走进来真的舒服吗？&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;上线后是否真有用&lt;/strong&gt;：这个 feature 到底带来了什么？还是只是给监控大盘多加了一条曲线？&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这三件事，Build Pipeline 一件都管不了。&lt;/p&gt;
+&lt;h2 id="harness-pipeline"&gt;二、Harness Pipeline 是什么&lt;/h2&gt;
+&lt;p&gt;一句话：&lt;strong&gt;Harness Pipeline 是 AI 代码生成的约束跑道，前面用四层骨架定方向，中间用三道闸门挡 bug，后面用一个反馈环验假设&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;骨架是 SDD → TDD → BDD → MDD，闸门穿插在中间，最后人来 sign-off。完整流程长这样：&lt;/p&gt;
+&lt;p&gt;&lt;img alt="Harness Pipeline 流程图" src="../images/harness_pipeline_flow.png"&gt;&lt;/p&gt;
+&lt;p&gt;这条跑道的核心思想只有一句：&lt;strong&gt;让 AI 在每一关被卡住，而不是事后让人兜底&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;为什么？因为 AI 修代码比人快，但 AI 决定"这段代码值不值得上线"比人差远了。把判断留给人，把修复交给 AI，分工才对。&lt;/p&gt;
+&lt;h2 id="sdd-tdd-bdd-mdd"&gt;三、四层骨架：SDD → TDD → BDD → MDD&lt;/h2&gt;
+&lt;p&gt;四层骨架解决的是四个不同时间点的问题。&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;层&lt;/th&gt;
+&lt;th&gt;在 AI 之前/之后&lt;/th&gt;
+&lt;th&gt;防什么&lt;/th&gt;
+&lt;th&gt;谁说了算&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;SDD（Spec-Driven）&lt;/td&gt;
+&lt;td&gt;之前&lt;/td&gt;
+&lt;td&gt;防意图跑偏&lt;/td&gt;
+&lt;td&gt;人写规格&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;TDD（Test-Driven）&lt;/td&gt;
+&lt;td&gt;之前&lt;/td&gt;
+&lt;td&gt;防契约被绕过&lt;/td&gt;
+&lt;td&gt;人/AI 共写用例&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;BDD（Behavior-Driven）&lt;/td&gt;
+&lt;td&gt;之中&lt;/td&gt;
+&lt;td&gt;防用户体验跑偏&lt;/td&gt;
+&lt;td&gt;人定场景&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;MDD（Metrics-Driven）&lt;/td&gt;
+&lt;td&gt;之后&lt;/td&gt;
+&lt;td&gt;防假设落空&lt;/td&gt;
+&lt;td&gt;数据说话&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h3 id="sdd-openspec-ddd"&gt;SDD：规格即合同（用 OpenSpec 装、用 DDD 写）&lt;/h3&gt;
+&lt;p&gt;最早我也只是在项目里塞一个 &lt;code&gt;spec.md&lt;/code&gt;。能用，但很快就出问题——规格散在各处，没人 review，改了也没人知道，更别说追溯"上一版我们承诺了什么"。&lt;/p&gt;
+&lt;p&gt;规格要变成 Harness Pipeline 的第一道闸门，至少要满足三件事：&lt;strong&gt;可工件化、可 diff、可归档&lt;/strong&gt;。这正是 &lt;a href="https://github.com/Fission-AI/OpenSpec"&gt;OpenSpec&lt;/a&gt; 这一类工具在做的事。Anthropic 的 SuperPower 系列工具走的是类似的路：把规格变成一等公民的工件，而不是 README 里的散文。&lt;/p&gt;
+&lt;p&gt;以 OpenSpec 为例，一个完整的 change 长这样：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;openspec/
+  changes/
+    add-rate-limit/
+      proposal.md          # 这次改什么、为什么
+      design.md            # 关键设计决策
+      tasks.md             # 拆解到可执行任务
+      specs/
+        api-gateway/
+          spec.md           # 这个能力的最终规格
+        api-gateway-delta/
+          spec.md           # 本次 change 引入的增量
+  specs/
+    api-gateway/spec.md     # 当前已发布的规格基线
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;好处是立等可见的：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;AI 读 &lt;code&gt;proposal.md&lt;/code&gt; 知道意图，读 &lt;code&gt;spec.md&lt;/code&gt; 知道边界，读 &lt;code&gt;tasks.md&lt;/code&gt; 知道怎么拆步骤&lt;/li&gt;
+&lt;li&gt;人 review 的是 spec delta，跟看 git diff 一样直观&lt;/li&gt;
+&lt;li&gt;change 落地后归档进 &lt;code&gt;specs/&lt;/code&gt; 基线，下一次改动有据可查&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;那 DDD 在哪里？DDD 不是工具，是教你"规格里到底该写什么"。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;OpenSpec 给你一张表格，DDD 告诉你怎么把表格填对。具体到日常工作，DDD 至少在三个地方帮你避免"AI 把脏活揽在一起"：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;限界上下文（Bounded Context）&lt;/strong&gt;：先问"这事属于哪个上下文？API 网关？账单？身份？" 想清楚再下笔，AI 才不会把限流逻辑揉进业务 service&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;聚合（Aggregate）&lt;/strong&gt;：明确"这次改动的一致性边界在哪"。比如限流计数器是 API 网关上下文里的一个聚合，TTL 一过就重置，不需要持久化到核心业务库&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;领域事件（Domain Event）&lt;/strong&gt;：把"发生了什么"显式化。&lt;code&gt;RateLimitExceeded&lt;/code&gt; 是个事件，不是一个 if 分支——这件事写进 spec，下游消费者（告警、计费、风控）就有了对接口子&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;我自己的习惯：写 OpenSpec 的 &lt;code&gt;design.md&lt;/code&gt; 之前，先在纸上画三件事——上下文图、聚合边界、关键领域事件。画完再去填模板，AI 生成代码时也带着这份"领域感"，而不是只对着 REST URL 拍脑袋。&lt;/p&gt;
+&lt;p&gt;一句话总结这一层：&lt;strong&gt;OpenSpec 提供流程载体，DDD 提供设计骨架，AI 在二者圈出的范围里写代码&lt;/strong&gt;。&lt;/p&gt;
+&lt;h3 id="tdd"&gt;TDD：红 → 绿 → 重构&lt;/h3&gt;
+&lt;p&gt;规格落到代码层，就是测试用例。Harness Pipeline 里 TDD 的位置很关键——它是&lt;strong&gt;第一道客观闸门&lt;/strong&gt;。AI 写的代码必须先让红色变绿色，否则不允许往下走。&lt;/p&gt;
+&lt;p&gt;这里有个坑：让 AI 同时写代码和写测试，等于让它自己出卷自己批改。最好的做法是&lt;strong&gt;人先写出核心契约的测试&lt;/strong&gt;（关键路径、边界、异常），AI 再去填实现；剩下的辅助测试可以交给 AI 补，但人要 review 测试是不是"真在测行为"。&lt;/p&gt;
+&lt;h3 id="bdd"&gt;BDD：用户视角的验收&lt;/h3&gt;
+&lt;p&gt;单元测试全绿，不代表用户走进来不别扭。BDD 用 &lt;code&gt;Given-When-Then&lt;/code&gt; 描述用户行为，挡的是"通过测试但不对路"的那一类问题。&lt;/p&gt;
+&lt;p&gt;举个例子：限流 feature 单测全绿，但 BDD 场景一跑——"用户在 1 分钟内请求 100 次，第 101 次应该看到友好提示而不是 500"——AI 实现里压根没考虑响应体长什么样。&lt;/p&gt;
+&lt;h3 id="mdd"&gt;MDD：上线后用指标验证假设&lt;/h3&gt;
+&lt;p&gt;MDD 是这条流水线最容易被忽略的一环。&lt;/p&gt;
+&lt;p&gt;我们做一个 feature 的时候，背后都有假设："加了限流，错误率会下降"、"换了算法，P99 延迟会从 200ms 降到 100ms"。Build Pipeline 不管这个，BDD 也不管。&lt;strong&gt;MDD 的任务是把假设变成指标，让上线后的数据回头验证它&lt;/strong&gt;。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# 在关键路径埋指标，让假设可以被验证&lt;/span&gt;
+&lt;span class="kn"&gt;from&lt;/span&gt; &lt;span class="nn"&gt;prometheus_client&lt;/span&gt; &lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="n"&gt;Counter&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;Histogram&lt;/span&gt;
+
+&lt;span class="n"&gt;rate_limit_blocked&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;Counter&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+    &lt;span class="s2"&gt;&amp;quot;api_rate_limit_blocked_total&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="s2"&gt;&amp;quot;Requests blocked by rate limiter&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;endpoint&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;client_tier&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;
+&lt;span class="p"&gt;)&lt;/span&gt;
+
+&lt;span class="n"&gt;api_latency&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;Histogram&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+    &lt;span class="s2"&gt;&amp;quot;api_request_duration_seconds&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="s2"&gt;&amp;quot;API request latency&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;endpoint&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;
+&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;指标不对，回灌到下一轮 SDD：要么是规格写错了，要么是实现没达到承诺。这个闭环一旦跑起来，AI 写的代码就不再是"交付即终点"，而是"交付即开始"。&lt;/p&gt;
+&lt;h2 id="ai"&gt;四、三道闸门：把 AI 挡在错误之前&lt;/h2&gt;
+&lt;p&gt;骨架定方向，闸门防细节。三道闸门按成本从低到高排：&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;第一道：静态分析（成本最低、最确定）&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;Python 项目里我常用这套：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;ruff&lt;/code&gt; 管风格、imports、明显 bug&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;mypy --strict&lt;/code&gt; 管类型&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;bandit&lt;/code&gt; 管安全（hardcoded secret、不安全的 yaml.load 之类）&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这些工具是确定性的，跑得快，CI 里挂一道就行。AI 写的代码连这关都过不了，根本没必要往后送。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;第二道：AI Review（用 AI 防 AI）&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;让另一个 AI（最好是不同模型，或者至少用完全不同的 prompt）对着 diff 做 review。重点不是"挑语法错"——那是静态分析的事——而是问几个高层问题：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;这段代码的意图和 spec 一致吗？&lt;/li&gt;
+&lt;li&gt;有没有看起来对、但其实绕过了某个边界的情况？&lt;/li&gt;
+&lt;li&gt;错误处理是不是只是"装样子"（catch 了但 swallow 了）？&lt;/li&gt;
+&lt;li&gt;有没有 log 泄露敏感信息？&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;换 prompt 的意义在于：第一遍 AI 容易"自卖自夸"，换个视角它才会挑出毛病。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;第三道：规则检查（项目级硬规则）&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;每个项目都有自己的硬规则——命名规范、目录约定、安全基线、日志合规。这些东西沉淀在 &lt;code&gt;AGENTS.md&lt;/code&gt;、skill 文件、或者一个简单的 &lt;code&gt;rules/&lt;/code&gt; 目录里。规则检查就是把这些规则跑成自动化脚本，挡住 AI 不知道的本地知识。&lt;/p&gt;
+&lt;p&gt;比如我们项目里有一条："任何打到 INFO 级别的 log，不允许包含用户的手机号、邮箱、token"。AI 不知道，但脚本知道。&lt;/p&gt;
+&lt;h2 id="python-api"&gt;五、Python 实战：给 API 加限流&lt;/h2&gt;
+&lt;p&gt;走一遍端到端，看看 Harness Pipeline 怎么跑起来。需求很简单：给一个 FastAPI 接口加限流。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Step 1. SDD：先做 DDD 草图，再落到 OpenSpec change&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;动笔之前花十分钟在纸上画：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;限界上下文&lt;/strong&gt;：API 网关。不污染下游业务上下文。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;聚合&lt;/strong&gt;：&lt;code&gt;RateLimitWindow&lt;/code&gt;（key = client_id，TTL 60s，强一致只在单实例内）。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;领域事件&lt;/strong&gt;：&lt;code&gt;RateLimitExceeded(client_id, endpoint, at)&lt;/code&gt;，将来要被告警和风控订阅。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;落到 OpenSpec，新建一个 change &lt;code&gt;add-rate-limit&lt;/code&gt;：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="gh"&gt;# openspec/changes/add-rate-limit/proposal.md&lt;/span&gt;
+
+&lt;span class="gu"&gt;## Why&lt;/span&gt;
+高峰期 /api/v1/search 被少量客户端打爆，影响其他用户体验。
+
+&lt;span class="gu"&gt;## What Changes&lt;/span&gt;
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;引入 API 网关层的限流中间件（单机滑动窗口）
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;暴露 &lt;span class="sb"&gt;`RateLimitExceeded`&lt;/span&gt; 领域事件供下游订阅
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;限流被触发时不暴露算法细节
+
+&lt;span class="gu"&gt;## Out of Scope&lt;/span&gt;
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;分布式限流（下一个 change）
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;配额管理 UI
+
+&lt;span class="gu"&gt;## Impact&lt;/span&gt;
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;Affected spec: api-gateway（新增 rate-limit 能力）
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;Affected code: app/middleware/, app/events/
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;再写 spec delta：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="gh"&gt;# openspec/changes/add-rate-limit/specs/api-gateway-delta/spec.md&lt;/span&gt;
+
+&lt;span class="gu"&gt;## ADDED Requirements&lt;/span&gt;
+
+&lt;span class="gu"&gt;### Requirement: 单客户端限流&lt;/span&gt;
+系统 SHALL 限制单个客户端在 60s 内对 /api/v1/search 的请求次数。
+
+&lt;span class="gu"&gt;#### Scenario: 在限制内&lt;/span&gt;
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;WHEN 客户端 60s 内请求 ≤ 60 次
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;THEN 全部正常处理（200）
+
+&lt;span class="gu"&gt;#### Scenario: 超出限制&lt;/span&gt;
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;WHEN 客户端 60s 内请求超过 60 次
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;THEN 返回 429
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;AND 响应体为 {&amp;quot;error&amp;quot;: &amp;quot;rate_limited&amp;quot;, &amp;quot;retry_after&amp;quot;: &amp;lt;秒&amp;gt;}
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;AND 响应体 MUST NOT 包含算法、窗口大小等内部细节
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;AND 触发 RateLimitExceeded 事件
+
+&lt;span class="gu"&gt;### Requirement: 匿名客户端&lt;/span&gt;
+未携带 X-Client-Id 的请求 SHALL 按匿名身份限流，限制为 10 req/min。
+
+&lt;span class="gu"&gt;### Requirement: 健康检查豁免&lt;/span&gt;
+/health 路径 SHALL NOT 计入任何限流计数。
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这份 spec 拿给 AI，意图、边界、领域事件全在里面。AI 写出来的中间件就不再是"对 URL 加个计数器"，而是"在 API 网关上下文里维护一个 &lt;code&gt;RateLimitWindow&lt;/code&gt; 聚合，并在越界时发出领域事件"——后者才是能跟整个系统协作的代码。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Step 2. TDD：人写核心契约测试&lt;/strong&gt;&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# tests/test_rate_limit.py&lt;/span&gt;
+&lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="nn"&gt;pytest&lt;/span&gt;
+&lt;span class="kn"&gt;from&lt;/span&gt; &lt;span class="nn"&gt;fastapi.testclient&lt;/span&gt; &lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="n"&gt;TestClient&lt;/span&gt;
+&lt;span class="kn"&gt;from&lt;/span&gt; &lt;span class="nn"&gt;app.main&lt;/span&gt; &lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="n"&gt;app&lt;/span&gt;
+
+&lt;span class="n"&gt;client&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;TestClient&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;app&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;test_within_limit_returns_200&lt;/span&gt;&lt;span class="p"&gt;():&lt;/span&gt;
+    &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;_&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="nb"&gt;range&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mi"&gt;60&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+        &lt;span class="n"&gt;r&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;client&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;get&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;/api/v1/search&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;headers&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;X-Client-Id&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;c1&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;})&lt;/span&gt;
+        &lt;span class="k"&gt;assert&lt;/span&gt; &lt;span class="n"&gt;r&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;status_code&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="mi"&gt;200&lt;/span&gt;
+
+&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;test_over_limit_returns_429_with_retry_after&lt;/span&gt;&lt;span class="p"&gt;():&lt;/span&gt;
+    &lt;span class="n"&gt;headers&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;X-Client-Id&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;c2&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+    &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;_&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="nb"&gt;range&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mi"&gt;60&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+        &lt;span class="n"&gt;client&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;get&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;/api/v1/search&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;headers&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;headers&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="n"&gt;r&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;client&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;get&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;/api/v1/search&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;headers&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;headers&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;assert&lt;/span&gt; &lt;span class="n"&gt;r&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;status_code&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="mi"&gt;429&lt;/span&gt;
+    &lt;span class="n"&gt;body&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;r&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;json&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+    &lt;span class="k"&gt;assert&lt;/span&gt; &lt;span class="n"&gt;body&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;error&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;rate_limited&amp;quot;&lt;/span&gt;
+    &lt;span class="k"&gt;assert&lt;/span&gt; &lt;span class="n"&gt;body&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;retry_after&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt; &lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;
+    &lt;span class="c1"&gt;# 安全：不暴露算法细节&lt;/span&gt;
+    &lt;span class="k"&gt;assert&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;window&amp;quot;&lt;/span&gt; &lt;span class="ow"&gt;not&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;body&lt;/span&gt; &lt;span class="ow"&gt;and&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;algorithm&amp;quot;&lt;/span&gt; &lt;span class="ow"&gt;not&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;body&lt;/span&gt;
+
+&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;test_health_check_not_counted&lt;/span&gt;&lt;span class="p"&gt;():&lt;/span&gt;
+    &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;_&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="nb"&gt;range&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mi"&gt;100&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+        &lt;span class="n"&gt;r&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;client&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;get&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;/health&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="k"&gt;assert&lt;/span&gt; &lt;span class="n"&gt;r&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;status_code&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="mi"&gt;200&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;把这三个测试丢给 AI，告诉它"让它们绿"。AI 会去写中间件、写滑动窗口。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Step 3. 三道闸门&lt;/strong&gt;&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# 静态分析&lt;/span&gt;
+ruff&lt;span class="w"&gt; &lt;/span&gt;check&lt;span class="w"&gt; &lt;/span&gt;app/&lt;span class="w"&gt; &lt;/span&gt;tests/
+mypy&lt;span class="w"&gt; &lt;/span&gt;--strict&lt;span class="w"&gt; &lt;/span&gt;app/
+bandit&lt;span class="w"&gt; &lt;/span&gt;-r&lt;span class="w"&gt; &lt;/span&gt;app/
+
+&lt;span class="c1"&gt;# AI Review（伪命令，实际可以是脚本调你的 AI agent）&lt;/span&gt;
+ai-review&lt;span class="w"&gt; &lt;/span&gt;--diff&lt;span class="w"&gt; &lt;/span&gt;HEAD~1&lt;span class="w"&gt; &lt;/span&gt;--prompt&lt;span class="w"&gt; &lt;/span&gt;review-rate-limit.md
+
+&lt;span class="c1"&gt;# 规则检查&lt;/span&gt;
+python&lt;span class="w"&gt; &lt;/span&gt;scripts/check_log_privacy.py&lt;span class="w"&gt; &lt;/span&gt;app/
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;!-- 建议亲自改写：这段坑是构造的工程场景，建议替换成你真实遇到的一个 AI 生成代码被规则检查挡下来的例子，会更有说服力 --&gt;
+&lt;p&gt;我自己踩过一个坑：AI 第一版实现把 &lt;code&gt;client_id&lt;/code&gt; 直接打到了 INFO 日志里。单测全过，AI Review 也没挑出来。规则检查脚本一跑，立刻报错——这就是项目级硬规则的价值。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Step 4. BDD：用户视角&lt;/strong&gt;&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# features/rate_limit.feature&lt;/span&gt;
+&lt;span class="n"&gt;Feature&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;API&lt;/span&gt; &lt;span class="n"&gt;限流给用户友好的提示&lt;/span&gt;
+
+  &lt;span class="n"&gt;Scenario&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;超过限制时返回友好响应&lt;/span&gt;
+    &lt;span class="n"&gt;Given&lt;/span&gt; &lt;span class="n"&gt;客户端&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;c3&amp;quot;&lt;/span&gt; &lt;span class="n"&gt;已经请求&lt;/span&gt; &lt;span class="mi"&gt;60&lt;/span&gt; &lt;span class="n"&gt;次&lt;/span&gt;
+    &lt;span class="n"&gt;When&lt;/span&gt; &lt;span class="n"&gt;客户端&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;c3&amp;quot;&lt;/span&gt; &lt;span class="n"&gt;再次请求&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;/api/v1/search&amp;quot;&lt;/span&gt;
+    &lt;span class="n"&gt;Then&lt;/span&gt; &lt;span class="n"&gt;响应状态码是&lt;/span&gt; &lt;span class="mi"&gt;429&lt;/span&gt;
+    &lt;span class="n"&gt;And&lt;/span&gt; &lt;span class="n"&gt;响应包含&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;retry_after&amp;quot;&lt;/span&gt; &lt;span class="n"&gt;字段&lt;/span&gt;
+    &lt;span class="n"&gt;And&lt;/span&gt; &lt;span class="n"&gt;响应不包含&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;algorithm&amp;quot;&lt;/span&gt; &lt;span class="n"&gt;字段&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;strong&gt;Step 5. MDD：上线后看指标&lt;/strong&gt;&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# app/middleware/rate_limit.py（节选）&lt;/span&gt;
+&lt;span class="kn"&gt;from&lt;/span&gt; &lt;span class="nn"&gt;prometheus_client&lt;/span&gt; &lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="n"&gt;Counter&lt;/span&gt;
+
+&lt;span class="n"&gt;blocked_total&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;Counter&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+    &lt;span class="s2"&gt;&amp;quot;api_rate_limit_blocked_total&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="s2"&gt;&amp;quot;Requests blocked&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;endpoint&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;client_tier&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;
+&lt;span class="p"&gt;)&lt;/span&gt;
+
+&lt;span class="k"&gt;async&lt;/span&gt; &lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;rate_limit_middleware&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;request&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;call_next&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;is_over_limit&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;request&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+        &lt;span class="n"&gt;blocked_total&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;labels&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+            &lt;span class="n"&gt;endpoint&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;request&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;url&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;path&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+            &lt;span class="n"&gt;client_tier&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;classify&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;request&lt;/span&gt;&lt;span class="p"&gt;),&lt;/span&gt;
+        &lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;inc&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;JSONResponse&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+            &lt;span class="n"&gt;status_code&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;429&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+            &lt;span class="n"&gt;content&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;error&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;rate_limited&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;retry_after&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="mi"&gt;60&lt;/span&gt;&lt;span class="p"&gt;},&lt;/span&gt;
+        &lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="k"&gt;await&lt;/span&gt; &lt;span class="n"&gt;call_next&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;request&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;上线一周后回头看：被挡的请求集中在哪几个 client？挡得对不对？有没有误伤正常用户？这些数据回灌到下一轮 SDD——可能要给某个白名单 client 单独配额，可能要把窗口从 60s 调到 30s。&lt;/p&gt;
+&lt;p&gt;整条流水线跑下来，AI 干了 80% 的体力活，人只在四个地方做了判断：写 spec、定核心契约测试、定 BDD 场景、看指标做决策。&lt;strong&gt;判断密度高，但判断量不大&lt;/strong&gt;——这才是 AI 编程时代健康的人机分工。&lt;/p&gt;
+&lt;h2 id="tomorrow-action"&gt;六、Tomorrow Action：明天就能开始的事&lt;/h2&gt;
+&lt;p&gt;不必一次到位，从最低成本的一两条开始：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;试一次 OpenSpec&lt;/strong&gt;（或类似工具），用它管下一个 change。哪怕只走通 proposal + spec delta 两份文件，也比散落的 &lt;code&gt;spec.md&lt;/code&gt; 强一档。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;写 spec 之前先画 DDD 三件套&lt;/strong&gt;：限界上下文、聚合、领域事件。十分钟一张草图，AI 出来的代码层次会立刻不一样。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;核心路径的测试自己写&lt;/strong&gt;，别全交给 AI。一个项目挑 3-5 个最关键的契约就够。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;CI 里挂上 &lt;code&gt;ruff + mypy + bandit&lt;/code&gt;&lt;/strong&gt;。这是性价比最高的一道闸门。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;写一个 &lt;code&gt;check_log_privacy.py&lt;/code&gt;&lt;/strong&gt; 之类的项目级规则脚本。规则就一两条，挡的是 AI 永远不知道的本地知识。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;给关键 feature 加一个 Prometheus 指标&lt;/strong&gt;，上线后看一周。养成"feature 不是上线即结束"的习惯。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;AI Review 用不同 prompt 跑第二遍&lt;/strong&gt;。一行 shell 脚本的事，但挡住的坑很真实。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;保留一个"人类 sign-off"清单&lt;/strong&gt;：涉及钱、安全、用户数据、对外承诺的地方，AI 不能拍板。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h2 id="_1"&gt;七、收尾&lt;/h2&gt;
+&lt;p&gt;&lt;img alt="Harness Pipeline mindmap" src="../images/harness_pipeline_mindmap.png"&gt;&lt;/p&gt;
+&lt;p&gt;很多人讨论 AI 编程，关注点都在"AI 能写多少代码"。我觉得错了。真正决定生产力的，不是 AI 能写多少，而是&lt;strong&gt;你敢让 AI 写的代码占多少&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;敢不敢，看的就是你的护栏够不够硬。Harness Pipeline 不是要把 AI 关起来，而是给它一条能跑快、又不会冲出赛道的跑道。&lt;/p&gt;
+&lt;p&gt;一句话收尾：&lt;strong&gt;AI 越能干，护栏越要严。&lt;/strong&gt; 这不是给 AI 设限，是给"敢上线"留余地。&lt;/p&gt;
+&lt;p&gt;留一个问题给你：你团队现在 AI 写的代码，卡在哪一关？是没人写 spec，还是没人看指标？&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap
+* Harness Pipeline
+** 四层骨架
+*** SDD\n规格即合同
+*** TDD\n红→绿→重构
+*** BDD\n用户行为视角
+*** MDD\n指标验证假设
+** 三道闸门
+*** 静态分析\nruff/mypy/bandit
+*** AI Review\n换个 prompt 审视
+*** 规则检查\nAGENTS.md + 安全基线
+** 一个反馈环
+*** 指标回灌\n下一轮 SDD
+** 人类 sign-off
+*** 事实
+*** 安全
+*** 产品承诺
+@endmindmap
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;hr/&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Tech"/><category term="ai-coding"/><category term="pipeline"/><category term="sdd"/><category term="tdd"/><category term="bdd"/><category term="mdd"/><category term="ddd"/><category term="openspec"/><category term="methodology"/></entry><entry><title>从 PDF Skill 学到什么：把 AI 能力做成可执行流程</title><link href="https://www.fanyamin.com/pdf-skill-design-lessons.html" rel="alternate"/><published>2026-05-20T22:47:00+08:00</published><updated>2026-05-21T09:03:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-05-20:/pdf-skill-design-lessons.html</id><summary type="html">&lt;p&gt;一个好的 AI Skill 不只是提示词，而是一套可触发、可分流、可执行、可验证的工作流。本文以 Anthropic 的 PDF skill 为例，拆解它的设计亮点，也指出它在 PDF-to-Markdown 解析上的关键缺口。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;从 PDF Skill 学到什么：把 AI 能力做成可执行流程&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;AI Engineering&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Status&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;v0.1&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;2026-05-21&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h1 id="pdf-skill-ai"&gt;从 PDF Skill 学到什么：把 AI 能力做成可执行流程&lt;/h1&gt;
+&lt;h2 id="_1"&gt;简短大纲&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;pdf&lt;/code&gt; skill 解决的不是“知道几个 PDF 库”，而是把 PDF 任务拆成可执行流程&lt;/li&gt;
+&lt;li&gt;它最值得借鉴的地方：触发清楚、分层文档、决策分流、数据契约、验证闭环&lt;/li&gt;
+&lt;li&gt;但如果目标是把 PDF 解析成符合预期格式的 Markdown，它还缺少核心工作流&lt;/li&gt;
+&lt;li&gt;表单填写工作流是全篇精华：先判定，再提取，再填值，再校验，再验收&lt;/li&gt;
+&lt;li&gt;写自己的 skill 时，可以照着它做一套“任务路由 + 工具箱 + 验证卡”&lt;/li&gt;
+&lt;/ul&gt;
+&lt;hr&gt;
+&lt;h2 id="pdf-ai"&gt;PDF 这种活，最容易把 AI 逼成手艺人&lt;/h2&gt;
+&lt;p&gt;PDF 是个很有意思的文件格式。它看起来像一张纸，实际上里面可能是文本、图片、表单字段、注释、字体、坐标系、加密信息和各种历史包袱的混合体。&lt;/p&gt;
+&lt;p&gt;你对 AI 说：“帮我填一下这个 PDF 表格。”这句话听起来很简单，像让同事顺手签个名。可真干起来，坑马上来了：这个 PDF 是可填写表单，还是扫描图片？坐标是从左下角算，还是从左上角算？复选框的 checked value 是 &lt;code&gt;/On&lt;/code&gt;，还是别的值？填完之后，Adobe Reader 能不能正常显示？&lt;/p&gt;
+&lt;p&gt;所以我看这个 &lt;code&gt;pdf&lt;/code&gt; skill 时，第一感觉不是“哇，里面列了好多库”，而是：&lt;strong&gt;它把一个容易靠手感乱试的任务，整理成了一套可执行、可回退、可验证的流程。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;不过，如果你的期待是“把 PDF 解析成一篇结构正确、表格不乱、图片有引用、层级清楚的 Markdown”，那这个 skill 还不够。它更像 PDF 操作工具箱，不是完整的 PDF-to-Markdown 解析器。&lt;/p&gt;
+&lt;p&gt;这正是 AI Skill 设计里最值得学，也最值得警惕的地方。好的 skill 不是一本百科全书，也不是一段漂亮 prompt。它更像一份给老练工程师看的 runbook：什么时候触发，先做什么，分支怎么走，输出什么中间产物，怎么知道自己没搞砸。缺少 runbook 的地方，再多库名也补不上。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="pdf"&gt;一、它先把入口收窄：只要碰 PDF，就该触发&lt;/h2&gt;
+&lt;p&gt;这个 skill 的元数据很朴素：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nt"&gt;name&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l l-Scalar l-Scalar-Plain"&gt;pdf&lt;/span&gt;
+&lt;span class="nt"&gt;description&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l l-Scalar l-Scalar-Plain"&gt;Use this skill whenever the user wants to do anything with PDF files...&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这句话的设计很关键。它没有把触发条件写成“高级 PDF 处理”这种含糊词，而是直接覆盖常见用户意图：读取、提取文本和表格、合并、拆分、旋转、水印、创建 PDF、填表、加密解密、提取图片、OCR。&lt;/p&gt;
+&lt;p&gt;这带来两个好处。&lt;/p&gt;
+&lt;p&gt;第一，Agent 不必猜。“用户提到 &lt;code&gt;.pdf&lt;/code&gt; 文件，或者要生产 PDF”，就进入这个 skill。触发边界清楚，减少了模型在技能选择阶段的犹豫。&lt;/p&gt;
+&lt;p&gt;第二，用户不必懂术语。用户说“把这个扫描件里的文字弄出来”，skill 可以把它映射到 OCR；用户说“合并几个文件”，skill 可以映射到 &lt;code&gt;pypdf&lt;/code&gt; 或 &lt;code&gt;qpdf&lt;/code&gt;。这就是好入口的价值：&lt;strong&gt;用用户语言触发，用工程语言执行。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;我们写自己的 skill 时，常犯的毛病是把 description 写得像项目简介：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;本 skill 用于增强文档处理能力，并支持多种格式转换。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;听起来很全面，实际触发很虚。更好的写法是列任务动词：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;当用户要读取、生成、拆分、合并、校验、发布、同步某类对象时使用。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;Agent 看到动词，才知道什么时候该上场。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="80"&gt;二、主文档不贪多：先给 80% 场景一条路&lt;/h2&gt;
+&lt;p&gt;&lt;code&gt;SKILL.md&lt;/code&gt; 的结构很克制：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Overview：说明主线能力。&lt;/li&gt;
+&lt;li&gt;Quick Start：用 &lt;code&gt;pypdf&lt;/code&gt; 读 PDF、提取文本。&lt;/li&gt;
+&lt;li&gt;Python Libraries：&lt;code&gt;pypdf&lt;/code&gt;、&lt;code&gt;pdfplumber&lt;/code&gt;、&lt;code&gt;reportlab&lt;/code&gt; 分别负责什么。&lt;/li&gt;
+&lt;li&gt;Command-Line Tools：&lt;code&gt;pdftotext&lt;/code&gt;、&lt;code&gt;qpdf&lt;/code&gt;、&lt;code&gt;pdftk&lt;/code&gt;。&lt;/li&gt;
+&lt;li&gt;Common Tasks：扫描 PDF OCR、水印、图片提取、密码保护。&lt;/li&gt;
+&lt;li&gt;Quick Reference：任务、最佳工具、命令或代码一张表。&lt;/li&gt;
+&lt;li&gt;Next Steps：复杂场景去 &lt;code&gt;reference.md&lt;/code&gt;，表单场景去 &lt;code&gt;forms.md&lt;/code&gt;。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;这个结构有个朴素原则：&lt;strong&gt;主文档负责让 Agent 快速动起来，参考文档负责兜住复杂情况。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;如果把所有高级内容都塞进 &lt;code&gt;SKILL.md&lt;/code&gt;，Agent 每次调用都要在长篇说明里游泳，像在日志系统里搜一个异常堆栈。反过来，如果主文档太薄，只写“请使用 pypdf 处理 PDF”，那遇到表格、扫描件、表单字段、坐标转换时就会开始现场编故事。&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;pdf&lt;/code&gt; skill 的分层比较舒服：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;层次&lt;/th&gt;
+&lt;th&gt;文件&lt;/th&gt;
+&lt;th&gt;作用&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;入口层&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;SKILL.md&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;覆盖常见 PDF 操作，给快速路径和工具选择&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;深水区&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;reference.md&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;收纳高级库、复杂命令、性能建议和疑难处理&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;专项流程&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;forms.md&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;专门处理 PDF 表单填写这种高风险任务&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;执行层&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;scripts/&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;把容易出错的操作做成脚本&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;这也提醒我们：skill 文档不是越长越好，而是要有信息架构。主路、支路、工具箱、验收点，各归各位。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="pdf-to-markdown"&gt;三、它最大的缺口：没有 PDF-to-Markdown 的输出契约&lt;/h2&gt;
+&lt;p&gt;这里要泼一盆冷水。&lt;/p&gt;
+&lt;p&gt;如果用户真正想要的是“把 PDF 解析成符合预期格式的 Markdown”，当前这个 &lt;code&gt;pdf&lt;/code&gt; skill 并不能让人满意。&lt;/p&gt;
+&lt;p&gt;它能做什么？可以抽文本，可以抽表格，可以 OCR，可以把 PDF 转成图片，也可以处理表单。但这些能力离“高质量 Markdown”还有一段距离。把文本抽出来，不等于 Markdown；把表格抽成二维数组，不等于一张可读的 Markdown 表；把页面渲染成图片，也不等于知道哪些图该被引用、放在哪里、配什么说明。&lt;/p&gt;
+&lt;p&gt;PDF-to-Markdown 至少要解决五个问题：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;问题&lt;/th&gt;
+&lt;th&gt;只抽文本会怎样&lt;/th&gt;
+&lt;th&gt;Markdown 需要什么&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;标题层级&lt;/td&gt;
+&lt;td&gt;标题和正文混在一起&lt;/td&gt;
+&lt;td&gt;推断 &lt;code&gt;#&lt;/code&gt;、&lt;code&gt;##&lt;/code&gt;、&lt;code&gt;###&lt;/code&gt; 层级&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;段落顺序&lt;/td&gt;
+&lt;td&gt;多栏、页眉、页脚可能乱入&lt;/td&gt;
+&lt;td&gt;阅读顺序、去页眉页脚、合并换行&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;表格&lt;/td&gt;
+&lt;td&gt;单元格错位或变成散文本&lt;/td&gt;
+&lt;td&gt;Markdown table 或 HTML table 的稳定输出&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;图片与公式&lt;/td&gt;
+&lt;td&gt;要么丢失，要么只剩 OCR 文本&lt;/td&gt;
+&lt;td&gt;提取图片资产，并在 Markdown 中引用&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;可验证性&lt;/td&gt;
+&lt;td&gt;看似有内容，结构其实不对&lt;/td&gt;
+&lt;td&gt;输出契约、样例对比、格式检查&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;当前 skill 没有定义这些东西。它没有 &lt;code&gt;pdf_to_markdown.py&lt;/code&gt;，没有 Markdown 输出 schema，没有图片资源目录规范，没有表格降级策略，也没有“怎样判断 Markdown 符合预期”的验收方法。&lt;/p&gt;
+&lt;p&gt;这就像修了一条很好的进货通道，但没有仓库货架。文本、表格、图片都进来了，最后往地上一摊，说“货到了”。用户当然不满意，因为用户要的是能上架、能搜索、能发布、能二次编辑的 Markdown。&lt;/p&gt;
+&lt;p&gt;一个合格的 PDF-to-Markdown skill，应该单独加一条工作流：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;PDF -&amp;gt; 页面分析 -&amp;gt; 块提取 -&amp;gt; 结构归一化 -&amp;gt; Markdown 渲染 -&amp;gt; 质量校验
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;中间最好不要直接从 PDF 跳到 Markdown，而是先落到结构化 JSON，例如：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;pages&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;page&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;blocks&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;type&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;heading&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;level&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;text&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;System Overview&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;bbox&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;72&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="mi"&gt;88&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="mi"&gt;420&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="mi"&gt;116&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p"&gt;},&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;type&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;paragraph&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;text&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;This section describes...&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;bbox&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;72&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="mi"&gt;130&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="mi"&gt;520&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="mi"&gt;180&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p"&gt;},&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;type&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;table&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;rows&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;Name&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;Role&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;API&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;Entry point&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;]],&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;bbox&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;72&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="mi"&gt;210&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="mi"&gt;520&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="mi"&gt;310&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p"&gt;},&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;type&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;image&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;path&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;images/page1_figure1.png&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;caption&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;Architecture diagram&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;bbox&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;100&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="mi"&gt;340&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="mi"&gt;480&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="mi"&gt;560&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;有了这个中间层，Agent 才能做三件事：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;先检查阅读顺序、标题层级、表格结构和图片引用是否合理。&lt;/li&gt;
+&lt;li&gt;再根据目标格式渲染 Markdown，比如普通 Markdown、GitHub Markdown、MyST Markdown 或 Pelican 文章格式。&lt;/li&gt;
+&lt;li&gt;最后做验收：图片文件是否存在，表格列数是否一致，标题是否跳级，页眉页脚是否被误收录。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;这才是“parse PDF to Markdown as expected format”的核心。不是再补一个库名，而是补一条从版面理解到格式渲染的流水线。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_2"&gt;四、表单填写才是它的精华：先分流，再动手&lt;/h2&gt;
+&lt;p&gt;如果只看普通 PDF 操作，这个 skill 是一份不错的工具清单。但真正让我觉得有借鉴价值的，是 &lt;code&gt;forms.md&lt;/code&gt;。&lt;/p&gt;
+&lt;p&gt;它开头就写得很硬：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;CRITICAL: You MUST complete these steps in order. Do not skip ahead to writing code.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;这不是语气强硬，而是任务本身需要强约束。PDF 表单填写一旦跳步，很容易出现“看起来填了，实际没填对”的情况。最糟糕的是，错误不一定会立刻报出来，可能是打开时显示异常、打印时错位、提交到别的系统时字段丢失。&lt;/p&gt;
+&lt;p&gt;所以它第一步不是写代码，而是判定 PDF 类型：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;python&lt;span class="w"&gt; &lt;/span&gt;scripts/check_fillable_fields.py&lt;span class="w"&gt; &lt;/span&gt;&amp;lt;file.pdf&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;然后分两条路：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;分支&lt;/th&gt;
+&lt;th&gt;判断&lt;/th&gt;
+&lt;th&gt;方法&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;Fillable fields&lt;/td&gt;
+&lt;td&gt;PDF 内置可填写字段&lt;/td&gt;
+&lt;td&gt;提取字段信息，生成 &lt;code&gt;field_values.json&lt;/code&gt;，用字段 ID 写入&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Non-fillable fields&lt;/td&gt;
+&lt;td&gt;没有表单字段&lt;/td&gt;
+&lt;td&gt;通过结构提取或视觉估算坐标，用注释方式填入文本&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;这就是工程味道。&lt;/p&gt;
+&lt;p&gt;许多 AI 失败，不是因为不会写代码，而是因为没有先判断问题类型。拿到 PDF 就直接生成填表脚本，看似积极，实际是在赌。这个 skill 则把赌变成流程：先问“它是什么”，再决定“怎么做”。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_3"&gt;五、它把隐含知识变成数据契约&lt;/h2&gt;
+&lt;p&gt;PDF 表单最麻烦的不是代码，而是中间状态。字段 ID 是什么？字段在哪一页？坐标是什么？复选框怎么选中？这些东西如果只存在 Agent 的“脑子里”，下一步就很容易漂。&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;pdf&lt;/code&gt; skill 的处理方式是：把中间状态写成 JSON。&lt;/p&gt;
+&lt;p&gt;可填写表单会先提取字段信息：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="p"&gt;[&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;field_id&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;last_name&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;page&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;rect&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;100&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="mi"&gt;200&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="mi"&gt;250&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="mi"&gt;220&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;type&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;text&amp;quot;&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;然后再创建 &lt;code&gt;field_values.json&lt;/code&gt;：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="p"&gt;[&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;field_id&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;last_name&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;description&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;The user&amp;#39;s last name&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;page&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;value&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;Simpson&amp;quot;&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;非可填写表单则使用 &lt;code&gt;fields.json&lt;/code&gt;，明确页面尺寸、label bounding box、entry bounding box、待写入文本、字号等。&lt;/p&gt;
+&lt;p&gt;这个设计很值得借鉴。它相当于给 Agent 加了一层“工作台”。每一步都有可见产物，用户和 Agent 都能检查。比起“我已经理解了字段位置”，JSON 更诚实。&lt;/p&gt;
+&lt;p&gt;在复杂 skill 里，数据契约有三个作用：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;稳定上下文&lt;/strong&gt;：不要把关键状态只放在自然语言里。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;方便校验&lt;/strong&gt;：脚本可以检查字段 ID、页码、取值、坐标是否合理。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;支持返工&lt;/strong&gt;：错了改 JSON，不必重写整段逻辑。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;一句话：&lt;strong&gt;把 AI 的临场判断，沉淀成可检查的中间文件。&lt;/strong&gt;&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_4"&gt;六、脚本不大，但每个都卡在关键节点&lt;/h2&gt;
+&lt;p&gt;这个 skill 的 &lt;code&gt;scripts/&lt;/code&gt; 目录并不复杂，但很实用：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;脚本&lt;/th&gt;
+&lt;th&gt;作用&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;check_fillable_fields.py&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;判断 PDF 是否有可填写表单字段&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;extract_form_field_info.py&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;提取字段 ID、类型、页码、坐标和选项&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;fill_fillable_fields.py&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;根据 JSON 填写可填写字段，并校验字段和值&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;extract_form_structure.py&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;从非可填写 PDF 中提取文本标签、线条、复选框和行边界&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;check_bounding_boxes.py&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;检查坐标框是否重叠、输入框高度是否够用&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;convert_pdf_to_images.py&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;把 PDF 转成图片，方便视觉检查&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;create_validation_image.py&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;在图片上画出 label 和 entry 的框，辅助验收&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;这些脚本有个共同点：它们都不试图“一口气把世界解决”。每个脚本只负责一个确定动作，输入输出清楚。&lt;/p&gt;
+&lt;p&gt;这比写一个巨大的 &lt;code&gt;process_pdf.py&lt;/code&gt; 更适合 Agent。因为 Agent 最怕的不是工具少，而是工具太黑盒。小脚本让它能一步一步推进：检查、提取、填写、验证。每一步失败了，也知道该修哪一层。&lt;/p&gt;
+&lt;p&gt;我尤其喜欢 &lt;code&gt;check_bounding_boxes.py&lt;/code&gt; 这种脚本。它检查两个很具体的问题：坐标框是否相交、输入框高度是否小于字体大小。这不是什么宏大算法，但非常工程化。它抓的是“肉眼迟早会发现，但越晚发现越烦”的错误。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_5"&gt;七、它有验证闭环，而不是只负责生成&lt;/h2&gt;
+&lt;p&gt;很多 AI 工作流停在“生成输出”这一步。比如填完 PDF，就说“大功告成”。老程序员看到这里通常会皱眉：你说完成了，谁验的？&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;forms.md&lt;/code&gt; 把验证写进流程：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;填表前，先校验 bounding boxes。&lt;/li&gt;
+&lt;li&gt;填写字段时，校验字段 ID、页码、checkbox/radio/choice 的合法取值。&lt;/li&gt;
+&lt;li&gt;填完后，把输出 PDF 转成图片。&lt;/li&gt;
+&lt;li&gt;人或 Agent 再检查文字位置是否正确。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;这是一条很好的 Agent 工作流准则：&lt;strong&gt;凡是输出带视觉效果、格式约束或外部系统兼容性的任务，都不能只看脚本退出码。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;PDF 尤其如此。脚本成功写出文件，不代表文件看起来对；文件看起来对，也不代表表单字段被正确写入；字段写入了，也不代表另一个阅读器能正常显示。&lt;/p&gt;
+&lt;p&gt;所以好的 skill 应该把“完成”的定义写清楚。不是“生成了文件”，而是“生成文件，并经过某种检查”。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_6"&gt;八、它没有假装世界很干净&lt;/h2&gt;
+&lt;p&gt;另一个可取之处，是它承认 PDF 世界很脏。&lt;/p&gt;
+&lt;p&gt;比如 &lt;code&gt;forms.md&lt;/code&gt; 里，非可填写表单又分成三种处理方式：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;结构提取优先：如果 PDF 里能提取文本标签和线条，就用结构坐标。&lt;/li&gt;
+&lt;li&gt;视觉估算兜底：如果是扫描件，就转图片、裁剪局部、人工或视觉分析坐标。&lt;/li&gt;
+&lt;li&gt;混合方式：结构能识别大部分字段，但有些圆形 checkbox 或复杂图形识别不到，就混合处理。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这比“统一使用 OCR 解决”靠谱得多。真实工程里没有银弹。好流程不是假装所有输入都标准，而是承认输入分层，然后给每一层一条合理路径。&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;SKILL.md&lt;/code&gt; 里还有一些很具体的坑，例如 ReportLab 不要直接用 Unicode 上下标字符，因为内置字体可能渲染成黑块。这类提醒看似小，实际很珍贵。它来自踩坑经验，不是 API 文档的复述。&lt;/p&gt;
+&lt;p&gt;一个 skill 有没有用，很多时候就看它有没有这些“坑边护栏”。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_7"&gt;九、可以借鉴的设计模式&lt;/h2&gt;
+&lt;p&gt;把这个 &lt;code&gt;pdf&lt;/code&gt; skill 拆开看，我认为有八个模式值得复用。&lt;/p&gt;
+&lt;h3 id="1"&gt;1. 触发词写用户任务，不写能力口号&lt;/h3&gt;
+&lt;p&gt;不要写“增强 PDF 处理能力”，要写“读取、合并、拆分、填表、OCR、加密、提取图片”。动词越具体，Agent 越容易触发。&lt;/p&gt;
+&lt;h3 id="2"&gt;2. 主文档只覆盖高频路径&lt;/h3&gt;
+&lt;p&gt;&lt;code&gt;SKILL.md&lt;/code&gt; 应该像机场指示牌，不是城市规划图。让 Agent 快速知道该走哪条路；复杂细节放到引用文档。&lt;/p&gt;
+&lt;h3 id="3"&gt;3. 高风险任务单独成文&lt;/h3&gt;
+&lt;p&gt;表单填写比普通合并拆分复杂得多，所以它有 &lt;code&gt;forms.md&lt;/code&gt;。这说明 skill 可以按风险分层：普通任务走快速路径，高风险任务走强约束流程。&lt;/p&gt;
+&lt;h3 id="4"&gt;4. 先判定类型，再选择流程&lt;/h3&gt;
+&lt;p&gt;&lt;code&gt;check_fillable_fields.py&lt;/code&gt; 是一个很小的脚本，但它决定了后续路线。很多业务 skill 也需要这种“第一问”：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;这是新增还是修改？&lt;/li&gt;
+&lt;li&gt;这是公开数据还是敏感数据？&lt;/li&gt;
+&lt;li&gt;这是可自动处理还是需要人工确认？&lt;/li&gt;
+&lt;li&gt;这是结构化输入还是图片/自由文本？&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;先分流，后执行。&lt;/p&gt;
+&lt;h3 id="5"&gt;5. 中间状态结构化&lt;/h3&gt;
+&lt;p&gt;JSON 文件让流程可检查、可修改、可复跑。对于 Agent，这比长篇自然语言记忆可靠。&lt;/p&gt;
+&lt;h3 id="6"&gt;6. 输出格式要有契约&lt;/h3&gt;
+&lt;p&gt;如果任务目标是 Markdown、JSON、CSV、测试报告、设计文档，就不能只说“输出一个文件”。要写清楚标题、表格、图片、代码块、元数据、目录结构和验收规则。否则 Agent 很容易交出“内容大概有了，格式全靠猜”的半成品。&lt;/p&gt;
+&lt;h3 id="7"&gt;7. 小脚本卡住关键风险&lt;/h3&gt;
+&lt;p&gt;不要急着做万能脚本。先把最容易错、最值得验证的节点做成脚本：字段检查、坐标检查、格式检查、依赖检查、输出预览。&lt;/p&gt;
+&lt;h3 id="8-skill"&gt;8. 验收步骤写进 skill，而不是留给用户猜&lt;/h3&gt;
+&lt;p&gt;“生成了”不等于“完成了”。skill 应该告诉 Agent 怎么确认结果可靠，尤其是文档、图片、代码、配置、发布、数据迁移这类任务。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_8"&gt;十、如果让我继续改，它还可以更工程化一点&lt;/h2&gt;
+&lt;p&gt;当然，这个 skill 也不是没有改进空间。&lt;/p&gt;
+&lt;p&gt;第一，应该补一条 &lt;code&gt;PDF -&amp;gt; Markdown&lt;/code&gt; 专项流程。至少包括页面块提取、标题层级推断、表格转 Markdown、图片落盘与引用、页眉页脚清理、输出格式校验。没有这条流程，它就不应该被包装成“PDF 转 Markdown”的完整方案。&lt;/p&gt;
+&lt;p&gt;第二，依赖安装说明可以更完整。文档里出现了 &lt;code&gt;pypdf&lt;/code&gt;、&lt;code&gt;pdfplumber&lt;/code&gt;、&lt;code&gt;reportlab&lt;/code&gt;、&lt;code&gt;pdf2image&lt;/code&gt;、&lt;code&gt;pytesseract&lt;/code&gt;、&lt;code&gt;pypdfium2&lt;/code&gt;、Poppler、ImageMagick 等工具，但如果用户环境缺依赖，Agent 还需要自己判断怎么安装。一个 &lt;code&gt;requirements.txt&lt;/code&gt; 或 &lt;code&gt;install&lt;/code&gt; 小节会更稳。&lt;/p&gt;
+&lt;p&gt;第三，部分脚本可以补一点输入校验。例如 &lt;code&gt;check_fillable_fields.py&lt;/code&gt; 直接读 &lt;code&gt;sys.argv[1]&lt;/code&gt;，参数缺失时会报 Python 异常。作为示例脚本可以接受，但如果作为生产级 skill，最好给出清晰 usage 和错误信息。&lt;/p&gt;
+&lt;p&gt;第四，输出目录处理可以更友好。&lt;code&gt;convert_pdf_to_images.py&lt;/code&gt; 会把图片写到输出目录，但脚本本身没有创建目录。如果目录不存在，用户会遇到低价值错误。&lt;/p&gt;
+&lt;p&gt;第五，安全和隐私提醒可以更前置。PDF 很可能包含合同、证件、财务报表或个人信息。skill 可以提醒：不要把敏感 PDF 上传到不可信服务；中间图片、JSON、提取文本要按敏感数据处理；临时文件用完要清理。&lt;/p&gt;
+&lt;p&gt;这不是推翻原设计，而是把评价边界说清楚：它的核心骨架很好，适合做 PDF 操作类 runbook；但如果目标是 PDF-to-Markdown，就必须补上结构解析和格式渲染这条主链路。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="skill"&gt;十一、照着它写自己的 skill：一个可抄模板&lt;/h2&gt;
+&lt;p&gt;如果要把这个经验迁移到自己的 AI Skill，我会用下面这套结构：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;my-skill/
+  SKILL.md
+  reference.md
+  workflows/
+    high-risk-task.md
+    pdf-to-markdown.md
+  scripts/
+    detect_type.py
+    extract_context.py
+    extract_blocks.py
+    render_markdown.py
+    validate_input.py
+    apply_change.py
+    verify_output.py
+  schemas/
+    document_blocks.schema.json
+  examples/
+    sample_input.json
+    sample_output.json
+    expected_output.md
+  LICENSE.txt
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;code&gt;SKILL.md&lt;/code&gt; 可以按这个顺序写：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;Trigger&lt;/strong&gt;：用户说什么时必须使用。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Scope&lt;/strong&gt;：支持什么，不支持什么。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Quick Start&lt;/strong&gt;：最常见任务的最短路径。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Decision Tree&lt;/strong&gt;：先判断类型，再走分支。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Data Contract&lt;/strong&gt;：中间 JSON、配置、表格格式，或者文档块 schema。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Output Contract&lt;/strong&gt;：最终文件格式，例如 Markdown 的标题、表格、图片、元数据规范。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Scripts&lt;/strong&gt;：每个脚本的输入、输出、失败含义。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Verification&lt;/strong&gt;：怎样算完成，怎样发现错位、遗漏、越权、格式错误。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Troubleshooting&lt;/strong&gt;：常见坑和 fallback。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Security Notes&lt;/strong&gt;：敏感数据、权限、临时文件、日志、依赖风险。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;这里最重要的不是目录，而是思想：&lt;strong&gt;把 skill 从“提示词文档”升级成“可执行工作系统”。&lt;/strong&gt;&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_9"&gt;总结&lt;/h2&gt;
+&lt;p&gt;&lt;code&gt;pdf&lt;/code&gt; skill 值得借鉴的地方，不是它知道 &lt;code&gt;pypdf&lt;/code&gt;、&lt;code&gt;pdfplumber&lt;/code&gt;、&lt;code&gt;qpdf&lt;/code&gt; 这些工具。工具清单网上到处都有。&lt;/p&gt;
+&lt;p&gt;真正值得学的是它的工程结构：入口清楚，主次分明；复杂任务先分流；中间结果结构化；关键节点用脚本兜住；最后还有验证闭环。真正需要补的，是 PDF-to-Markdown 这种“从版面到结构化文档”的输出契约。&lt;/p&gt;
+&lt;p&gt;一句话：&lt;strong&gt;好 skill 不是让 AI 更会说，而是让 AI 更会做；更进一步，是让 AI 按约定格式交付，并且知道做完以后怎么验。&lt;/strong&gt;&lt;/p&gt;
+&lt;h3 id="_10"&gt;行动清单&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;[ ] 给你的 skill 写清楚触发条件：用户说哪些动词时必须使用。&lt;/li&gt;
+&lt;li&gt;[ ] 把任务分成高频简单路径和高风险专项流程。&lt;/li&gt;
+&lt;li&gt;[ ] 为复杂流程设计一个中间数据契约，不要只靠自然语言记忆。&lt;/li&gt;
+&lt;li&gt;[ ] 如果有 Markdown、JSON、CSV 这类目标格式，先写输出契约，再写转换脚本。&lt;/li&gt;
+&lt;li&gt;[ ] 在最容易出错的节点放小脚本：检测、提取、校验、预览、验收。&lt;/li&gt;
+&lt;li&gt;[ ] 明确完成标准：脚本成功、输出存在、内容正确、格式可用、敏感数据不泄露。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id="review-card"&gt;Review Card&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;威胁快照：PDF 可能含个人信息、合同、财务或内部资料。&lt;/li&gt;
+&lt;li&gt;验证路径：执行前判定 PDF 类型，执行中校验字段/坐标/文档块，执行后检查 Markdown 结构、图片引用和表格格式。&lt;/li&gt;
+&lt;li&gt;Secret 与隐私：临时文本、图片、JSON 不应进入日志、仓库或不可信服务。&lt;/li&gt;
+&lt;li&gt;依赖说明：记录 Python 包、系统工具和许可证，避免 Agent 临时乱装依赖。&lt;/li&gt;
+&lt;li&gt;测试建议：至少准备一个可填写表单、一个扫描件、一个坐标复杂的非填写表单、一个含标题/表格/图片的 PDF-to-Markdown 样例做回归。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;hr/&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Tech"/><category term="AI"/><category term="Skills"/><category term="PDF"/><category term="Agent Engineering"/><category term="Automation"/></entry><entry><title>从纯文本生成 docx/pdf：难点从来不在“转换”两个字</title><link href="https://www.fanyamin.com/plain-text-docx-pdf.html" rel="alternate"/><published>2026-05-17T21:31:00+08:00</published><updated>2026-05-17T21:54:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-05-17:/plain-text-docx-pdf.html</id><summary type="html">&lt;p&gt;从 Markdown、AsciiDoc、reStructuredText、LaTeX、Typst 到结构化 JSON，纯文本生成 docx/pdf 看起来只是格式转换，真正麻烦的是源格式选型、样式契约、版式一致性、Web 在线编辑、安全沙箱和多人协作。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
 &lt;thead&gt;
 &lt;tr&gt;
 &lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;

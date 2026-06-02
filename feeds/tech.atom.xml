@@ -1,5 +1,1816 @@
 <?xml version="1.0" encoding="utf-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom"><title>Walter Fan's Blog - Tech</title><link href="https://www.fanyamin.com/" rel="alternate"/><link href="https://www.fanyamin.com/feeds/tech.atom.xml" rel="self"/><id>https://www.fanyamin.com/</id><updated>2026-05-23T10:20:00+08:00</updated><subtitle>手握灵珠常奋笔, 心开天籁不吹箫</subtitle><entry><title>gstack 拆机报告：AI 编程脚手架做对了什么，又栽在哪里</title><link href="https://www.fanyamin.com/gstack-teardown-what-it-got-right-and-wrong.html" rel="alternate"/><published>2026-05-23T10:20:00+08:00</published><updated>2026-05-23T10:20:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-05-23:/gstack-teardown-what-it-got-right-and-wrong.html</id><summary type="html">&lt;p&gt;拆 gstack 这个 Claude Code 脚手架——它把 sprint 拆成了 30+ 个 slash command，工程上有真功夫，方法论上更值得抄；但工具栏拥堵和文档膨胀，也是 AI 时代项目的通病。这篇讲哪些值得偷师，哪些要警惕，以及自己做类似项目时怎么避坑。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Walter Fan's Blog - Tech</title><link href="https://www.fanyamin.com/" rel="alternate"/><link href="https://www.fanyamin.com/feeds/tech.atom.xml" rel="self"/><id>https://www.fanyamin.com/</id><updated>2026-06-02T23:55:00+08:00</updated><subtitle>手握灵珠常奋笔, 心开天籁不吹箫</subtitle><entry><title>PERM 模型与 Casbin：把云端授权从代码里抠出去</title><link href="https://www.fanyamin.com/perm-casbin.html" rel="alternate"/><published>2026-06-02T21:30:00+08:00</published><updated>2026-06-02T23:55:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-06-02:/perm-casbin.html</id><summary type="html">&lt;p&gt;PERM 元模型把 Policy、Effect、Request、Matchers 四块拼图抽象出来，让一份配置文件就能撑起 ACL、RBAC、ABAC 各种授权花样。Casbin 是这套理论的工程化身，本文用 Go 例子拆开讲它怎么工作，再和 OPA、OpenFGA 这两家不同流派的授权引擎做一次设计哲学和落地选型的对比。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;PERM 模型与 Casbin：把云端授权从代码里抠出去&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;Cloud / Security&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Status&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;v1.5&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;2026-06-02&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 id="_1"&gt;从一段熟悉的代码说起&lt;/h2&gt;
+&lt;p&gt;写过后端的朋友，多半见过类似这样的权限判断：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;if&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;user&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;Role&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;==&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;admin&amp;quot;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;||&lt;/span&gt;
+&lt;span class="w"&gt;   &lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nx"&gt;user&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;Role&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;==&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;owner&amp;quot;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;&amp;amp;&amp;amp;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;user&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;TenantID&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;==&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;log&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;TenantID&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;||&lt;/span&gt;
+&lt;span class="w"&gt;   &lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nx"&gt;user&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;Role&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;==&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;auditor&amp;quot;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;&amp;amp;&amp;amp;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;action&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;==&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;read&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="c1"&gt;// ...&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;一开始角色少，写在 handler 里没啥不舒服。可一旦角色从两个涨到十个，租户隔离、按属性放行、按时段限制这些规则陆续加进来，权限判断就会从一两个 &lt;code&gt;if&lt;/code&gt; 长成散落各处的千层饼。加一个角色，意味着十几处代码要重审，测试用例翻倍，code review 至少两轮。&lt;/p&gt;
+&lt;p&gt;于是问题就来了：&lt;strong&gt;能不能把"谁能干什么"这件事，从业务代码里彻底抠出去？&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;这个问题学术界早就有人琢磨，工业界也有现成的轮子。理论叫 &lt;strong&gt;PERM&lt;/strong&gt;，工具叫 &lt;strong&gt;Casbin&lt;/strong&gt;。Luo Yang 等人在 2025 年发了篇 IEEE TIFS 的论文 &lt;a href="https://ieeexplore.ieee.org/abstract/document/11095782"&gt;《PERM: Streamlining Cloud Authorization With Flexible and Scalable Policy Enforcement》&lt;/a&gt;，算是把 Casbin 的设计哲学讲明白了。&lt;/p&gt;
+&lt;p&gt;咱们今天就来拆一拆这个 PERM。&lt;/p&gt;
+&lt;h2 id="perm"&gt;一、PERM 是什么：把授权拆成四块拼图&lt;/h2&gt;
+&lt;p&gt;PERM 是四个英文单词的首字母：&lt;strong&gt;Policy、Effect、Request、Matchers&lt;/strong&gt;。一句话总结就是：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;PERM 是一个&lt;strong&gt;授权元模型&lt;/strong&gt;，它把"判断一次访问是否被允许"这件事，拆成四个正交的部分，每一部分都用配置文件描述。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;为什么叫"元模型"？因为它本身不是 RBAC、不是 ABAC，而是一套能&lt;strong&gt;生成&lt;/strong&gt;各种授权模型的语法。就像 BNF 是描述语言的语言，PERM 是描述授权模型的模型。&lt;/p&gt;
+&lt;p&gt;四块拼图各管一摊：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;部件&lt;/th&gt;
+&lt;th&gt;管什么&lt;/th&gt;
+&lt;th&gt;一句话解释&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Request&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;一次访问长啥样&lt;/td&gt;
+&lt;td&gt;"谁，对什么，做什么"，标准是三元组 &lt;code&gt;(sub, obj, act)&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Policy&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;规则长啥样&lt;/td&gt;
+&lt;td&gt;策略的字段结构，比如 &lt;code&gt;(sub, obj, act)&lt;/code&gt; 或带 effect 的 &lt;code&gt;(sub, obj, act, eft)&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Matchers&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;怎么算"匹配上了"&lt;/td&gt;
+&lt;td&gt;一个布尔表达式，决定 request 命中哪条 policy&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Effect&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;多条命中时怎么裁决&lt;/td&gt;
+&lt;td&gt;比如 "只要有一条 allow 就放行"、"有 deny 就否决"&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;写成 &lt;code&gt;.conf&lt;/code&gt; 文件，一个最简单的 ACL（访问控制列表）模型长这样：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;[request_definition]&lt;/span&gt;
+&lt;span class="na"&gt;r&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;sub, obj, act&lt;/span&gt;
+
+&lt;span class="k"&gt;[policy_definition]&lt;/span&gt;
+&lt;span class="na"&gt;p&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;sub, obj, act&lt;/span&gt;
+
+&lt;span class="k"&gt;[policy_effect]&lt;/span&gt;
+&lt;span class="na"&gt;e&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;some(where (p.eft == allow))&lt;/span&gt;
+
+&lt;span class="k"&gt;[matchers]&lt;/span&gt;
+&lt;span class="na"&gt;m&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;r.sub == p.sub &amp;amp;&amp;amp; r.obj == p.obj &amp;amp;&amp;amp; r.act == p.act&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;配套的策略文件 &lt;code&gt;policy.csv&lt;/code&gt;：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;p, alice, data1, read
+p, bob, data2, write
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;意思很直白：alice 能读 data1，bob 能写 data2。Enforce 来个 &lt;code&gt;("alice", "data1", "read")&lt;/code&gt;，逐条对照 policy，matcher 全部 &lt;code&gt;true&lt;/code&gt;，effect 说"有一条 allow 就放行"，结果就是 &lt;code&gt;true&lt;/code&gt;。&lt;/p&gt;
+&lt;p&gt;到这里你可能觉得：这不就是把 &lt;code&gt;if-else&lt;/code&gt; 写成了配置文件吗？&lt;/p&gt;
+&lt;p&gt;固然如此，可是别急，PERM 的杀招在后面。&lt;/p&gt;
+&lt;h2 id="perm_1"&gt;二、PERM 真正的杀招：换模型不换引擎&lt;/h2&gt;
+&lt;p&gt;刚才那个 ACL 模型，咱们一行代码不动，只改 &lt;code&gt;model.conf&lt;/code&gt;，就能升级成 RBAC：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;[request_definition]&lt;/span&gt;
+&lt;span class="na"&gt;r&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;sub, obj, act&lt;/span&gt;
+
+&lt;span class="k"&gt;[policy_definition]&lt;/span&gt;
+&lt;span class="na"&gt;p&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;sub, obj, act&lt;/span&gt;
+
+&lt;span class="k"&gt;[role_definition]&lt;/span&gt;
+&lt;span class="na"&gt;g&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;_, _&lt;/span&gt;
+
+&lt;span class="k"&gt;[policy_effect]&lt;/span&gt;
+&lt;span class="na"&gt;e&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;some(where (p.eft == allow))&lt;/span&gt;
+
+&lt;span class="k"&gt;[matchers]&lt;/span&gt;
+&lt;span class="na"&gt;m&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;g(r.sub, p.sub) &amp;amp;&amp;amp; r.obj == p.obj &amp;amp;&amp;amp; r.act == p.act&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;多了一个 &lt;code&gt;[role_definition]&lt;/code&gt; 段 &lt;code&gt;g = _, _&lt;/code&gt;，表示"用户—角色"是个二元关系。matcher 里的 &lt;code&gt;r.sub == p.sub&lt;/code&gt; 也换成了 &lt;code&gt;g(r.sub, p.sub)&lt;/code&gt;，意思是"request 的 sub 是否拥有 policy 里的 sub 这个角色"。&lt;/p&gt;
+&lt;p&gt;policy.csv 变成：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;p, admin, data1, read
+p, admin, data1, write
+g, alice, admin
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;alice 是 admin，admin 能读写 data1，所以 alice 也能读写 data1。&lt;/p&gt;
+&lt;p&gt;想要 ABAC？把 matcher 改成 &lt;code&gt;r.sub.Age &amp;gt;= 18 &amp;amp;&amp;amp; r.obj.Owner == r.sub.Name&lt;/code&gt; 即可。想要带租户隔离的 RBAC？加一个 domain 字段，matcher 里多一个 &lt;code&gt;&amp;amp;&amp;amp;&lt;/code&gt;。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;核心思想就这一条&lt;/strong&gt;：业务代码永远只调一行 &lt;code&gt;enforcer.Enforce(sub, obj, act)&lt;/code&gt;，授权语义全部在配置文件里演化。&lt;/p&gt;
+&lt;p&gt;这就是为什么论文里把 PERM 叫做 "streamlining cloud authorization"——云端服务多租户、多角色、多场景，需求一天一个变，把变化收敛到配置层，代码层稳如老狗，运维和安全团队也能直接改策略，不用每次都拉开发陪跑。&lt;/p&gt;
+&lt;h2 id="_2"&gt;三、一个真实场景：给租户里的角色授权某个资源的某个操作&lt;/h2&gt;
+&lt;p&gt;光说 &lt;code&gt;data1&lt;/code&gt;、&lt;code&gt;data2&lt;/code&gt; 太抽象，咱换个云上密钥管理的真实例子。资源路径长这样：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;secrets/prod/app/cluster/region
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;需求是这样的：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;在 &lt;code&gt;tenant_acme&lt;/code&gt; 这个租户里，&lt;code&gt;secret-reader&lt;/code&gt; 这个角色，能对 &lt;code&gt;secrets/prod/payment/*&lt;/code&gt; 下面的所有密钥执行 &lt;code&gt;read&lt;/code&gt;，但不能 &lt;code&gt;write&lt;/code&gt;；而且 &lt;code&gt;tenant_acme&lt;/code&gt; 看不到 &lt;code&gt;tenant_globex&lt;/code&gt; 的任何东西。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;这一句话里藏了三层诉求：&lt;strong&gt;租户隔离&lt;/strong&gt;、&lt;strong&gt;角色授权&lt;/strong&gt;、&lt;strong&gt;资源按路径分层匹配&lt;/strong&gt;。一条条来。&lt;/p&gt;
+&lt;h3 id="1-domain"&gt;1. 加上租户：domain 字段&lt;/h3&gt;
+&lt;p&gt;多租户隔离，Casbin 的标准做法是在 request 和 policy 里加一个 &lt;code&gt;dom&lt;/code&gt;（domain，也就是租户）字段。模型 &lt;code&gt;model.conf&lt;/code&gt; 改成这样：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;[request_definition]&lt;/span&gt;
+&lt;span class="na"&gt;r&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;sub, dom, obj, act&lt;/span&gt;
+
+&lt;span class="k"&gt;[policy_definition]&lt;/span&gt;
+&lt;span class="na"&gt;p&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;sub, dom, obj, act&lt;/span&gt;
+
+&lt;span class="k"&gt;[role_definition]&lt;/span&gt;
+&lt;span class="na"&gt;g&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;_, _, _&lt;/span&gt;
+
+&lt;span class="k"&gt;[policy_effect]&lt;/span&gt;
+&lt;span class="na"&gt;e&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;some(where (p.eft == allow))&lt;/span&gt;
+
+&lt;span class="k"&gt;[matchers]&lt;/span&gt;
+&lt;span class="na"&gt;m&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;g(r.sub, p.sub, r.dom) &amp;amp;&amp;amp; keyMatch2(r.obj, p.obj) &amp;amp;&amp;amp; r.act == p.act&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;三处变化，对应三层诉求：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;r = sub, dom, obj, act&lt;/code&gt;：每次请求都带上"在哪个租户里"。&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;g = _, _, _&lt;/code&gt;：角色绑定从二元变三元，意思是"&lt;strong&gt;某人在某租户里&lt;/strong&gt;拥有某角色"。同一个人在 acme 是 admin，在 globex 可能啥都不是。&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;keyMatch2(r.obj, p.obj)&lt;/code&gt;：把资源匹配从字符串全等，换成 &lt;strong&gt;RESTful 路径匹配&lt;/strong&gt;，这样 &lt;code&gt;secrets/prod/payment/*&lt;/code&gt; 才能一把罩住底下所有密钥。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id="2-keymatch"&gt;2. 资源分层匹配：keyMatch 系列函数&lt;/h3&gt;
+&lt;p&gt;&lt;code&gt;secrets/prod/app/cluster/region&lt;/code&gt; 这种带层级的资源，最忌讳一条条枚举。Casbin 内置了几个 &lt;code&gt;keyMatch&lt;/code&gt; 函数专门干这事，按需挑一个：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;函数&lt;/th&gt;
+&lt;th&gt;通配语法&lt;/th&gt;
+&lt;th&gt;适合的路径风格&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;keyMatch&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;*&lt;/code&gt; 匹配尾段&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;/secrets/prod/*&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;keyMatch2&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;:param&lt;/code&gt; + &lt;code&gt;*&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;/secrets/:env/*&lt;/code&gt;，类 RESTful&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;keyMatch3&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;{param}&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;/secrets/{env}/payment&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;keyMatch4&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;{param}&lt;/code&gt; 且同名要相等&lt;/td&gt;
+&lt;td&gt;同一段多次出现要一致&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;我习惯用 &lt;code&gt;keyMatch2&lt;/code&gt;：策略里写 &lt;code&gt;secrets/prod/payment/*&lt;/code&gt;，请求 &lt;code&gt;secrets/prod/payment/db/us-west&lt;/code&gt; 就能命中，新增一个 region 不用改任何策略。&lt;/p&gt;
+&lt;h3 id="3"&gt;3. 配套的策略文件&lt;/h3&gt;
+&lt;p&gt;&lt;code&gt;policy.csv&lt;/code&gt;（注意 &lt;code&gt;g&lt;/code&gt; 那行多了第三列租户）：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;p, secret-reader, tenant_acme, secrets/prod/payment/*, read
+p, secret-admin,  tenant_acme, secrets/prod/payment/*, read
+p, secret-admin,  tenant_acme, secrets/prod/payment/*, write
+g, alice, secret-reader, tenant_acme
+g, bob,   secret-admin,  tenant_acme
+g, alice, secret-admin,  tenant_globex
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;读出来就是：alice 在 acme 里只能读 payment 密钥，在 globex 里却是管理员；bob 在 acme 里能读能写。&lt;/p&gt;
+&lt;h3 id="4"&gt;4. 业务代码：还是一行&lt;/h3&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="kn"&gt;package&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;main&lt;/span&gt;
+
+&lt;span class="kn"&gt;import&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;fmt&amp;quot;&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;log&amp;quot;&lt;/span&gt;
+
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;github.com/casbin/casbin/v2&amp;quot;&lt;/span&gt;
+&lt;span class="p"&gt;)&lt;/span&gt;
+
+&lt;span class="kd"&gt;func&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;main&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nx"&gt;e&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;err&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;:=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;casbin&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;NewEnforcer&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;model.conf&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;policy.csv&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="k"&gt;if&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;err&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;!=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="kc"&gt;nil&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nx"&gt;log&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;Fatalf&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;load enforcer failed: %v&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;err&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nx"&gt;cases&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;:=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[]&lt;/span&gt;&lt;span class="kd"&gt;struct&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nx"&gt;sub&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;dom&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;obj&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;act&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="kt"&gt;string&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;}{&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="c1"&gt;// alice 在 acme 是 reader：能读 payment 下任意密钥&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;alice&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;tenant_acme&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;secrets/prod/payment/db/us-west&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;read&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;},&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="c1"&gt;// alice 在 acme 不能写&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;alice&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;tenant_acme&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;secrets/prod/payment/db/us-west&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;write&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;},&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="c1"&gt;// alice 在 globex 是 admin：能写&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;alice&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;tenant_globex&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;secrets/prod/payment/db/us-west&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;write&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;},&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="c1"&gt;// bob 在 acme 是 admin：能写&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;bob&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;tenant_acme&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;secrets/prod/payment/cache/eu&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;write&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;},&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="c1"&gt;// alice 摸不到 globex 的别的租户资源？这里用 acme 身份访问 globex 路径会被拒&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;alice&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;tenant_globex&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;secrets/prod/billing/db/us-west&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;read&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;},&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="k"&gt;for&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;_&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;c&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;:=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="k"&gt;range&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;cases&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nx"&gt;ok&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;err&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;:=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;e&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;Enforce&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nx"&gt;c&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;sub&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;c&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;dom&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;c&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;obj&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;c&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;act&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="k"&gt;if&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;err&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;!=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="kc"&gt;nil&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="nx"&gt;log&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;Printf&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;enforce error: %v&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;err&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="k"&gt;continue&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nx"&gt;fmt&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;Printf&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;%-6s %-14s %-34s %-6s =&amp;gt; %v\n&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;c&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;sub&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;c&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;dom&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;c&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;obj&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;c&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;act&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;ok&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;跑出来：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;alice  tenant_acme    secrets/prod/payment/db/us-west    read   =&amp;gt; true
+alice  tenant_acme    secrets/prod/payment/db/us-west    write  =&amp;gt; false
+alice  tenant_globex  secrets/prod/payment/db/us-west    write  =&amp;gt; true
+bob    tenant_acme    secrets/prod/payment/cache/eu      write  =&amp;gt; true
+alice  tenant_globex  secrets/prod/billing/db/us-west    read   =&amp;gt; false
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;注意第三行和最后一行：同一个 alice，换了租户身份，权限完全不同——这就是 domain 隔离的价值。她在 globex 是 admin 能写 payment，但 globex 里没人给她授过 &lt;code&gt;billing&lt;/code&gt;，照样吃闭门羹。&lt;/p&gt;
+&lt;h3 id="5"&gt;5. 还是动态改：给租户里的角色加权限&lt;/h3&gt;
+&lt;p&gt;线上要给 acme 的 reader 再开一个 &lt;code&gt;metrics&lt;/code&gt; 资源的读权限，依旧不用重启：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;// 在 tenant_acme 里，给 secret-reader 角色加 metrics 读权限&lt;/span&gt;
+&lt;span class="nx"&gt;_&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;_&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;e&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;AddPolicy&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;secret-reader&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;tenant_acme&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;secrets/prod/metrics/*&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;read&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+&lt;span class="c1"&gt;// 把 carol 拉进 tenant_acme 的 secret-reader 角色&lt;/span&gt;
+&lt;span class="nx"&gt;_&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;_&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;e&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;AddGroupingPolicy&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;carol&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;secret-reader&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;tenant_acme&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+&lt;span class="nx"&gt;_&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;e&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;SavePolicy&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;到这儿，开头那句"给某租户某角色授权某资源某操作"的需求，就被拆成了"加一行 policy + 加一行 grouping"两件小事，跟改代码彻底没关系了。&lt;/p&gt;
+&lt;h2 id="casbingo"&gt;四、上手 Casbin：Go 版三步走&lt;/h2&gt;
+&lt;p&gt;理论讲完，咱们撸代码。Go 版 Casbin 叫 &lt;a href="https://github.com/casbin/casbin"&gt;casbin/casbin&lt;/a&gt;，安装：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;go&lt;span class="w"&gt; &lt;/span&gt;get&lt;span class="w"&gt; &lt;/span&gt;github.com/casbin/casbin/v2
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;strong&gt;第一步：写两个文件&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;model.conf&lt;/code&gt;（RBAC 模型）：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;[request_definition]&lt;/span&gt;
+&lt;span class="na"&gt;r&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;sub, obj, act&lt;/span&gt;
+
+&lt;span class="k"&gt;[policy_definition]&lt;/span&gt;
+&lt;span class="na"&gt;p&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;sub, obj, act&lt;/span&gt;
+
+&lt;span class="k"&gt;[role_definition]&lt;/span&gt;
+&lt;span class="na"&gt;g&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;_, _&lt;/span&gt;
+
+&lt;span class="k"&gt;[policy_effect]&lt;/span&gt;
+&lt;span class="na"&gt;e&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;some(where (p.eft == allow))&lt;/span&gt;
+
+&lt;span class="k"&gt;[matchers]&lt;/span&gt;
+&lt;span class="na"&gt;m&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;g(r.sub, p.sub) &amp;amp;&amp;amp; r.obj == p.obj &amp;amp;&amp;amp; r.act == p.act&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;code&gt;policy.csv&lt;/code&gt;：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;p, admin, /logs, read
+p, admin, /logs, write
+p, auditor, /logs, read
+g, alice, admin
+g, bob, auditor
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;strong&gt;第二步：写业务代码&lt;/strong&gt;&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="kn"&gt;package&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;main&lt;/span&gt;
+
+&lt;span class="kn"&gt;import&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;fmt&amp;quot;&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;log&amp;quot;&lt;/span&gt;
+
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;github.com/casbin/casbin/v2&amp;quot;&lt;/span&gt;
+&lt;span class="p"&gt;)&lt;/span&gt;
+
+&lt;span class="kd"&gt;func&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;main&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nx"&gt;e&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;err&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;:=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;casbin&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;NewEnforcer&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;model.conf&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;policy.csv&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="k"&gt;if&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;err&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;!=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="kc"&gt;nil&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nx"&gt;log&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;Fatalf&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;load enforcer failed: %v&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;err&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nx"&gt;cases&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;:=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[]&lt;/span&gt;&lt;span class="kd"&gt;struct&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nx"&gt;sub&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;obj&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;act&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="kt"&gt;string&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;}{&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;alice&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;/logs&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;read&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;},&lt;/span&gt;&lt;span class="w"&gt;   &lt;/span&gt;&lt;span class="c1"&gt;// admin → 应放行&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;alice&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;/logs&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;write&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;},&lt;/span&gt;&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="c1"&gt;// admin → 应放行&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;bob&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;/logs&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;read&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;},&lt;/span&gt;&lt;span class="w"&gt;     &lt;/span&gt;&lt;span class="c1"&gt;// auditor → 应放行&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;bob&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;/logs&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;write&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;},&lt;/span&gt;&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="c1"&gt;// auditor 无写权限 → 应拒绝&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;carol&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;/logs&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;read&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;},&lt;/span&gt;&lt;span class="w"&gt;   &lt;/span&gt;&lt;span class="c1"&gt;// 无角色 → 应拒绝&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="k"&gt;for&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;_&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;c&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;:=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="k"&gt;range&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;cases&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nx"&gt;ok&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;err&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;:=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;e&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;Enforce&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nx"&gt;c&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;sub&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;c&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;obj&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;c&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;act&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="k"&gt;if&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;err&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;!=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="kc"&gt;nil&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="nx"&gt;log&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;Printf&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;enforce error: %v&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;err&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="k"&gt;continue&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nx"&gt;fmt&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;Printf&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;%-6s %-8s %-6s =&amp;gt; %v\n&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;c&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;sub&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;c&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;obj&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;c&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;act&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;ok&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;跑起来：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;alice  /logs    read   =&amp;gt; true
+alice  /logs    write  =&amp;gt; true
+bob    /logs    read   =&amp;gt; true
+bob    /logs    write  =&amp;gt; false
+carol  /logs    read   =&amp;gt; false
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;strong&gt;第三步：动态改策略&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;线上加一个 auditor 不需要重启服务，调 API 即可：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;// 加策略&lt;/span&gt;
+&lt;span class="nx"&gt;_&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;_&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;e&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;AddPolicy&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;auditor&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;/metrics&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;read&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+&lt;span class="c1"&gt;// 把 carol 加入 auditor 角色&lt;/span&gt;
+&lt;span class="nx"&gt;_&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;_&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;e&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;AddGroupingPolicy&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;carol&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;auditor&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+&lt;span class="c1"&gt;// 持久化到 storage（前提是用了 Adapter，比如 GORM）&lt;/span&gt;
+&lt;span class="nx"&gt;_&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;e&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;SavePolicy&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;生产环境一般会把 policy 存到 MySQL/PostgreSQL，用 &lt;a href="https://github.com/casbin/gorm-adapter"&gt;casbin/gorm-adapter&lt;/a&gt; 之类的 Adapter；多实例之间用 Watcher 同步（Redis、etcd 都有现成的）。这套基础设施成熟得很，开箱即用。&lt;/p&gt;
+&lt;h2 id="casbin-vs-opa-vs-openfga"&gt;五、Casbin vs OPA vs OpenFGA：三种授权哲学&lt;/h2&gt;
+&lt;p&gt;讲 Casbin 不提 &lt;a href="https://www.openpolicyagent.org/"&gt;OPA（Open Policy Agent）&lt;/a&gt; 和 &lt;a href="https://openfga.dev/"&gt;OpenFGA&lt;/a&gt; 是不厚道的。这三家是当下开源授权领域的代表，背后是三种不同的设计哲学：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Casbin&lt;/strong&gt;：基于 PERM 元模型，&lt;strong&gt;面向"模型 + 策略"&lt;/strong&gt;——你先描述一种授权范式（ACL/RBAC/ABAC），再喂规则进去。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;OPA&lt;/strong&gt;：通用策略引擎，&lt;strong&gt;面向"策略即代码"&lt;/strong&gt;——你用 Rego 语言写任意决策逻辑，引擎不预设授权模型。Rego 类似 Datalog，图灵完备。CNCF 毕业项目，K8s 准入控制、Envoy 鉴权、Terraform 守门都靠它。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;OpenFGA&lt;/strong&gt;：实现 Google &lt;a href="https://research.google/pubs/pub48190/"&gt;Zanzibar 论文&lt;/a&gt;，&lt;strong&gt;面向"关系图"&lt;/strong&gt;——所有权限表达成 &lt;code&gt;(user, relation, object)&lt;/code&gt; 三元组，引擎在关系图上做可达性推理。CNCF Sandbox 项目，由 Auth0 / Okta 主导。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id="_3"&gt;设计模型对比&lt;/h3&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;维度&lt;/th&gt;
+&lt;th&gt;Casbin&lt;/th&gt;
+&lt;th&gt;OPA&lt;/th&gt;
+&lt;th&gt;OpenFGA&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;核心范式&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;PERM 元模型&lt;/td&gt;
+&lt;td&gt;通用策略引擎&lt;/td&gt;
+&lt;td&gt;ReBAC（关系基）&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;理论源头&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;自研 PERM 论文（2025）&lt;/td&gt;
+&lt;td&gt;Datalog / Rego&lt;/td&gt;
+&lt;td&gt;Google Zanzibar (2019)&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;策略语言&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;.conf&lt;/code&gt; + &lt;code&gt;.csv&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;Rego（类 Datalog）&lt;/td&gt;
+&lt;td&gt;DSL + JSON Schema&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;数据模型&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;模型与策略分离&lt;/td&gt;
+&lt;td&gt;任意 JSON 输入 + 规则&lt;/td&gt;
+&lt;td&gt;关系三元组（tuple）&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;学习曲线&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;半天上手&lt;/td&gt;
+&lt;td&gt;一两周磨 Rego&lt;/td&gt;
+&lt;td&gt;几天学 ReBAC 思维&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;典型 API&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;Enforce(sub, obj, act)&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;data.policy.allow&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;Check(user, relation, object)&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;存储&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;自定义 Adapter（DB/文件）&lt;/td&gt;
+&lt;td&gt;bundle（远端拉取）&lt;/td&gt;
+&lt;td&gt;内置（PG/MySQL/Memory）&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;部署形态&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;进程内库&lt;/td&gt;
+&lt;td&gt;sidecar / 独立进程 / WASM&lt;/td&gt;
+&lt;td&gt;独立服务（gRPC + HTTP）&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;决策延迟&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;微秒级（in-process）&lt;/td&gt;
+&lt;td&gt;毫秒级（IPC/HTTP）&lt;/td&gt;
+&lt;td&gt;毫秒级（网络 RPC）&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;典型场景&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;应用内 RBAC / ABAC&lt;/td&gt;
+&lt;td&gt;K8s 准入、CI/CD 卡点、Envoy&lt;/td&gt;
+&lt;td&gt;文档协作、社交、SaaS 共享&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h3 id="_4"&gt;同一个例子，三种写法&lt;/h3&gt;
+&lt;p&gt;举一个简单需求："&lt;code&gt;alice&lt;/code&gt; 是不是 &lt;code&gt;roadmap&lt;/code&gt; 这份文档的 &lt;code&gt;viewer&lt;/code&gt;？"&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Casbin（RBAC 模型）&lt;/strong&gt;：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# model.conf&lt;/span&gt;
+&lt;span class="na"&gt;m&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;g(r.sub, p.sub) &amp;amp;&amp;amp; r.obj == p.obj &amp;amp;&amp;amp; r.act == p.act&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;# policy.csv
+p, viewer, roadmap, read
+g, alice, viewer
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nx"&gt;ok&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;_&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;:=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;e&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;Enforce&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;alice&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;roadmap&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;read&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="c1"&gt;// true&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;strong&gt;OPA（Rego）&lt;/strong&gt;：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;package authz
+
+default allow = false
+
+allow {
+    input.user == &amp;quot;alice&amp;quot;
+    input.action == &amp;quot;read&amp;quot;
+    input.resource == &amp;quot;roadmap&amp;quot;
+}
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;opa&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nb"&gt;eval&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;-d&lt;span class="w"&gt; &lt;/span&gt;policy.rego&lt;span class="w"&gt; &lt;/span&gt;-i&lt;span class="w"&gt; &lt;/span&gt;input.json&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;data.authz.allow&amp;quot;&lt;/span&gt;
+&lt;span class="c1"&gt;# input.json: {&amp;quot;user&amp;quot;:&amp;quot;alice&amp;quot;,&amp;quot;action&amp;quot;:&amp;quot;read&amp;quot;,&amp;quot;resource&amp;quot;:&amp;quot;roadmap&amp;quot;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;strong&gt;OpenFGA（DSL）&lt;/strong&gt;：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;model
+  schema 1.1
+type user
+type document
+  relations
+    define viewer: [user]
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# 写一个关系 tuple&lt;/span&gt;
+fga&lt;span class="w"&gt; &lt;/span&gt;tuple&lt;span class="w"&gt; &lt;/span&gt;write&lt;span class="w"&gt; &lt;/span&gt;user:alice&lt;span class="w"&gt; &lt;/span&gt;viewer&lt;span class="w"&gt; &lt;/span&gt;document:roadmap
+
+&lt;span class="c1"&gt;# 查询&lt;/span&gt;
+fga&lt;span class="w"&gt; &lt;/span&gt;query&lt;span class="w"&gt; &lt;/span&gt;check&lt;span class="w"&gt; &lt;/span&gt;user:alice&lt;span class="w"&gt; &lt;/span&gt;viewer&lt;span class="w"&gt; &lt;/span&gt;document:roadmap
+&lt;span class="c1"&gt;# =&amp;gt; {&amp;quot;allowed&amp;quot;: true}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;三种写法背后是三种思维：Casbin 把权限看成&lt;strong&gt;"匹配规则"&lt;/strong&gt;，OPA 看成&lt;strong&gt;"任意决策函数"&lt;/strong&gt;，OpenFGA 看成&lt;strong&gt;"图上的关系遍历"&lt;/strong&gt;。&lt;/p&gt;
+&lt;h3 id="_5"&gt;三家擅长什么、不擅长什么&lt;/h3&gt;
+&lt;p&gt;&lt;strong&gt;Casbin 擅长&lt;/strong&gt;：单服务内的多角色权限、需要快速热加载策略、模型可能从 RBAC 演化到 ABAC。&lt;br&gt;
+&lt;strong&gt;Casbin 不擅长&lt;/strong&gt;：跨服务策略统一、需要表达"用户能访问其上级文件夹下的所有文档"这种关系递归。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;OPA 擅长&lt;/strong&gt;：跨语言、跨平台的策略统一（K8s + 微服务 + CI 一套 Rego 通吃）、复杂逻辑（图灵完备）、合规规则审计。&lt;br&gt;
+&lt;strong&gt;OPA 不擅长&lt;/strong&gt;：高频细粒度查询（每次决策都要传完整 input）、用户/资源数量级在百万以上的关系建模。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;OpenFGA 擅长&lt;/strong&gt;：细粒度授权（fine-grained）、嵌套层级（文件夹—子文件夹—文档）、共享与继承（团队成员自动获得团队下所有项目的访问权）、大规模关系图（数十亿 tuple 仍能毫秒级响应）。&lt;br&gt;
+&lt;strong&gt;OpenFGA 不擅长&lt;/strong&gt;：临时的属性判断（虽然有 Conditions 和 Contextual Tuples 补救，但不如 OPA 灵活）、纯 RBAC 场景（杀鸡用了牛刀）。&lt;/p&gt;
+&lt;h3 id="_6"&gt;一张选型决策表&lt;/h3&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;你的场景&lt;/th&gt;
+&lt;th&gt;推荐&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;单服务，2-20 个角色，跟业务紧耦合&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;Casbin&lt;/strong&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;多服务统一策略，K8s/Envoy/CI 都要管&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;OPA&lt;/strong&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;类 Google Drive / GitHub / Notion 的细粒度共享&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;OpenFGA&lt;/strong&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;简单 RBAC + 一点 ABAC 即可&lt;/td&gt;
+&lt;td&gt;Casbin&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;合规审计、SoD（职责分离）等复杂逻辑&lt;/td&gt;
+&lt;td&gt;OPA&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;用户/资源百万级，权限需要继承和反查&lt;/td&gt;
+&lt;td&gt;OpenFGA&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;三者不是替代关系，而是不同层级、不同形态的工具。在比较成熟的架构里，常见的组合是 OPA 在外层守门（API Gateway、K8s 准入），OpenFGA 或 Casbin 在应用层做细粒度判断，互相配合，各管各的边界。&lt;/p&gt;
+&lt;h2 id="_7"&gt;六、几个坑，请提前避开&lt;/h2&gt;
+&lt;p&gt;读 Casbin 文档和 issue 时，有几个细节容易被忽略，提前提一句：&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;坑 1：matcher 表达式的顺序影响性能&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;官方文档明确提到过这事。matcher 是按从左到右短路求值的，把&lt;strong&gt;贵的条件&lt;/strong&gt;（比如 &lt;code&gt;g(r.sub, p.sub)&lt;/code&gt; 这种角色查找）放在便宜的字符串比较&lt;strong&gt;后面&lt;/strong&gt;，能差出几个数量级的延迟。Casbin 维护者跑过一个有 2500 个项目、每个项目 4 个角色的压测，matcher 顺序写错，单次 enforce 慢到 6 秒；调整顺序后回到几毫秒。&lt;/p&gt;
+&lt;p&gt;写法是这样：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# 慢&lt;/span&gt;
+&lt;span class="na"&gt;m&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;g(r.sub, p.sub) &amp;amp;&amp;amp; r.obj == p.obj &amp;amp;&amp;amp; r.act == p.act&lt;/span&gt;
+
+&lt;span class="c1"&gt;# 快&lt;/span&gt;
+&lt;span class="na"&gt;m&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;r.obj == p.obj &amp;amp;&amp;amp; r.act == p.act &amp;amp;&amp;amp; g(r.sub, p.sub)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;strong&gt;坑 2：policy 字段都是字符串&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;policy.csv 里的所有字段，进了 Casbin 都当字符串处理。想塞个 &lt;code&gt;age &amp;gt;= 18&lt;/code&gt; 进去？得自己写 helper 函数，或者用 ABAC 把对象传进 request，让 matcher 里去比。别指望 &lt;code&gt;p, alice, data1, 100&lt;/code&gt; 里那个 &lt;code&gt;100&lt;/code&gt; 是 int。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;坑 3：策略变更要广播&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;单实例没问题，多实例部署时，A 实例改了 policy，B 实例还用着内存里的老版本。必到用 Watcher（Redis Pub/Sub 是最常见的方案），或者所有写操作走中心化的 Admin Portal。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;坑 4：别把策略写成代码的镜像&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;见过有人把每个 API 都写一条 policy：&lt;code&gt;p, alice, /api/v1/users/:id/profile, GET&lt;/code&gt;。这种粒度的策略，本质还是把 &lt;code&gt;if-else&lt;/code&gt; 搬进了 CSV，反而失去了抽象的意义。&lt;strong&gt;策略要按业务概念组织&lt;/strong&gt;，不是按 URL。&lt;/p&gt;
+&lt;h2 id="casbin5-checklist"&gt;七、什么时候用 Casbin：5 条 CheckList&lt;/h2&gt;
+&lt;p&gt;最后给一个判断清单，符合 3 条以上就值得引入：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;[ ] 系统有 &lt;strong&gt;2 个以上角色&lt;/strong&gt;，且未来还会增加&lt;/li&gt;
+&lt;li&gt;[ ] 权限规则需要&lt;strong&gt;非开发人员&lt;/strong&gt;（产品、安全、运维）也能改&lt;/li&gt;
+&lt;li&gt;[ ] 同一份代码要支持&lt;strong&gt;多种部署形态&lt;/strong&gt;（单租户、多租户、私有化）&lt;/li&gt;
+&lt;li&gt;[ ] 审计要求能&lt;strong&gt;追溯每一次访问决策&lt;/strong&gt;的依据&lt;/li&gt;
+&lt;li&gt;[ ] 权限模型可能&lt;strong&gt;演化&lt;/strong&gt;（从 RBAC 升级到 ABAC、加上 domain、加上属性等）&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;反过来，如果你的系统只有"登录用户"和"管理员"两种人，权限规则 5 条以内一辈子不变，那一段 &lt;code&gt;if-else&lt;/code&gt; 比啥都强，别为了用而用。&lt;/p&gt;
+&lt;h2 id="_8"&gt;收束：把变化关进配置文件&lt;/h2&gt;
+&lt;p&gt;回到开头那段散落各处的 &lt;code&gt;if&lt;/code&gt;。引入 PERM 这套思路之后，业务代码里剩下的只是一行：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nx"&gt;ok&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;_&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;:=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;enforcer&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;Enforce&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nx"&gt;user&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;Name&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;resource&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;action&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;至于"谁能干什么"，全部沉到 &lt;code&gt;model.conf&lt;/code&gt; 和 &lt;code&gt;policy.csv&lt;/code&gt;。新增角色、调整规则，不再需要重新审业务代码，只是改配置、走审批、热加载。&lt;/p&gt;
+&lt;p&gt;PERM 的精髓，我觉得就一句话：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;代码负责"如何执行"，配置负责"是否允许"。两件事分开，世界清净。&lt;/strong&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;授权这个领域，最怕的不是规则复杂，是规则&lt;strong&gt;变&lt;/strong&gt;。PERM 的贡献，就是把变化挪到了一个可控、可审计、可热更新的地方。这个思路本身比 Casbin 这个具体实现要值钱得多——哪怕你用 OPA、用 Cedar、自己撸一个，把"模型—策略—执行"三者解耦的方向都是对的。&lt;/p&gt;
+&lt;h2 id="_9"&gt;总结脑图&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap perm_casbin_mindmap
+&amp;lt;style&amp;gt;
+node {
+  BackgroundColor White
+}
+rootNode {
+    BackgroundColor #ffe0b2
+    LineColor #f57c00
+    LineThickness 4
+}
+&amp;lt;/style&amp;gt;
+* PERM 与 Casbin
+** PERM 四件套
+*** Request — 一次访问的快照
+*** Policy — 规则的字段结构
+*** Matchers — 布尔表达式 / 顺序影响性能
+*** Effect — allow / deny override
+** 多租户授权
+*** domain 字段隔离租户
+*** 三元角色绑定 (人, 角色, 租户)
+*** keyMatch2 路径分层匹配
+*** 授权 = 加一行 policy + grouping
+** 三家选型
+*** Casbin — 元模型 + 配置 / 进程内 / 单服务首选
+*** OPA — 通用策略 + Rego / sidecar / 跨平台守门
+*** OpenFGA — Zanzibar 关系图 / 独立服务 / 细粒度共享
+** 落地建议
+*** 单服务 RBAC 选 Casbin
+*** 跨平台统一选 OPA
+*** 细粒度共享选 OpenFGA
+*** 策略按业务概念组织 别按 URL 切片
+** 避坑清单
+*** matcher 顺序
+*** 字段都是字符串
+*** 多实例用 Watcher
+@endmindmap
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;img alt="PERM Casbin Mindmap" src="../images/perm-casbin_mindmap.png"&gt;&lt;/p&gt;
+&lt;h2 id="_10"&gt;参考资料&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;论文：&lt;a href="https://ieeexplore.ieee.org/abstract/document/11095782"&gt;PERM: Streamlining Cloud Authorization With Flexible and Scalable Policy Enforcement&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;论文：&lt;a href="https://research.google/pubs/pub48190/"&gt;Zanzibar: Google's Consistent, Global Authorization System&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Casbin 官方文档：&lt;a href="https://casbin.apache.org/docs/tutorials/"&gt;https://casbin.apache.org/docs/tutorials/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Casbin 在线编辑器：&lt;a href="https://editor.casbin.org/"&gt;https://editor.casbin.org/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Open Policy Agent：&lt;a href="https://www.openpolicyagent.org/"&gt;https://www.openpolicyagent.org/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;OpenFGA 官方文档：&lt;a href="https://openfga.dev/docs/concepts"&gt;https://openfga.dev/docs/concepts&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;OpenFGA Playground：&lt;a href="https://play.fga.dev/"&gt;https://play.fga.dev/&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;</content><category term="Tech"/><category term="authorization"/><category term="casbin"/><category term="perm"/><category term="opa"/><category term="openfga"/><category term="zanzibar"/><category term="go"/><category term="cloud"/><category term="security"/></entry><entry><title>给 AI Agent 装个行车记录仪：用 Claude Code 和 Codex 的 Hook 追踪 Skill 调用</title><link href="https://www.fanyamin.com/track-ai-skill-usage-with-hooks.html" rel="alternate"/><published>2026-06-01T22:00:00+08:00</published><updated>2026-06-01T22:00:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-06-01:/track-ai-skill-usage-with-hooks.html</id><summary type="html">&lt;p&gt;用 Claude Code 和 Codex CLI 各自官方的 hook 机制，把 AI Agent 调用 skill 的过程审计下来——什么时候触发了、传了什么参数、跑了多久，全留痕。给两家都给出可直接抄的配置。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;给 AI Agent 装个行车记录仪：用 Claude Code 和 Codex 的 Hook 追踪 Skill 调用&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;Tech&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Status&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;v1.0&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;2026-06-01&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 id="ai-skill"&gt;一、AI 说它用了 skill，咱凭啥信？&lt;/h2&gt;
+&lt;p&gt;前几天我让 Claude Code 帮我改一篇博客，顺手挂了一个 &lt;code&gt;lazy-blog-write&lt;/code&gt; 的 skill 上去。它煞有介事回了一句"已调用 lazy-blog-write skill"，产出却还是一股翻译腔。我盯着屏幕愣了半天：到底是 skill 没真触发，还是触发了被它忽略了？还是触发了但匹配错了 genre？&lt;/p&gt;
+&lt;p&gt;这场景在咱们这行不陌生。线上系统出问题，老程序员的第一反应不是猜，是去翻日志。Agent 也是个程序，跑得再花哨，本质就是一个不断调工具的循环。它说调了什么，可咱们不能只听它自己说——得有个旁证。&lt;/p&gt;
+&lt;p&gt;好在 Claude Code 和 Codex CLI 都已经把这扇门留好了，叫 &lt;strong&gt;Hook&lt;/strong&gt;。这玩意儿就像 Git 的 pre-commit、Web 后端的中间件，能在 Agent 生命周期的特定点插一段你自己的脚本。Agent 每次要调 skill，咱们就把它的输入输出抄一份下来，存成 JSONL 慢慢看。&lt;/p&gt;
+&lt;p&gt;本文给一份能直接抄的配置：两家 CLI 的 hook 各写一份，落地一个 &lt;code&gt;skill_usage.jsonl&lt;/code&gt;，再加一个简单的查询脚本。所有配置以官方文档为准，不靠猜。&lt;/p&gt;
+&lt;h2 id="skill"&gt;二、为啥要追踪 skill 调用&lt;/h2&gt;
+&lt;p&gt;skill 这东西，本质是给 Agent 的"招式手册"——它在合适的时机能调出来用。但实际跑起来，有三类问题特别让人挠头：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;该用的没用上&lt;/strong&gt;。你 skill 的 description 写得不够刺激，Agent 看着任务发懵，最后还是用通用方法干。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;用了但效果不对&lt;/strong&gt;。Agent 触发了 skill，可它只读了 SKILL.md 的开头，后面的约束没认真执行。这种问题如果不留痕，咱们事后都不知道该怪 skill 写得不行，还是 Agent 偷懒。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;多个 skill 抢戏&lt;/strong&gt;。两个 skill description 写得太像，Agent 来回切换，最后哪个也没真用透。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;老程序员都懂一个道理：&lt;strong&gt;可观测性是工程基本功，Agent 也不例外&lt;/strong&gt;。光盯着终端输出滚屏不算数，咱要的是结构化的、可查的、能跨会话回放的记录。&lt;/p&gt;
+&lt;h2 id="hook"&gt;三、Hook 的心智模型，三十秒讲清楚&lt;/h2&gt;
+&lt;p&gt;Claude Code 和 Codex 都把 Agent 的运行抽象成一组生命周期事件，咱们感兴趣的主要是这几个：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;SessionStart&lt;/code&gt;——会话刚起来&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;UserPromptSubmit&lt;/code&gt;——你按下回车，prompt 还没进模型&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;PreToolUse&lt;/code&gt;——Agent 决定调某个工具，但还没真调&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;PostToolUse&lt;/code&gt;——工具调完，结果回来了&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;Stop&lt;/code&gt;——这一轮收尾&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Hook 就是注册到事件上的脚本。Claude Code 把整个事件的 JSON 从 stdin 喂给你，你的脚本想做啥都行——记日志、改返回值、拦截调用都可以。Codex CLI 的设计完全一致，事件名都没改，方便从一边迁到另一边。&lt;/p&gt;
+&lt;p&gt;skill 调用具体落在哪个事件上，两家略有不同：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Claude Code&lt;/strong&gt;：Agent 隐式调用 skill 时，会走一个名叫 &lt;code&gt;Skill&lt;/code&gt; 的工具，匹配 &lt;code&gt;PreToolUse&lt;/code&gt;/&lt;code&gt;PostToolUse&lt;/code&gt; + &lt;code&gt;matcher: "Skill"&lt;/code&gt; 就能逮住；用户直接打 &lt;code&gt;/skillname&lt;/code&gt; 这种斜杠命令是另一条路，走 &lt;code&gt;UserPromptExpansion&lt;/code&gt;。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Codex CLI&lt;/strong&gt;：skill 通过 &lt;code&gt;$skillname&lt;/code&gt; 显式触发，或者由模型按 description 隐式选用，但&lt;strong&gt;没有专门的 &lt;code&gt;Skill&lt;/code&gt; 工具名&lt;/strong&gt;。skill 的实际执行最终落到 &lt;code&gt;Bash&lt;/code&gt;、&lt;code&gt;apply_patch&lt;/code&gt; 或 MCP 工具调用上。要在 Codex 里追踪 skill，咱们抓两头：&lt;code&gt;UserPromptSubmit&lt;/code&gt; 看用户有没有 &lt;code&gt;$skill&lt;/code&gt; 调用、&lt;code&gt;PreToolUse&lt;/code&gt;/&lt;code&gt;PostToolUse&lt;/code&gt; 看后续工具链。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这点要说在前头，免得后面看配置时一头雾水。&lt;/p&gt;
+&lt;h2 id="claude-code-hook"&gt;四、Claude Code 的 Hook 配置&lt;/h2&gt;
+&lt;p&gt;Claude Code 的 hook 文件放在 &lt;code&gt;~/.claude/settings.json&lt;/code&gt;（用户级）或者 &lt;code&gt;.claude/settings.json&lt;/code&gt;（项目级），用 JSON 写。&lt;/p&gt;
+&lt;p&gt;下面这份配置干两件事：Agent 一调 skill，咱们就在 &lt;code&gt;PreToolUse&lt;/code&gt; 抄下 &lt;code&gt;tool_input&lt;/code&gt;；调完了再在 &lt;code&gt;PostToolUse&lt;/code&gt; 抄一份 &lt;code&gt;tool_response&lt;/code&gt;。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;hooks&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;PreToolUse&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;matcher&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;Skill&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;hooks&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;type&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;command&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;command&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;${CLAUDE_PROJECT_DIR}/.claude/hooks/log_skill.sh&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;args&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;pre&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;PostToolUse&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;matcher&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;Skill&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;hooks&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;type&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;command&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;command&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;${CLAUDE_PROJECT_DIR}/.claude/hooks/log_skill.sh&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;args&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;post&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;UserPromptExpansion&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;hooks&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;type&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;command&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;command&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;${CLAUDE_PROJECT_DIR}/.claude/hooks/log_skill.sh&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;args&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;expansion&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;文档要点：&lt;code&gt;PreToolUse&lt;/code&gt; 的 &lt;code&gt;matcher&lt;/code&gt; 只匹配大写小写完全相同的 &lt;code&gt;Skill&lt;/code&gt;；带 &lt;code&gt;.&lt;/code&gt; 或 &lt;code&gt;|&lt;/code&gt; 会被当 JS 正则解析。&lt;code&gt;UserPromptExpansion&lt;/code&gt; 不支持 matcher，全量触发——所以咱们在脚本里看 &lt;code&gt;expansion_type&lt;/code&gt; 字段过滤就好。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;对应的脚本 &lt;code&gt;.claude/hooks/log_skill.sh&lt;/code&gt;：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="ch"&gt;#!/usr/bin/env bash&lt;/span&gt;
+&lt;span class="c1"&gt;# log_skill.sh — append skill events to JSONL&lt;/span&gt;
+&lt;span class="nb"&gt;set&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;-euo&lt;span class="w"&gt; &lt;/span&gt;pipefail
+
+&lt;span class="nv"&gt;PHASE&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="si"&gt;${&lt;/span&gt;&lt;span class="nv"&gt;1&lt;/span&gt;&lt;span class="k"&gt;:-&lt;/span&gt;&lt;span class="nv"&gt;unknown&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;
+&lt;span class="nv"&gt;LOG_DIR&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="si"&gt;${&lt;/span&gt;&lt;span class="nv"&gt;HOME&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;/.claude/skill-usage&amp;quot;&lt;/span&gt;
+mkdir&lt;span class="w"&gt; &lt;/span&gt;-p&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="nv"&gt;$LOG_DIR&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;
+&lt;span class="nv"&gt;LOG_FILE&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="si"&gt;${&lt;/span&gt;&lt;span class="nv"&gt;LOG_DIR&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;/skill_usage_&lt;/span&gt;&lt;span class="k"&gt;$(&lt;/span&gt;date&lt;span class="w"&gt; &lt;/span&gt;+%Y%m%d&lt;span class="k"&gt;)&lt;/span&gt;&lt;span class="s2"&gt;.jsonl&amp;quot;&lt;/span&gt;
+
+&lt;span class="c1"&gt;# stdin 是 Claude Code 喂给咱们的事件 JSON&lt;/span&gt;
+&lt;span class="nv"&gt;INPUT&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="k"&gt;$(&lt;/span&gt;cat&lt;span class="k"&gt;)&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;
+
+&lt;span class="c1"&gt;# 用 jq 给每条事件打上 phase 和本地时间戳，方便后面查&lt;/span&gt;
+&lt;span class="nb"&gt;echo&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="nv"&gt;$INPUT&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;|&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;jq&lt;span class="w"&gt; &lt;/span&gt;-c&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="se"&gt;\&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;--arg&lt;span class="w"&gt; &lt;/span&gt;phase&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="nv"&gt;$PHASE&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="se"&gt;\&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;--arg&lt;span class="w"&gt; &lt;/span&gt;ts&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="k"&gt;$(&lt;/span&gt;date&lt;span class="w"&gt; &lt;/span&gt;-u&lt;span class="w"&gt; &lt;/span&gt;+%Y-%m-%dT%H:%M:%SZ&lt;span class="k"&gt;)&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="se"&gt;\&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;. + {phase: $phase, logged_at: $ts}&amp;#39;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="se"&gt;\&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&amp;gt;&amp;gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="nv"&gt;$LOG_FILE&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;
+
+&lt;span class="c1"&gt;# Hook 必须静默退出，stdout 在 PreToolUse 里会被当成决策返回值&lt;/span&gt;
+&lt;span class="nb"&gt;exit&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="m"&gt;0&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;记得 &lt;code&gt;chmod +x .claude/hooks/log_skill.sh&lt;/code&gt;。&lt;/p&gt;
+&lt;p&gt;跑一轮看看，&lt;code&gt;~/.claude/skill-usage/skill_usage_20260601.jsonl&lt;/code&gt; 里就有了这样的记录（节选）：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;session_id&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;abc-123&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;tool_name&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;Skill&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;tool_input&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:{&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;skill_name&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;lazy-blog-write&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;prompt&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;...&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;},&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;phase&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;pre&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;logged_at&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;2026-06-01T13:55:21Z&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;session_id&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;abc-123&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;tool_name&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;Skill&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;tool_response&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:{&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;success&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="kc"&gt;true&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;duration_ms&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;1832&lt;/span&gt;&lt;span class="p"&gt;},&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;phase&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;post&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;logged_at&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;2026-06-01T13:55:23Z&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;到这一步，咱们至少知道了：哪个会话、什么时候、调了哪个 skill、传了什么 prompt、跑了多久。这就是行车记录仪的基本功。&lt;/p&gt;
+&lt;h2 id="codex-cli-hook"&gt;五、Codex CLI 的 Hook 配置&lt;/h2&gt;
+&lt;p&gt;Codex 的 hook 写在 &lt;code&gt;~/.codex/hooks.json&lt;/code&gt;（推荐这种写法）或者 &lt;code&gt;~/.codex/config.toml&lt;/code&gt; 里的 inline &lt;code&gt;[hooks]&lt;/code&gt; 表。项目级放在 &lt;code&gt;&amp;lt;repo&amp;gt;/.codex/hooks.json&lt;/code&gt;，但是&lt;strong&gt;项目级 hook 需要先 trust&lt;/strong&gt; 这个项目，Codex 才会加载。&lt;/p&gt;
+&lt;p&gt;下面这份配置同时盯两个角度：用户有没有 &lt;code&gt;$skill&lt;/code&gt; 显式调用、Agent 实际跑了哪些工具。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;hooks&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;UserPromptSubmit&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;hooks&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;type&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;command&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;command&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;/usr/bin/env python3 ~/.codex/hooks/log_skill.py prompt&amp;quot;&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;PreToolUse&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;matcher&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;Bash|apply_patch|mcp__.*&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;hooks&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;type&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;command&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;command&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;/usr/bin/env python3 ~/.codex/hooks/log_skill.py pre&amp;quot;&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;PostToolUse&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;matcher&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;Bash|apply_patch|mcp__.*&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;hooks&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;type&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;command&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;command&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;/usr/bin/env python3 ~/.codex/hooks/log_skill.py post&amp;quot;&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;SessionStart&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;matcher&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;startup|resume&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;hooks&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;type&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;command&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;command&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;/usr/bin/env python3 ~/.codex/hooks/log_skill.py session&amp;quot;&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;文档要点：Codex 的 hook 默认是开的（&lt;code&gt;[features].hooks = true&lt;/code&gt;）。&lt;code&gt;PreToolUse&lt;/code&gt; 的 &lt;code&gt;matcher&lt;/code&gt; 是正则，能匹配 &lt;code&gt;Bash&lt;/code&gt;、&lt;code&gt;apply_patch&lt;/code&gt;，以及任何 &lt;code&gt;mcp__&amp;lt;server&amp;gt;__&amp;lt;tool&amp;gt;&lt;/code&gt; 形式的 MCP 工具名。&lt;code&gt;UserPromptSubmit&lt;/code&gt; 不支持 matcher，会全量触发。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;第一次启动 Codex 会让你 &lt;code&gt;/hooks&lt;/code&gt; 里 review 并 trust 这个 hook，不 trust 就不会跑——这是设计上的安全闸门，别绕过。&lt;/p&gt;
+&lt;p&gt;对应脚本 &lt;code&gt;~/.codex/hooks/log_skill.py&lt;/code&gt;：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="ch"&gt;#!/usr/bin/env python3&lt;/span&gt;
+&lt;span class="sd"&gt;&amp;quot;&amp;quot;&amp;quot;log_skill.py — append Codex skill-relevant events to JSONL.&amp;quot;&amp;quot;&amp;quot;&lt;/span&gt;
+&lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="nn"&gt;json&lt;/span&gt;
+&lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="nn"&gt;os&lt;/span&gt;
+&lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="nn"&gt;re&lt;/span&gt;
+&lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="nn"&gt;sys&lt;/span&gt;
+&lt;span class="kn"&gt;from&lt;/span&gt; &lt;span class="nn"&gt;datetime&lt;/span&gt; &lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="n"&gt;datetime&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;timezone&lt;/span&gt;
+&lt;span class="kn"&gt;from&lt;/span&gt; &lt;span class="nn"&gt;pathlib&lt;/span&gt; &lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="n"&gt;Path&lt;/span&gt;
+
+&lt;span class="n"&gt;LOG_DIR&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;Path&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;home&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;.codex&amp;quot;&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;skill-usage&amp;quot;&lt;/span&gt;
+&lt;span class="n"&gt;LOG_DIR&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;mkdir&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;parents&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="kc"&gt;True&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;exist_ok&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="kc"&gt;True&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="n"&gt;LOG_FILE&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;LOG_DIR&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt; &lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;skill_usage_&lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;datetime&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;now&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;strftime&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;%Y%m&lt;/span&gt;&lt;span class="si"&gt;%d&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;.jsonl&amp;quot;&lt;/span&gt;
+
+&lt;span class="n"&gt;SKILL_INVOCATION&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;re&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;compile&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="sa"&gt;r&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;\$([a-zA-Z][\w-]*)&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+
+&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;main&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="kc"&gt;None&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;phase&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;sys&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;argv&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt; &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="nb"&gt;len&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;sys&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;argv&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="mi"&gt;1&lt;/span&gt; &lt;span class="k"&gt;else&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;unknown&amp;quot;&lt;/span&gt;
+    &lt;span class="k"&gt;try&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;event&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;json&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;load&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;sys&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;stdin&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;except&lt;/span&gt; &lt;span class="n"&gt;json&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;JSONDecodeError&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="c1"&gt;# 收不到合法 JSON 时静默退出，不要拖累主流程&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt;
+
+    &lt;span class="n"&gt;record&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="s2"&gt;&amp;quot;phase&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;phase&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+        &lt;span class="s2"&gt;&amp;quot;logged_at&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;datetime&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;now&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;timezone&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;utc&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;isoformat&lt;/span&gt;&lt;span class="p"&gt;(),&lt;/span&gt;
+        &lt;span class="s2"&gt;&amp;quot;session_id&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;event&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;get&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;session_id&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;),&lt;/span&gt;
+        &lt;span class="s2"&gt;&amp;quot;turn_id&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;event&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;get&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;turn_id&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;),&lt;/span&gt;
+        &lt;span class="s2"&gt;&amp;quot;hook_event_name&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;event&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;get&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;hook_event_name&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;),&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+
+    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;phase&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;prompt&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;prompt&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;event&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;get&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;prompt&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="c1"&gt;# 把用户输入里的 $skill 显式调用挑出来&lt;/span&gt;
+        &lt;span class="n"&gt;skills&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;SKILL_INVOCATION&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;findall&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;prompt&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="n"&gt;record&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;skill_invocations&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;skills&lt;/span&gt;
+        &lt;span class="n"&gt;record&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;prompt_preview&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;prompt&lt;/span&gt;&lt;span class="p"&gt;[:&lt;/span&gt;&lt;span class="mi"&gt;200&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+    &lt;span class="k"&gt;elif&lt;/span&gt; &lt;span class="n"&gt;phase&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;pre&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;post&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;}:&lt;/span&gt;
+        &lt;span class="n"&gt;record&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;tool_name&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;event&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;get&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;tool_name&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="n"&gt;record&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;tool_use_id&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;event&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;get&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;tool_use_id&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="c1"&gt;# 参数留前 500 字符就够取证，别把整个 patch 都写进日志&lt;/span&gt;
+        &lt;span class="n"&gt;ti&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;event&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;get&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;tool_input&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;ti&lt;/span&gt; &lt;span class="ow"&gt;is&lt;/span&gt; &lt;span class="ow"&gt;not&lt;/span&gt; &lt;span class="kc"&gt;None&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+            &lt;span class="n"&gt;record&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;tool_input_preview&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;json&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;dumps&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;ti&lt;/span&gt;&lt;span class="p"&gt;)[:&lt;/span&gt;&lt;span class="mi"&gt;500&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+    &lt;span class="k"&gt;elif&lt;/span&gt; &lt;span class="n"&gt;phase&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;session&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;record&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;source&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;event&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;get&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;source&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="n"&gt;record&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;cwd&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;event&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;get&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;cwd&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+    &lt;span class="k"&gt;with&lt;/span&gt; &lt;span class="n"&gt;LOG_FILE&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;open&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;a&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="k"&gt;as&lt;/span&gt; &lt;span class="n"&gt;f&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;f&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;write&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;json&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;dumps&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;record&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;ensure_ascii&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="kc"&gt;False&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;+&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="se"&gt;\n&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+
+&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="vm"&gt;__name__&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;__main__&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+    &lt;span class="k"&gt;try&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;main&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+    &lt;span class="k"&gt;finally&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="c1"&gt;# 任何异常都不要影响 Agent 主流程，silently exit 0&lt;/span&gt;
+        &lt;span class="n"&gt;sys&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;exit&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;code&gt;chmod +x ~/.codex/hooks/log_skill.py&lt;/code&gt;，然后在 Codex 里 &lt;code&gt;/hooks&lt;/code&gt; review 一下，就能用了。&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;一个常见疑问：为啥 Codex 这边要在 &lt;code&gt;UserPromptSubmit&lt;/code&gt; 里用正则扫 &lt;code&gt;$skill-name&lt;/code&gt;？因为按官方文档，Codex 的 skill 没有专属 &lt;code&gt;Skill&lt;/code&gt; 工具名，隐式调用会直接落到 Bash/apply_patch/MCP，显式调用走的是斜杠/$ 命令的提示词扩展。两头都抓，才能拼出完整故事。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h2 id="_1"&gt;六、日志怎么看：三条最有用的查询&lt;/h2&gt;
+&lt;p&gt;JSONL 落下来不查，等于没追踪。&lt;code&gt;jq&lt;/code&gt; 一行命令就够用：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# 1. 过去一天，哪些 skill 被实际调用了，按次数排序（Claude Code 视角）&lt;/span&gt;
+cat&lt;span class="w"&gt; &lt;/span&gt;~/.claude/skill-usage/skill_usage_&lt;span class="k"&gt;$(&lt;/span&gt;date&lt;span class="w"&gt; &lt;/span&gt;+%Y%m%d&lt;span class="k"&gt;)&lt;/span&gt;.jsonl&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="se"&gt;\&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="p"&gt;|&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;jq&lt;span class="w"&gt; &lt;/span&gt;-r&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;select(.phase==&amp;quot;pre&amp;quot;) | .tool_input.skill_name&amp;#39;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="se"&gt;\&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="p"&gt;|&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;sort&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;|&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;uniq&lt;span class="w"&gt; &lt;/span&gt;-c&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;|&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;sort&lt;span class="w"&gt; &lt;/span&gt;-rn
+
+&lt;span class="c1"&gt;# 2. Codex 里，用户主动 $触发 的 skill 都有哪些&lt;/span&gt;
+cat&lt;span class="w"&gt; &lt;/span&gt;~/.codex/skill-usage/skill_usage_&lt;span class="k"&gt;$(&lt;/span&gt;date&lt;span class="w"&gt; &lt;/span&gt;+%Y%m%d&lt;span class="k"&gt;)&lt;/span&gt;.jsonl&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="se"&gt;\&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="p"&gt;|&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;jq&lt;span class="w"&gt; &lt;/span&gt;-r&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;select(.phase==&amp;quot;prompt&amp;quot;) | .skill_invocations[]?&amp;#39;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="se"&gt;\&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="p"&gt;|&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;sort&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;|&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;uniq&lt;span class="w"&gt; &lt;/span&gt;-c&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;|&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;sort&lt;span class="w"&gt; &lt;/span&gt;-rn
+
+&lt;span class="c1"&gt;# 3. 单次 skill 调用平均耗时（Claude Code，配对 pre/post）&lt;/span&gt;
+cat&lt;span class="w"&gt; &lt;/span&gt;~/.claude/skill-usage/skill_usage_*.jsonl&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="se"&gt;\&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="p"&gt;|&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;jq&lt;span class="w"&gt; &lt;/span&gt;-s&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;&lt;/span&gt;
+&lt;span class="s1"&gt;      group_by(.tool_use_id // .session_id)&lt;/span&gt;
+&lt;span class="s1"&gt;      | map(select(length==2))&lt;/span&gt;
+&lt;span class="s1"&gt;      | map({&lt;/span&gt;
+&lt;span class="s1"&gt;          skill: (.[0].tool_input.skill_name // &amp;quot;unknown&amp;quot;),&lt;/span&gt;
+&lt;span class="s1"&gt;          ms: ((.[1].logged_at | fromdate) - (.[0].logged_at | fromdate)) * 1000&lt;/span&gt;
+&lt;span class="s1"&gt;        })&lt;/span&gt;
+&lt;span class="s1"&gt;      | group_by(.skill)&lt;/span&gt;
+&lt;span class="s1"&gt;      | map({skill: .[0].skill, avg_ms: (map(.ms) | add / length)})&lt;/span&gt;
+&lt;span class="s1"&gt;    &amp;#39;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;跑出来的数据，咱终于不用再凭感觉评价"这个 skill 好不好用"了。&lt;/p&gt;
+&lt;h2 id="5-hook"&gt;七、避坑清单：5 条用 hook 别栽跟头&lt;/h2&gt;
+&lt;p&gt;技术上能跑通是一回事，能让团队长期用下去是另一回事。下面这几条是我栽过、也见别人栽过的坑：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;#&lt;/th&gt;
+&lt;th&gt;坑&lt;/th&gt;
+&lt;th&gt;怎么躲&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;1&lt;/td&gt;
+&lt;td&gt;hook 脚本里同步发网络请求，每次工具调用都卡 1 秒&lt;/td&gt;
+&lt;td&gt;只写本地文件，要发远端就异步起子进程，或者用 &lt;code&gt;&amp;amp;&lt;/code&gt; 丢到后台&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;2&lt;/td&gt;
+&lt;td&gt;tool_input 里有 API key / Token 被原封不动写进日志&lt;/td&gt;
+&lt;td&gt;写入前做 redact，比如正则替换 &lt;code&gt;sk-[A-Za-z0-9]{20,}&lt;/code&gt; 为 &lt;code&gt;***&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;3&lt;/td&gt;
+&lt;td&gt;日志一直追加，几个月后占满磁盘&lt;/td&gt;
+&lt;td&gt;按天分文件已经是基础，再加一条 &lt;code&gt;logrotate&lt;/code&gt; 规则或 cron 删 30 天前的&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;4&lt;/td&gt;
+&lt;td&gt;hook 脚本里 &lt;code&gt;set -e&lt;/code&gt;，一个小报错让 Agent 整个 turn 失败&lt;/td&gt;
+&lt;td&gt;用 &lt;code&gt;set -uo pipefail&lt;/code&gt; 但允许失败，最后 &lt;code&gt;exit 0&lt;/code&gt;；Codex 文档也强调 hook 失败别影响主流程&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;5&lt;/td&gt;
+&lt;td&gt;Claude Code 的 &lt;code&gt;PreToolUse&lt;/code&gt; hook 不小心往 stdout 输出了普通日志，被当成 permissionDecision 解析&lt;/td&gt;
+&lt;td&gt;调试 print 全部走 stderr，stdout 留给 JSON 决策；空 stdout + exit 0 = 静默通过&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;第 2 条尤其要紧。AI 时代，prompt 和工具参数里夹带敏感信息的概率比日志里高得多，咱们当观察者的，别反过来成了泄密源头。&lt;/p&gt;
+&lt;h2 id="_2"&gt;八、把它装上车&lt;/h2&gt;
+&lt;p&gt;讲到这儿，整套机制其实就一句话：&lt;strong&gt;Agent 跑哪儿，咱们的探针就跟到哪儿；写下来的，才算数&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;如果你跟我一样，在用 Claude Code 或者 Codex 配各种自研 skill，强烈建议今天就花二十分钟把这套行车记录仪装上。一周后回头看那份 JSONL，你会发现一些你怎么也想不到的事——比如某个被你寄予厚望的 skill 一次都没被触发过，又比如某个明明只该跑一次的 skill 被反复触发了二十遍。&lt;/p&gt;
+&lt;p&gt;工程的乐趣，无他，惟数据说话尔。&lt;/p&gt;
+&lt;h3 id="skill_1"&gt;Skill 追踪能力总览&lt;/h3&gt;
+&lt;p&gt;&lt;img alt="Skill 追踪能力总览" src="../images/track-ai-skill-usage-with-hooks_mindmap.png"&gt;&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap
+* Skill Usage Hook
+** Claude Code
+*** PreToolUse / matcher: Skill
+*** PostToolUse / matcher: Skill
+*** UserPromptExpansion (斜杠命令)
+*** 落点: ~/.claude/settings.json
+** Codex CLI
+*** UserPromptSubmit (扫 $skill)
+*** PreToolUse / Bash|apply_patch|mcp__.*
+*** PostToolUse / 同上
+*** SessionStart
+*** 落点: ~/.codex/hooks.json
+** 日志策略
+*** JSONL 按天分文件
+*** 敏感字段 redact
+*** logrotate / cron 清理
+** 查询
+*** skill 调用次数排行
+*** 平均耗时
+*** $显式 vs 隐式触发比例
+** 安全闸门
+*** Codex 需 /hooks trust
+*** hook 失败不阻断 Agent
+*** stdout 仅放决策 JSON
+@endmindmap
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;hr&gt;
+&lt;p&gt;&lt;strong&gt;参考文档&lt;/strong&gt;：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Claude Code Hooks Reference — https://docs.claude.com/en/docs/claude-code/hooks&lt;/li&gt;
+&lt;li&gt;Codex Hooks — https://developers.openai.com/codex/hooks&lt;/li&gt;
+&lt;li&gt;Codex Skills — https://developers.openai.com/codex/skills&lt;/li&gt;
+&lt;li&gt;Claude Code Skills — https://docs.claude.com/en/docs/claude-code/skills&lt;/li&gt;
+&lt;/ul&gt;</content><category term="Tech"/><category term="AI Agent"/><category term="Claude Code"/><category term="Codex"/><category term="Hooks"/><category term="Observability"/><category term="Skills"/></entry><entry><title>FDE：新瓶旧酒，还是 AI 时代的新工程师？</title><link href="https://www.fanyamin.com/forward-deployed-engineer.html" rel="alternate"/><published>2026-05-30T10:46:00+08:00</published><updated>2026-05-30T10:46:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-05-30:/forward-deployed-engineer.html</id><summary type="html">&lt;p&gt;FDE 不是 Full Stack Engineer 的新缩写，也不只是国内常见的驻场工程师。它离客户很近，但真正的分水岭在于：是否带着工程授权、产品化责任和可复用的反馈闭环去解决问题。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;FDE：新瓶旧酒，还是 AI 时代的新工程师？&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;Tech&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Status&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;v0.1&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;2026-05-30&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h1 id="fde-ai"&gt;FDE：新瓶旧酒，还是 AI 时代的新工程师？&lt;/h1&gt;
+&lt;p&gt;最近看到 OpenAI 在招 Forward Deployed Engineer，简称 FDE。第一眼看过去，很容易误会：这是不是 Full Stack Engineer 写错了？或者硅谷又发明了一个听起来更贵的“驻场工程师”？&lt;/p&gt;
+&lt;p&gt;我觉得都不是。&lt;/p&gt;
+&lt;p&gt;FDE 的确要离客户很近，也常常要进到客户真实业务场景里解决问题。可它和国内早就存在的驻场工程师相比，关键差别不在“坐在哪里”，而在“你到底对什么负责”：是负责把某个项目交付掉，还是负责把客户问题转化为可复用的产品能力。&lt;/p&gt;
+&lt;p&gt;一句话：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;驻场工程师通常把产品带到客户现场；FDE 更像把客户现场带回产品系统。&lt;/strong&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;这篇文章不想玩概念。咱们把 FDE、驻场工程师、售前、解决方案架构师、全栈工程师放到一张桌子上，看看它们到底哪里像，哪里完全不是一回事。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="fde-fse"&gt;一、FDE 不是 FSE：别被缩写带沟里&lt;/h2&gt;
+&lt;p&gt;先把一个小误会拿掉。&lt;/p&gt;
+&lt;p&gt;FDE 是 &lt;strong&gt;Forward Deployed Engineer&lt;/strong&gt;，不是 FSE，也不是 Full Stack Engineer 的变体。全栈工程师强调的是技术栈跨度：前端、后端、数据库、部署，多少都能干一点。FDE 强调的是部署位置和责任边界：工程师前移到客户问题发生的地方。&lt;/p&gt;
+&lt;p&gt;当然，一个优秀 FDE 往往也得能写全栈代码。客户现场的问题很少按前后端分层排队。今天可能是数据接入，明天可能是权限模型，后天可能是模型评估和用户工作流。你说“这个不归我”，客户不会因此少痛一点。&lt;/p&gt;
+&lt;p&gt;但“会写很多层代码”只是工具箱，不是岗位定义。&lt;/p&gt;
+&lt;p&gt;FDE 的核心不是 full stack，而是 &lt;strong&gt;full context&lt;/strong&gt;：懂客户业务上下文、懂产品能力边界、懂工程实现成本，还能把一次项目里的特殊需求，抽象成未来很多客户都能用的能力。&lt;/p&gt;
+&lt;p&gt;这就很有意思了。&lt;/p&gt;
+&lt;p&gt;一个普通全栈工程师如果天天在需求池里捡 ticket，他面对的是已经被产品经理、架构师、项目经理过滤过的问题。FDE 面对的往往是原始问题：客户说不清楚，流程也没画全，系统边界还会变，利益相关方每天都有新想法。&lt;/p&gt;
+&lt;p&gt;这时候，写代码只是后半场。前半场是判断：这个问题是真需求、假需求，还是某个组织流程的副作用？&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="fde"&gt;二、FDE 到底是什么：带工程能力的产品侦察兵&lt;/h2&gt;
+&lt;p&gt;我倾向于把 FDE 理解成三种角色的混合体：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;工程师&lt;/strong&gt;：能自己设计、编码、集成、排查线上问题。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;产品发现者&lt;/strong&gt;：能从客户场景里识别真实需求，而不是照单全收。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;系统连接器&lt;/strong&gt;：能把客户系统、公司产品、内部研发和交付节奏串起来。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;OpenAI 的 FDE 招聘描述里，比较典型的关键词是 discovery、scope、system design、prototype、production rollout。也就是说，它不是只去客户那里演示产品，也不是只接一个集成任务，而是从问题发现到系统设计，再到生产落地都要参与。&lt;/p&gt;
+&lt;p&gt;SVPG 对 FDE 的讨论也有一个关键提醒：FDE 不应该只是 professional services 的新名字。如果 FDE 做出来的东西永远停留在某个客户的定制项目里，那它很容易退化成高端外包。真正有价值的是：FDE 能把一线经验反馈到产品团队，帮助平台变得更强。&lt;/p&gt;
+&lt;p&gt;Rocketlane 的文章则从专业服务角度解释了这个角色为什么出现：当企业软件越来越复杂，客户环境越来越个性化，单靠标准文档、售前 demo 和远程 support，已经很难把价值落到真实流程里。于是需要一种既懂工程、又能贴近客户现场的人。&lt;/p&gt;
+&lt;p&gt;这三种说法合起来，我认为 FDE 的定义可以更朴素一点：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;FDE 是一种前置到客户场景中的产品工程师，负责把客户的真实业务问题，快速落地成可运行方案，并把可复用部分带回产品和平台。&lt;/strong&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;注意三个关键词：客户场景、可运行方案、可复用部分。&lt;/p&gt;
+&lt;p&gt;少一个，就变味。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_1"&gt;三、国内的驻场工程师：旧职业并不低级&lt;/h2&gt;
+&lt;p&gt;讲 FDE 之前，先别急着嫌弃“驻场工程师”。&lt;/p&gt;
+&lt;p&gt;国内做企业软件、政企项目、金融、电信、制造业系统集成的人，对驻场一点不陌生。客户现场一坐，VPN 一连，会议一开，问题就来了：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;系统上线失败，先别问谁的问题，先救火；&lt;/li&gt;
+&lt;li&gt;客户要改流程，合同里没写，但领导明天要看；&lt;/li&gt;
+&lt;li&gt;网络、账号、权限、数据库、日志，全都要有人现场协调；&lt;/li&gt;
+&lt;li&gt;研发说“环境无法复现”，客户说“你们产品不行”，中间那个人往往就是驻场。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这活不容易。很多驻场工程师其实非常能打，尤其是在复杂组织里推进事情的能力，远不是坐在办公室写文档能练出来的。&lt;/p&gt;
+&lt;p&gt;我以前做协作平台、实时通信、后台服务相关工作时，也见过类似角色的价值：客户现场的问题很少是纯技术问题。它经常是技术、流程、权限、组织、历史债务混在一起的一锅粥。谁能把锅里的东西分层捞出来，谁就有价值。&lt;/p&gt;
+&lt;p&gt;所以，不要简单说“驻场工程师低端，FDE 高端”。这太偷懒。&lt;/p&gt;
+&lt;p&gt;真正的问题是：很多传统驻场角色，被组织设计限制住了。&lt;/p&gt;
+&lt;p&gt;他们离客户很近，但离产品决策很远；他们知道问题在哪，但没有权限改产品；他们经常处理个案，却很难把经验沉淀成平台能力。久而久之，驻场成了项目交付的缓冲垫：客户不满意时垫一下，产品不好用时垫一下，需求不清楚时再垫一下。&lt;/p&gt;
+&lt;p&gt;一个人再能扛，也不能总当缓冲垫。缓冲垫再厚，也不是发动机。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="fde_1"&gt;四、FDE 和驻场工程师的核心区别&lt;/h2&gt;
+&lt;p&gt;下面这张表，是我理解的关键差别。&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;维度&lt;/th&gt;
+&lt;th&gt;传统驻场工程师&lt;/th&gt;
+&lt;th&gt;FDE&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;工作位置&lt;/td&gt;
+&lt;td&gt;客户现场或长期贴近客户&lt;/td&gt;
+&lt;td&gt;客户现场、远程协作、内部研发之间来回穿梭&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;主要目标&lt;/td&gt;
+&lt;td&gt;项目交付、问题响应、客户满意&lt;/td&gt;
+&lt;td&gt;业务价值落地、产品能力验证、平台反馈闭环&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;工程权限&lt;/td&gt;
+&lt;td&gt;常受限于项目边界和交付合同&lt;/td&gt;
+&lt;td&gt;通常需要直接设计、编码、集成、上线&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;需求处理&lt;/td&gt;
+&lt;td&gt;更多承接需求和协调资源&lt;/td&gt;
+&lt;td&gt;需要识别、筛选、抽象和反向推动产品&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;成果形态&lt;/td&gt;
+&lt;td&gt;定制配置、现场方案、交付文档、问题修复&lt;/td&gt;
+&lt;td&gt;可运行方案、可复用组件、产品改进、参考架构&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;组织连接&lt;/td&gt;
+&lt;td&gt;客户与交付/支持团队之间&lt;/td&gt;
+&lt;td&gt;客户、产品、研发、平台、销售之间&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;成功标准&lt;/td&gt;
+&lt;td&gt;这个客户能不能顺利上线&lt;/td&gt;
+&lt;td&gt;这个客户成功后，产品有没有变得更好&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;这个表的重点不是贬低谁，而是看责任边界。&lt;/p&gt;
+&lt;p&gt;驻场工程师经常被要求“把事情搞定”。FDE 也要把事情搞定，但还要多问一步：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;这件事是不是说明我们的产品抽象不够？是不是说明平台缺一块能力？是不是可以形成一个模板，让下一个客户少踩坑？&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;这就是分水岭。&lt;/p&gt;
+&lt;p&gt;如果一个 FDE 只做客户定制，那他就是换了英文 title 的驻场。如果一个驻场工程师能持续把现场经验转成产品能力，那他其实已经在做 FDE 的一部分工作，只是组织没给他这个名字。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="ai-fde"&gt;五、为什么 AI 公司特别需要 FDE&lt;/h2&gt;
+&lt;p&gt;AI 产品和传统 SaaS 有一个很不一样的地方：它常常不是“开箱即用”，而是“嵌入流程才有用”。&lt;/p&gt;
+&lt;p&gt;一个聊天框当然容易 demo。可企业真正要的是：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;接入内部知识库和业务系统；&lt;/li&gt;
+&lt;li&gt;处理权限、审计、隐私、合规；&lt;/li&gt;
+&lt;li&gt;把模型输出嵌进已有工作流；&lt;/li&gt;
+&lt;li&gt;衡量准确率、召回率、节省时间和失败成本；&lt;/li&gt;
+&lt;li&gt;让员工真的愿意用，而不是领导看完 demo 鼓掌。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这不是发一个 API key 就结束的事。&lt;/p&gt;
+&lt;p&gt;AI 应用尤其容易卡在“最后一公里”：模型能力看起来很强，但客户流程太复杂；原型两天能做，生产系统两个月还在开会；演示效果惊艳，真实数据一上来就开始露怯。&lt;/p&gt;
+&lt;p&gt;FDE 的价值，正是在这种混乱里出现。&lt;/p&gt;
+&lt;p&gt;他要能坐到客户旁边，看真实用户怎么工作，而不是只看 PPT 上的 happy path。他要能判断某个问题到底该靠 prompt、RAG、fine-tuning、workflow、权限模型，还是干脆承认：这不是 AI 问题，是客户流程本身没理顺。&lt;/p&gt;
+&lt;p&gt;更重要的是，他要能把这些一线发现带回产品：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;哪些集成方式反复出现，可以产品化？&lt;/li&gt;
+&lt;li&gt;哪些评估指标应该变成默认能力？&lt;/li&gt;
+&lt;li&gt;哪些安全和权限需求不是个例，而是企业客户的基本盘？&lt;/li&gt;
+&lt;li&gt;哪些 demo 很酷，但生产落地风险太高？&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这也是为什么 FDE 在 AI 时代突然显得重要。模型能力变化太快，客户需求又太具体，坐在总部闭门造车，很容易造出一辆在展厅里很漂亮、在工地上开不动的车。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="fde_2"&gt;六、FDE、售前、解决方案架构师、全栈工程师怎么分&lt;/h2&gt;
+&lt;p&gt;现实里这些角色会重叠。尤其在创业公司，一个人可能上午做售前，下午写代码，晚上排查客户环境。公司小的时候，title 往往只是个贴纸。&lt;/p&gt;
+&lt;p&gt;但如果非要分，我会这样看：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;角色&lt;/th&gt;
+&lt;th&gt;核心问题&lt;/th&gt;
+&lt;th&gt;典型产出&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;售前工程师&lt;/td&gt;
+&lt;td&gt;客户为什么应该买？&lt;/td&gt;
+&lt;td&gt;demo、方案说明、POC 支持、技术答疑&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;解决方案架构师&lt;/td&gt;
+&lt;td&gt;客户应该怎么用？&lt;/td&gt;
+&lt;td&gt;架构方案、集成设计、最佳实践&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;全栈工程师&lt;/td&gt;
+&lt;td&gt;这个功能怎么实现？&lt;/td&gt;
+&lt;td&gt;前后端代码、服务、测试、部署&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;驻场工程师&lt;/td&gt;
+&lt;td&gt;这个项目怎么落地？&lt;/td&gt;
+&lt;td&gt;现场支持、问题修复、配置交付、协调推进&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;FDE&lt;/td&gt;
+&lt;td&gt;这个客户问题如何变成产品能力？&lt;/td&gt;
+&lt;td&gt;原型、生产方案、集成代码、产品反馈、可复用模板&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;如果说售前回答“能不能买”，解决方案架构师回答“怎么设计”，全栈工程师回答“怎么实现”，驻场工程师回答“怎么上线”，那 FDE 要同时问：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;这个真实问题，是否值得我们改变产品？&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;这句话听起来简单，实际很难。&lt;/p&gt;
+&lt;p&gt;因为客户需求不总是对的。大客户的声音很响，但不一定代表市场方向。某个项目的紧急需求，可能只是历史系统太老、组织流程太绕、采购承诺太满。FDE 如果只会满足客户，就会把产品拖进定制泥潭；如果只会坚持平台原则，又会把客户晾在岸边。&lt;/p&gt;
+&lt;p&gt;这中间的判断力，才是 FDE 的贵处。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="fde_3"&gt;七、什么样的人适合做 FDE&lt;/h2&gt;
+&lt;p&gt;我认为 FDE 不是初级岗位的自然入口。它对人的要求有点拧巴：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;要能写代码，但不能只爱写代码；&lt;/li&gt;
+&lt;li&gt;要懂产品，但不能只会画流程图；&lt;/li&gt;
+&lt;li&gt;要愿意面对客户，但不能变成“客户说啥都对”；&lt;/li&gt;
+&lt;li&gt;要能快速交付，但不能制造一堆不可维护的定制包；&lt;/li&gt;
+&lt;li&gt;要有沟通耐心，也要有工程底线。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;更具体一点，至少需要五种能力。&lt;/p&gt;
+&lt;h3 id="1"&gt;1. 快速建模能力&lt;/h3&gt;
+&lt;p&gt;客户讲的是业务语言。你要能听出背后的实体、流程、状态、权限和异常路径。&lt;/p&gt;
+&lt;p&gt;比如客户说：“我们希望 AI 帮销售自动总结会议并更新 CRM。”这句话背后至少有：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;会议记录来源；&lt;/li&gt;
+&lt;li&gt;说话人识别；&lt;/li&gt;
+&lt;li&gt;客户信息匹配；&lt;/li&gt;
+&lt;li&gt;CRM 字段映射；&lt;/li&gt;
+&lt;li&gt;审批和撤销；&lt;/li&gt;
+&lt;li&gt;错误更正；&lt;/li&gt;
+&lt;li&gt;隐私和合规；&lt;/li&gt;
+&lt;li&gt;用户不信任 AI 时的人工确认。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;听一句需求，脑子里能展开系统图，这很重要。&lt;/p&gt;
+&lt;h3 id="2"&gt;2. 工程落地能力&lt;/h3&gt;
+&lt;p&gt;FDE 不能只做“高级传话筒”。你得能把原型跑起来，把接口接上，把日志打出来，把失败原因定位到足够具体。&lt;/p&gt;
+&lt;p&gt;客户现场最怕一种人：讲方案头头是道，一到执行就全靠“我回去问研发”。问一次可以，次次都问，现场信任就没了。&lt;/p&gt;
+&lt;h3 id="3"&gt;3. 抽象复用能力&lt;/h3&gt;
+&lt;p&gt;这也是 FDE 和普通定制开发最大的不同。&lt;/p&gt;
+&lt;p&gt;客户 A 要 Salesforce，客户 B 要 ServiceNow，客户 C 要自研系统。表面看都是定制，往下抽一层，可能都是“外部系统对象映射 + 权限校验 + 审计日志 + 重试队列”。&lt;/p&gt;
+&lt;p&gt;FDE 要能看见这一层。&lt;/p&gt;
+&lt;p&gt;否则你只是不断修补不同客户的特殊需求，最后产品变成一件打满补丁的旧衣服。&lt;/p&gt;
+&lt;h3 id="4"&gt;4. 产品判断能力&lt;/h3&gt;
+&lt;p&gt;不是每个客户需求都该进产品。&lt;/p&gt;
+&lt;p&gt;判断一个需求是否产品化，可以问四个问题：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;这个问题是否在多个客户中重复出现？&lt;/li&gt;
+&lt;li&gt;它是否属于我们的核心价值链？&lt;/li&gt;
+&lt;li&gt;产品化后是否能降低未来交付成本？&lt;/li&gt;
+&lt;li&gt;它是否会把平台复杂度推到不可控？&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;四个问题答不上来，就先别急着写进路线图。&lt;/p&gt;
+&lt;h3 id="5"&gt;5. 组织沟通能力&lt;/h3&gt;
+&lt;p&gt;FDE 经常站在几股力量中间：客户要快，销售要赢，产品要通用，研发要可维护，安全合规要兜底。&lt;/p&gt;
+&lt;p&gt;这不是简单的“沟通能力”，而是冲突建模能力。你要能把争论从情绪拉回事实，把“客户很急”翻译成“如果 6 月 15 日前不能完成 A、B、C，合同扩展会受影响”，把“研发不支持”翻译成“当前架构缺少 D，硬做会导致 E 风险”。&lt;/p&gt;
+&lt;p&gt;说白了，FDE 要会写代码，也要会写问题定义。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="fde_4"&gt;八、国内公司能不能学 FDE&lt;/h2&gt;
+&lt;p&gt;能学，但别只学 title。&lt;/p&gt;
+&lt;p&gt;如果只是把“驻场工程师”改名为 FDE，工资不变，权限不变，考核不变，产品团队也不听现场反馈，那这就叫英文装修。门头亮了，厨房还是原来的厨房。&lt;/p&gt;
+&lt;p&gt;真正要学，至少要改三件事。&lt;/p&gt;
+&lt;h3 id="1_1"&gt;1. 给现场工程师产品反馈通道&lt;/h3&gt;
+&lt;p&gt;驻场同事每天都在看真实问题。如果这些问题只进入周报和工单系统，而不能进入产品设计和架构决策，那公司就在浪费最贵的一线情报。&lt;/p&gt;
+&lt;p&gt;可以建立固定机制：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;每周收集 Top 5 重复客户问题；&lt;/li&gt;
+&lt;li&gt;每月做一次“定制需求归因”复盘；&lt;/li&gt;
+&lt;li&gt;把现场 workaround 分成配置问题、文档问题、产品缺口、架构缺陷四类；&lt;/li&gt;
+&lt;li&gt;产品经理和架构师必须参与高频问题评审。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;别让一线经验沉在工单里。&lt;/p&gt;
+&lt;h3 id="2-fde"&gt;2. 给 FDE 一定工程授权&lt;/h3&gt;
+&lt;p&gt;如果 FDE 不能提交代码，不能改集成模板，不能推动平台能力，只能“协调研发”，那它还是项目经理加技术支持。&lt;/p&gt;
+&lt;p&gt;授权不等于乱改生产系统。可以有边界：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;FDE 可以维护 demo、connector、reference implementation；&lt;/li&gt;
+&lt;li&gt;可以提交产品代码 PR，但必须走正常 review；&lt;/li&gt;
+&lt;li&gt;可以定义客户场景下的验收用例；&lt;/li&gt;
+&lt;li&gt;可以推动产品 backlog，但必须说明复用价值和维护成本。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;有边界的授权，才是工程能力；没边界的授权，是事故邀请函。&lt;/p&gt;
+&lt;h3 id="3_1"&gt;3. 考核复用，而不是只考核救火&lt;/h3&gt;
+&lt;p&gt;如果组织只奖励“把这个客户摆平”，大家自然会做一次性方案。因为一次性方案最快。&lt;/p&gt;
+&lt;p&gt;要鼓励 FDE，就要考核复用：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;这次交付沉淀了几个可复用组件？&lt;/li&gt;
+&lt;li&gt;下一个类似客户是否少花了时间？&lt;/li&gt;
+&lt;li&gt;产品是否减少了某类支持工单？&lt;/li&gt;
+&lt;li&gt;是否形成了参考架构、模板、测试集或评估标准？&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;没有这些指标，FDE 很快会变成“更贵的驻场”。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="fde_5"&gt;九、一个判断框架：你做的是 FDE，还是驻场换皮？&lt;/h2&gt;
+&lt;p&gt;可以用下面这张自测表。&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;问题&lt;/th&gt;
+&lt;th&gt;如果答案是“是”&lt;/th&gt;
+&lt;th&gt;如果答案是“否”&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;你能直接参与方案设计和代码实现吗？&lt;/td&gt;
+&lt;td&gt;更接近 FDE&lt;/td&gt;
+&lt;td&gt;更接近协调/支持&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;你的现场发现会进入产品路线图吗？&lt;/td&gt;
+&lt;td&gt;有产品闭环&lt;/td&gt;
+&lt;td&gt;可能只是交付闭环&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;你的成果能被下一个客户复用吗？&lt;/td&gt;
+&lt;td&gt;有平台价值&lt;/td&gt;
+&lt;td&gt;可能是一次性定制&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;你能对客户需求说“不”并解释原因吗？&lt;/td&gt;
+&lt;td&gt;有判断权&lt;/td&gt;
+&lt;td&gt;可能只是需求承接&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;你的考核包含复用和产品改进吗？&lt;/td&gt;
+&lt;td&gt;角色设计较健康&lt;/td&gt;
+&lt;td&gt;容易退化成救火队&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;最关键的是最后两行。&lt;/p&gt;
+&lt;p&gt;很多角色之所以累，不是因为活多，而是因为责任和权力不匹配。你背着客户成功的责任，却没有产品改进的权力；你知道系统哪里烂，却只能在现场不断补锅。这种岗位干久了，人会变得很强，也会变得很疲惫。&lt;/p&gt;
+&lt;p&gt;FDE 如果设计得好，应该把这种一线能力变成组织资产，而不是继续消耗在个案里。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="fde_6"&gt;十、我的结论：FDE 的本质是“产品化的驻场能力”&lt;/h2&gt;
+&lt;p&gt;所以，FDE 和国内驻场工程师有什么区别？&lt;/p&gt;
+&lt;p&gt;我的答案是：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;相似点是贴近客户，差别是产品化闭环。&lt;/strong&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;驻场工程师的强项是现场韧性：能扛事、能协调、能解决复杂环境里的实际问题。FDE 的理想形态，是在这个基础上再加三样东西：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;工程授权：能自己动手，不只是传话；&lt;/li&gt;
+&lt;li&gt;产品判断：能区分个案和共性；&lt;/li&gt;
+&lt;li&gt;复用机制：能把一次交付变成下一次能力。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;换句话说，FDE 不是驻场工程师的洋名，也不是全栈工程师的升级皮肤。它更像一个组织设计问题：公司是否愿意让最懂客户真实场景的人，参与产品和工程系统的演化。&lt;/p&gt;
+&lt;p&gt;这也是 AI 公司尤其需要 FDE 的原因。&lt;/p&gt;
+&lt;p&gt;AI 产品的价值不在模型发布会里，而在客户混乱的工作流里。谁能走进那团混乱，把问题拆清楚，把方案跑起来，再把经验带回产品，谁就掌握了非常稀缺的能力。&lt;/p&gt;
+&lt;p&gt;当然，这个岗位也有风险。做得好，是产品工程的前哨；做不好，就是戴着新帽子的定制外包。&lt;/p&gt;
+&lt;p&gt;title 不重要，闭环才重要。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_2"&gt;明天就能用的检查清单&lt;/h2&gt;
+&lt;p&gt;如果你是工程师，想判断自己是否适合 FDE，可以问：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;[ ] 我是否愿意直接面对客户的不确定性，而不是只接清晰需求？&lt;/li&gt;
+&lt;li&gt;[ ] 我是否能在模糊问题里快速画出系统边界？&lt;/li&gt;
+&lt;li&gt;[ ] 我是否既能写代码，也能解释取舍？&lt;/li&gt;
+&lt;li&gt;[ ] 我是否能把一次客户问题抽象成复用能力？&lt;/li&gt;
+&lt;li&gt;[ ] 我是否有勇气对不合理需求说“不”，并给出替代方案？&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;如果你是管理者，想在公司里建立类似 FDE 的角色，可以问：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;[ ] 现场反馈是否能进入产品和架构评审？&lt;/li&gt;
+&lt;li&gt;[ ] FDE 是否有明确工程授权和代码 review 流程？&lt;/li&gt;
+&lt;li&gt;[ ] 考核是否包含复用成果，而不是只看单个客户满意度？&lt;/li&gt;
+&lt;li&gt;[ ] 定制项目结束后，是否有产品化复盘？&lt;/li&gt;
+&lt;li&gt;[ ] 是否有人负责删除“只为一个客户存在”的复杂度？&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;最后留一个问题：&lt;/p&gt;
+&lt;p&gt;如果你们公司也有“驻场工程师”，他们现在更像缓冲垫，还是发动机？&lt;/p&gt;
+&lt;h3 id="_3"&gt;扩展阅读&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://openai.com/careers/forward-deployed-engineer-%28fde%29-sf-san-francisco/"&gt;OpenAI Careers: Forward Deployed Engineer, San Francisco&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://www.svpg.com/forward-deployed-engineers/"&gt;SVPG: Forward Deployed Engineers&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://www.rocketlane.com/blogs/forward-deployed-engineer"&gt;Rocketlane: Forward Deployed Engineer&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;hr/&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Tech"/><category term="AI"/><category term="FDE"/><category term="Forward Deployed Engineer"/><category term="product engineering"/><category term="career"/></entry><entry><title>从传统 Wiki 到 AI 增强知识库</title><link href="https://www.fanyamin.com/cong-chuan-tong-wiki-dao-ai-zeng-qiang-zhi-shi-ku.html" rel="alternate"/><published>2026-05-29T23:06:00+08:00</published><updated>2026-05-31T10:30:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-05-29:/cong-chuan-tong-wiki-dao-ai-zeng-qiang-zhi-shi-ku.html</id><summary type="html">&lt;p&gt;我自己用 SQLite 写了一个传统 Wiki，链接靠手动维护。读了 llm_wiki 项目后，我没有推倒重来，而是决定吸收其精华，用 Python 写一个小工具来渐进增强。AI 是工人、咨询师、秘书，人才是知识库的主人。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;从传统 Wiki 到 AI 增强知识库：人在回路中的知识管理&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;Tech&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Status&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;v1.0&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;2026-05-31&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h1 id="wiki-ai"&gt;从传统 Wiki 到 AI 增强知识库：人在回路中的知识管理&lt;/h1&gt;
+&lt;p&gt;现在基于 LLM API 的开源项目风起云涌，泥沙俱下。&lt;/p&gt;
+&lt;p&gt;每隔几天就有一个新的 AI 知识库项目冒出来：RAG 框架、Agent 框架、AI-native 笔记工具、自动整理的 Knowledge Base。看多了容易焦虑——好像不赶紧把整个笔记系统推倒重来，就会被时代抛弃。&lt;/p&gt;
+&lt;p&gt;我自己用的是一套传统的 Wiki 系统，用 Golang + Vue.js 写的，SQLite 存数据，Wiki 页面之间的链接靠手动维护。用了好几年，对自己深耕的领域够用，但知识量越来越大，光靠手动维护开始吃力。&lt;/p&gt;
+&lt;p&gt;读完 &lt;a href="https://github.com/nashsu/llm_wiki.git"&gt;llm_wiki&lt;/a&gt; 这个项目后，我没有选择推倒重来，而是做一个更务实的决定：&lt;strong&gt;学它的精华，用 Python 写一个小工具，对自己现有的知识库做 AI 增强。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;ROI 很重要。从头换一个系统，迁移成本、学习成本、习惯中断的成本，远高于在现有基础上加一个 AI 辅助层。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="llm_wiki-wiki"&gt;一、llm_wiki 给我的最大启发：Wiki 是编译产物，不是文档坟场&lt;/h2&gt;
+&lt;p&gt;&lt;code&gt;llm_wiki&lt;/code&gt; 的 README 里有一句核心描述：LLM 读取你的文档，构建结构化 Wiki，并持续保持更新。&lt;/p&gt;
+&lt;p&gt;&lt;img alt="LLM Wiki 架构图" src="../images/tech_20260529_llm_wiki_arch.jpg"&gt;&lt;/p&gt;
+&lt;p&gt;这句话把知识库的重心从"检索"挪到了"编译"。&lt;/p&gt;
+&lt;p&gt;项目保留了 Karpathy 的 LLM Wiki 模式：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;Raw Sources -&amp;gt; Wiki -&amp;gt; Schema
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;三层各有分工：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Raw Sources&lt;/strong&gt;：原始资料，尽量不可变。文章、PDF、会议纪要、网页剪藏都先进入这里。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Wiki&lt;/strong&gt;：LLM 生成和维护的 Markdown 页面，包括实体、概念、资料摘要、查询结果等。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Schema&lt;/strong&gt;：告诉 LLM 这个 Wiki 的规则，比如页面类型、命名约定、交叉引用方式。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;项目还加了一个很关键的文件：&lt;code&gt;purpose.md&lt;/code&gt;。&lt;code&gt;schema.md&lt;/code&gt; 解决"怎么写"，&lt;code&gt;purpose.md&lt;/code&gt; 解决"为什么写"。一个知识库如果没有目的，就会变成仓库。&lt;/p&gt;
+&lt;p&gt;这个分层对我启发很大。我的 SQLite Wiki 目前只有"页面"一层，没有显式的 schema 和 purpose。每当我导入一篇新资料，LLM 不知道哪些信息该突出、哪些该忽略，因为系统没告诉它"这个知识库到底用来干什么"。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="rag"&gt;二、它和普通 RAG 最大的不同：不是"现查现答"，而是"持续积累"&lt;/h2&gt;
+&lt;p&gt;普通 RAG 的流程大致是：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;用户问题 -&amp;gt; 检索相关 chunk -&amp;gt; 拼上下文 -&amp;gt; LLM 回答
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;它的问题不在于没用，而在于每次都像临时抱佛脚。系统没有真正维护一个"已经理解过的知识结构"。&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;llm_wiki&lt;/code&gt; 的流程更像：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;导入资料 -&amp;gt; LLM 分析 -&amp;gt; 生成/更新 Wiki 页面 -&amp;gt; 图谱与索引更新 -&amp;gt; 基于 Wiki 查询
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;知识不是每次查询时重新推导，而是在摄入时就被整理成页面、链接和索引。&lt;/p&gt;
+&lt;p&gt;这有三个好处：&lt;/p&gt;
+&lt;h3 id="1"&gt;1. 知识有稳定地址&lt;/h3&gt;
+&lt;p&gt;每个概念、实体、资料摘要都有独立的页面。页面可以被引用、被 review、被 diff，也可以被 AI Agent 读取。聊天记录会消失，Wiki 页面会留下来。&lt;/p&gt;
+&lt;h3 id="2"&gt;2. 矛盾和空白可以提前暴露&lt;/h3&gt;
+&lt;p&gt;摄入时 LLM 不只是总结资料，还会找关键实体、关键概念、与现有 Wiki 的联系、与旧知识的矛盾、值得后续研究的问题。这比"用户问到再说"更主动。&lt;/p&gt;
+&lt;h3 id="3"&gt;3. 查询可以基于结构，而不只是文本相似度&lt;/h3&gt;
+&lt;p&gt;查询时叠加了 Wiki 图谱，不仅看"哪篇文字像"，还看"哪些页面在知识网络里相关"。这就从文档检索往知识组织迈了一步。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="python"&gt;三、我的选择：写一个 Python 工具，渐进增强&lt;/h2&gt;
+&lt;p&gt;看完 llm_wiki，我的第一步不是部署它，而是问自己：&lt;strong&gt;有哪些思路可以直接迁移到我现有的 SQLite Wiki 上？&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;我的方案是写一个 Python 小工具，做三件事：&lt;/p&gt;
+&lt;h3 id="1-wiki-ai"&gt;1. 给现有 Wiki 页面加 AI 摘要和标签&lt;/h3&gt;
+&lt;p&gt;我的 Wiki 页面已经有标题和正文。Python 脚本遍历所有页面，对每篇调用 LLM 生成：
+- 一句话摘要；
+- 推荐标签；
+- 推荐关联页面（基于语义相似度）。&lt;/p&gt;
+&lt;p&gt;结果写回 SQLite 里新增的字段，不破坏原有结构。&lt;/p&gt;
+&lt;h3 id="2_1"&gt;2. 自动发现"孤立页面"&lt;/h3&gt;
+&lt;p&gt;SQLite 里手动维护的链接可能不完整。写一个 lint 脚本，找出：
+- 没有被任何页面引用的页面；
+- 没有指向任何其他页面的页面；
+- 标题相似但没建立链接的页面。&lt;/p&gt;
+&lt;p&gt;这些不需要 LLM，纯 SQL 查询就能做一大半。&lt;/p&gt;
+&lt;h3 id="3-ai"&gt;3. AI 辅助的链接建议&lt;/h3&gt;
+&lt;p&gt;对每篇页面提取关键实体，和知识库里其他页面的标题做语义匹配，生成 &lt;code&gt;[[wikilink]]&lt;/code&gt; 建议。人确认后才写入。&lt;/p&gt;
+&lt;p&gt;这就是 llm_wiki 给我的最大价值：&lt;strong&gt;不是让我换系统，而是教会我哪些工程思路能补上现有系统的短板。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;这个工具的大致框架如下：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;wiki-ai-tool/
+├── main.py                 # CLI 入口，调用各子命令
+├── config.py               # LLM 配置、SQLite 路径、分级阈值
+├── wiki_db.py              # 连接 Golang Wiki 的 SQLite，只读+建议写入
+├── llm_client.py           # LLM API 封装（OpenAI / 本地模型）
+├── analyzers/
+│   ├── page_analyzer.py    # 单页分析：摘要、标签、实体抽取
+│   └── relation_analyzer.py # 跨页分析：语义相似度、链接建议
+├── linters/
+│   ├── structure_lint.py   # 孤立页面、无出链、断链（纯 SQL）
+│   └── semantic_lint.py    # 矛盾检测、过期提示（调 LLM）
+├── graders/
+│   └── knowledge_grader.py # 知识分级：draft / reviewed / deprecated / critical
+├── reporters/
+│   └── review_report.py    # 生成 Review 报告，存到 ai_suggestions/
+└── scripts/
+    └── nightly_run.sh      # 每晚定时跑 lint + 分析
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;核心模块 &lt;code&gt;page_analyzer.py&lt;/code&gt; 的伪代码：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;analyze_page&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;db&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;page_id&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+    &lt;span class="n"&gt;page&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;db&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;get_page&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;page_id&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="ow"&gt;not&lt;/span&gt; &lt;span class="n"&gt;page&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt;
+
+    &lt;span class="c1"&gt;# 1. 提取正文，去除 HTML/Vue 模板标记&lt;/span&gt;
+    &lt;span class="n"&gt;content&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;clean_content&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;page&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;html_body&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+    &lt;span class="c1"&gt;# 2. 调 LLM 做结构化分析&lt;/span&gt;
+    &lt;span class="n"&gt;analysis&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;llm&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;analyze&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+        &lt;span class="n"&gt;system&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;你是知识库分析助手。请提取关键实体、概念、一句话摘要、推荐标签。&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+        &lt;span class="n"&gt;content&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;content&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+        &lt;span class="n"&gt;schema&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+            &lt;span class="s2"&gt;&amp;quot;summary&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;string&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+            &lt;span class="s2"&gt;&amp;quot;tags&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;string&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;
+            &lt;span class="s2"&gt;&amp;quot;key_entities&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;string&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;
+            &lt;span class="s2"&gt;&amp;quot;key_concepts&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;string&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;
+            &lt;span class="s2"&gt;&amp;quot;related_page_ids&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;int&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+        &lt;span class="p"&gt;}&lt;/span&gt;
+    &lt;span class="p"&gt;)&lt;/span&gt;
+
+    &lt;span class="c1"&gt;# 3. 分析结果写入 ai_suggestions 表，不直接改正式数据&lt;/span&gt;
+    &lt;span class="n"&gt;db&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;save_suggestion&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;page_id&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;analysis&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;status&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;pending&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+    &lt;span class="c1"&gt;# 4. 如果置信度高，标记为 auto-approved&lt;/span&gt;
+    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;analysis&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;confidence&lt;/span&gt; &lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="mf"&gt;0.9&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;db&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;save_suggestion&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;page_id&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;analysis&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;status&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;auto_approved&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;自动发现孤立页面的伪代码：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;find_orphan_pages&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;db&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+    &lt;span class="c1"&gt;# 纯 SQL，不需要 LLM&lt;/span&gt;
+    &lt;span class="n"&gt;rows&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;db&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;query&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&amp;quot;&amp;quot;&lt;/span&gt;
+&lt;span class="s2"&gt;        SELECT p.id, p.title&lt;/span&gt;
+&lt;span class="s2"&gt;        FROM pages p&lt;/span&gt;
+&lt;span class="s2"&gt;        LEFT JOIN page_links l ON p.id = l.target_id&lt;/span&gt;
+&lt;span class="s2"&gt;        WHERE l.target_id IS NULL&lt;/span&gt;
+&lt;span class="s2"&gt;          AND p.status != &amp;#39;deprecated&amp;#39;&lt;/span&gt;
+&lt;span class="s2"&gt;    &amp;quot;&amp;quot;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+    &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;row&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;rows&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;report&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;add_issue&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+            &lt;span class="nb"&gt;type&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;orphan_page&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+            &lt;span class="n"&gt;page_id&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;row&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;id&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+            &lt;span class="n"&gt;title&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;row&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;title&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+            &lt;span class="n"&gt;suggestion&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;该页面未被任何页面引用，考虑归档或添加反向链接&amp;quot;&lt;/span&gt;
+        &lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;report&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;链接建议模块的伪代码：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;suggest_links&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;db&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;page_id&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+    &lt;span class="n"&gt;page&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;db&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;get_page&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;page_id&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="n"&gt;content&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;clean_content&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;page&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;html_body&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+    &lt;span class="c1"&gt;# 1. 从正文中提取候选实体&lt;/span&gt;
+    &lt;span class="n"&gt;entities&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;llm&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;extract_entities&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;content&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+    &lt;span class="c1"&gt;# 2. 模糊匹配现有 Wiki 页面标题&lt;/span&gt;
+    &lt;span class="n"&gt;candidates&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;[]&lt;/span&gt;
+    &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;entity&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;entities&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;matches&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;db&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;query&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&amp;quot;&amp;quot;&lt;/span&gt;
+&lt;span class="s2"&gt;            SELECT id, title FROM pages&lt;/span&gt;
+&lt;span class="s2"&gt;            WHERE title LIKE ?&lt;/span&gt;
+&lt;span class="s2"&gt;            LIMIT 5&lt;/span&gt;
+&lt;span class="s2"&gt;        &amp;quot;&amp;quot;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;%&lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;entity&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;%&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,))&lt;/span&gt;
+        &lt;span class="n"&gt;candidates&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;extend&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;matches&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+    &lt;span class="c1"&gt;# 3. 去重 + 排除已有链接&lt;/span&gt;
+    &lt;span class="n"&gt;existing_links&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nb"&gt;set&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;db&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;get_outgoing_links&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;page_id&lt;/span&gt;&lt;span class="p"&gt;))&lt;/span&gt;
+    &lt;span class="n"&gt;suggestions&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;
+        &lt;span class="n"&gt;c&lt;/span&gt; &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;c&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;candidates&lt;/span&gt;
+        &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;c&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;id&lt;/span&gt; &lt;span class="ow"&gt;not&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;existing_links&lt;/span&gt; &lt;span class="ow"&gt;and&lt;/span&gt; &lt;span class="n"&gt;c&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;id&lt;/span&gt; &lt;span class="o"&gt;!=&lt;/span&gt; &lt;span class="n"&gt;page_id&lt;/span&gt;
+    &lt;span class="p"&gt;]&lt;/span&gt;
+
+    &lt;span class="c1"&gt;# 4. 写入建议表，人在 UI 中确认后才生效&lt;/span&gt;
+    &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;s&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;suggestions&lt;/span&gt;&lt;span class="p"&gt;[:&lt;/span&gt;&lt;span class="mi"&gt;10&lt;/span&gt;&lt;span class="p"&gt;]:&lt;/span&gt;
+        &lt;span class="n"&gt;db&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;save_link_suggestion&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+            &lt;span class="n"&gt;source_id&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;page_id&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+            &lt;span class="n"&gt;target_id&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;s&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;id&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+            &lt;span class="n"&gt;status&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;pending&amp;quot;&lt;/span&gt;
+        &lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;Review 报告生成：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;generate_review_report&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;db&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+    &lt;span class="n"&gt;report&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;[]&lt;/span&gt;
+
+    &lt;span class="c1"&gt;# 1. 结构化 lint 结果（纯 SQL）&lt;/span&gt;
+    &lt;span class="n"&gt;report&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;extend&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;find_orphan_pages&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;db&lt;/span&gt;&lt;span class="p"&gt;))&lt;/span&gt;
+    &lt;span class="n"&gt;report&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;extend&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;find_no_outlinks_pages&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;db&lt;/span&gt;&lt;span class="p"&gt;))&lt;/span&gt;
+    &lt;span class="n"&gt;report&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;extend&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;find_broken_links&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;db&lt;/span&gt;&lt;span class="p"&gt;))&lt;/span&gt;
+
+    &lt;span class="c1"&gt;# 2. 待审的 AI 建议&lt;/span&gt;
+    &lt;span class="n"&gt;pending&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;db&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;query&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&amp;quot;&amp;quot;&lt;/span&gt;
+&lt;span class="s2"&gt;        SELECT * FROM ai_suggestions&lt;/span&gt;
+&lt;span class="s2"&gt;        WHERE status = &amp;#39;pending&amp;#39;&lt;/span&gt;
+&lt;span class="s2"&gt;          AND created_at &amp;gt; datetime(&amp;#39;now&amp;#39;, &amp;#39;-7 days&amp;#39;)&lt;/span&gt;
+&lt;span class="s2"&gt;        ORDER BY confidence ASC&lt;/span&gt;
+&lt;span class="s2"&gt;    &amp;quot;&amp;quot;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;p&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;pending&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;report&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;append&lt;/span&gt;&lt;span class="p"&gt;({&lt;/span&gt;
+            &lt;span class="s2"&gt;&amp;quot;type&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;ai_suggestion&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+            &lt;span class="s2"&gt;&amp;quot;page_id&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;p&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;page_id&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+            &lt;span class="s2"&gt;&amp;quot;suggestion&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;p&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;content&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+            &lt;span class="s2"&gt;&amp;quot;confidence&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;p&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;confidence&lt;/span&gt;
+        &lt;span class="p"&gt;})&lt;/span&gt;
+
+    &lt;span class="c1"&gt;# 3. 写报告&lt;/span&gt;
+    &lt;span class="n"&gt;report_path&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;ai_suggestions/review_&lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;datetime&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;now&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;&lt;span class="si"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;%Y%m%d&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;.md&amp;quot;&lt;/span&gt;
+    &lt;span class="n"&gt;write_markdown_report&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;report_path&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;report&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="nb"&gt;print&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;Review report generated: &lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;report_path&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;report_path&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;整套工具的调用链：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;nightly_run.sh
+  └─ python main.py lint --structure     # 纯 SQL 检查
+  └─ python main.py analyze --all        # LLM 批量分析未处理页面
+  └─ python main.py suggest-links --all  # LLM 链接建议
+  └─ python main.py report               # 生成 review 报告
+
+manual (按需)
+  └─ python main.py analyze --page 42    # 分析单页
+  └─ python main.py grade --page 42      # 重新分级
+  └─ python main.py lint --semantic      # 语义 lint（较慢，按需跑）
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这套框架的核心原则是：&lt;strong&gt;所有 AI 产出都先进入"建议区"，经人确认后才能写入正式知识库。&lt;/strong&gt; 这和 llm_wiki 的 REVIEW block 思路一脉相承，但更轻量——不需要改现有 Wiki 系统的代码，只在外部加一层 Python 辅助工具。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="ai"&gt;四、知识分级：让 AI 知道自己能做什么&lt;/h2&gt;
+&lt;p&gt;AI 不是万能的。甚至可以说，AI 大部分时候是"自信地犯错"。&lt;/p&gt;
+&lt;p&gt;我把知识分成四个等级：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;等级&lt;/th&gt;
+&lt;th&gt;含义&lt;/th&gt;
+&lt;th&gt;AI 的参与程度&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;draft&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;AI 生成，未经人工审阅&lt;/td&gt;
+&lt;td&gt;AI 可以独立生成，但必须标记&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;reviewed&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;人工确认过内容&lt;/td&gt;
+&lt;td&gt;AI 可以修改，但需要人批准&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;deprecated&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;已废弃的知识&lt;/td&gt;
+&lt;td&gt;AI 可以建议归档，但人决定&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;critical&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;涉及生产、安全、客户或钱&lt;/td&gt;
+&lt;td&gt;AI 只能建议，必须双人 review&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;这个分级解决了两个问题：&lt;/p&gt;
+&lt;p&gt;一是 &lt;strong&gt;AI 的产出有明确的"信任等级"&lt;/strong&gt;。看一个 &lt;code&gt;draft&lt;/code&gt; 页面，知道要警惕；看一个 &lt;code&gt;critical&lt;/code&gt; 页面，知道它有严格的审核记录。&lt;/p&gt;
+&lt;p&gt;二是 &lt;strong&gt;人能合理分配精力&lt;/strong&gt;。不是所有页面都需要深度 review。draft 和 reviewed 的页面可以在知识库里共存，阅读时自行判断。&lt;/p&gt;
+&lt;p&gt;人在其中的作用就像导师：可以指导学生写论文，也可以从学生的文献综述里学到新东西。但导师始终要对领域方向有深入的思考和引领，不会人云亦云。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_1"&gt;五、人在回路中：导师、工人、咨询师和秘书&lt;/h2&gt;
+&lt;p&gt;这是整篇文章最想说的一个观点。&lt;/p&gt;
+&lt;p&gt;很多 AI 知识库的宣传口径是"装上 AI，知识库自动管理"。这是危险的。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;AI 是干活的工人，是咨询师，是秘书，而领导始终是人。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;具体来说：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;角色&lt;/th&gt;
+&lt;th&gt;做什么&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;人（导师/领导）&lt;/td&gt;
+&lt;td&gt;选择资料、判断真假、决定取舍、定方向、承担责任&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;AI（工人）&lt;/td&gt;
+&lt;td&gt;总结资料、更新索引、建立链接、生成摘要&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;AI（咨询师）&lt;/td&gt;
+&lt;td&gt;提出矛盾、发现知识空白、推荐研究方向&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;AI（秘书）&lt;/td&gt;
+&lt;td&gt;定时巡检、整理孤岛页面、生成周报&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;&lt;strong&gt;AI 可以提出怀疑，但人来做裁决。&lt;/strong&gt; 这是贯穿所有知识库实践的底线。&lt;/p&gt;
+&lt;p&gt;知识库最怕两种极端：一种是完全没人维护，另一种是 AI 自动改一切。前者会腐烂，后者会失控。中间路线是：让 AI 把脏活先挑出来，人只处理高价值判断。&lt;/p&gt;
+&lt;p&gt;而且，知识不是死的。它不是一篇篇文章和一行行代码。&lt;strong&gt;知识是成体系的，是活的，是不断演进的。&lt;/strong&gt; 只有人才能理解知识之间的隐性联系，才能判断哪些知识点值得深入，哪些只是噪音。AI 可以帮我们整理，但不能替我们思考。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="llm-wiki"&gt;六、摄入与合并：LLM 先分析，再写 Wiki&lt;/h2&gt;
+&lt;p&gt;&lt;code&gt;llm_wiki&lt;/code&gt; 的摄入流程拆成了两步，这个设计值得借鉴。&lt;/p&gt;
+&lt;p&gt;第一步是分析：提取 Key Entities、Key Concepts、Main Arguments、Connections to Existing Wiki、Contradictions。&lt;/p&gt;
+&lt;p&gt;第二步才是生成：把分析结果、原始资料、schema、purpose 一起喂给 LLM，输出受约束的格式。&lt;/p&gt;
+&lt;p&gt;这个"先分析再生成"的模式，我在自己的 Python 工具里也用了。先让 LLM 分析一篇资料，把分析结果存到 SQLite 的一个分析表里。我 review 之后，再让 LLM 基于分析结果生成页面更新或链接建议。&lt;/p&gt;
+&lt;p&gt;这样一来，&lt;strong&gt;LLM 写的不是"最终答案"，而是"草稿"&lt;/strong&gt;，草稿经过人工确认才能进正式的 Wiki。&lt;/p&gt;
+&lt;p&gt;页面合并也是容易被忽略的难题。同一个概念被多份资料反复更新，如果每次都覆盖，旧内容会丢；如果每次都追加，页面会变成流水账。&lt;code&gt;llm_wiki&lt;/code&gt; 的 &lt;code&gt;page-merge.ts&lt;/code&gt; 做了一个务实的策略：frontmatter 数组字段确定性合并，正文不同时走 LLM 语义合并，关键字段锁住不让 LLM 乱改，合并结果太短就拒绝，失败时回退到保守合并。&lt;/p&gt;
+&lt;p&gt;这非常像代码合并。知识库一旦长期运行，一定会遇到冲突、重复、改名、过期和删除。很多 Demo 只演示"导入一篇文章然后生成几页 Wiki"，真正用三个月，麻烦都在这些边角里。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_2"&gt;七、检索：关键词、向量和图谱三条腿走路&lt;/h2&gt;
+&lt;p&gt;&lt;code&gt;llm_wiki&lt;/code&gt; 的检索流程值得借鉴，但不是因为它用了最新的 embedding 技术，而是因为它&lt;strong&gt;不用银弹思维&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;关键词搜索对错误码、接口名、命令、文件路径更可靠。向量搜索处理语义模糊的场景。图谱搜索处理知识结构关联。&lt;/p&gt;
+&lt;p&gt;这三条腿走路，每条都有各自擅长的场景。&lt;/p&gt;
+&lt;p&gt;上下文预算也是工程亮点。&lt;code&gt;context-budget.ts&lt;/code&gt; 里把上下文窗口按比例分配：约 5% 给 index，约 50% 给 Wiki 页面，预留约 15% 给模型回答，单页有最大长度限制。&lt;/p&gt;
+&lt;p&gt;很多 RAG 系统一开始效果不错，文档多了以后就开始乱塞上下文，最后不是超 token，就是把真正关键的页面挤出去。上下文管理是 AI 时代的新内存管理。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_3"&gt;八、知识图谱：不是为了好看，是为了发现结构问题&lt;/h2&gt;
+&lt;p&gt;&lt;code&gt;llm_wiki&lt;/code&gt; 用 &lt;code&gt;sigma.js + graphology + ForceAtlas2&lt;/code&gt; 做图谱可视化，用 Louvain 做社区发现。但它更有价值的是图谱洞察，检测几类结构问题：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Surprising Connections&lt;/strong&gt;：跨社区、跨类型的意外连接；&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Isolated Pages&lt;/strong&gt;：几乎没有连接的页面；&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Sparse Communities&lt;/strong&gt;：内部连接稀疏的知识群；&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Bridge Nodes&lt;/strong&gt;：连接多个知识簇的关键节点。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;一个知识库长到一定规模以后，最怕的不是没有内容，而是内容彼此不认识。孤立页面、稀疏社区、过强的单点桥接，都是知识结构里的坏味道。&lt;/p&gt;
+&lt;p&gt;在我的 SQLite Wiki 里，等价于跑 SQL：统计出度入度为零的页面、找出断层的话题分类、标记引用频次异常的节点。这些不需要图谱可视化，但洞察是一样的。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="lint-reviewai"&gt;九、Lint 和 Review：AI 不只负责生成，也负责体检&lt;/h2&gt;
+&lt;p&gt;&lt;code&gt;llm_wiki&lt;/code&gt; 的 lint 有两类检查：&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;结构化 Lint&lt;/strong&gt;（不用 LLM）：orphan page、no outlinks、broken link。这些是确定性规则，没必要浪费 token。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;语义 Lint&lt;/strong&gt;（用 LLM）：页面之间是否有矛盾、信息是否过期、重要概念是否缺页面、是否有值得继续研究的问题。&lt;/p&gt;
+&lt;p&gt;这套机制背后的原则很朴素：&lt;strong&gt;AI 可以提出怀疑，但人来做裁决。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;我的 Python 工具也实现了类似功能：每晚定时跑 lint，生成一个 review 报告放在一个单独的目录里，第二天早上看。不强制，但提供了可见性。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="deep-research"&gt;十、Deep Research：从知识空白反向找资料&lt;/h2&gt;
+&lt;p&gt;&lt;code&gt;llm_wiki&lt;/code&gt; 更进一步：当图谱或审核发现知识空白，可以触发 Deep Research。&lt;/p&gt;
+&lt;p&gt;流程是：发现空白 -&amp;gt; 生成搜索查询 -&amp;gt; 收集资料 -&amp;gt; LLM 综合成研究页面 -&amp;gt; 再摄入 Wiki -&amp;gt; 图谱变得更完整。&lt;/p&gt;
+&lt;p&gt;这是一个闭环。但关键细节是：研究主题和搜索查询会在可编辑确认框里展示，不能让 AI 想搜什么就搜什么。外部搜索会把不受控信息带进系统。&lt;/p&gt;
+&lt;p&gt;这个我打算放在 Python 工具的第二阶段实现。第一阶段先把已有知识整理好，第二阶段再加入主动研究能力。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_4"&gt;十一、我会如何评价这个项目的架构&lt;/h2&gt;
+&lt;p&gt;&lt;code&gt;llm_wiki&lt;/code&gt; 的亮点不在 UI 功能多，而在它抓住了几个关键抽象。&lt;/p&gt;
+&lt;h3 id="1-llm-maintainer-chatbot"&gt;1. 把 LLM 当 maintainer，而不是 chatbot&lt;/h3&gt;
+&lt;p&gt;Chatbot 回答完就结束了。Maintainer 要维护文件、索引、日志、链接、图谱、review、缓存和删除级联。&lt;/p&gt;
+&lt;h3 id="2-markdown"&gt;2. 把 Markdown 文件作为核心资产&lt;/h3&gt;
+&lt;p&gt;知识不被锁死在某个数据库里。哪怕应用不运行，文件仍然可读、可 diff、可备份、可迁移。知识库系统可以换，知识本身不能被绑架。&lt;/p&gt;
+&lt;p&gt;我的 SQLite Wiki 也有这个问题。我在考虑加一个"导出标准化 Markdown"的功能，让知识不止存在于 SQLite 里。&lt;/p&gt;
+&lt;h3 id="3-review"&gt;3. 把不确定性变成 Review，而不是假装确定&lt;/h3&gt;
+&lt;p&gt;LLM 不确定的时候，应该进入 review 队列，而不是写进正式结论。&lt;/p&gt;
+&lt;h3 id="4"&gt;4. 对失败路径有防御&lt;/h3&gt;
+&lt;p&gt;源码里有大量"看起来不性感"的处理：ingest cache、queue 持久化、retry、abort、page merge fallback、unsafe path rejection、language guard、embedding failure fallback。这些东西写文章时很难讲得热血沸腾，但恰恰决定一个工具能不能真用。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_5"&gt;十二、我看到的风险和应对&lt;/h2&gt;
+&lt;h3 id="1-llm-wiki"&gt;1. LLM 维护 Wiki，仍然可能引入"自信的错误"&lt;/h3&gt;
+&lt;p&gt;两阶段摄入、review、lint 可以降低风险，但不能消灭风险。知识分级和人工 review 是必须的防线。AI 说的不一定对，AI 给的方案大多有待提高，AI 的创新能力也远远不足——这是人在其中大有可为的地方。&lt;/p&gt;
+&lt;h3 id="2_2"&gt;2. 知识库会遇到"模型风格污染"&lt;/h3&gt;
+&lt;p&gt;LLM 维护久了，页面可能越来越像模型写的：正确、流畅、平均、没有现场感。个人知识库必须保留自己的原始观察，不要都改成百科腔。&lt;/p&gt;
+&lt;h3 id="3_1"&gt;3. 图谱很有用，但要防止变成装饰&lt;/h3&gt;
+&lt;p&gt;图谱洞察比单纯画图有用。图谱不是为了好看，而是为了发现维护动作。&lt;/p&gt;
+&lt;h3 id="4-api-agent"&gt;4. API 一旦开放给 Agent，要继续收紧权限&lt;/h3&gt;
+&lt;p&gt;知识库越有价值，越不能裸奔。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="ai_1"&gt;十三、如果要用 AI 增强自己的知识库，我会这样开始&lt;/h2&gt;
+&lt;p&gt;以下是我正在做的实践步骤，也是我推荐的做法：&lt;/p&gt;
+&lt;h3 id="_6"&gt;第一步：选一个明确主题&lt;/h3&gt;
+&lt;p&gt;别一上来就导入 10GB 文档。知识库最怕"大迁移，大失败"。选一个窄主题开始，比如"WebRTC 拥塞控制"或者"某个项目的运维知识"。&lt;/p&gt;
+&lt;h3 id="purpose"&gt;第二步：写好知识库的 purpose&lt;/h3&gt;
+&lt;p&gt;回答四个问题：
+- 这个知识库要服务谁？
+- 它主要回答哪些问题？
+- 哪些内容不在范围内？
+- 什么样的输出算有价值？&lt;/p&gt;
+&lt;h3 id="10"&gt;第三步：从 10 份高质量资料开始&lt;/h3&gt;
+&lt;p&gt;先导入少量资料，观察 LLM 的分析质量。如果 10 份资料都整理不好，导入 1000 份只会更乱。&lt;/p&gt;
+&lt;h3 id="python_1"&gt;第四步：写一个 Python 工具做增量增强&lt;/h3&gt;
+&lt;p&gt;不要推倒重来。在现有知识库上加一层 AI 辅助：
+- 一个脚本做 LLM 分析；
+- 一个脚本做 lint 和 review；
+- 一个脚本做链接建议。&lt;/p&gt;
+&lt;p&gt;每个脚本都可以独立运行，输出放到一个 &lt;code&gt;ai_suggestions/&lt;/code&gt; 目录，经人确认后再合并到主知识库。&lt;/p&gt;
+&lt;h3 id="_7"&gt;第五步：把查询结果保存回知识库&lt;/h3&gt;
+&lt;p&gt;重要问题不要只停留在 chat history 里，要沉淀成 Wiki 页面。知识库的复利来自这里。&lt;/p&gt;
+&lt;h3 id="lint-review"&gt;第六步：定期跑 Lint 和 Review&lt;/h3&gt;
+&lt;p&gt;每周做一次：broken link、orphan page、no outlinks、stale page、contradiction、missing page。不要等知识库烂了再治理。文档债和技术债一样，都是复利，只是方向相反。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="ai_2"&gt;总结：AI 是维护系统，人才是知识库的主人&lt;/h2&gt;
+&lt;p&gt;读完 &lt;code&gt;llm_wiki&lt;/code&gt;，我最大的收获是：&lt;strong&gt;AI 知识库的重点不是"让 AI 回答得更像人"，而是"让知识能持续积累、持续被维护、持续被验证"。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;但更重要的是，在整个过程中，&lt;strong&gt;人始终要掌握方向&lt;/strong&gt;。&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;角色&lt;/th&gt;
+&lt;th&gt;负责什么&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;Raw Sources&lt;/td&gt;
+&lt;td&gt;保存原始证据&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Wiki&lt;/td&gt;
+&lt;td&gt;承载结构化、可审计、可链接的知识&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Schema&lt;/td&gt;
+&lt;td&gt;约束页面类型、格式和维护规则&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Purpose&lt;/td&gt;
+&lt;td&gt;给知识库方向和边界&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;LLM&lt;/td&gt;
+&lt;td&gt;分析、生成、合并、检索、巡检、提出疑问&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Human&lt;/td&gt;
+&lt;td&gt;选择资料、判断真假、决定取舍、定方向、承担责任&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;AI 不是知识库的大脑，而是知识库的维护系统。它的价值不是替代人思考，而是接管那些人类最容易偷懒的维护工作：总结资料、更新索引、建立链接、发现矛盾、找出孤岛页面、生成后续研究问题、把一次性回答沉淀成长期页面。&lt;/p&gt;
+&lt;p&gt;你不需要推倒重来。学 llm_wiki 的精华，写一个 Python 小工具，从今天能做的事开始。知识库是你自己的，系统可以换，但方向和判断力在你手里。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_8"&gt;参考材料&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://github.com/nashsu/llm_wiki.git"&gt;llm_wiki 项目&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f"&gt;Karpathy 的 LLM Wiki pattern&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;</content><category term="Tech"/><category term="LLM"/><category term="Wiki"/><category term="knowledge-base"/><category term="RAG"/><category term="AI"/><category term="documentation"/><category term="knowledge-management"/></entry><entry><title>gstack 拆机报告：AI 编程脚手架做对了什么，又栽在哪里</title><link href="https://www.fanyamin.com/gstack-teardown-what-it-got-right-and-wrong.html" rel="alternate"/><published>2026-05-23T10:20:00+08:00</published><updated>2026-05-23T10:20:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-05-23:/gstack-teardown-what-it-got-right-and-wrong.html</id><summary type="html">&lt;p&gt;拆 gstack 这个 Claude Code 脚手架——它把 sprint 拆成了 30+ 个 slash command，工程上有真功夫，方法论上更值得抄；但工具栏拥堵和文档膨胀，也是 AI 时代项目的通病。这篇讲哪些值得偷师，哪些要警惕，以及自己做类似项目时怎么避坑。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
 &lt;thead&gt;
 &lt;tr&gt;
 &lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;

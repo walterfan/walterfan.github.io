@@ -1,0 +1,952 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'G-VZL08BHDPP', 'auto');
+  ga('send', 'pageview');
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="PERM 元模型把 Policy、Effect、Request、Matchers 四块拼图抽象出来，让一份配置文件就能撑起 ACL、RBAC、ABAC 各种授权花样。Casbin 是这套理论的工程化身，本文用 Go 例子拆开讲它怎么工作，再和 OPA、OpenFGA 这两家不同流派的授权引擎做一次设计哲学和落地选型的对比。" />
+<meta name="keywords" content="authorization, casbin, perm, opa, openfga, zanzibar, go, cloud, security">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "PERM 模型与 Casbin：把云端授权从代码里抠出去",
+  "description": "PERM 元模型把 Policy、Effect、Request、Matchers 四块拼图抽象出来，让一份配置文件就能撑起 ACL、RBAC、ABAC 各种授权花样。Casbin 是这套理论的工程化身，本文用 Go 例子拆开讲它怎么工作，再和 OPA、OpenFGA 这两家不同流派的授权引擎做一次设计哲学和落地选型的对比。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-06-02T21:30:00+08:00",
+  "dateModified": "2026-06-02T23:55:00+08:00",
+  "url": "https://www.fanyamin.com/perm-casbin.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/perm-casbin.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "authorization, casbin, perm, opa, openfga, zanzibar, go, cloud, security"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="PERM 模型与 Casbin：把云端授权从代码里抠出去"/>
+  <meta property="og:description" content="PERM 元模型把 Policy、Effect、Request、Matchers 四块拼图抽象出来，让一份配置文件就能撑起 ACL、RBAC、ABAC 各种授权花样。Casbin 是这套理论的工程化身，本文用 Go 例子拆开讲它怎么工作，再和 OPA、OpenFGA 这两家不同流派的授权引擎做一次设计哲学和落地选型的对比。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/perm-casbin.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-06-02 21:30:00+08:00"/>
+  <meta property="article:modified_time" content="2026-06-02 23:55:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="authorization"/>
+  <meta property="article:tag" content="casbin"/>
+  <meta property="article:tag" content="perm"/>
+  <meta property="article:tag" content="opa"/>
+  <meta property="article:tag" content="openfga"/>
+  <meta property="article:tag" content="zanzibar"/>
+  <meta property="article:tag" content="go"/>
+  <meta property="article:tag" content="cloud"/>
+  <meta property="article:tag" content="security"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; PERM 模型与 Casbin：把云端授权从代码里抠出去</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/">Walter Fan</a>
+    </h1>
+
+    <p>手握灵珠常奋笔, 心开天籁不吹箫</p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/search.html" role="search">
+      <input type="text" name="q" id="tipue_search_input" placeholder="Search...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank" href="tao.html" >tao</a>
+          </li>
+          <li>
+            <a target="_blank" href="article.html" >article</a>
+          </li>
+          <li>
+            <a target="_blank" href="manual.html" >manual</a>
+          </li>
+          <li>
+            <a target="_blank" href="interest.html" >interest</a>
+          </li>
+          <li>
+            <a target="_self" href="/wordpress" >notebook</a>
+          </li>
+          <li>
+            <a target="_blank" href="bookmark.html" >bookmark</a>
+          </li>
+          <li>
+            <a target="_self" href="/webrtc/examples/index.html" >webrtc</a>
+          </li>
+          <li>
+            <a target="_blank" href="https://github.com/walterfan" >github</a>
+          </li>
+          <li>
+            <a target="_blank" href="categories.html" >categories</a>
+          </li>
+          <li>
+            <a target="_blank" href="tags.html" >tags</a>
+          </li>
+      </ul>
+    </nav>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+</aside>
+  <main>
+
+
+<article class="single">
+  <header>
+      
+    <h1 id="perm-casbin">PERM 模型与 Casbin：把云端授权从代码里抠出去</h1>
+    <p>
+      Posted on 二 02 6月 2026 in <a href="https://www.fanyamin.com/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>PERM 模型与 Casbin：把云端授权从代码里抠出去</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Cloud / Security</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.5</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-06-02</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">从一段熟悉的代码说起</h2>
+<p>写过后端的朋友，多半见过类似这样的权限判断：</p>
+<div class="highlight"><pre><span></span><code><span class="k">if</span><span class="w"> </span><span class="nx">user</span><span class="p">.</span><span class="nx">Role</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s">&quot;admin&quot;</span><span class="w"> </span><span class="o">||</span>
+<span class="w">   </span><span class="p">(</span><span class="nx">user</span><span class="p">.</span><span class="nx">Role</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s">&quot;owner&quot;</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">user</span><span class="p">.</span><span class="nx">TenantID</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="nx">log</span><span class="p">.</span><span class="nx">TenantID</span><span class="p">)</span><span class="w"> </span><span class="o">||</span>
+<span class="w">   </span><span class="p">(</span><span class="nx">user</span><span class="p">.</span><span class="nx">Role</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s">&quot;auditor&quot;</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">action</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s">&quot;read&quot;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="c1">// ...</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>一开始角色少，写在 handler 里没啥不舒服。可一旦角色从两个涨到十个，租户隔离、按属性放行、按时段限制这些规则陆续加进来，权限判断就会从一两个 <code>if</code> 长成散落各处的千层饼。加一个角色，意味着十几处代码要重审，测试用例翻倍，code review 至少两轮。</p>
+<p>于是问题就来了：<strong>能不能把"谁能干什么"这件事，从业务代码里彻底抠出去？</strong></p>
+<p>这个问题学术界早就有人琢磨，工业界也有现成的轮子。理论叫 <strong>PERM</strong>，工具叫 <strong>Casbin</strong>。Luo Yang 等人在 2025 年发了篇 IEEE TIFS 的论文 <a href="https://ieeexplore.ieee.org/abstract/document/11095782">《PERM: Streamlining Cloud Authorization With Flexible and Scalable Policy Enforcement》</a>，算是把 Casbin 的设计哲学讲明白了。</p>
+<p>咱们今天就来拆一拆这个 PERM。</p>
+<h2 id="perm">一、PERM 是什么：把授权拆成四块拼图</h2>
+<p>PERM 是四个英文单词的首字母：<strong>Policy、Effect、Request、Matchers</strong>。一句话总结就是：</p>
+<blockquote>
+<p>PERM 是一个<strong>授权元模型</strong>，它把"判断一次访问是否被允许"这件事，拆成四个正交的部分，每一部分都用配置文件描述。</p>
+</blockquote>
+<p>为什么叫"元模型"？因为它本身不是 RBAC、不是 ABAC，而是一套能<strong>生成</strong>各种授权模型的语法。就像 BNF 是描述语言的语言，PERM 是描述授权模型的模型。</p>
+<p>四块拼图各管一摊：</p>
+<table>
+<thead>
+<tr>
+<th>部件</th>
+<th>管什么</th>
+<th>一句话解释</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Request</strong></td>
+<td>一次访问长啥样</td>
+<td>"谁，对什么，做什么"，标准是三元组 <code>(sub, obj, act)</code></td>
+</tr>
+<tr>
+<td><strong>Policy</strong></td>
+<td>规则长啥样</td>
+<td>策略的字段结构，比如 <code>(sub, obj, act)</code> 或带 effect 的 <code>(sub, obj, act, eft)</code></td>
+</tr>
+<tr>
+<td><strong>Matchers</strong></td>
+<td>怎么算"匹配上了"</td>
+<td>一个布尔表达式，决定 request 命中哪条 policy</td>
+</tr>
+<tr>
+<td><strong>Effect</strong></td>
+<td>多条命中时怎么裁决</td>
+<td>比如 "只要有一条 allow 就放行"、"有 deny 就否决"</td>
+</tr>
+</tbody>
+</table>
+<p>写成 <code>.conf</code> 文件，一个最简单的 ACL（访问控制列表）模型长这样：</p>
+<div class="highlight"><pre><span></span><code><span class="k">[request_definition]</span>
+<span class="na">r</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">sub, obj, act</span>
+
+<span class="k">[policy_definition]</span>
+<span class="na">p</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">sub, obj, act</span>
+
+<span class="k">[policy_effect]</span>
+<span class="na">e</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">some(where (p.eft == allow))</span>
+
+<span class="k">[matchers]</span>
+<span class="na">m</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">r.sub == p.sub &amp;&amp; r.obj == p.obj &amp;&amp; r.act == p.act</span>
+</code></pre></div>
+
+<p>配套的策略文件 <code>policy.csv</code>：</p>
+<div class="highlight"><pre><span></span><code>p, alice, data1, read
+p, bob, data2, write
+</code></pre></div>
+
+<p>意思很直白：alice 能读 data1，bob 能写 data2。Enforce 来个 <code>("alice", "data1", "read")</code>，逐条对照 policy，matcher 全部 <code>true</code>，effect 说"有一条 allow 就放行"，结果就是 <code>true</code>。</p>
+<p>到这里你可能觉得：这不就是把 <code>if-else</code> 写成了配置文件吗？</p>
+<p>固然如此，可是别急，PERM 的杀招在后面。</p>
+<h2 id="perm_1">二、PERM 真正的杀招：换模型不换引擎</h2>
+<p>刚才那个 ACL 模型，咱们一行代码不动，只改 <code>model.conf</code>，就能升级成 RBAC：</p>
+<div class="highlight"><pre><span></span><code><span class="k">[request_definition]</span>
+<span class="na">r</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">sub, obj, act</span>
+
+<span class="k">[policy_definition]</span>
+<span class="na">p</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">sub, obj, act</span>
+
+<span class="k">[role_definition]</span>
+<span class="na">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">_, _</span>
+
+<span class="k">[policy_effect]</span>
+<span class="na">e</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">some(where (p.eft == allow))</span>
+
+<span class="k">[matchers]</span>
+<span class="na">m</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">g(r.sub, p.sub) &amp;&amp; r.obj == p.obj &amp;&amp; r.act == p.act</span>
+</code></pre></div>
+
+<p>多了一个 <code>[role_definition]</code> 段 <code>g = _, _</code>，表示"用户—角色"是个二元关系。matcher 里的 <code>r.sub == p.sub</code> 也换成了 <code>g(r.sub, p.sub)</code>，意思是"request 的 sub 是否拥有 policy 里的 sub 这个角色"。</p>
+<p>policy.csv 变成：</p>
+<div class="highlight"><pre><span></span><code>p, admin, data1, read
+p, admin, data1, write
+g, alice, admin
+</code></pre></div>
+
+<p>alice 是 admin，admin 能读写 data1，所以 alice 也能读写 data1。</p>
+<p>想要 ABAC？把 matcher 改成 <code>r.sub.Age &gt;= 18 &amp;&amp; r.obj.Owner == r.sub.Name</code> 即可。想要带租户隔离的 RBAC？加一个 domain 字段，matcher 里多一个 <code>&amp;&amp;</code>。</p>
+<p><strong>核心思想就这一条</strong>：业务代码永远只调一行 <code>enforcer.Enforce(sub, obj, act)</code>，授权语义全部在配置文件里演化。</p>
+<p>这就是为什么论文里把 PERM 叫做 "streamlining cloud authorization"——云端服务多租户、多角色、多场景，需求一天一个变，把变化收敛到配置层，代码层稳如老狗，运维和安全团队也能直接改策略，不用每次都拉开发陪跑。</p>
+<h2 id="_2">三、一个真实场景：给租户里的角色授权某个资源的某个操作</h2>
+<p>光说 <code>data1</code>、<code>data2</code> 太抽象，咱换个云上密钥管理的真实例子。资源路径长这样：</p>
+<div class="highlight"><pre><span></span><code>secrets/prod/app/cluster/region
+</code></pre></div>
+
+<p>需求是这样的：</p>
+<blockquote>
+<p>在 <code>tenant_acme</code> 这个租户里，<code>secret-reader</code> 这个角色，能对 <code>secrets/prod/payment/*</code> 下面的所有密钥执行 <code>read</code>，但不能 <code>write</code>；而且 <code>tenant_acme</code> 看不到 <code>tenant_globex</code> 的任何东西。</p>
+</blockquote>
+<p>这一句话里藏了三层诉求：<strong>租户隔离</strong>、<strong>角色授权</strong>、<strong>资源按路径分层匹配</strong>。一条条来。</p>
+<h3 id="1-domain">1. 加上租户：domain 字段</h3>
+<p>多租户隔离，Casbin 的标准做法是在 request 和 policy 里加一个 <code>dom</code>（domain，也就是租户）字段。模型 <code>model.conf</code> 改成这样：</p>
+<div class="highlight"><pre><span></span><code><span class="k">[request_definition]</span>
+<span class="na">r</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">sub, dom, obj, act</span>
+
+<span class="k">[policy_definition]</span>
+<span class="na">p</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">sub, dom, obj, act</span>
+
+<span class="k">[role_definition]</span>
+<span class="na">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">_, _, _</span>
+
+<span class="k">[policy_effect]</span>
+<span class="na">e</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">some(where (p.eft == allow))</span>
+
+<span class="k">[matchers]</span>
+<span class="na">m</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">g(r.sub, p.sub, r.dom) &amp;&amp; keyMatch2(r.obj, p.obj) &amp;&amp; r.act == p.act</span>
+</code></pre></div>
+
+<p>三处变化，对应三层诉求：</p>
+<ul>
+<li><code>r = sub, dom, obj, act</code>：每次请求都带上"在哪个租户里"。</li>
+<li><code>g = _, _, _</code>：角色绑定从二元变三元，意思是"<strong>某人在某租户里</strong>拥有某角色"。同一个人在 acme 是 admin，在 globex 可能啥都不是。</li>
+<li><code>keyMatch2(r.obj, p.obj)</code>：把资源匹配从字符串全等，换成 <strong>RESTful 路径匹配</strong>，这样 <code>secrets/prod/payment/*</code> 才能一把罩住底下所有密钥。</li>
+</ul>
+<h3 id="2-keymatch">2. 资源分层匹配：keyMatch 系列函数</h3>
+<p><code>secrets/prod/app/cluster/region</code> 这种带层级的资源，最忌讳一条条枚举。Casbin 内置了几个 <code>keyMatch</code> 函数专门干这事，按需挑一个：</p>
+<table>
+<thead>
+<tr>
+<th>函数</th>
+<th>通配语法</th>
+<th>适合的路径风格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>keyMatch</code></td>
+<td><code>*</code> 匹配尾段</td>
+<td><code>/secrets/prod/*</code></td>
+</tr>
+<tr>
+<td><code>keyMatch2</code></td>
+<td><code>:param</code> + <code>*</code></td>
+<td><code>/secrets/:env/*</code>，类 RESTful</td>
+</tr>
+<tr>
+<td><code>keyMatch3</code></td>
+<td><code>{param}</code></td>
+<td><code>/secrets/{env}/payment</code></td>
+</tr>
+<tr>
+<td><code>keyMatch4</code></td>
+<td><code>{param}</code> 且同名要相等</td>
+<td>同一段多次出现要一致</td>
+</tr>
+</tbody>
+</table>
+<p>我习惯用 <code>keyMatch2</code>：策略里写 <code>secrets/prod/payment/*</code>，请求 <code>secrets/prod/payment/db/us-west</code> 就能命中，新增一个 region 不用改任何策略。</p>
+<h3 id="3">3. 配套的策略文件</h3>
+<p><code>policy.csv</code>（注意 <code>g</code> 那行多了第三列租户）：</p>
+<div class="highlight"><pre><span></span><code>p, secret-reader, tenant_acme, secrets/prod/payment/*, read
+p, secret-admin,  tenant_acme, secrets/prod/payment/*, read
+p, secret-admin,  tenant_acme, secrets/prod/payment/*, write
+g, alice, secret-reader, tenant_acme
+g, bob,   secret-admin,  tenant_acme
+g, alice, secret-admin,  tenant_globex
+</code></pre></div>
+
+<p>读出来就是：alice 在 acme 里只能读 payment 密钥，在 globex 里却是管理员；bob 在 acme 里能读能写。</p>
+<h3 id="4">4. 业务代码：还是一行</h3>
+<div class="highlight"><pre><span></span><code><span class="kn">package</span><span class="w"> </span><span class="nx">main</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="s">&quot;fmt&quot;</span>
+<span class="w">    </span><span class="s">&quot;log&quot;</span>
+
+<span class="w">    </span><span class="s">&quot;github.com/casbin/casbin/v2&quot;</span>
+<span class="p">)</span>
+
+<span class="kd">func</span><span class="w"> </span><span class="nx">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">e</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">casbin</span><span class="p">.</span><span class="nx">NewEnforcer</span><span class="p">(</span><span class="s">&quot;model.conf&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;policy.csv&quot;</span><span class="p">)</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">log</span><span class="p">.</span><span class="nx">Fatalf</span><span class="p">(</span><span class="s">&quot;load enforcer failed: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="nx">cases</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="p">[]</span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">sub</span><span class="p">,</span><span class="w"> </span><span class="nx">dom</span><span class="p">,</span><span class="w"> </span><span class="nx">obj</span><span class="p">,</span><span class="w"> </span><span class="nx">act</span><span class="w"> </span><span class="kt">string</span>
+<span class="w">    </span><span class="p">}{</span>
+<span class="w">        </span><span class="c1">// alice 在 acme 是 reader：能读 payment 下任意密钥</span>
+<span class="w">        </span><span class="p">{</span><span class="s">&quot;alice&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;tenant_acme&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;secrets/prod/payment/db/us-west&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;read&quot;</span><span class="p">},</span>
+<span class="w">        </span><span class="c1">// alice 在 acme 不能写</span>
+<span class="w">        </span><span class="p">{</span><span class="s">&quot;alice&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;tenant_acme&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;secrets/prod/payment/db/us-west&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;write&quot;</span><span class="p">},</span>
+<span class="w">        </span><span class="c1">// alice 在 globex 是 admin：能写</span>
+<span class="w">        </span><span class="p">{</span><span class="s">&quot;alice&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;tenant_globex&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;secrets/prod/payment/db/us-west&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;write&quot;</span><span class="p">},</span>
+<span class="w">        </span><span class="c1">// bob 在 acme 是 admin：能写</span>
+<span class="w">        </span><span class="p">{</span><span class="s">&quot;bob&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;tenant_acme&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;secrets/prod/payment/cache/eu&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;write&quot;</span><span class="p">},</span>
+<span class="w">        </span><span class="c1">// alice 摸不到 globex 的别的租户资源？这里用 acme 身份访问 globex 路径会被拒</span>
+<span class="w">        </span><span class="p">{</span><span class="s">&quot;alice&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;tenant_globex&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;secrets/prod/billing/db/us-west&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;read&quot;</span><span class="p">},</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">c</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="k">range</span><span class="w"> </span><span class="nx">cases</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">ok</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">Enforce</span><span class="p">(</span><span class="nx">c</span><span class="p">.</span><span class="nx">sub</span><span class="p">,</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">dom</span><span class="p">,</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">obj</span><span class="p">,</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">act</span><span class="p">)</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nx">log</span><span class="p">.</span><span class="nx">Printf</span><span class="p">(</span><span class="s">&quot;enforce error: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="p">)</span>
+<span class="w">            </span><span class="k">continue</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="nx">fmt</span><span class="p">.</span><span class="nx">Printf</span><span class="p">(</span><span class="s">&quot;%-6s %-14s %-34s %-6s =&gt; %v\n&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">sub</span><span class="p">,</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">dom</span><span class="p">,</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">obj</span><span class="p">,</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">act</span><span class="p">,</span><span class="w"> </span><span class="nx">ok</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>跑出来：</p>
+<div class="highlight"><pre><span></span><code>alice  tenant_acme    secrets/prod/payment/db/us-west    read   =&gt; true
+alice  tenant_acme    secrets/prod/payment/db/us-west    write  =&gt; false
+alice  tenant_globex  secrets/prod/payment/db/us-west    write  =&gt; true
+bob    tenant_acme    secrets/prod/payment/cache/eu      write  =&gt; true
+alice  tenant_globex  secrets/prod/billing/db/us-west    read   =&gt; false
+</code></pre></div>
+
+<p>注意第三行和最后一行：同一个 alice，换了租户身份，权限完全不同——这就是 domain 隔离的价值。她在 globex 是 admin 能写 payment，但 globex 里没人给她授过 <code>billing</code>，照样吃闭门羹。</p>
+<h3 id="5">5. 还是动态改：给租户里的角色加权限</h3>
+<p>线上要给 acme 的 reader 再开一个 <code>metrics</code> 资源的读权限，依旧不用重启：</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// 在 tenant_acme 里，给 secret-reader 角色加 metrics 读权限</span>
+<span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">AddPolicy</span><span class="p">(</span><span class="s">&quot;secret-reader&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;tenant_acme&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;secrets/prod/metrics/*&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;read&quot;</span><span class="p">)</span>
+
+<span class="c1">// 把 carol 拉进 tenant_acme 的 secret-reader 角色</span>
+<span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">AddGroupingPolicy</span><span class="p">(</span><span class="s">&quot;carol&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;secret-reader&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;tenant_acme&quot;</span><span class="p">)</span>
+
+<span class="nx">_</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">SavePolicy</span><span class="p">()</span>
+</code></pre></div>
+
+<p>到这儿，开头那句"给某租户某角色授权某资源某操作"的需求，就被拆成了"加一行 policy + 加一行 grouping"两件小事，跟改代码彻底没关系了。</p>
+<h2 id="casbingo">四、上手 Casbin：Go 版三步走</h2>
+<p>理论讲完，咱们撸代码。Go 版 Casbin 叫 <a href="https://github.com/casbin/casbin">casbin/casbin</a>，安装：</p>
+<div class="highlight"><pre><span></span><code>go<span class="w"> </span>get<span class="w"> </span>github.com/casbin/casbin/v2
+</code></pre></div>
+
+<p><strong>第一步：写两个文件</strong></p>
+<p><code>model.conf</code>（RBAC 模型）：</p>
+<div class="highlight"><pre><span></span><code><span class="k">[request_definition]</span>
+<span class="na">r</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">sub, obj, act</span>
+
+<span class="k">[policy_definition]</span>
+<span class="na">p</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">sub, obj, act</span>
+
+<span class="k">[role_definition]</span>
+<span class="na">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">_, _</span>
+
+<span class="k">[policy_effect]</span>
+<span class="na">e</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">some(where (p.eft == allow))</span>
+
+<span class="k">[matchers]</span>
+<span class="na">m</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">g(r.sub, p.sub) &amp;&amp; r.obj == p.obj &amp;&amp; r.act == p.act</span>
+</code></pre></div>
+
+<p><code>policy.csv</code>：</p>
+<div class="highlight"><pre><span></span><code>p, admin, /logs, read
+p, admin, /logs, write
+p, auditor, /logs, read
+g, alice, admin
+g, bob, auditor
+</code></pre></div>
+
+<p><strong>第二步：写业务代码</strong></p>
+<div class="highlight"><pre><span></span><code><span class="kn">package</span><span class="w"> </span><span class="nx">main</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="s">&quot;fmt&quot;</span>
+<span class="w">    </span><span class="s">&quot;log&quot;</span>
+
+<span class="w">    </span><span class="s">&quot;github.com/casbin/casbin/v2&quot;</span>
+<span class="p">)</span>
+
+<span class="kd">func</span><span class="w"> </span><span class="nx">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">e</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">casbin</span><span class="p">.</span><span class="nx">NewEnforcer</span><span class="p">(</span><span class="s">&quot;model.conf&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;policy.csv&quot;</span><span class="p">)</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">log</span><span class="p">.</span><span class="nx">Fatalf</span><span class="p">(</span><span class="s">&quot;load enforcer failed: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="nx">cases</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="p">[]</span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">sub</span><span class="p">,</span><span class="w"> </span><span class="nx">obj</span><span class="p">,</span><span class="w"> </span><span class="nx">act</span><span class="w"> </span><span class="kt">string</span>
+<span class="w">    </span><span class="p">}{</span>
+<span class="w">        </span><span class="p">{</span><span class="s">&quot;alice&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;/logs&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;read&quot;</span><span class="p">},</span><span class="w">   </span><span class="c1">// admin → 应放行</span>
+<span class="w">        </span><span class="p">{</span><span class="s">&quot;alice&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;/logs&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;write&quot;</span><span class="p">},</span><span class="w">  </span><span class="c1">// admin → 应放行</span>
+<span class="w">        </span><span class="p">{</span><span class="s">&quot;bob&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;/logs&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;read&quot;</span><span class="p">},</span><span class="w">     </span><span class="c1">// auditor → 应放行</span>
+<span class="w">        </span><span class="p">{</span><span class="s">&quot;bob&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;/logs&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;write&quot;</span><span class="p">},</span><span class="w">    </span><span class="c1">// auditor 无写权限 → 应拒绝</span>
+<span class="w">        </span><span class="p">{</span><span class="s">&quot;carol&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;/logs&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;read&quot;</span><span class="p">},</span><span class="w">   </span><span class="c1">// 无角色 → 应拒绝</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">c</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="k">range</span><span class="w"> </span><span class="nx">cases</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">ok</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">Enforce</span><span class="p">(</span><span class="nx">c</span><span class="p">.</span><span class="nx">sub</span><span class="p">,</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">obj</span><span class="p">,</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">act</span><span class="p">)</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nx">log</span><span class="p">.</span><span class="nx">Printf</span><span class="p">(</span><span class="s">&quot;enforce error: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="p">)</span>
+<span class="w">            </span><span class="k">continue</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="nx">fmt</span><span class="p">.</span><span class="nx">Printf</span><span class="p">(</span><span class="s">&quot;%-6s %-8s %-6s =&gt; %v\n&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">sub</span><span class="p">,</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">obj</span><span class="p">,</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">act</span><span class="p">,</span><span class="w"> </span><span class="nx">ok</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>跑起来：</p>
+<div class="highlight"><pre><span></span><code>alice  /logs    read   =&gt; true
+alice  /logs    write  =&gt; true
+bob    /logs    read   =&gt; true
+bob    /logs    write  =&gt; false
+carol  /logs    read   =&gt; false
+</code></pre></div>
+
+<p><strong>第三步：动态改策略</strong></p>
+<p>线上加一个 auditor 不需要重启服务，调 API 即可：</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// 加策略</span>
+<span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">AddPolicy</span><span class="p">(</span><span class="s">&quot;auditor&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;/metrics&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;read&quot;</span><span class="p">)</span>
+
+<span class="c1">// 把 carol 加入 auditor 角色</span>
+<span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">AddGroupingPolicy</span><span class="p">(</span><span class="s">&quot;carol&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;auditor&quot;</span><span class="p">)</span>
+
+<span class="c1">// 持久化到 storage（前提是用了 Adapter，比如 GORM）</span>
+<span class="nx">_</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">SavePolicy</span><span class="p">()</span>
+</code></pre></div>
+
+<p>生产环境一般会把 policy 存到 MySQL/PostgreSQL，用 <a href="https://github.com/casbin/gorm-adapter">casbin/gorm-adapter</a> 之类的 Adapter；多实例之间用 Watcher 同步（Redis、etcd 都有现成的）。这套基础设施成熟得很，开箱即用。</p>
+<h2 id="casbin-vs-opa-vs-openfga">五、Casbin vs OPA vs OpenFGA：三种授权哲学</h2>
+<p>讲 Casbin 不提 <a href="https://www.openpolicyagent.org/">OPA（Open Policy Agent）</a> 和 <a href="https://openfga.dev/">OpenFGA</a> 是不厚道的。这三家是当下开源授权领域的代表，背后是三种不同的设计哲学：</p>
+<ul>
+<li><strong>Casbin</strong>：基于 PERM 元模型，<strong>面向"模型 + 策略"</strong>——你先描述一种授权范式（ACL/RBAC/ABAC），再喂规则进去。</li>
+<li><strong>OPA</strong>：通用策略引擎，<strong>面向"策略即代码"</strong>——你用 Rego 语言写任意决策逻辑，引擎不预设授权模型。Rego 类似 Datalog，图灵完备。CNCF 毕业项目，K8s 准入控制、Envoy 鉴权、Terraform 守门都靠它。</li>
+<li><strong>OpenFGA</strong>：实现 Google <a href="https://research.google/pubs/pub48190/">Zanzibar 论文</a>，<strong>面向"关系图"</strong>——所有权限表达成 <code>(user, relation, object)</code> 三元组，引擎在关系图上做可达性推理。CNCF Sandbox 项目，由 Auth0 / Okta 主导。</li>
+</ul>
+<h3 id="_3">设计模型对比</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>Casbin</th>
+<th>OPA</th>
+<th>OpenFGA</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>核心范式</strong></td>
+<td>PERM 元模型</td>
+<td>通用策略引擎</td>
+<td>ReBAC（关系基）</td>
+</tr>
+<tr>
+<td><strong>理论源头</strong></td>
+<td>自研 PERM 论文（2025）</td>
+<td>Datalog / Rego</td>
+<td>Google Zanzibar (2019)</td>
+</tr>
+<tr>
+<td><strong>策略语言</strong></td>
+<td><code>.conf</code> + <code>.csv</code></td>
+<td>Rego（类 Datalog）</td>
+<td>DSL + JSON Schema</td>
+</tr>
+<tr>
+<td><strong>数据模型</strong></td>
+<td>模型与策略分离</td>
+<td>任意 JSON 输入 + 规则</td>
+<td>关系三元组（tuple）</td>
+</tr>
+<tr>
+<td><strong>学习曲线</strong></td>
+<td>半天上手</td>
+<td>一两周磨 Rego</td>
+<td>几天学 ReBAC 思维</td>
+</tr>
+<tr>
+<td><strong>典型 API</strong></td>
+<td><code>Enforce(sub, obj, act)</code></td>
+<td><code>data.policy.allow</code></td>
+<td><code>Check(user, relation, object)</code></td>
+</tr>
+<tr>
+<td><strong>存储</strong></td>
+<td>自定义 Adapter（DB/文件）</td>
+<td>bundle（远端拉取）</td>
+<td>内置（PG/MySQL/Memory）</td>
+</tr>
+<tr>
+<td><strong>部署形态</strong></td>
+<td>进程内库</td>
+<td>sidecar / 独立进程 / WASM</td>
+<td>独立服务（gRPC + HTTP）</td>
+</tr>
+<tr>
+<td><strong>决策延迟</strong></td>
+<td>微秒级（in-process）</td>
+<td>毫秒级（IPC/HTTP）</td>
+<td>毫秒级（网络 RPC）</td>
+</tr>
+<tr>
+<td><strong>典型场景</strong></td>
+<td>应用内 RBAC / ABAC</td>
+<td>K8s 准入、CI/CD 卡点、Envoy</td>
+<td>文档协作、社交、SaaS 共享</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_4">同一个例子，三种写法</h3>
+<p>举一个简单需求："<code>alice</code> 是不是 <code>roadmap</code> 这份文档的 <code>viewer</code>？"</p>
+<p><strong>Casbin（RBAC 模型）</strong>：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># model.conf</span>
+<span class="na">m</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">g(r.sub, p.sub) &amp;&amp; r.obj == p.obj &amp;&amp; r.act == p.act</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code># policy.csv
+p, viewer, roadmap, read
+g, alice, viewer
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="nx">ok</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">Enforce</span><span class="p">(</span><span class="s">&quot;alice&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;roadmap&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;read&quot;</span><span class="p">)</span><span class="w">  </span><span class="c1">// true</span>
+</code></pre></div>
+
+<p><strong>OPA（Rego）</strong>：</p>
+<div class="highlight"><pre><span></span><code>package authz
+
+default allow = false
+
+allow {
+    input.user == &quot;alice&quot;
+    input.action == &quot;read&quot;
+    input.resource == &quot;roadmap&quot;
+}
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code>opa<span class="w"> </span><span class="nb">eval</span><span class="w"> </span>-d<span class="w"> </span>policy.rego<span class="w"> </span>-i<span class="w"> </span>input.json<span class="w"> </span><span class="s2">&quot;data.authz.allow&quot;</span>
+<span class="c1"># input.json: {&quot;user&quot;:&quot;alice&quot;,&quot;action&quot;:&quot;read&quot;,&quot;resource&quot;:&quot;roadmap&quot;}</span>
+</code></pre></div>
+
+<p><strong>OpenFGA（DSL）</strong>：</p>
+<div class="highlight"><pre><span></span><code>model
+  schema 1.1
+type user
+type document
+  relations
+    define viewer: [user]
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="c1"># 写一个关系 tuple</span>
+fga<span class="w"> </span>tuple<span class="w"> </span>write<span class="w"> </span>user:alice<span class="w"> </span>viewer<span class="w"> </span>document:roadmap
+
+<span class="c1"># 查询</span>
+fga<span class="w"> </span>query<span class="w"> </span>check<span class="w"> </span>user:alice<span class="w"> </span>viewer<span class="w"> </span>document:roadmap
+<span class="c1"># =&gt; {&quot;allowed&quot;: true}</span>
+</code></pre></div>
+
+<p>三种写法背后是三种思维：Casbin 把权限看成<strong>"匹配规则"</strong>，OPA 看成<strong>"任意决策函数"</strong>，OpenFGA 看成<strong>"图上的关系遍历"</strong>。</p>
+<h3 id="_5">三家擅长什么、不擅长什么</h3>
+<p><strong>Casbin 擅长</strong>：单服务内的多角色权限、需要快速热加载策略、模型可能从 RBAC 演化到 ABAC。<br>
+<strong>Casbin 不擅长</strong>：跨服务策略统一、需要表达"用户能访问其上级文件夹下的所有文档"这种关系递归。</p>
+<p><strong>OPA 擅长</strong>：跨语言、跨平台的策略统一（K8s + 微服务 + CI 一套 Rego 通吃）、复杂逻辑（图灵完备）、合规规则审计。<br>
+<strong>OPA 不擅长</strong>：高频细粒度查询（每次决策都要传完整 input）、用户/资源数量级在百万以上的关系建模。</p>
+<p><strong>OpenFGA 擅长</strong>：细粒度授权（fine-grained）、嵌套层级（文件夹—子文件夹—文档）、共享与继承（团队成员自动获得团队下所有项目的访问权）、大规模关系图（数十亿 tuple 仍能毫秒级响应）。<br>
+<strong>OpenFGA 不擅长</strong>：临时的属性判断（虽然有 Conditions 和 Contextual Tuples 补救，但不如 OPA 灵活）、纯 RBAC 场景（杀鸡用了牛刀）。</p>
+<h3 id="_6">一张选型决策表</h3>
+<table>
+<thead>
+<tr>
+<th>你的场景</th>
+<th>推荐</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>单服务，2-20 个角色，跟业务紧耦合</td>
+<td><strong>Casbin</strong></td>
+</tr>
+<tr>
+<td>多服务统一策略，K8s/Envoy/CI 都要管</td>
+<td><strong>OPA</strong></td>
+</tr>
+<tr>
+<td>类 Google Drive / GitHub / Notion 的细粒度共享</td>
+<td><strong>OpenFGA</strong></td>
+</tr>
+<tr>
+<td>简单 RBAC + 一点 ABAC 即可</td>
+<td>Casbin</td>
+</tr>
+<tr>
+<td>合规审计、SoD（职责分离）等复杂逻辑</td>
+<td>OPA</td>
+</tr>
+<tr>
+<td>用户/资源百万级，权限需要继承和反查</td>
+<td>OpenFGA</td>
+</tr>
+</tbody>
+</table>
+<p>三者不是替代关系，而是不同层级、不同形态的工具。在比较成熟的架构里，常见的组合是 OPA 在外层守门（API Gateway、K8s 准入），OpenFGA 或 Casbin 在应用层做细粒度判断，互相配合，各管各的边界。</p>
+<h2 id="_7">六、几个坑，请提前避开</h2>
+<p>读 Casbin 文档和 issue 时，有几个细节容易被忽略，提前提一句：</p>
+<p><strong>坑 1：matcher 表达式的顺序影响性能</strong></p>
+<p>官方文档明确提到过这事。matcher 是按从左到右短路求值的，把<strong>贵的条件</strong>（比如 <code>g(r.sub, p.sub)</code> 这种角色查找）放在便宜的字符串比较<strong>后面</strong>，能差出几个数量级的延迟。Casbin 维护者跑过一个有 2500 个项目、每个项目 4 个角色的压测，matcher 顺序写错，单次 enforce 慢到 6 秒；调整顺序后回到几毫秒。</p>
+<p>写法是这样：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># 慢</span>
+<span class="na">m</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">g(r.sub, p.sub) &amp;&amp; r.obj == p.obj &amp;&amp; r.act == p.act</span>
+
+<span class="c1"># 快</span>
+<span class="na">m</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">r.obj == p.obj &amp;&amp; r.act == p.act &amp;&amp; g(r.sub, p.sub)</span>
+</code></pre></div>
+
+<p><strong>坑 2：policy 字段都是字符串</strong></p>
+<p>policy.csv 里的所有字段，进了 Casbin 都当字符串处理。想塞个 <code>age &gt;= 18</code> 进去？得自己写 helper 函数，或者用 ABAC 把对象传进 request，让 matcher 里去比。别指望 <code>p, alice, data1, 100</code> 里那个 <code>100</code> 是 int。</p>
+<p><strong>坑 3：策略变更要广播</strong></p>
+<p>单实例没问题，多实例部署时，A 实例改了 policy，B 实例还用着内存里的老版本。必到用 Watcher（Redis Pub/Sub 是最常见的方案），或者所有写操作走中心化的 Admin Portal。</p>
+<p><strong>坑 4：别把策略写成代码的镜像</strong></p>
+<p>见过有人把每个 API 都写一条 policy：<code>p, alice, /api/v1/users/:id/profile, GET</code>。这种粒度的策略，本质还是把 <code>if-else</code> 搬进了 CSV，反而失去了抽象的意义。<strong>策略要按业务概念组织</strong>，不是按 URL。</p>
+<h2 id="casbin5-checklist">七、什么时候用 Casbin：5 条 CheckList</h2>
+<p>最后给一个判断清单，符合 3 条以上就值得引入：</p>
+<ul>
+<li>[ ] 系统有 <strong>2 个以上角色</strong>，且未来还会增加</li>
+<li>[ ] 权限规则需要<strong>非开发人员</strong>（产品、安全、运维）也能改</li>
+<li>[ ] 同一份代码要支持<strong>多种部署形态</strong>（单租户、多租户、私有化）</li>
+<li>[ ] 审计要求能<strong>追溯每一次访问决策</strong>的依据</li>
+<li>[ ] 权限模型可能<strong>演化</strong>（从 RBAC 升级到 ABAC、加上 domain、加上属性等）</li>
+</ul>
+<p>反过来，如果你的系统只有"登录用户"和"管理员"两种人，权限规则 5 条以内一辈子不变，那一段 <code>if-else</code> 比啥都强，别为了用而用。</p>
+<h2 id="_8">收束：把变化关进配置文件</h2>
+<p>回到开头那段散落各处的 <code>if</code>。引入 PERM 这套思路之后，业务代码里剩下的只是一行：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">ok</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">enforcer</span><span class="p">.</span><span class="nx">Enforce</span><span class="p">(</span><span class="nx">user</span><span class="p">.</span><span class="nx">Name</span><span class="p">,</span><span class="w"> </span><span class="nx">resource</span><span class="p">,</span><span class="w"> </span><span class="nx">action</span><span class="p">)</span>
+</code></pre></div>
+
+<p>至于"谁能干什么"，全部沉到 <code>model.conf</code> 和 <code>policy.csv</code>。新增角色、调整规则，不再需要重新审业务代码，只是改配置、走审批、热加载。</p>
+<p>PERM 的精髓，我觉得就一句话：</p>
+<blockquote>
+<p><strong>代码负责"如何执行"，配置负责"是否允许"。两件事分开，世界清净。</strong></p>
+</blockquote>
+<p>授权这个领域，最怕的不是规则复杂，是规则<strong>变</strong>。PERM 的贡献，就是把变化挪到了一个可控、可审计、可热更新的地方。这个思路本身比 Casbin 这个具体实现要值钱得多——哪怕你用 OPA、用 Cedar、自己撸一个，把"模型—策略—执行"三者解耦的方向都是对的。</p>
+<h2 id="_9">总结脑图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap perm_casbin_mindmap
+&lt;style&gt;
+node {
+  BackgroundColor White
+}
+rootNode {
+    BackgroundColor #ffe0b2
+    LineColor #f57c00
+    LineThickness 4
+}
+&lt;/style&gt;
+* PERM 与 Casbin
+** PERM 四件套
+*** Request — 一次访问的快照
+*** Policy — 规则的字段结构
+*** Matchers — 布尔表达式 / 顺序影响性能
+*** Effect — allow / deny override
+** 多租户授权
+*** domain 字段隔离租户
+*** 三元角色绑定 (人, 角色, 租户)
+*** keyMatch2 路径分层匹配
+*** 授权 = 加一行 policy + grouping
+** 三家选型
+*** Casbin — 元模型 + 配置 / 进程内 / 单服务首选
+*** OPA — 通用策略 + Rego / sidecar / 跨平台守门
+*** OpenFGA — Zanzibar 关系图 / 独立服务 / 细粒度共享
+** 落地建议
+*** 单服务 RBAC 选 Casbin
+*** 跨平台统一选 OPA
+*** 细粒度共享选 OpenFGA
+*** 策略按业务概念组织 别按 URL 切片
+** 避坑清单
+*** matcher 顺序
+*** 字段都是字符串
+*** 多实例用 Watcher
+@endmindmap
+</code></pre></div>
+
+<p><img alt="PERM Casbin Mindmap" src="../images/perm-casbin_mindmap.png"></p>
+<h2 id="_10">参考资料</h2>
+<ul>
+<li>论文：<a href="https://ieeexplore.ieee.org/abstract/document/11095782">PERM: Streamlining Cloud Authorization With Flexible and Scalable Policy Enforcement</a></li>
+<li>论文：<a href="https://research.google/pubs/pub48190/">Zanzibar: Google's Consistent, Global Authorization System</a></li>
+<li>Casbin 官方文档：<a href="https://casbin.apache.org/docs/tutorials/">https://casbin.apache.org/docs/tutorials/</a></li>
+<li>Casbin 在线编辑器：<a href="https://editor.casbin.org/">https://editor.casbin.org/</a></li>
+<li>Open Policy Agent：<a href="https://www.openpolicyagent.org/">https://www.openpolicyagent.org/</a></li>
+<li>OpenFGA 官方文档：<a href="https://openfga.dev/docs/concepts">https://openfga.dev/docs/concepts</a></li>
+<li>OpenFGA Playground：<a href="https://play.fga.dev/">https://play.fga.dev/</a></li>
+</ul>
+  </div>
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/tag/authorization.html">authorization</a>
+      <a href="https://www.fanyamin.com/tag/casbin.html">casbin</a>
+      <a href="https://www.fanyamin.com/tag/perm.html">perm</a>
+      <a href="https://www.fanyamin.com/tag/opa.html">opa</a>
+      <a href="https://www.fanyamin.com/tag/openfga.html">openfga</a>
+      <a href="https://www.fanyamin.com/tag/zanzibar.html">zanzibar</a>
+      <a href="https://www.fanyamin.com/tag/go.html">go</a>
+      <a href="https://www.fanyamin.com/tag/cloud.html">cloud</a>
+      <a href="https://www.fanyamin.com/tag/security.html">security</a>
+    </p>
+  </div>
+
+
+  <div class="center social-share" style="margin: 1.5em 0; text-align: center;">
+    <p style="margin-bottom: 0.5em; color: #888;">📤 Share this article</p>
+    <a href="https://twitter.com/intent/tweet?text=PERM%20%E6%A8%A1%E5%9E%8B%E4%B8%8E%20Casbin%EF%BC%9A%E6%8A%8A%E4%BA%91%E7%AB%AF%E6%8E%88%E6%9D%83%E4%BB%8E%E4%BB%A3%E7%A0%81%E9%87%8C%E6%8A%A0%E5%87%BA%E5%8E%BB&url=https://www.fanyamin.com/perm-casbin.html"
+       target="_blank" rel="noopener" title="Share on Twitter/X"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#1da1f2; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      𝕏 Twitter
+    </a>
+    <a href="https://www.linkedin.com/sharing/share-offsite/?url=https://www.fanyamin.com/perm-casbin.html"
+       target="_blank" rel="noopener" title="Share on LinkedIn"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#0077b5; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      💼 LinkedIn
+    </a>
+    <a href="javascript:void(0);" onclick="copyLink('https://www.fanyamin.com/perm-casbin.html')" title="Copy link"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#666; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em; cursor:pointer;">
+      🔗 Copy Link
+    </a>
+    <script>
+    function copyLink(url) {
+      navigator.clipboard.writeText(url).then(function() {
+        alert('链接已复制！');
+      });
+    }
+    </script>
+  </div>
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/track-ai-skill-usage-with-hooks.html" title="给 AI Agent 装个行车记录仪：用 Claude Code 和 Codex 的 Hook 追踪 Skill 调用">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/2026-04-29-oss-iam-authorization-system.html">用开源组件搭一个 AWS IAM 风格的授权系统</a></li>
+      <li><a href="https://www.fanyamin.com/2026-03-05-rbac-openfga-authorization.html">从 RBAC 到 OpenFGA：细粒度授权的架构、落地与取舍</a></li>
+      <li><a href="https://www.fanyamin.com/2025-07-13-go-casbin-microservice.html">Go 微服务访问控制之 Casbin 实践指南</a></li>
+      <li><a href="https://www.fanyamin.com/go-cryptotls-configclone-session-resumption-pitfalls-cve-2025-68121.html">Go crypto/tls Config.Clone session resumption pitfalls (CVE-2025-68121)</a></li>
+      <li><a href="https://www.fanyamin.com/workload-identitybie-zai-ba-yun-shang-shen-fen-sai-jin-secret-li-liao.html">Workload Identity：别再把云上身份塞进 Secret 里了</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

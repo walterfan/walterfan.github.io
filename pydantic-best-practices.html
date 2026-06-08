@@ -1,0 +1,1164 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'G-VZL08BHDPP', 'auto');
+  ga('send', 'pageview');
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="Python 没有静态编译这道关口，很多错误会拖到运行时才露头。Pydantic 不是银弹，它和 mypy、pyright、ruff 这类静态检查工具也不是一回事。它真正擅长的是把 API、配置、消息、LLM 输出这些不可信数据变成有边界、有约束、可测试的对象。本文以 Pydantic v2 为主，总结常用写法、工程实践和容易踩的坑。" />
+<meta name="keywords" content="python, pydantic, validation, backend, best-practices">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Python 动态语言里的安全带：Pydantic 用法与最佳实践",
+  "description": "Python 没有静态编译这道关口，很多错误会拖到运行时才露头。Pydantic 不是银弹，它和 mypy、pyright、ruff 这类静态检查工具也不是一回事。它真正擅长的是把 API、配置、消息、LLM 输出这些不可信数据变成有边界、有约束、可测试的对象。本文以 Pydantic v2 为主，总结常用写法、工程实践和容易踩的坑。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-06-05T16:30:00+08:00",
+  "dateModified": "2026-06-07T23:06:00+08:00",
+  "url": "https://www.fanyamin.com/pydantic-best-practices.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/pydantic-best-practices.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "python, pydantic, validation, backend, best-practices"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="Python 动态语言里的安全带：Pydantic 用法与最佳实践"/>
+  <meta property="og:description" content="Python 没有静态编译这道关口，很多错误会拖到运行时才露头。Pydantic 不是银弹，它和 mypy、pyright、ruff 这类静态检查工具也不是一回事。它真正擅长的是把 API、配置、消息、LLM 输出这些不可信数据变成有边界、有约束、可测试的对象。本文以 Pydantic v2 为主，总结常用写法、工程实践和容易踩的坑。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/pydantic-best-practices.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-06-05 16:30:00+08:00"/>
+  <meta property="article:modified_time" content="2026-06-07 23:06:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="python"/>
+  <meta property="article:tag" content="pydantic"/>
+  <meta property="article:tag" content="validation"/>
+  <meta property="article:tag" content="backend"/>
+  <meta property="article:tag" content="best-practices"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; Python 动态语言里的安全带：Pydantic 用法与最佳实践</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/">Walter Fan</a>
+    </h1>
+
+    <p>手握灵珠常奋笔, 心开天籁不吹箫</p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/search.html" role="search">
+      <input type="text" name="q" id="tipue_search_input" placeholder="Search...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank" href="tao.html" >tao</a>
+          </li>
+          <li>
+            <a target="_blank" href="article.html" >article</a>
+          </li>
+          <li>
+            <a target="_blank" href="manual.html" >manual</a>
+          </li>
+          <li>
+            <a target="_blank" href="interest.html" >interest</a>
+          </li>
+          <li>
+            <a target="_self" href="/wordpress" >notebook</a>
+          </li>
+          <li>
+            <a target="_blank" href="bookmark.html" >bookmark</a>
+          </li>
+          <li>
+            <a target="_self" href="/webrtc/examples/index.html" >webrtc</a>
+          </li>
+          <li>
+            <a target="_blank" href="https://github.com/walterfan" >github</a>
+          </li>
+          <li>
+            <a target="_blank" href="categories.html" >categories</a>
+          </li>
+          <li>
+            <a target="_blank" href="tags.html" >tags</a>
+          </li>
+      </ul>
+    </nav>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+</aside>
+  <main>
+
+
+<article class="single">
+  <header>
+      
+    <h1 id="pydantic-best-practices">Python 动态语言里的安全带：Pydantic 用法与最佳实践</h1>
+    <p>
+      Posted on 五 05 6月 2026 in <a href="https://www.fanyamin.com/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>Python 动态语言里的安全带：Pydantic 用法与最佳实践</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-06-05</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="python">Python 的错误，很多不是写出来的，是“放进来”的</h2>
+<p>写 Python 后端，最舒服的地方是快。一个接口、一个脚本、一个小工具，半天就能跑起来。最不舒服的地方也是快：数据从 HTTP、MQ、配置文件、数据库、LLM 输出里进来，类型不对、字段缺失、枚举写错、时间格式混乱，代码照样一路往下跑。</p>
+<p>等它炸的时候，往往已经离入口很远了。<code>NoneType has no attribute ...</code>，<code>KeyError</code>，<code>TypeError</code>，日志里像案发现场，调试的人像刑侦队员。</p>
+<p>我的观点很简单：<strong>Python 不是不能写可靠系统，但动态语言必须把“边界验证”当成一等公民。Pydantic 就是这条安全带。</strong></p>
+<p>不过安全带也有系法。Pydantic 用得好，是契约；用得差，是另一层幻觉。本文不准备把官方文档压缩一遍，而是从工程实践角度聊：哪些地方该用、怎么用、怎么少踩坑。</p>
+<p>本文默认讨论 <strong>Pydantic v2</strong>。如果你还在 v1 项目里维护老代码，要特别注意 API 名称和行为差异，后面会单独说。</p>
+<hr>
+<h2 id="pydantic">一、Pydantic 到底解决什么问题</h2>
+<p>一句话：<strong>把不可信输入，变成经过类型约束和业务约束检查的 Python 对象。</strong></p>
+<p>Pydantic 的核心对象是 <code>BaseModel</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">Field</span>
+
+
+<span class="k">class</span> <span class="nc">CreateUserRequest</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">email</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">display_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">max_length</span><span class="o">=</span><span class="mi">64</span><span class="p">)</span>
+    <span class="n">age</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">le</span><span class="o">=</span><span class="mi">150</span><span class="p">)</span>
+</code></pre></div>
+
+<p>它看起来像 <code>dataclass</code>，但目标不一样。</p>
+<p><code>dataclass</code> 更像“给内部对象省点样板代码”；Pydantic 更像“在系统边界立一块牌子：进门先验票”。</p>
+<p>典型使用场景：</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>不用 Pydantic 的风险</th>
+<th>用 Pydantic 的价值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>HTTP request body</td>
+<td>字段缺失、类型漂移、错误散落在业务代码里</td>
+<td>入口统一失败，错误结构清楚</td>
+</tr>
+<tr>
+<td>MQ message</td>
+<td>老版本消息和新版本消息混在一起</td>
+<td>明确 schema，便于兼容演进</td>
+</tr>
+<tr>
+<td>配置和环境变量</td>
+<td>字符串被误当数字、布尔值解析混乱</td>
+<td>启动时失败，比运行中失败便宜</td>
+</tr>
+<tr>
+<td>LLM structured output</td>
+<td>JSON 看起来像 JSON，字段却不可信</td>
+<td>输出先验收，再进入业务流程</td>
+</tr>
+<tr>
+<td>数据库/外部 API 返回</td>
+<td>上游改字段，下游静默出错</td>
+<td>及时发现契约破坏</td>
+</tr>
+</tbody>
+</table>
+<p>不要误会：Pydantic 不能替你设计业务模型，也不能证明业务逻辑正确。它解决的是“输入能不能被安全理解”。</p>
+<hr>
+<h2 id="pydantic_1">二、Pydantic 与静态代码检查：一个查代码，一个验数据</h2>
+<p>很多人第一次接触 Pydantic，会把它和 <code>mypy</code>、<code>pyright</code>、<code>ruff</code>、<code>pylint</code> 混在一起。都是“让 Python 少犯错”的工具，名字又都长得像开源项目，确实容易串台。</p>
+<p>但它们看的东西完全不同。</p>
+<table>
+<thead>
+<tr>
+<th>工具类型</th>
+<th>代表工具</th>
+<th>主要看什么</th>
+<th>能发现什么</th>
+<th>看不到什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Linter</td>
+<td><code>ruff</code>, <code>pylint</code></td>
+<td>源代码文本和语法结构</td>
+<td>未使用变量、危险写法、风格问题、部分简单 bug</td>
+<td>真实运行时输入</td>
+</tr>
+<tr>
+<td>Static type checker</td>
+<td><code>mypy</code>, <code>pyright</code></td>
+<td>类型标注和类型推导</td>
+<td>函数参数类型不匹配、返回值类型不对、<code>Optional</code> 没处理</td>
+<td>HTTP body、MQ message、环境变量到底传了什么</td>
+</tr>
+<tr>
+<td>Runtime validation</td>
+<td>Pydantic</td>
+<td>程序运行时收到的数据</td>
+<td>字段缺失、类型转换失败、范围越界、跨字段约束失败</td>
+<td>还没执行到的代码路径、整体业务逻辑正确性</td>
+</tr>
+</tbody>
+</table>
+<p>举个很常见的例子：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">json</span>
+
+
+<span class="k">def</span> <span class="nf">charge</span><span class="p">(</span><span class="n">amount</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="o">...</span>
+
+
+<span class="n">payload</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="s1">&#39;{&quot;amount&quot;: &quot;100&quot;}&#39;</span><span class="p">)</span>
+<span class="n">charge</span><span class="p">(</span><span class="n">payload</span><span class="p">[</span><span class="s2">&quot;amount&quot;</span><span class="p">])</span>
+</code></pre></div>
+
+<p>这段代码里，<code>charge()</code> 明明要的是 <code>int</code>，但 JSON 里来的 <code>"100"</code> 是字符串。静态检查工具未必能拦住，因为 <code>json.loads()</code> 出来的东西常常是 <code>Any</code> 或很宽的类型。它不知道生产环境某个客户会不会传 <code>"100"</code>、<code>100</code>、<code>"one hundred"</code>，甚至传个空对象。</p>
+<p>Pydantic 管的就是这道门：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">Field</span>
+
+
+<span class="k">class</span> <span class="nc">ChargeRequest</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">amount</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">gt</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+
+
+<span class="n">req</span> <span class="o">=</span> <span class="n">ChargeRequest</span><span class="o">.</span><span class="n">model_validate</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>
+<span class="n">charge</span><span class="p">(</span><span class="n">req</span><span class="o">.</span><span class="n">amount</span><span class="p">)</span>
+</code></pre></div>
+
+<p>从 <code>model_validate()</code> 之后，<code>req.amount</code> 才是你愿意相信的 <code>int</code>。这时静态检查也有价值：它能继续检查你后面的业务代码有没有把 <code>req.amount</code> 当成字符串用。</p>
+<p>反过来，静态检查也能发现 Pydantic 管不到的问题：</p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span> <span class="nf">charge</span><span class="p">(</span><span class="n">amount</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="o">...</span>
+
+
+<span class="n">charge</span><span class="p">(</span><span class="s2">&quot;100&quot;</span><span class="p">)</span>  <span class="c1"># mypy/pyright 可以在代码提交前提醒你</span>
+</code></pre></div>
+
+<p>这行代码如果写死在源码里，没必要等运行时再炸。静态检查在提交前、CI 阶段就能拦住，成本更低。</p>
+<p>所以不要问“我用了 Pydantic，还要不要 mypy/pyright？”这就像问“我装了安全带，还要不要刹车？”答案当然是都要，只是负责的速度区间不一样。</p>
+<p>我的推荐分工：</p>
+<table>
+<thead>
+<tr>
+<th>问题</th>
+<th>优先工具</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>代码里把 <code>str</code> 传给需要 <code>int</code> 的函数</td>
+<td><code>mypy</code> / <code>pyright</code></td>
+</tr>
+<tr>
+<td>某个变量可能是 <code>None</code>，却直接访问属性</td>
+<td><code>mypy</code> / <code>pyright</code></td>
+</tr>
+<tr>
+<td>import 顺序、未使用变量、复杂度过高</td>
+<td><code>ruff</code> / <code>pylint</code></td>
+</tr>
+<tr>
+<td>HTTP request body 字段缺失</td>
+<td>Pydantic</td>
+</tr>
+<tr>
+<td>环境变量字符串要转成布尔值或整数</td>
+<td>Pydantic Settings</td>
+</tr>
+<tr>
+<td>第三方 webhook 多传了未知字段</td>
+<td>Pydantic</td>
+</tr>
+<tr>
+<td>金额必须大于 0，结束时间必须晚于开始时间</td>
+<td>Pydantic validator</td>
+</tr>
+<tr>
+<td>这段业务流程到底对不对</td>
+<td>单元测试 / 集成测试 / contract test</td>
+</tr>
+</tbody>
+</table>
+<p>一句话：<strong>静态检查负责“代码看起来是否自洽”，Pydantic 负责“世界塞进来的数据是否可信”。</strong></p>
+<p>这两个工具配合起来，Python 项目才比较像一辆能上高速的车：方向盘、刹车、安全带都在，不靠驾驶员临场发挥求平安。</p>
+<h3 id="_1">怎么造一个“类似编译阶段”</h3>
+<p>Python 没有 Java、Go、Rust 那种天然的编译闸门，但我们可以自己造一个。思路很朴素：<strong>把静态类型检查、lint、测试放进同一个必经流程，提交前跑一遍，CI 再跑一遍，失败就不让合并。</strong></p>
+<p>先从类型标注开始。不要满足于 <code>dict</code>、<code>list</code>、<code>Any</code> 满天飞。类型越含糊，静态检查越像近视眼。</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">TypedDict</span>
+
+
+<span class="k">class</span> <span class="nc">ChargePayload</span><span class="p">(</span><span class="n">TypedDict</span><span class="p">):</span>
+    <span class="n">amount</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">currency</span><span class="p">:</span> <span class="nb">str</span>
+
+
+<span class="k">def</span> <span class="nf">charge</span><span class="p">(</span><span class="n">payload</span><span class="p">:</span> <span class="n">ChargePayload</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">amount</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">payload</span><span class="p">[</span><span class="s2">&quot;amount&quot;</span><span class="p">]</span>
+</code></pre></div>
+
+<p>如果有人这样调用：</p>
+<div class="highlight"><pre><span></span><code><span class="n">charge</span><span class="p">({</span><span class="s2">&quot;amount&quot;</span><span class="p">:</span> <span class="s2">&quot;100&quot;</span><span class="p">,</span> <span class="s2">&quot;currency&quot;</span><span class="p">:</span> <span class="s2">&quot;USD&quot;</span><span class="p">})</span>
+</code></pre></div>
+
+<p><code>mypy</code> 或 <code>pyright</code> 就有机会在提交前指出：<code>amount</code> 需要 <code>int</code>，你传了 <code>str</code>。</p>
+<p>再给项目加一个偏严格的配置。以 <code>pyproject.toml</code> 为例：</p>
+<div class="highlight"><pre><span></span><code><span class="k">[tool.mypy]</span>
+<span class="n">python_version</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;3.12&quot;</span>
+<span class="n">warn_return_any</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">warn_unused_ignores</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">disallow_untyped_defs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">no_implicit_optional</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">check_untyped_defs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+
+<span class="k">[tool.pyright]</span>
+<span class="n">typeCheckingMode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;strict&quot;</span>
+<span class="n">reportUnknownParameterType</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">reportUnknownVariableType</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">reportOptionalMemberAccess</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+
+<span class="k">[tool.ruff]</span>
+<span class="n">target-version</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;py312&quot;</span>
+<span class="n">line-length</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">100</span>
+
+<span class="k">[tool.ruff.lint]</span>
+<span class="n">select</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;E&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;F&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;B&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;I&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;UP&quot;</span><span class="p">]</span>
+</code></pre></div>
+
+<p>日常开发时，把它们变成一个固定命令：</p>
+<div class="highlight"><pre><span></span><code>ruff<span class="w"> </span>check<span class="w"> </span>.
+mypy<span class="w"> </span>.
+pyright
+pytest
+</code></pre></div>
+
+<p>团队里可以再包一层：</p>
+<div class="highlight"><pre><span></span><code>make<span class="w"> </span>check
+</code></pre></div>
+
+<p>然后让 <code>make check</code> 出现在三个地方：</p>
+<ol>
+<li>本地开发：写完一段代码先跑；</li>
+<li>pre-commit：提交前自动跑轻量检查；</li>
+<li>CI pipeline：合并前强制跑完整检查。</li>
+</ol>
+<p>这就很接近静态语言里的“编译阶段”了：不是因为 Python 真的编译了，而是因为你人为建立了一道不可绕过的质量门。</p>
+<p>不过还有一个细节：<strong>不要让 <code>Any</code> 到处漏。</strong></p>
+<p><code>Any</code> 是静态检查里的“通行证”。一旦某个变量是 <code>Any</code>，类型检查器通常会对它很客气，客气到出事。</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Any</span>
+
+
+<span class="n">payload</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">raw_body</span><span class="p">)</span>
+<span class="n">charge</span><span class="p">(</span><span class="n">payload</span><span class="p">[</span><span class="s2">&quot;amount&quot;</span><span class="p">])</span>  <span class="c1"># 静态检查很可能沉默</span>
+</code></pre></div>
+
+<p>更好的做法是：外部输入先用 Pydantic 验收，验收之后再把强类型对象交给业务代码：</p>
+<div class="highlight"><pre><span></span><code><span class="n">payload</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">raw_body</span><span class="p">)</span>
+<span class="n">req</span> <span class="o">=</span> <span class="n">ChargeRequest</span><span class="o">.</span><span class="n">model_validate</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>
+<span class="n">charge</span><span class="p">(</span><span class="n">req</span><span class="o">.</span><span class="n">amount</span><span class="p">)</span>
+</code></pre></div>
+
+<p>这就是 Pydantic 和静态检查配合的关键：<strong>静态检查负责源码里的类型关系，Pydantic 负责把运行时输入转换成静态检查能理解的对象。</strong></p>
+<hr>
+<h2 id="_2">三、第一条最佳实践：所有外部输入都要过模型</h2>
+<p>动态语言最大的坑，不是没有类型提示，而是类型提示经常只给人看，运行时没人管。</p>
+<p>比如：</p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span> <span class="nf">create_invoice</span><span class="p">(</span><span class="n">payload</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">amount</span> <span class="o">=</span> <span class="n">payload</span><span class="p">[</span><span class="s2">&quot;amount&quot;</span><span class="p">]</span>
+    <span class="n">currency</span> <span class="o">=</span> <span class="n">payload</span><span class="p">[</span><span class="s2">&quot;currency&quot;</span><span class="p">]</span>
+    <span class="c1"># 继续往下调用支付系统</span>
+</code></pre></div>
+
+<p>这段代码的问题不是短，而是太相信世界和平。</p>
+<p>更稳妥的写法：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">decimal</span> <span class="kn">import</span> <span class="n">Decimal</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Literal</span>
+
+<span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ConfigDict</span><span class="p">,</span> <span class="n">Field</span>
+
+
+<span class="k">class</span> <span class="nc">CreateInvoiceRequest</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">extra</span><span class="o">=</span><span class="s2">&quot;forbid&quot;</span><span class="p">)</span>
+
+    <span class="n">amount</span><span class="p">:</span> <span class="n">Decimal</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">gt</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">max_digits</span><span class="o">=</span><span class="mi">12</span><span class="p">,</span> <span class="n">decimal_places</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+    <span class="n">currency</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;USD&quot;</span><span class="p">,</span> <span class="s2">&quot;CNY&quot;</span><span class="p">,</span> <span class="s2">&quot;EUR&quot;</span><span class="p">]</span>
+    <span class="n">customer_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">max_length</span><span class="o">=</span><span class="mi">64</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">create_invoice</span><span class="p">(</span><span class="n">payload</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">req</span> <span class="o">=</span> <span class="n">CreateInvoiceRequest</span><span class="o">.</span><span class="n">model_validate</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>
+    <span class="c1"># 从这里开始，业务代码面对的是 req，而不是裸 dict</span>
+</code></pre></div>
+
+<p>这里有几个细节值得注意：</p>
+<ol>
+<li><code>model_validate()</code> 是 Pydantic v2 推荐的显式验证入口。</li>
+<li><code>Field()</code> 不只是写默认值，也可以写长度、范围、精度等约束。</li>
+<li><code>extra="forbid"</code> 会拒绝多余字段，避免调用方悄悄塞进来一堆系统没理解的数据。</li>
+</ol>
+<p>为什么我很喜欢 <code>extra="forbid"</code>？因为接口契约最怕“宽进宽出”。今天多传一个字段没人管，明天调用方就以为这个字段被支持了，后天你删日志字段都有人喊兼容性事故。</p>
+<p>当然，不是所有场景都要 <code>forbid</code>。如果你在做埋点、透传、灰度兼容，<code>extra="ignore"</code> 或 <code>extra="allow"</code> 也有用。关键是：<strong>你要知道自己选择了什么，而不是吃默认值。</strong></p>
+<hr>
+<h2 id="_3">四、第二条最佳实践：默认宽松，关键字段严格</h2>
+<p>Pydantic 默认会做类型转换。比如字符串 <code>"123"</code> 可以变成整数 <code>123</code>。这对环境变量、HTTP query、JSON 字符串很方便。</p>
+<p>方便有时也是坑。</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span>
+
+
+<span class="k">class</span> <span class="nc">FeatureFlag</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">enabled</span><span class="p">:</span> <span class="nb">bool</span>
+
+
+<span class="nb">print</span><span class="p">(</span><span class="n">FeatureFlag</span><span class="o">.</span><span class="n">model_validate</span><span class="p">({</span><span class="s2">&quot;enabled&quot;</span><span class="p">:</span> <span class="s2">&quot;false&quot;</span><span class="p">}))</span>
+</code></pre></div>
+
+<p>这类转换在很多场景是合理的，但在钱、权限、开关、配额这些字段上，就不能太随和。系统如果像一个老好人，迟早会被输入数据欺负。</p>
+<p>可以按调用打开严格模式：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ValidationError</span>
+
+
+<span class="k">class</span> <span class="nc">Payment</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">amount</span><span class="p">:</span> <span class="nb">int</span>
+
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">Payment</span><span class="o">.</span><span class="n">model_validate</span><span class="p">({</span><span class="s2">&quot;amount&quot;</span><span class="p">:</span> <span class="s2">&quot;100&quot;</span><span class="p">},</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">except</span> <span class="n">ValidationError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">exc</span><span class="o">.</span><span class="n">errors</span><span class="p">())</span>
+</code></pre></div>
+
+<p>也可以按字段严格：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">Field</span>
+
+
+<span class="k">class</span> <span class="nc">Payment</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">amount</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">gt</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">memo</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+</code></pre></div>
+
+<p>或者整个模型严格：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ConfigDict</span>
+
+
+<span class="k">class</span> <span class="nc">InternalCommand</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">extra</span><span class="o">=</span><span class="s2">&quot;forbid&quot;</span><span class="p">)</span>
+
+    <span class="n">action</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">retry_count</span><span class="p">:</span> <span class="nb">int</span>
+</code></pre></div>
+
+<p>我的经验规则是：</p>
+<table>
+<thead>
+<tr>
+<th>字段类型</th>
+<th>建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>金额、配额、权限等级</td>
+<td>尽量严格</td>
+</tr>
+<tr>
+<td>用户输入的搜索条件</td>
+<td>可以宽松，但要限制长度</td>
+</tr>
+<tr>
+<td>环境变量</td>
+<td>可以转换，但启动时必须验证</td>
+</tr>
+<tr>
+<td>内部系统命令</td>
+<td>尽量严格，多余字段拒绝</td>
+</tr>
+<tr>
+<td>第三方 webhook</td>
+<td>先宽松接住，再显式转换和兼容</td>
+</tr>
+</tbody>
+</table>
+<p>Pydantic 官方文档也提醒：它的“validation”更偏向“把输入解析成符合目标类型的输出”。所以不要以为“验证过”就等于“输入原样正确”。这两个概念差半步，线上事故常常就藏在这半步里。</p>
+<hr>
+<h2 id="validator">五、第三条最佳实践：用 Validator 表达业务边界</h2>
+<p>类型只能解决一部分问题。</p>
+<p><code>age: int</code> 能保证年龄是整数，但不能保证年龄合理；<code>start_time</code> 和 <code>end_time</code> 都是时间，也不能保证开始时间早于结束时间。</p>
+<p>Pydantic v2 里常用两个装饰器：</p>
+<ul>
+<li><code>@field_validator</code>：验证单个字段；</li>
+<li><code>@model_validator</code>：验证字段之间的关系。</li>
+</ul>
+<p>看一个会议预订的例子：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">datetime</span> <span class="kn">import</span> <span class="n">datetime</span>
+
+<span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">field_validator</span><span class="p">,</span> <span class="n">model_validator</span>
+
+
+<span class="k">class</span> <span class="nc">MeetingRequest</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">topic</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">max_length</span><span class="o">=</span><span class="mi">128</span><span class="p">)</span>
+    <span class="n">participants</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">max_length</span><span class="o">=</span><span class="mi">100</span><span class="p">)</span>
+    <span class="n">start_time</span><span class="p">:</span> <span class="n">datetime</span>
+    <span class="n">end_time</span><span class="p">:</span> <span class="n">datetime</span>
+
+    <span class="nd">@field_validator</span><span class="p">(</span><span class="s2">&quot;participants&quot;</span><span class="p">)</span>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">normalize_participants</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+        <span class="n">cleaned</span> <span class="o">=</span> <span class="p">[</span><span class="n">item</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">value</span> <span class="k">if</span> <span class="n">item</span><span class="o">.</span><span class="n">strip</span><span class="p">()]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">cleaned</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;participants cannot be empty&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">sorted</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">cleaned</span><span class="p">))</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;after&quot;</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">check_time_range</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;MeetingRequest&quot;</span><span class="p">:</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">end_time</span> <span class="o">&lt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">start_time</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;end_time must be later than start_time&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span>
+</code></pre></div>
+
+<p>这里有两个边界：</p>
+<ol>
+<li>单字段边界：参会人不能是空列表，邮箱或用户名可以做规范化。</li>
+<li>跨字段边界：结束时间必须晚于开始时间。</li>
+</ol>
+<p>Validator 的使用要克制。不要把核心业务流程塞进模型里，比如“扣库存”“查数据库”“调用风控服务”。Pydantic 模型适合做纯粹、快速、可重复的验证和转换。</p>
+<p>我的建议：</p>
+<ul>
+<li>可以做：大小写规范化、去空格、枚举兼容、字段关系检查；</li>
+<li>谨慎做：依赖数据库的唯一性检查；</li>
+<li>不要做：发网络请求、写数据库、产生副作用。</li>
+</ul>
+<p>模型是边界守门员，不是业务总经理。</p>
+<hr>
+<h2 id="_4">六、第四条最佳实践：别让配置在字符串里裸奔</h2>
+<p>Python 服务里最常见的配置事故，是环境变量明明存在，但类型不对。</p>
+<p><code>TIMEOUT=30</code> 读出来是字符串；<code>DEBUG=false</code> 读出来也是字符串。你以为是布尔值，Python 以为它是非空字符串，结果 debug 模式在生产环境笑眯眯地打开了。</p>
+<p>Pydantic v2 之后，配置管理拆到了独立包 <code>pydantic-settings</code>：</p>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>pydantic-settings
+</code></pre></div>
+
+<p>一个典型配置类：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">Field</span><span class="p">,</span> <span class="n">SecretStr</span>
+<span class="kn">from</span> <span class="nn">pydantic_settings</span> <span class="kn">import</span> <span class="n">BaseSettings</span><span class="p">,</span> <span class="n">SettingsConfigDict</span>
+
+
+<span class="k">class</span> <span class="nc">AppSettings</span><span class="p">(</span><span class="n">BaseSettings</span><span class="p">):</span>
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">SettingsConfigDict</span><span class="p">(</span>
+        <span class="n">env_prefix</span><span class="o">=</span><span class="s2">&quot;APP_&quot;</span><span class="p">,</span>
+        <span class="n">env_file</span><span class="o">=</span><span class="s2">&quot;.env&quot;</span><span class="p">,</span>
+        <span class="n">extra</span><span class="o">=</span><span class="s2">&quot;ignore&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">service_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;billing-api&quot;</span>
+    <span class="n">debug</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">request_timeout_seconds</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">le</span><span class="o">=</span><span class="mi">60</span><span class="p">)</span>
+    <span class="n">database_url</span><span class="p">:</span> <span class="n">SecretStr</span>
+
+
+<span class="n">settings</span> <span class="o">=</span> <span class="n">AppSettings</span><span class="p">()</span>
+</code></pre></div>
+
+<p>这样做的好处：</p>
+<ul>
+<li>服务启动时就能发现配置缺失或类型错误；</li>
+<li>配置定义集中，不用到处 <code>os.getenv()</code>；</li>
+<li><code>SecretStr</code> 在打印时会做遮蔽，降低误打日志的风险；</li>
+<li>测试时可以通过初始化参数覆盖配置。</li>
+</ul>
+<p>注意，<code>.env</code> 适合本地开发，不适合当生产密钥管理方案。生产环境里的密钥应该来自专门的 secret manager、Kubernetes Secret、云厂商密钥服务或公司内部密钥系统。Pydantic 负责读取和验证，不负责替你保管密钥。</p>
+<hr>
+<h2 id="typeadapter">七、第五条最佳实践：用 TypeAdapter 验证“不是模型”的类型</h2>
+<p>不是每个数据结构都值得建一个 <code>BaseModel</code>。</p>
+<p>比如你只想验证一批事件：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">TypeAdapter</span>
+
+
+<span class="k">class</span> <span class="nc">Event</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">ts</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">ge</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+
+
+<span class="n">events_adapter</span> <span class="o">=</span> <span class="n">TypeAdapter</span><span class="p">(</span><span class="nb">list</span><span class="p">[</span><span class="n">Event</span><span class="p">])</span>
+
+
+<span class="k">def</span> <span class="nf">handle_events</span><span class="p">(</span><span class="n">payload</span><span class="p">:</span> <span class="nb">object</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">Event</span><span class="p">]:</span>
+    <span class="k">return</span> <span class="n">events_adapter</span><span class="o">.</span><span class="n">validate_python</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>
+</code></pre></div>
+
+<p><code>TypeAdapter</code> 适合这些场景：</p>
+<ul>
+<li>验证 <code>list[SomeModel]</code>；</li>
+<li>验证 <code>dict[str, int]</code>；</li>
+<li>给简单类型生成 JSON Schema；</li>
+<li>在性能敏感路径复用 adapter，避免重复构造。</li>
+</ul>
+<p>一个小习惯：如果 adapter 会被频繁调用，把它放在模块级变量里复用，不要每次请求进来都创建一次。</p>
+<hr>
+<h2 id="_5">八、第六条最佳实践：输出也要有边界</h2>
+<p>很多人只把 Pydantic 用在输入上，输出继续手写 dict。</p>
+<p>手写 dict 的问题是：字段名容易拼错，<code>datetime</code>、<code>Decimal</code>、<code>Enum</code> 等类型序列化容易前后不一致，敏感字段也容易被顺手带出去。</p>
+<p>用 <code>model_dump()</code> 和 <code>model_dump_json()</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">datetime</span> <span class="kn">import</span> <span class="n">datetime</span>
+<span class="kn">from</span> <span class="nn">decimal</span> <span class="kn">import</span> <span class="n">Decimal</span>
+
+<span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">Field</span>
+
+
+<span class="k">class</span> <span class="nc">InvoiceView</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">invoice_id</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">amount</span><span class="p">:</span> <span class="n">Decimal</span>
+    <span class="n">created_at</span><span class="p">:</span> <span class="n">datetime</span>
+    <span class="n">internal_note</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">exclude</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+
+<span class="n">view</span> <span class="o">=</span> <span class="n">InvoiceView</span><span class="p">(</span>
+    <span class="n">invoice_id</span><span class="o">=</span><span class="s2">&quot;inv_001&quot;</span><span class="p">,</span>
+    <span class="n">amount</span><span class="o">=</span><span class="n">Decimal</span><span class="p">(</span><span class="s2">&quot;99.90&quot;</span><span class="p">),</span>
+    <span class="n">created_at</span><span class="o">=</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">(),</span>
+    <span class="n">internal_note</span><span class="o">=</span><span class="s2">&quot;risk score: 42&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">payload</span> <span class="o">=</span> <span class="n">view</span><span class="o">.</span><span class="n">model_dump</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;json&quot;</span><span class="p">,</span> <span class="n">exclude_none</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</code></pre></div>
+
+<p>这里的重点不是少写几行代码，而是把“哪些字段能出去”变成模型的一部分。</p>
+<p>对外 API、消息发布、LLM tool response，都应该有明确的 output model。输入是契约，输出也是契约。</p>
+<hr>
+<h2 id="schema">九、第七条最佳实践：把 Schema 当成团队协作资产</h2>
+<p>Pydantic 可以生成 JSON Schema：</p>
+<div class="highlight"><pre><span></span><code><span class="n">schema</span> <span class="o">=</span> <span class="n">CreateInvoiceRequest</span><span class="o">.</span><span class="n">model_json_schema</span><span class="p">()</span>
+</code></pre></div>
+
+<p>这件事很容易被低估。</p>
+<p>有了 Schema，你可以做很多工程化动作：</p>
+<ul>
+<li>给前端或调用方生成契约文档；</li>
+<li>在 CI 中对 schema diff 做检查；</li>
+<li>给 LLM structured output 提供约束；</li>
+<li>和 OpenAPI、AsyncAPI、事件协议管理结合；</li>
+<li>写 contract test，防止接口悄悄破坏兼容性。</li>
+</ul>
+<p>尤其是微服务和事件驱动系统里，schema 不只是文档，它是边界语言。没有 schema 的消息就像口头协议，大家都说“我理解了”，最后每个人理解得都不一样。</p>
+<hr>
+<h2 id="_6">十、常见陷阱</h2>
+<h3 id="1">1. 以为类型提示会在运行时生效</h3>
+<div class="highlight"><pre><span></span><code><span class="k">def</span> <span class="nf">send_email</span><span class="p">(</span><span class="n">to</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">retry</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="o">...</span>
+</code></pre></div>
+
+<p>这只是提示，不是运行时验证。调用方传 <code>retry="3"</code>，Python 不会自动拦住。</p>
+<p>如果这是边界函数，可以用模型；如果只是函数参数，也可以考虑 <code>@validate_call</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">validate_call</span>
+
+
+<span class="nd">@validate_call</span>
+<span class="k">def</span> <span class="nf">send_email</span><span class="p">(</span><span class="n">to</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">retry</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="o">...</span>
+</code></pre></div>
+
+<p>但别滥用。对内部高频小函数全部加运行时验证，代码会变重，性能也会受影响。边界优先，热点克制。</p>
+<h3 id="2">2. 迷信默认类型转换</h3>
+<p>Pydantic 的宽松转换很好用，但不要让它替你做产品决策。</p>
+<p>比如 <code>"1"</code> 能转成 <code>1</code>，但 <code>"001"</code> 是账号、编号还是数字？<code>"false"</code> 能不能当布尔值？空字符串要不要等于 <code>None</code>？</p>
+<p>这些都不是库能替你决定的。关键字段用 strict，模糊输入先在 validator 里显式处理。</p>
+<h3 id="3">3. 忘了处理多余字段</h3>
+<p>Pydantic 默认会忽略多余字段。这个默认值对兼容有利，但对契约治理不一定好。</p>
+<p>我建议：</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span> <span class="nc">ApiRequest</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">extra</span><span class="o">=</span><span class="s2">&quot;forbid&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<p>除非你明确需要兼容未知字段，否则对 API request、内部命令、管理操作等场景，拒绝多余字段更安全。</p>
+<h3 id="4-orm-api">4. 把 ORM 对象和 API 模型混在一起</h3>
+<p>数据库模型、领域模型、API request、API response，最好不要全用一个类。</p>
+<p>偷懒共用模型，会带来几个麻烦：</p>
+<ul>
+<li>数据库字段暴露到 API；</li>
+<li>API 字段改动影响持久化；</li>
+<li>response 里误带内部状态；</li>
+<li>validator 逻辑越来越混乱。</li>
+</ul>
+<p>更稳妥的分层：</p>
+<div class="highlight"><pre><span></span><code>API Request Model -&gt; Domain Command -&gt; ORM Model -&gt; API Response Model
+</code></pre></div>
+
+<p>小项目可以简化，但边界要想清楚。不要等用户看到 <code>internal_status</code> 字段才想起分层。</p>
+<h3 id="5-validator">5. 在 Validator 里做副作用</h3>
+<p>Validator 里查数据库、调 HTTP、写缓存，看起来很顺手，后面会很痛。</p>
+<p>因为模型验证通常被认为是纯操作。它可能在测试、重试、日志采样、schema 生成相关流程里被调用。你在里面塞副作用，就等于在门铃里接了个电饭锅，按一下发生什么全看缘分。</p>
+<h3 id="6-v1v2">6. 忘记 v1/v2 差异</h3>
+<p>Pydantic v2 改了不少命名和写法：</p>
+<table>
+<thead>
+<tr>
+<th>Pydantic v1</th>
+<th>Pydantic v2</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>parse_obj()</code></td>
+<td><code>model_validate()</code></td>
+</tr>
+<tr>
+<td><code>dict()</code></td>
+<td><code>model_dump()</code></td>
+</tr>
+<tr>
+<td><code>json()</code></td>
+<td><code>model_dump_json()</code></td>
+</tr>
+<tr>
+<td><code>schema()</code></td>
+<td><code>model_json_schema()</code></td>
+</tr>
+<tr>
+<td><code>@validator</code></td>
+<td><code>@field_validator</code></td>
+</tr>
+<tr>
+<td><code>@root_validator</code></td>
+<td><code>@model_validator</code></td>
+</tr>
+<tr>
+<td><code>BaseSettings</code> 在 <code>pydantic</code> 中</td>
+<td><code>BaseSettings</code> 在 <code>pydantic-settings</code> 中</td>
+</tr>
+</tbody>
+</table>
+<p>如果项目里 v1/v2 混用，最容易出现“看起来差不多，行为不一样”的维护成本。建议新项目直接 v2；老项目迁移时先统一依赖版本，再改 API，不要边跑边猜。</p>
+<h3 id="7-pydantic">7. 错把 Pydantic 当静态类型系统</h3>
+<p>Pydantic 是运行时验证，不是静态编译。</p>
+<p>它不能在代码提交前告诉你“这个函数调用传错了类型”，也不能替你发现某个分支永远走不到。那些问题应该交给 <code>mypy</code>、<code>pyright</code>、<code>ruff</code>、<code>pylint</code> 和测试。</p>
+<p>同样，静态检查也不能替你验收真实输入。API 调用方、环境变量、消息队列、LLM 输出都不会因为你的类型标注写得漂亮，就自动变乖。</p>
+<p>好的 Python 项目通常是组合拳：</p>
+<ul>
+<li><code>typing</code> 写清意图；</li>
+<li><code>mypy</code> 或 <code>pyright</code> 做静态检查；</li>
+<li><code>ruff</code> 或 <code>pylint</code> 做代码质量扫描；</li>
+<li>Pydantic 守住运行时边界；</li>
+<li>单元测试和 contract test 验证行为；</li>
+<li>日志和监控发现线上异常。</li>
+</ul>
+<p>只上 Pydantic，不写测试，不做静态检查，还是会摔。只上静态检查，不验证外部输入，也会摔。区别只是摔在不同路段。</p>
+<hr>
+<h2 id="_7">十一、我的推荐模板</h2>
+<p>下面是一个我比较推荐的 API request 模型模板，可以按项目风格裁剪：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Literal</span>
+
+<span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ConfigDict</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">field_validator</span><span class="p">,</span> <span class="n">model_validator</span>
+
+
+<span class="k">class</span> <span class="nc">CreateTaskRequest</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span>
+        <span class="n">extra</span><span class="o">=</span><span class="s2">&quot;forbid&quot;</span><span class="p">,</span>
+        <span class="n">str_strip_whitespace</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">title</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">max_length</span><span class="o">=</span><span class="mi">128</span><span class="p">)</span>
+    <span class="n">priority</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;low&quot;</span><span class="p">,</span> <span class="s2">&quot;medium&quot;</span><span class="p">,</span> <span class="s2">&quot;high&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;medium&quot;</span>
+    <span class="n">assignee</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_length</span><span class="o">=</span><span class="mi">64</span><span class="p">)</span>
+    <span class="n">tags</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">list</span><span class="p">,</span> <span class="n">max_length</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
+
+    <span class="nd">@field_validator</span><span class="p">(</span><span class="s2">&quot;tags&quot;</span><span class="p">)</span>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">normalize_tags</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+        <span class="n">normalized</span> <span class="o">=</span> <span class="p">[</span><span class="n">tag</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">tag</span> <span class="ow">in</span> <span class="n">value</span> <span class="k">if</span> <span class="n">tag</span><span class="o">.</span><span class="n">strip</span><span class="p">()]</span>
+        <span class="k">return</span> <span class="nb">sorted</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">normalized</span><span class="p">))</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;after&quot;</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">check_high_priority_owner</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;CreateTaskRequest&quot;</span><span class="p">:</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">priority</span> <span class="o">==</span> <span class="s2">&quot;high&quot;</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">assignee</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;high priority task must have an assignee&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span>
+</code></pre></div>
+
+<p>再配一个 response 模型：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">datetime</span> <span class="kn">import</span> <span class="n">datetime</span>
+
+<span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ConfigDict</span>
+
+
+<span class="k">class</span> <span class="nc">TaskView</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">from_attributes</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">task_id</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">title</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">priority</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">assignee</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span>
+    <span class="n">tags</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>
+    <span class="n">created_at</span><span class="p">:</span> <span class="n">datetime</span>
+</code></pre></div>
+
+<p>处理函数里保持清爽：</p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span> <span class="nf">create_task</span><span class="p">(</span><span class="n">payload</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+    <span class="n">req</span> <span class="o">=</span> <span class="n">CreateTaskRequest</span><span class="o">.</span><span class="n">model_validate</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>
+
+    <span class="n">task</span> <span class="o">=</span> <span class="n">task_service</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
+        <span class="n">title</span><span class="o">=</span><span class="n">req</span><span class="o">.</span><span class="n">title</span><span class="p">,</span>
+        <span class="n">priority</span><span class="o">=</span><span class="n">req</span><span class="o">.</span><span class="n">priority</span><span class="p">,</span>
+        <span class="n">assignee</span><span class="o">=</span><span class="n">req</span><span class="o">.</span><span class="n">assignee</span><span class="p">,</span>
+        <span class="n">tags</span><span class="o">=</span><span class="n">req</span><span class="o">.</span><span class="n">tags</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">TaskView</span><span class="o">.</span><span class="n">model_validate</span><span class="p">(</span><span class="n">task</span><span class="p">)</span><span class="o">.</span><span class="n">model_dump</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;json&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<p>这就是我喜欢的结构：入口验证，业务清楚，出口收口。代码不是最短，但调试半夜线上问题时，会感谢白天那个稍微啰嗦一点的自己。</p>
+<hr>
+<h2 id="pydantic_2">十二、Pydantic 使用清单</h2>
+<p>新写一个 Python 服务或脚本时，可以照这个清单过一遍：</p>
+<ul>
+<li>[ ] HTTP request、MQ message、外部 API 返回、LLM 输出是否都有模型？</li>
+<li>[ ] 项目是否启用了 <code>mypy</code> 或 <code>pyright</code>，让类型错误尽量在提交前暴露？</li>
+<li>[ ] 项目是否启用了 <code>ruff</code> 或 <code>pylint</code>，把明显代码味道和低级问题先扫掉？</li>
+<li>[ ] 是否有统一的 <code>make check</code> 或等价命令，把 lint、类型检查、测试串起来？</li>
+<li>[ ] CI 是否强制执行这道检查，失败就不能合并？</li>
+<li>[ ] 项目里是否尽量减少 <code>Any</code>、裸 <code>dict</code>、裸 <code>list</code>，让类型检查器看得清楚？</li>
+<li>[ ] API request 是否设置了 <code>extra="forbid"</code> 或明确解释为什么不设置？</li>
+<li>[ ] 金额、权限、配额、内部命令等关键字段是否启用了 strict 或显式 validator？</li>
+<li>[ ] 字符串是否有长度限制，列表是否有数量限制？</li>
+<li>[ ] 配置是否集中到 <code>BaseSettings</code>，服务启动时是否会失败得足够早？</li>
+<li>[ ] 密钥字段是否用 <code>SecretStr</code> 或等价机制，日志里是否会被遮蔽？</li>
+<li>[ ] Validator 是否保持纯粹，避免数据库、网络、写文件等副作用？</li>
+<li>[ ] 输入模型、输出模型、ORM 模型是否按边界分开？</li>
+<li>[ ] 是否生成或保存 JSON Schema，供文档、CI 或 contract test 使用？</li>
+<li>[ ] 项目是否明确使用 Pydantic v1 还是 v2，避免混写？</li>
+</ul>
+<hr>
+<h2 id="_8">十三、思维导图</h2>
+<p>下面这张图把本文的主线压成一页：Pydantic 不是静态类型系统，也不是业务逻辑替身，它最适合站在系统边界上，把不可信输入变成有约束、可测试、可协作的对象。</p>
+<div class="highlight"><pre><span></span><code>@startmindmap
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName Arial
+
+*[#111827] &lt;color:white&gt;&lt;b&gt;Pydantic 最佳实践&lt;/b&gt;&lt;/color&gt;
+**[#DBEAFE] 定位
+***[#EFF6FF] 运行时验证
+***[#EFF6FF] 边界契约
+***[#EFF6FF] 不是静态检查
+***[#EFF6FF] 不是业务逻辑
+**[#DCFCE7] 输入边界
+***[#F0FDF4] HTTP Request
+***[#F0FDF4] MQ Message
+***[#F0FDF4] 外部 API
+***[#F0FDF4] LLM 输出
+***[#F0FDF4] 配置环境变量
+**[#FCE7F3] 模型实践
+***[#FDF2F8] BaseModel
+***[#FDF2F8] Field 约束
+***[#FDF2F8] extra=&quot;forbid&quot;
+***[#FDF2F8] strict 关键字段
+***[#FDF2F8] TypeAdapter
+**[#FEF3C7] Validator 边界
+***[#FFFBEB] 字段规范化
+***[#FFFBEB] 跨字段约束
+***[#FFFBEB] 避免副作用
+***[#FFFBEB] 不查库不调 HTTP
+**[#EDE9FE] 工程协作
+***[#F5F3FF] JSON Schema
+***[#F5F3FF] Contract Test
+***[#F5F3FF] OpenAPI / AsyncAPI
+***[#F5F3FF] make check
+***[#F5F3FF] CI 质量门
+**[#FEE2E2] 常见坑
+***[#FEF2F2] 类型提示不验证
+***[#FEF2F2] 迷信默认转换
+***[#FEF2F2] ORM / API 混用
+***[#FEF2F2] v1 / v2 混写
+***[#FEF2F2] 敏感字段外泄
+**[#E5E7EB] 组合拳
+***[#F9FAFB] typing 写清意图
+***[#F9FAFB] mypy / pyright 查类型
+***[#F9FAFB] ruff 扫代码味道
+***[#F9FAFB] pytest 验证行为
+***[#F9FAFB] Pydantic 守住边界
+@endmindmap
+</code></pre></div>
+
+<p><img alt="Pydantic 最佳实践思维导图" src="../images/tech_20260605_pydantic-best-practices_mindmap.png"></p>
+<hr>
+<h2 id="_9">十四、总结</h2>
+<p>Python 的动态特性不是原罪。它让我们写得快、试得快、改得快。问题在于，系统一旦接入真实世界，真实世界从来不按你的类型提示办事。</p>
+<p>Pydantic 的价值，不是让 Python 变成一门静态语言，也不是替代静态代码检查，而是在关键边界上补一层运行时契约：</p>
+<ul>
+<li>静态检查先看代码是否自洽；</li>
+<li>入口数据先验收；</li>
+<li>配置启动时验收；</li>
+<li>输出字段明确收口；</li>
+<li>schema 成为团队协作资产；</li>
+<li>关键字段不要过度相信自动转换。</li>
+</ul>
+<p>一句话：<strong>动态语言可以灵活，但边界不能含糊。</strong></p>
+<p>如果明天只做三件事，我建议：</p>
+<ol>
+<li>先建一个 <code>make check</code>：<code>ruff check .</code>、<code>mypy .</code> 或 <code>pyright</code>、<code>pytest</code>，让它进 CI。</li>
+<li>找一个最容易出错的 API request，把裸 dict 换成 Pydantic model。</li>
+<li>给配置加 <code>BaseSettings</code>，让服务在启动时暴露配置错误。</li>
+</ol>
+<p>这三件事做完，代码不会立刻显得高级，但会少很多“怎么会传成这样”的低级事故。老程序员都知道，少一点这种事故，头发就多一点希望。</p>
+<h3 id="review-card">安全 Review Card</h3>
+<ul>
+<li>不要把 Pydantic 当作授权、认证、风控系统；它只负责输入结构和局部约束。</li>
+<li>不要在 validator 中记录原始敏感输入，尤其是 token、密码、连接串和用户隐私字段。</li>
+<li><code>.env</code> 只适合本地开发；生产密钥应由专门的 secret manager 或平台能力托管。</li>
+<li>对外错误信息要克制：内部日志可以结构化，用户响应不要泄露敏感字段和内部实现。</li>
+</ul>
+<h3 id="_10">扩展阅读</h3>
+<ul>
+<li><a href="https://docs.pydantic.dev/latest/concepts/models/">Pydantic Models</a></li>
+<li><a href="https://docs.pydantic.dev/latest/concepts/strict_mode/">Pydantic Strict Mode</a></li>
+<li><a href="https://docs.pydantic.dev/latest/concepts/validators/">Pydantic Validators</a></li>
+<li><a href="https://docs.pydantic.dev/latest/concepts/type_adapter/">Pydantic Type Adapter</a></li>
+<li><a href="https://docs.pydantic.dev/latest/concepts/pydantic_settings/">Pydantic Settings Management</a></li>
+<li><a href="https://docs.pydantic.dev/latest/migration/">Pydantic Migration Guide</a></li>
+</ul>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。</p>
+  </div>
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/tag/python.html">python</a>
+      <a href="https://www.fanyamin.com/tag/pydantic.html">pydantic</a>
+      <a href="https://www.fanyamin.com/tag/validation.html">validation</a>
+      <a href="https://www.fanyamin.com/tag/backend.html">backend</a>
+      <a href="https://www.fanyamin.com/tag/best-practices.html">best-practices</a>
+    </p>
+  </div>
+
+
+  <div class="center social-share" style="margin: 1.5em 0; text-align: center;">
+    <p style="margin-bottom: 0.5em; color: #888;">📤 Share this article</p>
+    <a href="https://twitter.com/intent/tweet?text=Python%20%E5%8A%A8%E6%80%81%E8%AF%AD%E8%A8%80%E9%87%8C%E7%9A%84%E5%AE%89%E5%85%A8%E5%B8%A6%EF%BC%9APydantic%20%E7%94%A8%E6%B3%95%E4%B8%8E%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5&url=https://www.fanyamin.com/pydantic-best-practices.html"
+       target="_blank" rel="noopener" title="Share on Twitter/X"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#1da1f2; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      𝕏 Twitter
+    </a>
+    <a href="https://www.linkedin.com/sharing/share-offsite/?url=https://www.fanyamin.com/pydantic-best-practices.html"
+       target="_blank" rel="noopener" title="Share on LinkedIn"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#0077b5; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      💼 LinkedIn
+    </a>
+    <a href="javascript:void(0);" onclick="copyLink('https://www.fanyamin.com/pydantic-best-practices.html')" title="Copy link"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#666; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em; cursor:pointer;">
+      🔗 Copy Link
+    </a>
+    <script>
+    function copyLink(url) {
+      navigator.clipboard.writeText(url).then(function() {
+        alert('链接已复制！');
+      });
+    }
+    </script>
+  </div>
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/perm-casbin.html" title="PERM 模型与 Casbin：把云端授权从代码里抠出去">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/archunit-harness.html" title="ArchUnit：用一个单元测试库，把架构纪律变成 AI 也绕不过的红绿灯">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/2026-01-27-python-coding.html">Python 编程的常见陷阱与奇巧淫技</a></li>
+      <li><a href="https://www.fanyamin.com/spire-04-hands-on-lab.html">SPIRE 系列之四：实战 Lab — 用零信任身份替代数据库密码分发</a></li>
+      <li><a href="https://www.fanyamin.com/2026-04-22-python-ssl-unable-to-get-local-issuer-certificate.html">一次 HTTPS 证书报错排查：为什么会出现 `unable to get local issuer certificate`</a></li>
+      <li><a href="https://www.fanyamin.com/2026-04-21-lazy-podcast-mate.html">把文章一键变成播客：我的 side project `lazy-podcast-mate`</a></li>
+      <li><a href="https://www.fanyamin.com/gevent-shi-shi-yao-he-asyncio-yi-qi-yong-you-shi-yao-keng.html">Gevent 是什么，和 asyncio 一起用有什么坑</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

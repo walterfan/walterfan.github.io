@@ -1,0 +1,976 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'G-VZL08BHDPP', 'auto');
+  ga('send', 'pageview');
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="同样用 AI 写代码，Go 后端比 Spring Boot 那套好伺候——因为 Go 的工具链（gofmt / go vet / go test -race / -cover）天生白送了半套 harness。问题是，白送的不等于拧紧的，多数团队连这半套都没接进 CI 闸门。本文讲清楚 AI 在 Go 项目里真正爱翻的三块（吞错误、并发竞态、幻觉依赖），怎么先把白送的工具链拧紧，再用 AGENTS.md、internal 边界、depguard、表驱动测试、golangci-lint 把缺的那半套补上，并给出可直接抄的配置、CI 闸门和行动 / 检查清单。" />
+<meta name="keywords" content="AI, harness, golang, go, testing, golangci-lint, ci">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Go 服务用 AI 写代码：工具链白送了半套 harness，你只是没拧紧",
+  "description": "同样用 AI 写代码，Go 后端比 Spring Boot 那套好伺候——因为 Go 的工具链（gofmt / go vet / go test -race / -cover）天生白送了半套 harness。问题是，白送的不等于拧紧的，多数团队连这半套都没接进 CI 闸门。本文讲清楚 AI 在 Go 项目里真正爱翻的三块（吞错误、并发竞态、幻觉依赖），怎么先把白送的工具链拧紧，再用 AGENTS.md、internal 边界、depguard、表驱动测试、golangci-lint 把缺的那半套补上，并给出可直接抄的配置、CI 闸门和行动 / 检查清单。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-06-11T19:10:00+08:00",
+  "dateModified": "2026-06-11T20:03:00+08:00",
+  "url": "https://www.fanyamin.com/golang-ai-harness.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/golang-ai-harness.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "AI, harness, golang, go, testing, golangci-lint, ci"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="Go 服务用 AI 写代码：工具链白送了半套 harness，你只是没拧紧"/>
+  <meta property="og:description" content="同样用 AI 写代码，Go 后端比 Spring Boot 那套好伺候——因为 Go 的工具链（gofmt / go vet / go test -race / -cover）天生白送了半套 harness。问题是，白送的不等于拧紧的，多数团队连这半套都没接进 CI 闸门。本文讲清楚 AI 在 Go 项目里真正爱翻的三块（吞错误、并发竞态、幻觉依赖），怎么先把白送的工具链拧紧，再用 AGENTS.md、internal 边界、depguard、表驱动测试、golangci-lint 把缺的那半套补上，并给出可直接抄的配置、CI 闸门和行动 / 检查清单。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/golang-ai-harness.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-06-11 19:10:00+08:00"/>
+  <meta property="article:modified_time" content="2026-06-11 20:03:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="AI"/>
+  <meta property="article:tag" content="harness"/>
+  <meta property="article:tag" content="golang"/>
+  <meta property="article:tag" content="go"/>
+  <meta property="article:tag" content="testing"/>
+  <meta property="article:tag" content="golangci-lint"/>
+  <meta property="article:tag" content="ci"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; Go 服务用 AI 写代码：工具链白送了半套 harness，你只是没拧紧</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/">Walter Fan</a>
+    </h1>
+
+    <p>手握灵珠常奋笔, 心开天籁不吹箫</p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/search.html" role="search">
+      <input type="text" name="q" id="tipue_search_input" placeholder="Search...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank" href="tao.html" >tao</a>
+          </li>
+          <li>
+            <a target="_blank" href="article.html" >article</a>
+          </li>
+          <li>
+            <a target="_blank" href="manual.html" >manual</a>
+          </li>
+          <li>
+            <a target="_blank" href="interest.html" >interest</a>
+          </li>
+          <li>
+            <a target="_self" href="/wordpress" >notebook</a>
+          </li>
+          <li>
+            <a target="_blank" href="bookmark.html" >bookmark</a>
+          </li>
+          <li>
+            <a target="_self" href="/webrtc/examples/index.html" >webrtc</a>
+          </li>
+          <li>
+            <a target="_blank" href="https://github.com/walterfan" >github</a>
+          </li>
+          <li>
+            <a target="_blank" href="categories.html" >categories</a>
+          </li>
+          <li>
+            <a target="_blank" href="tags.html" >tags</a>
+          </li>
+      </ul>
+    </nav>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+</aside>
+  <main>
+
+
+<article class="single">
+  <header>
+      
+    <h1 id="golang-ai-harness">Go 服务用 AI 写代码：工具链白送了半套 harness，你只是没拧紧</h1>
+    <p>
+      Posted on 四 11 6月 2026 in <a href="https://www.fanyamin.com/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>Go 服务用 AI 写代码：工具链白送了半套 harness，你只是没拧紧</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v0.1</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-06-11</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h1 id="go-ai-harness">Go 服务用 AI 写代码：工具链白送了半套 harness，你只是没拧紧</h1>
+<h2 id="_1">短大纲</h2>
+<ul>
+<li>同样用 AI，Go 后端比 Spring Boot 那套好伺候——因为 Go 工具链白送了半套 harness</li>
+<li>但"白送"不等于"拧紧"：多数团队连 <code>go vet</code>、<code>-race</code>、<code>-cover</code> 都没接进闸门</li>
+<li>AI 在 Go 里真正爱翻的三块：吞错误、并发竞态、幻觉依赖</li>
+<li>第一步：把工具链白送的那半套拧到 CI 里，一条红就不许合</li>
+<li>第二步：补上缺的半套——AGENTS.md 上下文、internal 边界、depguard、表驱动测试、godog 行为契约</li>
+<li>一个从止血到治本的渐进顺序 + 可抄的配置、行动清单、检查清单</li>
+</ul>
+<hr>
+<h2 id="go">一、为什么 Go 服务更好伺候</h2>
+<p>我在上一篇<a href="https://www.fanyamin.com/improve-java-project-harness.html">《传统 Java 项目用 AI 写代码总翻车？先把 harness 修好》</a>里有一句话：Spring Boot + MyBatis + MySQL + Kafka 这套，比一个小巧的 Go 服务难伺候得多。有读者追问：那 Go 项目的 harness 到底怎么修？这篇就来还这个债。</p>
+<p>先抛个观点，可能有点反直觉：<strong>Go 项目修 harness，比 Java 容易，因为 Go 的工具链已经白送了半套。</strong></p>
+<p><code>gofmt</code> 让格式没得吵——AI 再怎么发挥，<code>gofmt -l</code> 一过，风格全归一，省掉了 Java 世界里 Checkstyle/Spotless 那一整套配置仗。<code>go vet</code> 白送基础静态检查，<code>go test</code> 是语言内置而不是第三方框架，<code>go test -race</code> 直接给你一个竞态检测器，<code>go test -cover</code> 顺手就出覆盖率。<code>go build ./...</code> 编不过就是编不过——这本身就是拦截"幻觉 API"的第一道墙。</p>
+<p>这些在 Java 里都得额外攒：JUnit、JaCoCo、各种 lint 插件、还得在 Maven/Gradle 里拼半天。Go 把它们塞进了一个命令行工具里，开箱即用。</p>
+<p><strong>但白送的，不等于拧紧的。</strong> 我见过太多 Go 项目，工具链躺在那儿，CI 里却只跑了一句 <code>go test ./...</code>——<code>-race</code> 没开、覆盖率不卡、<code>go vet</code> 看心情、golangci-lint 没接。等于发动机和护栏都白送给你了，你却只拧上了一颗螺丝就上路。AI 一上来，那些没拧紧的地方就开始漏。</p>
+<p>所以这篇的主线只有两句：<strong>先把白送的那半套拧紧，再补上缺的那半套。</strong></p>
+<blockquote>
+<p>harness 是什么，这个系列前两篇已经讲透了，这里只用一句话复述：<strong>harness 就是你给 AI 准备的工作环境和约束系统，让它即使失忆、看不到全局、不为线上故障负责，也能干出靠谱的活。</strong> 想看完整定义和 Java 落地，去翻<a href="https://www.fanyamin.com/improve-java-project-harness.html">那篇</a>。</p>
+</blockquote>
+<hr>
+<h2 id="ai-go">二、AI 在 Go 里真正爱翻的三块</h2>
+<p>Java 的难，难在隐性知识密度高（事务代理、XML 散落、Kafka 幂等）。Go 不一样，Go 的代码大多"上下文自足"，隐性规矩少。但这不代表 AI 在 Go 里就不翻车，它只是<strong>翻在别处</strong>。按我的观察，AI 写 Go 最爱翻的是这三块——而且每一块，Go 工具链刚好都有对症的药。</p>
+<h3 id="1-go-ai">1. 吞错误：Go 的命根子，AI 的盲区</h3>
+<p>Go 没有异常，错误就是个返回值，全靠 <code>if err != nil</code> 的纪律撑着。AI 偏偏最爱在这儿偷懒：</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// AI 经常写出来的三种&quot;吞错误&quot;</span>
+<span class="nx">data</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">json</span><span class="p">.</span><span class="nx">Marshal</span><span class="p">(</span><span class="nx">req</span><span class="p">)</span><span class="w">        </span><span class="c1">// 忽略 err</span>
+<span class="nx">resp</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">http</span><span class="p">.</span><span class="nx">Get</span><span class="p">(</span><span class="nx">url</span><span class="p">)</span>
+<span class="k">defer</span><span class="w"> </span><span class="nx">resp</span><span class="p">.</span><span class="nx">Body</span><span class="p">.</span><span class="nx">Close</span><span class="p">()</span><span class="w">             </span><span class="c1">// resp 可能是 nil，err 没判先 defer</span>
+<span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nb">panic</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span><span class="w"> </span><span class="p">}</span><span class="w">        </span><span class="c1">// 在库代码里 panic，等于埋雷</span>
+</code></pre></div>
+
+<p>更隐蔽的是丢掉错误链：本该 <code>fmt.Errorf("query order: %w", err)</code> 把底层错误包进去，AI 写成 <code>errors.New("query failed")</code>，上游再也 <code>errors.Is</code> 不到根因，排查时一脸懵。</p>
+<h3 id="2">2. 并发竞态：跑起来都对，压上去就崩</h3>
+<p>Go 把并发做得太顺手了，<code>go func(){}</code> 一写就是一个 goroutine。AI 也学得很快，但它对"共享内存要加锁""goroutine 要有退出路径""context 要一路传下去"这些没有切肤之痛：</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// 典型翻车：闭包里并发写同一个 map</span>
+<span class="nx">results</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="kt">int</span><span class="p">{}</span>
+<span class="k">for</span><span class="w"> </span><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">id</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="k">range</span><span class="w"> </span><span class="nx">ids</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">go</span><span class="w"> </span><span class="kd">func</span><span class="p">(</span><span class="nx">id</span><span class="w"> </span><span class="kt">string</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">results</span><span class="p">[</span><span class="nx">id</span><span class="p">]</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">fetch</span><span class="p">(</span><span class="nx">id</span><span class="p">)</span><span class="w">   </span><span class="c1">// data race！map 并发写直接 panic 或脏数据</span>
+<span class="w">    </span><span class="p">}(</span><span class="nx">id</span><span class="p">)</span>
+<span class="p">}</span>
+<span class="c1">// 还少了 WaitGroup，主协程根本没等它们完成</span>
+</code></pre></div>
+
+<p>这种 bug 最毒的地方在于：单测跑一遍是绿的，本地点几下也正常，<strong>一上线在并发压力下才崩</strong>。人眼 review 经常看不出来。</p>
+<h3 id="3">3. 幻觉依赖：编一个看起来很像的包</h3>
+<p>AI 训练数据里见过太多库，于是它会自信地 <code>import</code> 一个根本不在你 <code>go.mod</code> 里的包，或者调一个标准库里压根不存在的函数（<code>strings.ReverseString</code>？没有这个东西）。再或者，为了实现一个本可以用标准库三行搞定的功能，它顺手给你引入一个庞大的第三方依赖。</p>
+<p>Go 社区有很强的"能用标准库就别加依赖"的文化，AI 不懂这个分寸，容易把你的 <code>go.mod</code> 喂胖。</p>
+<h3 id="internal">顺带一块：破坏 internal 边界</h3>
+<p>Go 用 <code>internal/</code> 目录和包结构来表达边界。AI 改大功能时，最容易随手 <code>import</code> 了不该碰的内部包，把本该解耦的模块连成一团。</p>
+<p>把这四点列张表，对应的药也就清楚了：</p>
+<table>
+<thead>
+<tr>
+<th>AI 在 Go 爱翻的</th>
+<th>后果</th>
+<th>对症的工具</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>吞错误 / 丢错误链</td>
+<td>故障无声，排查困难</td>
+<td><code>errcheck</code>、<code>errorlint</code>、<code>go vet</code></td>
+</tr>
+<tr>
+<td>并发竞态 / goroutine 泄漏</td>
+<td>线上偶发，难复现</td>
+<td><code>go test -race</code>、<code>go vet</code></td>
+</tr>
+<tr>
+<td>幻觉依赖 / 幻觉 API</td>
+<td>编不过，或 go.mod 变胖</td>
+<td><code>go build ./...</code>、<code>depguard</code>、code review</td>
+</tr>
+<tr>
+<td>破坏 internal 边界</td>
+<td>模块缠绕、爆炸半径大</td>
+<td><code>depguard</code>、<code>go-arch-lint</code></td>
+</tr>
+</tbody>
+</table>
+<p>你会发现：<strong>前两块 Go 工具链白送的就能治，后两块需要你额外补。</strong> 这正好对应下面两节。</p>
+<hr>
+<h2 id="_2">三、第一步：把白送的那半套拧紧</h2>
+<p>别急着上花活。修 Go 项目的 harness，性价比最高的第一步，是把工具链白送的东西<strong>接进 CI、变成会拦人的红灯</strong>。不接闸门，它们就只是躺在文档里的好意。</p>
+<h3 id="1-gofmt">1. <code>gofmt</code>：格式不许吵架</h3>
+<p><code>gofmt</code> 不是"建议格式化"，是"必须格式化"。在 CI 里加一句，有未格式化的文件就失败：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># 列出所有未按 gofmt 格式化的文件；非空就让 CI 失败</span>
+<span class="nb">test</span><span class="w"> </span>-z<span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span>gofmt<span class="w"> </span>-l<span class="w"> </span>.<span class="k">)</span><span class="s2">&quot;</span>
+</code></pre></div>
+
+<p>好处不止是好看：格式统一后，AI 改动的 diff 才干净，review 时一眼能看出它到底改了什么逻辑，而不是被一堆缩进噪音淹没。</p>
+<h3 id="2-go-vet">2. <code>go vet</code>：白送的基础静态检查</h3>
+<p><code>go vet ./...</code> 能抓出一票低级错误：<code>Printf</code> 占位符对不上、<code>struct tag</code> 写错、复制了带锁的结构体、明显的不可达代码。这是零配置的，AI 写出来的低级毛病很多能在这儿拦住。</p>
+<h3 id="3-go-build-api">3. <code>go build ./...</code>：治幻觉 API 和幻觉依赖</h3>
+<p>听起来废话，但很多 CI 只跑测试不单独 build，而测试可能没覆盖到的文件里，AI 编的那个不存在的函数就溜过去了。<code>go build ./...</code> 强制全量编译——<strong>幻觉 API 在这一步必死</strong>。再配一句 <code>go mod tidy</code> 后看 <code>git diff</code> 有没有变化，能发现 AI 偷偷加的依赖。</p>
+<h3 id="4-go-test-race">4. <code>go test -race</code>：白送的竞态检测器</h3>
+<p>这是 Go 最被低估的宝贝。把测试用 <code>-race</code> 跑，竞态检测器会在运行时盯着内存访问，逮到并发读写同一块内存就报警，<strong>精确到哪个 goroutine、哪一行</strong>：</p>
+<div class="highlight"><pre><span></span><code>go<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-race<span class="w"> </span>./...
+</code></pre></div>
+
+<p>对前面说的"并发翻车"，这几乎是唯一可靠的自动防线。代价是测试慢几倍——但 CI 里慢这几倍，换来线上不被偶发竞态半夜叫醒，太值了。前提是：<strong>你得有能触发并发路径的测试</strong>，否则 <code>-race</code> 也无从发现（这就接到了第四节的表驱动测试）。</p>
+<h3 id="5-go-test-cover">5. <code>go test -cover</code>：覆盖率卡一条线</h3>
+<div class="highlight"><pre><span></span><code>go<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-race<span class="w"> </span>-coverprofile<span class="o">=</span>cover.out<span class="w"> </span>./...
+go<span class="w"> </span>tool<span class="w"> </span>cover<span class="w"> </span>-func<span class="o">=</span>cover.out<span class="w"> </span><span class="p">|</span><span class="w"> </span>tail<span class="w"> </span>-1<span class="w">   </span><span class="c1"># 看 total 覆盖率</span>
+</code></pre></div>
+
+<p>覆盖率不是越高越好，但"低于某条线就构建失败"能逼住底线。具体卡多少看项目，核心业务包可以单独卡高一点。</p>
+<p><strong>这一步的本质，是把"工具链能做但没人接"的东西，全部接进一道 CI 闸门。</strong> 一个最小可用的 <code>Makefile</code> 目标长这样：</p>
+<div class="highlight"><pre><span></span><code><span class="nf">.PHONY</span><span class="o">:</span><span class="w"> </span><span class="n">verify</span>
+<span class="nf">verify</span><span class="o">:</span>
+<span class="w">    </span><span class="nb">test</span><span class="w"> </span>-z<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$$</span><span class="s2">(gofmt -l .)&quot;</span><span class="w">     </span><span class="c1"># 格式</span>
+<span class="w">    </span>go<span class="w"> </span>vet<span class="w"> </span>./...<span class="w">                  </span><span class="c1"># 基础静态</span>
+<span class="w">    </span>go<span class="w"> </span>build<span class="w"> </span>./...<span class="w">                </span><span class="c1"># 幻觉 API/依赖必死</span>
+<span class="w">    </span>go<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-race<span class="w"> </span>-cover<span class="w"> </span>./...<span class="w">    </span><span class="c1"># 竞态 + 覆盖率</span>
+</code></pre></div>
+
+<p>光这一个 <code>make verify</code> 接进 CI，就已经把 AI 在 Go 里最爱翻的"吞错误的一部分 + 并发竞态 + 幻觉 API"挡掉一大半了。<strong>而它几乎是零成本的——这些工具你早就装了，只是没拧紧。</strong></p>
+<hr>
+<h2 id="_3">四、第二步：补上缺的那半套</h2>
+<p>白送的拧紧之后，剩下的短板得自己补：上下文、边界、规约、行为契约，以及一个能管住错误处理 / 依赖 / 安全的 meta-linter。沿用这个系列的"拼图"视角，挨个落到 Go 里。</p>
+<h3 id="1-pkb-agentsmd-go-ai">1. PKB / <code>AGENTS.md</code>：把 Go 的约定写给 AI 看</h3>
+<p>Go 的隐性知识比 Java 少，但不是没有：错误怎么包、context 怎么传、并发怎么收口、依赖什么时候才允许加——这些都是你团队的"不成文规矩"。在仓库根目录放一个 <code>AGENTS.md</code>（或 <code>CLAUDE.md</code>），别写正确的废话，专写踩过坑的规矩：</p>
+<div class="highlight"><pre><span></span><code><span class="gh"># AGENTS.md — order-service (Go)</span>
+
+<span class="gu">## 系统地图</span>
+<span class="k">-</span><span class="w"> </span>cmd/server      程序入口，只做装配，不写业务
+<span class="k">-</span><span class="w"> </span>internal/order  订单域：下单、查询
+<span class="k">-</span><span class="w"> </span>internal/refund 退款域：本次要改的就是这块
+<span class="k">-</span><span class="w"> </span>internal/platform  基础设施：db、kafka、http client 封装
+
+<span class="gu">## 必须遵守的约定（踩过坑的）</span>
+<span class="k">1.</span> 错误一律 fmt.Errorf(&quot;...: %w&quot;, err) 往上包，禁止吞错（不许 _ = err）。
+<span class="k">2.</span> 库代码禁止 panic；panic 只允许出现在 main/初始化的&quot;起不来就该死&quot;场景。
+<span class="k">3.</span> 所有对外调用（DB/HTTP/Kafka）第一个参数必须是 context.Context，并真正传下去。
+<span class="k">4.</span> 并发写共享状态必须加锁或用 channel；每个 goroutine 必须有明确的退出路径。
+<span class="k">5.</span> 金额用 int64 以&quot;分&quot;为单位，禁止 float64。
+<span class="k">6.</span> 能用标准库就别加依赖；加任何第三方包要在 PR 里说明理由。
+<span class="k">7.</span> 跨域只能 import 对方的接口包，禁止 import 对方的 internal 实现。
+
+<span class="gu">## 标准样板</span>
+改写链路前先读 internal/refund/service.go 的 Refund()，照这个结构来：
+入参带 ctx → 校验 → 业务 → 落库 → 发消息，每步错误都 %w 包好。
+</code></pre></div>
+
+<p>三件事最值得写：<strong>系统地图</strong>（哪个目录干什么）、<strong>踩过坑的约定</strong>（错误/panic/context/并发/金额/依赖）、<strong>一个可抄的样板函数</strong>。AI 不是检索引擎，改退款时直接把 <code>internal/refund/</code> 下相关文件拍给它，比让它"自己去仓库找"靠谱得多。</p>
+<h3 id="2-internal-depguard">2. 边界：用 <code>internal/</code> + <code>depguard</code> 把分层焊死</h3>
+<p>Go 天生有个好东西：<code>internal/</code> 目录下的包，只能被其父目录及其子树 import，<strong>编译器级别</strong>拦截外部依赖。先利用好它，按域分包，让目录结构本身就是边界：</p>
+<div class="highlight"><pre><span></span><code>order-service/
+├── cmd/server/         # 入口
+└── internal/
+    ├── order/          # 订单域
+    ├── refund/         # 退款域（本次要改）
+    │   ├── api/        # HTTP handler
+    │   ├── service/    # 业务
+    │   └── store/      # DB 访问
+    └── fulfillment/    # 履约域：退款只能通过接口通知它
+</code></pre></div>
+
+<p>但 <code>internal/</code> 只能挡"包外访问包内"，挡不住"同一个 module 内部，退款域偷偷 import 履约域的实现"。这时候用 <code>depguard</code>（golangci-lint 内置的一个 linter）把跨域、跨层依赖写成会失败的规则：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># .golangci.yml 片段（depguard 配置在不同版本语法略有差异，按你的版本微调）</span>
+<span class="nt">linters-settings</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">depguard</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">rules</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">refund-domain</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">files</span><span class="p">:</span>
+<span class="w">          </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;**/internal/refund/**&quot;</span>
+<span class="w">        </span><span class="nt">deny</span><span class="p">:</span>
+<span class="w">          </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">pkg</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;order-service/internal/fulfillment/store&quot;</span>
+<span class="w">            </span><span class="nt">desc</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;退款域不许直连履约实现，只能走</span><span class="nv"> </span><span class="s">fulfillment</span><span class="nv"> </span><span class="s">的接口&quot;</span>
+<span class="w">      </span><span class="nt">service-layer</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">files</span><span class="p">:</span>
+<span class="w">          </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;**/internal/*/service/**&quot;</span>
+<span class="w">        </span><span class="nt">deny</span><span class="p">:</span>
+<span class="w">          </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">pkg</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;net/http&quot;</span>
+<span class="w">            </span><span class="nt">desc</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;service</span><span class="nv"> </span><span class="s">层不许碰</span><span class="nv"> </span><span class="s">http，HTTP</span><span class="nv"> </span><span class="s">细节留在</span><span class="nv"> </span><span class="s">api</span><span class="nv"> </span><span class="s">层&quot;</span>
+</code></pre></div>
+
+<p>这相当于 Java 世界里 ArchUnit 干的活（参见<a href="https://www.fanyamin.com/archunit-harness.html">那篇</a>）。如果想要更完整的分层 / 依赖方向校验，可以上专门的 <a href="https://github.com/fe3dback/go-arch-lint"><code>go-arch-lint</code></a>，用一个 yaml 声明组件和允许的依赖方向：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># .go-arch-lint.yml（示意，按工具版本调整）</span>
+<span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
+<span class="nt">workdir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">internal</span>
+<span class="nt">components</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">api</span><span class="p">:</span><span class="w">     </span><span class="p p-Indicator">{</span><span class="nt"> in</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;*/api&quot;</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">  </span><span class="nt">service</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> in</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;*/service&quot;</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">  </span><span class="nt">store</span><span class="p">:</span><span class="w">   </span><span class="p p-Indicator">{</span><span class="nt"> in</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;*/store&quot;</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="nt">deps</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">api</span><span class="p">:</span><span class="w">     </span><span class="p p-Indicator">{</span><span class="nt"> mayDependOn</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">service</span><span class="p p-Indicator">]</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">  </span><span class="nt">service</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> mayDependOn</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">store</span><span class="p p-Indicator">]</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">  </span><span class="nt">store</span><span class="p">:</span><span class="w">   </span><span class="p p-Indicator">{</span><span class="nt"> mayDependOn</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[]</span><span class="w"> </span><span class="p p-Indicator">}</span><span class="w">          </span><span class="c1"># store 不许反向依赖</span>
+</code></pre></div>
+
+<p>跑 <code>go-arch-lint check</code>，反向调用、跨层依赖立刻红。边界一旦被测试 / linter 焊死，AI 即使犯错，<strong>爆炸半径也被关在一个房间里</strong>。</p>
+<h3 id="3-sdd">3. SDD + 表驱动测试：把大功能拆成"测试即题面"</h3>
+<p>Go 写大功能也会翻车，原因和 Java 一样：你给的是个大需求，AI 只能边猜边写。解法不变——<strong>先写一页规约，拆成小任务，再让 AI 逐个实现</strong>，每个任务配一个测试。</p>
+<p>Go 的杀手锏是<strong>表驱动测试</strong>（table-driven test），它天然适合把"验收标准"一条条钉死。与其用自然语言反复跟 AI 描述边界 case，不如把它们摆成一张表，这就是给 AI 的最精确题面：</p>
+<div class="highlight"><pre><span></span><code><span class="kd">func</span><span class="w"> </span><span class="nx">TestRefund</span><span class="p">(</span><span class="nx">t</span><span class="w"> </span><span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">tests</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="p">[]</span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">name</span><span class="w">    </span><span class="kt">string</span>
+<span class="w">        </span><span class="nx">order</span><span class="w">   </span><span class="nx">Order</span>
+<span class="w">        </span><span class="nx">amount</span><span class="w">  </span><span class="kt">int64</span>
+<span class="w">        </span><span class="nx">wantErr</span><span class="w"> </span><span class="kt">error</span>
+<span class="w">    </span><span class="p">}{</span>
+<span class="w">        </span><span class="p">{</span><span class="s">&quot;全额退款成功&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">paidOrder</span><span class="p">(</span><span class="mi">100</span><span class="nx">_00</span><span class="p">),</span><span class="w"> </span><span class="mi">100</span><span class="nx">_00</span><span class="p">,</span><span class="w"> </span><span class="kc">nil</span><span class="p">},</span>
+<span class="w">        </span><span class="p">{</span><span class="s">&quot;未支付订单不可退&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">unpaidOrder</span><span class="p">(),</span><span class="w"> </span><span class="mi">100</span><span class="nx">_00</span><span class="p">,</span><span class="w"> </span><span class="nx">ErrNotRefundable</span><span class="p">},</span>
+<span class="w">        </span><span class="p">{</span><span class="s">&quot;退款额超过可退额&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">paidOrder</span><span class="p">(</span><span class="mi">100</span><span class="nx">_00</span><span class="p">),</span><span class="w"> </span><span class="mi">200</span><span class="nx">_00</span><span class="p">,</span><span class="w"> </span><span class="nx">ErrAmountExceeded</span><span class="p">},</span>
+<span class="w">        </span><span class="p">{</span><span class="s">&quot;重复退款应幂等&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">refundedOrder</span><span class="p">(</span><span class="mi">100</span><span class="nx">_00</span><span class="p">),</span><span class="w"> </span><span class="mi">100</span><span class="nx">_00</span><span class="p">,</span><span class="w"> </span><span class="nx">ErrAlreadyRefunded</span><span class="p">},</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">tt</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="k">range</span><span class="w"> </span><span class="nx">tests</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Run</span><span class="p">(</span><span class="nx">tt</span><span class="p">.</span><span class="nx">name</span><span class="p">,</span><span class="w"> </span><span class="kd">func</span><span class="p">(</span><span class="nx">t</span><span class="w"> </span><span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nx">svc</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">newRefundService</span><span class="p">(</span><span class="nx">tt</span><span class="p">.</span><span class="nx">order</span><span class="p">)</span>
+<span class="w">            </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">svc</span><span class="p">.</span><span class="nx">Refund</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nx">Background</span><span class="p">(),</span><span class="w"> </span><span class="nx">tt</span><span class="p">.</span><span class="nx">amount</span><span class="p">)</span>
+<span class="w">            </span><span class="k">if</span><span class="w"> </span><span class="p">!</span><span class="nx">errors</span><span class="p">.</span><span class="nx">Is</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span><span class="w"> </span><span class="nx">tt</span><span class="p">.</span><span class="nx">wantErr</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="c1">// 注意 errors.Is，配合 %w 才管用</span>
+<span class="w">                </span><span class="nx">t</span><span class="p">.</span><span class="nx">Fatalf</span><span class="p">(</span><span class="s">&quot;Refund() err = %v, want %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="p">,</span><span class="w"> </span><span class="nx">tt</span><span class="p">.</span><span class="nx">wantErr</span><span class="p">)</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">        </span><span class="p">})</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>HTTP handler 用标准库 <code>net/http/httptest</code> 测，不用起真服务：</p>
+<div class="highlight"><pre><span></span><code><span class="kd">func</span><span class="w"> </span><span class="nx">TestRefundHandler</span><span class="p">(</span><span class="nx">t</span><span class="w"> </span><span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">body</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">strings</span><span class="p">.</span><span class="nx">NewReader</span><span class="p">(</span><span class="s">`{&quot;amount&quot;:10000}`</span><span class="p">)</span>
+<span class="w">    </span><span class="nx">req</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">httptest</span><span class="p">.</span><span class="nx">NewRequest</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPost</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;/orders/1001/refund&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">body</span><span class="p">)</span>
+<span class="w">    </span><span class="nx">rec</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">httptest</span><span class="p">.</span><span class="nx">NewRecorder</span><span class="p">()</span>
+
+<span class="w">    </span><span class="nx">newRouter</span><span class="p">(</span><span class="nx">stubRefundService</span><span class="p">{}).</span><span class="nx">ServeHTTP</span><span class="p">(</span><span class="nx">rec</span><span class="p">,</span><span class="w"> </span><span class="nx">req</span><span class="p">)</span>
+
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">rec</span><span class="p">.</span><span class="nx">Code</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="nx">http</span><span class="p">.</span><span class="nx">StatusOK</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Fatalf</span><span class="p">(</span><span class="s">&quot;status = %d, want %d&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">rec</span><span class="p">.</span><span class="nx">Code</span><span class="p">,</span><span class="w"> </span><span class="nx">http</span><span class="p">.</span><span class="nx">StatusOK</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>把这些测试先写好、丢给 AI："让这些测试在 <code>go test -race</code> 下变绿。"它就有了客观的成功标准，不再自我感觉良好；改坏了别处，对应的红灯立刻亮。<strong>对老代码，则反过来用</strong>：让 AI 重构前，先给现有逻辑补一层"特征测试"（characterization test），把当前行为固化下来，重构后只要还绿，就说明行为没变。护栏跟着战线走，你让 AI 动哪块，就先给哪块织网。</p>
+<h3 id="4-bdd-godog">4. BDD：给最怕错的业务流写 <code>godog</code> 契约</h3>
+<p>技术正确靠表驱动测试，<strong>业务正确</strong>有时还得一层。Go 里有 <a href="https://github.com/cucumber/godog"><code>godog</code></a>（Cucumber 的官方 Go 实现），用 <code>Given/When/Then</code> 把关键业务流写成几乎是大白话的场景，特别适合状态机、消息幂等这类"边界一堆、最容易扯皮"的地方：</p>
+<div class="highlight"><pre><span></span><code><span class="c"># refund.feature</span>
+<span class="k">场景:</span><span class="nf"> 重复收到退款消息时不能退两次</span>
+<span class="k">  假如</span><span class="nf"> 订单 </span><span class="s">1001</span><span class="nf"> 已经退款成功</span>
+<span class="nf">  </span><span class="k">当</span><span class="nf"> 系统再次收到订单 </span><span class="s">1001</span><span class="nf"> 的退款消息</span>
+<span class="nf">  </span><span class="k">那么</span><span class="nf"> 不应再发起一次退款</span>
+<span class="nf">  </span><span class="k">并且</span><span class="nf"> 账户余额保持不变</span>
+</code></pre></div>
+
+<p>step 定义写一次，之后场景复用。这种场景对 AI 极友好：它把重复消息、乱序、超时这些容易被漏掉的边界<strong>显式摆上台面</strong>，AI 照着实现即可，不用猜业务语义。别全项目铺开——只给最怕错、最难讲清的那几条核心流写就够本。</p>
+<h3 id="5-golangci-lint">5. 度量闸门：<code>golangci-lint</code> 一把梭</h3>
+<p>最后一块拼图，是把上面这些 + Go 特有的坑，统统接进一个会拦人的 meta-linter。Go 生态里这件事的标准答案就是 <code>golangci-lint</code>——它把几十个 linter 打包成一个命令，跑得快、配置集中。挑对症的几个开起来：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># .golangci.yml（最小可用版，linter 名称按你的版本核对）</span>
+<span class="nt">run</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5m</span>
+<span class="nt">linters</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">enable</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">errcheck</span><span class="w">       </span><span class="c1"># 没处理的 error 直接报错 —— 治&quot;吞错误&quot;</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">errorlint</span><span class="w">      </span><span class="c1"># 强制正确用 %w / errors.Is</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">govet</span><span class="w">          </span><span class="c1"># 基础静态</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">staticcheck</span><span class="w">    </span><span class="c1"># 强大的静态分析</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">gosec</span><span class="w">          </span><span class="c1"># 安全扫描</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bodyclose</span><span class="w">      </span><span class="c1"># http resp.Body 忘了 Close</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sqlclosecheck</span><span class="w">  </span><span class="c1"># sql.Rows 忘了 Close</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">noctx</span><span class="w">          </span><span class="c1"># 发请求没带 context</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">contextcheck</span><span class="w">   </span><span class="c1"># context 没一路传下去</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">depguard</span><span class="w">       </span><span class="c1"># 依赖 / 分层约束（见上）</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">revive</span><span class="w">         </span><span class="c1"># 风格 / 命名约定</span>
+</code></pre></div>
+
+<p>这里面每一个，几乎都精准对着 AI 在 Go 里的某个毛病：<code>errcheck</code>/<code>errorlint</code> 治吞错误和丢错误链，<code>bodyclose</code>/<code>sqlclosecheck</code> 治资源泄漏，<code>noctx</code>/<code>contextcheck</code> 治 context 断链，<code>depguard</code> 治越界依赖，<code>gosec</code> 治安全坑。<strong>把脑子里的约定，变成 AI 绕不过去的红灯。</strong></p>
+<p>老项目别慌一次性全红：<code>golangci-lint</code> 支持 <code>--new-from-rev</code>，只检查相对某个 commit 的新增改动——<strong>老债先冻住，新债一分不许欠</strong>。和 ArchUnit 的 <code>FreezingArchRule</code> 是同一个思路。</p>
+<hr>
+<h2 id="ci">五、把闸门串起来：一份能抄的 CI</h2>
+<p>前面所有努力，最后都要落到一道<strong>任意一条红就不许合并</strong>的闸门上。否则约定再多，AI（和赶工期的人）总能绕过去偷偷上线。</p>
+<p><a id="sample-makefile"></a></p>
+<p>诀窍是：<strong>先把所有检查收敛进一个 <code>Makefile</code>，本地和 CI 共用同一套命令。</strong> 这样"我本地是绿的，怎么 CI 红了"这类扯皮就没了。一份能直接抄的 <code>Makefile</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="c"># Makefile —— 把前面的方法串成可执行的闸门</span>
+<span class="nv">COVER_MIN</span><span class="w"> </span><span class="o">?=</span><span class="w"> </span><span class="m">70</span><span class="w">          </span><span class="c1"># 覆盖率阈值</span>
+<span class="nv">NEW_FROM</span><span class="w">  </span><span class="o">?=</span><span class="w"> </span>origin/main<span class="w">  </span><span class="c1"># 老项目增量 lint 的基线</span>
+
+<span class="nv">.DEFAULT_GOAL</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span>verify
+
+<span class="c"># ---- 第一步：拧紧白送的那半套 ----</span>
+<span class="nf">fmt</span><span class="o">:</span><span class="w">                       </span><span class="c">## 检查 gofmt，有未格式化文件就失败</span>
+<span class="w">    </span>@u<span class="o">=</span><span class="s2">&quot;</span><span class="nv">$$</span><span class="s2">(gofmt -l .)&quot;</span><span class="p">;</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>-z<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$$</span><span class="s2">u&quot;</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">{</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;未格式化: </span><span class="nv">$$</span><span class="s2">u&quot;</span><span class="p">;</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span><span class="p">;</span><span class="w"> </span><span class="o">}</span>
+
+<span class="nf">vet</span><span class="o">:</span><span class="w">                       </span><span class="c">## 基础静态检查</span>
+<span class="w">    </span>go<span class="w"> </span>vet<span class="w"> </span>./...
+
+<span class="nf">build</span><span class="o">:</span><span class="w">                     </span><span class="c">## 全量编译，幻觉 API/缺失依赖必死</span>
+<span class="w">    </span>go<span class="w"> </span>build<span class="w"> </span>./...
+
+<span class="nf">tidy-check</span><span class="o">:</span><span class="w">                </span><span class="c">## go.mod/go.sum 不许被偷偷改，揪出多余依赖</span>
+<span class="w">    </span>go<span class="w"> </span>mod<span class="w"> </span>tidy
+<span class="w">    </span>@git<span class="w"> </span>diff<span class="w"> </span>--exit-code<span class="w"> </span>go.mod<span class="w"> </span>go.sum
+
+<span class="nf">test</span><span class="o">:</span><span class="w">                      </span><span class="c">## 竞态检测 + 生成覆盖率</span>
+<span class="w">    </span>go<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-race<span class="w"> </span>-coverprofile<span class="o">=</span>cover.out<span class="w"> </span>-covermode<span class="o">=</span>atomic<span class="w"> </span>./...
+
+<span class="nf">cover</span><span class="o">:</span><span class="w"> </span><span class="n">test</span>                <span class="c">## 覆盖率低于阈值就失败</span>
+<span class="w">    </span>@t<span class="o">=</span><span class="nv">$$</span><span class="o">(</span>go<span class="w"> </span>tool<span class="w"> </span>cover<span class="w"> </span>-func<span class="o">=</span>cover.out<span class="w"> </span><span class="p">|</span><span class="w"> </span>awk<span class="w"> </span><span class="s1">&#39;/^total:/{gsub(/%/,&quot;&quot;,$$3);print $$3}&#39;</span><span class="o">)</span><span class="p">;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;coverage: </span><span class="nv">$$</span><span class="s2">t%&quot;</span><span class="p">;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>awk<span class="w"> </span>-v<span class="w"> </span><span class="nv">t</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$$</span><span class="s2">t&quot;</span><span class="w"> </span>-v<span class="w"> </span><span class="nv">m</span><span class="o">=</span><span class="s2">&quot;</span><span class="k">$(</span>COVER_MIN<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span><span class="s1">&#39;BEGIN{exit (t+0&lt;m+0)}&#39;</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="se">\</span>
+<span class="w">        </span><span class="o">{</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;覆盖率 </span><span class="nv">$$</span><span class="s2">t% 低于 </span><span class="k">$(</span>COVER_MIN<span class="k">)</span><span class="s2">%&quot;</span><span class="p">;</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span><span class="p">;</span><span class="w"> </span><span class="o">}</span>
+
+<span class="c"># ---- 第二步：补缺的那半套 ----</span>
+<span class="nf">lint</span><span class="o">:</span><span class="w">                      </span><span class="c">## golangci-lint 总闸门</span>
+<span class="w">    </span>golangci-lint<span class="w"> </span>run
+
+<span class="nf">lint-new</span><span class="o">:</span><span class="w">                  </span><span class="c">## 老项目只拦新增违规</span>
+<span class="w">    </span>golangci-lint<span class="w"> </span>run<span class="w"> </span>--new-from-rev<span class="o">=</span><span class="k">$(</span>NEW_FROM<span class="k">)</span>
+
+<span class="nf">arch</span><span class="o">:</span><span class="w">                      </span><span class="c">## 架构/分层边界校验</span>
+<span class="w">    </span>go<span class="w"> </span>run<span class="w"> </span>github.com/fe3dback/go-arch-lint@latest<span class="w"> </span>check
+
+<span class="c"># ---- 聚合闸门：CI 直接调它 ----</span>
+<span class="nf">verify</span><span class="o">:</span><span class="w"> </span><span class="n">fmt</span> <span class="n">vet</span> <span class="n">build</span> <span class="n">tidy</span>-<span class="n">check</span> <span class="n">lint</span> <span class="n">arch</span> <span class="n">cover</span>  <span class="c">## 合并前过一遍</span>
+<span class="w">    </span>@echo<span class="w"> </span><span class="s2">&quot;all checks passed&quot;</span>
+
+<span class="nf">verify-new</span><span class="o">:</span><span class="w"> </span><span class="n">fmt</span> <span class="n">vet</span> <span class="n">build</span> <span class="n">tidy</span>-<span class="n">check</span> <span class="n">lint</span>-<span class="n">new</span> <span class="n">arch</span> <span class="n">cover</span>  <span class="c">## 老项目专用</span>
+
+<span class="nf">.PHONY</span><span class="o">:</span><span class="w"> </span><span class="n">fmt</span> <span class="n">vet</span> <span class="n">build</span> <span class="n">tidy</span>-<span class="n">check</span> <span class="n">test</span> <span class="n">cover</span> <span class="n">lint</span> <span class="n">lint</span>-<span class="n">new</span> <span class="n">arch</span> <span class="n">verify</span> <span class="n">verify</span>-<span class="n">new</span>
+</code></pre></div>
+
+<p>平时本地随手跑 <code>make test</code> / <code>make lint</code>，提交前跑 <code>make verify</code>；老项目先用 <code>make verify-new</code>，<code>lint</code> 只拦新增、老债慢慢还。可调参数：<code>make verify COVER_MIN=80</code>。</p>
+<p>CI 这边就薄薄一层，把环境装好然后调 <code>make verify</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># .github/workflows/verify.yml</span>
+<span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">verify</span>
+<span class="nt">on</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">push</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">pull_request</span><span class="p p-Indicator">]</span>
+<span class="nt">jobs</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">verify</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">runs-on</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ubuntu-latest</span>
+<span class="w">    </span><span class="nt">steps</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">actions/checkout@v4</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">actions/setup-go@v5</span>
+<span class="w">        </span><span class="nt">with</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> go-version</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;1.22&#39;</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">make verify</span>
+</code></pre></div>
+
+<p>GitLab CI 同理，一个 <code>verify</code> job 里跑 <code>make verify</code> 即可。如果你不想用 <code>make</code> 当中间层，也可以把每步拆成独立的 CI step，本质一样——一份完全展开的 GitHub Actions 长这样：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># .github/workflows/verify.yml</span>
+<span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">verify</span>
+<span class="nt">on</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">push</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">pull_request</span><span class="p p-Indicator">]</span>
+<span class="nt">jobs</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">verify</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">runs-on</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ubuntu-latest</span>
+<span class="w">    </span><span class="nt">steps</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">actions/checkout@v4</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">actions/setup-go@v5</span>
+<span class="w">        </span><span class="nt">with</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> go-version</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;1.22&#39;</span><span class="w"> </span><span class="p p-Indicator">}</span>
+
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">格式</span>
+<span class="w">        </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">test -z &quot;$(gofmt -l .)&quot;</span>
+
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">依赖没被偷偷改</span>
+<span class="w">        </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">go mod tidy &amp;&amp; git diff --exit-code go.mod go.sum</span>
+
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">编译（幻觉 API 必死）</span>
+<span class="w">        </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">go build ./...</span>
+
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">静态 + 安全 + 依赖约束</span>
+<span class="w">        </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">golangci/golangci-lint-action@v6</span>
+
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">竞态 + 覆盖率</span>
+<span class="w">        </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">go test -race -cover ./...</span>
+
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">架构边界</span>
+<span class="w">        </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">go run github.com/fe3dback/go-arch-lint@latest check</span>
+</code></pre></div>
+
+<p>关键不在用 <code>make</code> 还是裸 CI、用 GitHub 还是 GitLab，而在<strong>这几道检查全绿才允许合并</strong>——这是整套 harness 真正生效的开关。</p>
+<hr>
+<h2 id="_4">六、别一口气全上：渐进落地顺序</h2>
+<p>看到一堆工具就想全装，是最容易劝退团队的做法。给一个从止血到治本的顺序，每一步都该让 AI 干活的成功率肉眼可见地往上走：</p>
+<ol>
+<li><strong>拧紧白送的（半天，ROI 最高）</strong>：<code>gofmt -l</code> + <code>go vet</code> + <code>go build ./...</code> + <code>go test -race -cover</code> 接进 CI。先把这半套白嫖到位。</li>
+<li><strong>golangci-lint 上场</strong>：先开 <code>errcheck</code>、<code>errorlint</code>、<code>bodyclose</code>、<code>gosec</code> 这几个最对症的，老项目用 <code>--new-from-rev</code> 只拦新增。</li>
+<li><strong>写 <code>AGENTS.md</code></strong>：系统地图 + 错误/context/并发/依赖的约定 + 一个样板函数。</li>
+<li><strong>理 <code>internal/</code> 边界</strong>：按域分包，用 <code>depguard</code> 把跨域、跨层依赖焊死。</li>
+<li><strong>SDD + 表驱动测试</strong>：从此大功能先写规约、拆任务，每个任务配表驱动测试再交给 AI。</li>
+<li><strong>godog 补关键业务流</strong>：只给最怕错的那几条（消息幂等、状态机）写 Given/When/Then。</li>
+</ol>
+<p>前两步是纯白嫖，今天就能做完；后四步按项目节奏补。</p>
+<hr>
+<h2 id="_5">总结</h2>
+<p>回到开头那个反差：同样用 AI，为什么 Go 服务比 Spring Boot 那套省心？因为 Go 的工具链把测试、竞态检测、格式化、静态检查全塞进了一个命令行里，<strong>白送了半套 harness</strong>。</p>
+<p>可白送不等于拧紧。多数 Go 项目的问题不是缺工具，而是工具躺在原地没接进闸门——<code>-race</code> 没开、覆盖率不卡、golangci-lint 没装、<code>internal</code> 边界没人守。AI 一来，这些松动的螺丝就开始漏。</p>
+<p>所以这篇就两句话：<strong>第一步，把白送的那半套拧紧</strong>——<code>gofmt</code>、<code>go vet</code>、<code>go build</code>、<code>go test -race -cover</code>，全接进 CI；<strong>第二步，补上缺的那半套</strong>——<code>AGENTS.md</code> 给上下文、<code>internal</code> + <code>depguard</code> 给边界、表驱动测试给红绿灯、<code>godog</code> 给业务契约、<code>golangci-lint</code> 当总闸门。</p>
+<p>说到底，这和 Java 篇是同一份功夫：<strong>让 AI 写好 Go 代码的功夫，和让一个 Go 团队写好代码的功夫，是同一份功夫。</strong> 你为 AI 拧紧的每一颗螺丝，最后受益的也是每一个活人。</p>
+<h3 id="_6">思维导图</h3>
+<div class="highlight"><pre><span></span><code>@startmindmap
+* Go 服务的 AI harness
+** 为什么好伺候
+*** 工具链白送半套
+*** gofmt/vet/race/cover 开箱即用
+*** 白送≠拧紧
+** AI 爱翻的三块
+*** 吞错误/丢错误链
+*** 并发竞态/goroutine 泄漏
+*** 幻觉依赖/幻觉 API
+*** (顺带) 破坏 internal 边界
+** 第一步 拧紧白送的
+*** gofmt -l 格式
+*** go vet 静态
+*** go build 治幻觉API
+*** go test -race 竞态
+*** go test -cover 覆盖率
+** 第二步 补缺的半套
+*** AGENTS.md 上下文
+*** internal + depguard 边界
+*** SDD + 表驱动测试
+*** godog 行为契约
+*** golangci-lint 总闸门
+** 落地顺序
+*** 1 拧紧白送
+*** 2 golangci-lint
+*** 3 AGENTS.md
+*** 4 internal 边界
+*** 5 SDD+表驱动
+*** 6 godog 补业务
+@endmindmap
+</code></pre></div>
+
+<p><img alt="Go 服务 AI harness 思维导图" src="../images/tech_20260611_golang-ai-harness_mindmap.png"></p>
+<h3 id="_7">行动清单（今天就能做前两条）</h3>
+<ol>
+<li>在 CI 里加一道 <code>make verify</code>：<code>gofmt -l</code> 非空即失败、<code>go vet ./...</code>、<code>go build ./...</code>、<code>go test -race -cover ./...</code>。</li>
+<li>加 <code>go mod tidy &amp;&amp; git diff --exit-code go.mod go.sum</code>，揪出 AI 偷偷加的依赖。</li>
+<li>装 <code>golangci-lint</code>，先开 <code>errcheck</code>、<code>errorlint</code>、<code>bodyclose</code>、<code>gosec</code>，老项目用 <code>--new-from-rev</code> 只拦新增。</li>
+<li>写一个 <code>AGENTS.md</code>：系统地图 + 错误/context/并发/依赖约定 + 一个样板函数。</li>
+<li>用 <code>depguard</code> 或 <code>go-arch-lint</code> 加一条会失败的边界规则（如"service 层不许 import net/http"）。</li>
+<li>把下一个大功能先写成一页规约 + 表驱动测试，再分小任务交给 AI。</li>
+</ol>
+<h3 id="_8">检查清单（合并前过一遍）</h3>
+<ul>
+<li>[ ] <code>gofmt -l .</code> 输出为空</li>
+<li>[ ] <code>go vet ./...</code> 通过</li>
+<li>[ ] <code>go build ./...</code> 通过（无幻觉 API / 缺失依赖）</li>
+<li>[ ] <code>go mod tidy</code> 后 <code>go.mod</code>/<code>go.sum</code> 无变化（无偷加依赖）</li>
+<li>[ ] <code>go test -race ./...</code> 通过（无竞态）</li>
+<li>[ ] 覆盖率不低于约定阈值</li>
+<li>[ ] <code>golangci-lint run</code> 通过（errcheck/errorlint/bodyclose/gosec 等）</li>
+<li>[ ] 边界规则（depguard / go-arch-lint）通过</li>
+<li>[ ] 所有错误都用 <code>%w</code> 包装，库代码无 <code>panic</code>、无 <code>_ = err</code></li>
+<li>[ ] 对外调用都带 <code>context.Context</code> 并真正传递</li>
+<li>[ ] 关键业务流有表驱动测试或 godog 场景覆盖边界 case</li>
+</ul>
+<h3 id="_9">扩展阅读</h3>
+<ul>
+<li><a href="https://www.fanyamin.com/improve-java-project-harness.html">传统 Java 项目用 AI 写代码总翻车？先把 harness 修好</a></li>
+<li><a href="https://www.fanyamin.com/archunit-harness.html">ArchUnit：用一个单元测试库，把架构纪律变成 AI 也绕不过的红绿灯</a></li>
+<li><a href="https://golangci-lint.run/">golangci-lint 官方文档</a></li>
+<li><a href="https://go.dev/wiki/TableDrivenTests">Go 官方：Table-driven tests</a></li>
+<li><a href="https://item.jd.com/69315415321.html">微服务之道：度量驱动开发</a></li>
+</ul>
+<p><a id="sample-agents-md"></a></p>
+<h3 id="agentsmd">附录：一份完整的 <code>AGENTS.md</code> 示例</h3>
+<p>正文「第二步 → PKB」那节给的是骨架版，这里补一份贴着上面 <code>order-service</code> 的完整版，可直接抄去改。它和本文的目录结构、<code>make verify</code>、Go 约定一一对应，刻意压在 100 行以内——<code>AGENTS.md</code> 短到能一口气读完，AI 才会真读。</p>
+<div class="highlight"><pre><span></span><code><span class="gh"># AGENTS.md — order-service</span>
+
+Go 后端服务，负责订单与退款。人看的总览在 README.md；
+深层架构与 runbook 在 man/ 和 docs/adr/，本文件不复述，只给链接。
+
+<span class="gu">## Context Map</span>
+<span class="k">-</span><span class="w"> </span><span class="sb">`cmd/server/`</span> — 程序入口，只做装配，禁止写业务逻辑
+<span class="k">-</span><span class="w"> </span><span class="sb">`internal/order/`</span> — 订单域：下单、查询
+<span class="k">-</span><span class="w"> </span><span class="sb">`internal/refund/`</span> — 退款域：`api/`（HTTP）、`service/`（业务）、`store/`（DB）
+<span class="k">-</span><span class="w"> </span><span class="sb">`internal/fulfillment/`</span> — 履约域：退款只能通过其接口通知，禁止直连实现
+<span class="k">-</span><span class="w"> </span><span class="sb">`internal/platform/`</span> — 基础设施：db、kafka、http client 封装
+<span class="k">-</span><span class="w"> </span>深入阅读：架构见 <span class="sb">`man/index.md`</span>，关键决策见 <span class="sb">`docs/adr/`</span>
+
+<span class="gu">## Commands</span>
+<span class="k">-</span><span class="w"> </span>拉依赖：`go mod download`
+<span class="k">-</span><span class="w"> </span>构建：`make build`（= <span class="sb">`go build ./...`</span>，幻觉 API/缺依赖必死）
+<span class="k">-</span><span class="w"> </span>测试：`make test`（= <span class="sb">`go test -race -cover ./...`</span>）
+<span class="k">-</span><span class="w"> </span>静态/安全/依赖闸门：`make lint`（= <span class="sb">`golangci-lint run`</span>）
+<span class="k">-</span><span class="w"> </span>提交前全量闸门：`make verify`
+<span class="k">-</span><span class="w"> </span>跑单个测试：`go test -race -run TestRefund ./internal/refund/...`
+
+<span class="gu">## Harness Rules</span>
+<span class="k">-</span><span class="w"> </span>不许编造：不臆造包、函数、文件、命令或运行结果；不确定就说不确定。
+<span class="k">-</span><span class="w"> </span>重大歧义先问：当某个选择会改变行为/接口/数据时，先问再写。
+<span class="k">-</span><span class="w"> </span>先想后写：多步改动先说清假设和简短计划。
+<span class="k">-</span><span class="w"> </span>简单优先：用解决问题的最小代码，不做没要求的抽象与配置项。
+<span class="k">-</span><span class="w"> </span>外科手术式改动：只动任务需要的地方，沿用现有风格，不顺手重构无关代码。
+<span class="k">-</span><span class="w"> </span>完工先自证：跑 <span class="sb">`make verify`</span> 并报告结果；没绿不许声称&quot;做完了&quot;。
+
+<span class="gu">## Project Rules（Go 专属，踩过坑的）</span>
+<span class="k">-</span><span class="w"> </span>错误：一律 <span class="sb">`fmt.Errorf(&quot;...: %w&quot;, err)`</span> 往上包；禁止 <span class="sb">`_ = err`</span>。库代码禁止 <span class="sb">`panic`</span>（只允许 main/init）。
+<span class="k">-</span><span class="w"> </span>context：所有 DB/HTTP/Kafka 调用第一参数必须是 <span class="sb">`ctx context.Context`</span>，且真正传下去。
+<span class="k">-</span><span class="w"> </span>并发：共享状态必须加锁或走 channel；每个 goroutine 必须有退出路径。测试一律 <span class="sb">`-race`</span> 跑。
+<span class="k">-</span><span class="w"> </span>金额：`int64` 以&quot;分&quot;为单位，禁止 <span class="sb">`float64`</span>。
+<span class="k">-</span><span class="w"> </span>依赖：能用标准库就别加第三方；新增依赖需在 PR 说明理由。改完跑 <span class="sb">`go mod tidy`</span>，<span class="sb">`go.mod`</span>/<span class="sb">`go.sum`</span> 的 diff 必须是有意的。
+<span class="k">-</span><span class="w"> </span>边界：跨域只走接口，禁止 import 别的域的 <span class="sb">`store`</span>/内部实现；由 depguard 强制。
+<span class="k">-</span><span class="w"> </span>分层：HTTP 细节留在 <span class="sb">`api`</span>，业务在 <span class="sb">`service`</span>，DB 在 <span class="sb">`store`</span>；<span class="sb">`service`</span> 不许 import <span class="sb">`net/http`</span>。
+<span class="k">-</span><span class="w"> </span>日志：用结构化日志；禁止打手机号/身份证/卡号等 PII。
+
+<span class="gu">## 标准样板</span>
+改写链路前先读 <span class="sb">`internal/refund/service.go`</span> 的 <span class="sb">`Refund()`</span>，照它的结构来：
+入参带 <span class="sb">`ctx`</span> → 校验 → 业务 → 落库 → 发消息，每步错误都 <span class="sb">`%w`</span> 包好。
+
+<span class="gu">## AI Tooling</span>
+<span class="k">-</span><span class="w"> </span>主要面向：Codex / Claude Code / Cursor。
+<span class="k">-</span><span class="w"> </span>Cursor 规则放在 <span class="sb">`.cursor/rules/`</span>。
+<span class="k">-</span><span class="w"> </span>可选：把 <span class="sb">`CLAUDE.md`</span>、<span class="sb">`GEMINI.md`</span> 软链到本文件（`ln -s AGENTS.md CLAUDE.md`）。
+
+<span class="gu">## Keeping Current</span>
+<span class="k">-</span><span class="w"> </span>触发更新：新增域/包、命令变化、或出现需要新护栏的 AI 反复犯错时。
+<span class="k">-</span><span class="w"> </span>学习闭环：同一个问题纠正 AI 两次以上，就在这里加一条规则；同时删掉过时规则，保持文件短到能读完。
+</code></pre></div>
+
+<p><a id="sample-golangci"></a></p>
+<h3 id="golangciyml">附录：一份完整的 <code>.golangci.yml</code> 示例</h3>
+<p>正文「第二步 → 度量闸门」给的是最小可用版，这里补一份带 <code>linters-settings</code>、<code>depguard</code> 分层规则和测试豁免的完整版。</p>
+<blockquote>
+<p>提醒一句：<code>golangci-lint</code> 的配置 schema 跨版本有调整（尤其 <code>depguard</code> 的规则语法、以及 v2 引入的顶层 <code>version</code>、<code>linters.settings</code> 等）。下面这份按当下主流的 v1 风格写，<strong>落地前请用 <code>golangci-lint --version</code> 对应的官方文档核对一遍</strong>，别照抄。</p>
+</blockquote>
+<div class="highlight"><pre><span></span><code><span class="c1"># .golangci.yml — order-service</span>
+<span class="nt">run</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5m</span>
+<span class="w">  </span><span class="nt">tests</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">            </span><span class="c1"># 测试文件也检查</span>
+
+<span class="nt">linters</span><span class="p">:</span>
+<span class="w">  </span><span class="c1"># 不用默认集，显式开启，避免版本升级时行为漂移</span>
+<span class="w">  </span><span class="nt">disable-all</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">enable</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">errcheck</span><span class="w">       </span><span class="c1"># 没处理的 error 直接报错 —— 治&quot;吞错误&quot;</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">errorlint</span><span class="w">      </span><span class="c1"># 强制正确用 %w / errors.Is / errors.As</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">govet</span><span class="w">          </span><span class="c1"># 基础静态检查</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">staticcheck</span><span class="w">    </span><span class="c1"># 强大的静态分析</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ineffassign</span><span class="w">    </span><span class="c1"># 无效赋值</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unused</span><span class="w">         </span><span class="c1"># 未使用的代码</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">gosec</span><span class="w">          </span><span class="c1"># 安全扫描</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bodyclose</span><span class="w">      </span><span class="c1"># http resp.Body 忘了 Close</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sqlclosecheck</span><span class="w">  </span><span class="c1"># sql.Rows/Stmt 忘了 Close</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rowserrcheck</span><span class="w">   </span><span class="c1"># 忘了检查 rows.Err()</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">noctx</span><span class="w">          </span><span class="c1"># 发 HTTP 请求没带 context</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">contextcheck</span><span class="w">   </span><span class="c1"># context 没一路传下去</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">depguard</span><span class="w">       </span><span class="c1"># 依赖 / 分层约束</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">gocritic</span><span class="w">       </span><span class="c1"># 一批有用的代码风格/性能检查</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">revive</span><span class="w">         </span><span class="c1"># 可配置的风格 / 命名约定</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">misspell</span><span class="w">       </span><span class="c1"># 拼写错误</span>
+
+<span class="nt">linters-settings</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">errcheck</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">check-type-assertions</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">   </span><span class="c1"># v, ok := x.(T) 也要检查</span>
+<span class="w">    </span><span class="nt">check-blank</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">             </span><span class="c1"># 禁止用 _ 吞掉 error</span>
+
+<span class="w">  </span><span class="nt">govet</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">enable-all</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">    </span><span class="nt">disable</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">fieldalignment</span><span class="w">            </span><span class="c1"># 结构体字段对齐太吵，关掉</span>
+
+<span class="w">  </span><span class="nt">gosec</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">excludes</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">G104</span><span class="w">                      </span><span class="c1"># 和 errcheck 重复，避免双重报错</span>
+
+<span class="w">  </span><span class="nt">revive</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">rules</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">error-return</span><span class="w">        </span><span class="c1"># error 必须是最后一个返回值</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">error-naming</span><span class="w">        </span><span class="c1"># error 变量命名规范</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">context-as-argument</span><span class="w"> </span><span class="c1"># context 必须是第一个参数</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unreachable-code</span>
+
+<span class="w">  </span><span class="nt">depguard</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">rules</span><span class="p">:</span>
+<span class="w">      </span><span class="c1"># 退款域不许直连履约实现，只能走接口</span>
+<span class="w">      </span><span class="nt">refund-domain</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">files</span><span class="p">:</span>
+<span class="w">          </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;**/internal/refund/**&quot;</span>
+<span class="w">        </span><span class="nt">deny</span><span class="p">:</span>
+<span class="w">          </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">pkg</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;order-service/internal/fulfillment/store&quot;</span>
+<span class="w">            </span><span class="nt">desc</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;退款域不许直连履约实现，只能走</span><span class="nv"> </span><span class="s">fulfillment</span><span class="nv"> </span><span class="s">的对外接口&quot;</span>
+<span class="w">      </span><span class="c1"># service 层不许碰 HTTP，HTTP 细节留在 api 层</span>
+<span class="w">      </span><span class="nt">service-layer</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">files</span><span class="p">:</span>
+<span class="w">          </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;**/internal/*/service/**&quot;</span>
+<span class="w">        </span><span class="nt">deny</span><span class="p">:</span>
+<span class="w">          </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">pkg</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;net/http&quot;</span>
+<span class="w">            </span><span class="nt">desc</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;service</span><span class="nv"> </span><span class="s">层不许依赖</span><span class="nv"> </span><span class="s">net/http，HTTP</span><span class="nv"> </span><span class="s">处理留在</span><span class="nv"> </span><span class="s">api</span><span class="nv"> </span><span class="s">层&quot;</span>
+<span class="w">      </span><span class="c1"># 全局禁用项：金额禁用浮点、日期统一用 time</span>
+<span class="w">      </span><span class="nt">global</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">deny</span><span class="p">:</span>
+<span class="w">          </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">pkg</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;math/big&quot;</span>
+<span class="w">            </span><span class="nt">desc</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;金额请用</span><span class="nv"> </span><span class="s">int64（分），不要引入</span><span class="nv"> </span><span class="s">big</span><span class="nv"> </span><span class="s">计算&quot;</span>
+
+<span class="nt">issues</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">max-issues-per-linter</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span><span class="w">        </span><span class="c1"># 不限制，全部暴露</span>
+<span class="w">  </span><span class="nt">max-same-issues</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
+<span class="w">  </span><span class="nt">exclude-rules</span><span class="p">:</span>
+<span class="w">    </span><span class="c1"># 测试文件放宽：允许忽略错误、允许 gosec 的部分告警</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">_test\.go</span>
+<span class="w">      </span><span class="nt">linters</span><span class="p">:</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">errcheck</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">gosec</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bodyclose</span>
+<span class="w">  </span><span class="c1"># 老项目落地用：只拦相对基线的新增违规，老债先冻住</span>
+<span class="w">  </span><span class="c1"># 命令行用 golangci-lint run --new-from-rev=origin/main 也可，二选一</span>
+<span class="w">  </span><span class="c1"># new-from-rev: origin/main</span>
+</code></pre></div>
+
+<p>几个落地要点：</p>
+<ul>
+<li><code>disable-all: true</code> + 显式 <code>enable</code>，是为了让规则集<strong>稳定</strong>——升级 <code>golangci-lint</code> 时不会因为默认集变化而突然多出一堆红，这对"规则即纪律"很重要。</li>
+<li><code>errcheck</code> 开 <code>check-blank</code>，专门治 AI 爱写的 <code>_ = err</code>。</li>
+<li><code>depguard</code> 的 <code>desc</code> 会出现在报错里，等于<strong>拦人时顺手告诉 AI 该怎么改</strong>。</li>
+<li>测试文件用 <code>exclude-rules</code> 放宽，避免为了过 lint 把测试写得别扭。</li>
+<li>老项目优先用 <code>--new-from-rev</code>（或 <code>new-from-rev</code>）只拦新增，配合 <code>make lint-new</code>。</li>
+</ul>
+<h3 id="_10">附录索引</h3>
+<p>三份可直接复用的示例，方便你提取出来建 gist 或拷进项目：</p>
+<ul>
+<li><a href="#sample-makefile"><code>Makefile</code>：把所有检查串成 <code>make verify</code> 闸门</a></li>
+<li><a href="#sample-agents-md"><code>AGENTS.md</code>：完整版上下文文件（给 AI 的入职手册）</a></li>
+<li><a href="#sample-golangci"><code>.golangci.yml</code>：完整版 lint / 边界 / 安全配置</a></li>
+</ul>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。</p>
+  </div>
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/tag/ai.html">AI</a>
+      <a href="https://www.fanyamin.com/tag/harness.html">harness</a>
+      <a href="https://www.fanyamin.com/tag/golang.html">golang</a>
+      <a href="https://www.fanyamin.com/tag/go.html">go</a>
+      <a href="https://www.fanyamin.com/tag/testing.html">testing</a>
+      <a href="https://www.fanyamin.com/tag/golangci-lint.html">golangci-lint</a>
+      <a href="https://www.fanyamin.com/tag/ci.html">ci</a>
+    </p>
+  </div>
+
+
+  <div class="center social-share" style="margin: 1.5em 0; text-align: center;">
+    <p style="margin-bottom: 0.5em; color: #888;">📤 Share this article</p>
+    <a href="https://twitter.com/intent/tweet?text=Go%20%E6%9C%8D%E5%8A%A1%E7%94%A8%20AI%20%E5%86%99%E4%BB%A3%E7%A0%81%EF%BC%9A%E5%B7%A5%E5%85%B7%E9%93%BE%E7%99%BD%E9%80%81%E4%BA%86%E5%8D%8A%E5%A5%97%20harness%EF%BC%8C%E4%BD%A0%E5%8F%AA%E6%98%AF%E6%B2%A1%E6%8B%A7%E7%B4%A7&url=https://www.fanyamin.com/golang-ai-harness.html"
+       target="_blank" rel="noopener" title="Share on Twitter/X"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#1da1f2; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      𝕏 Twitter
+    </a>
+    <a href="https://www.linkedin.com/sharing/share-offsite/?url=https://www.fanyamin.com/golang-ai-harness.html"
+       target="_blank" rel="noopener" title="Share on LinkedIn"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#0077b5; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      💼 LinkedIn
+    </a>
+    <a href="javascript:void(0);" onclick="copyLink('https://www.fanyamin.com/golang-ai-harness.html')" title="Copy link"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#666; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em; cursor:pointer;">
+      🔗 Copy Link
+    </a>
+    <script>
+    function copyLink(url) {
+      navigator.clipboard.writeText(url).then(function() {
+        alert('链接已复制！');
+      });
+    }
+    </script>
+  </div>
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/grill-me-skill-analysis.html" title="一个 11 行 Skill，为什么能把方案拷问得更靠谱">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/three-ai-design-skills.html" title="拷问、共创、固化：把三个 AI Skill 串成一条设计流水线">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/archunit-harness.html">ArchUnit：用一个单元测试库，把架构纪律变成 AI 也绕不过的红绿灯</a></li>
+      <li><a href="https://www.fanyamin.com/2026-04-20-test-ai-skill-for-coding-agents.html">给 Cursor、Codex、Claude Code 用的 AI Skill，到底该怎么测</a></li>
+      <li><a href="https://www.fanyamin.com/improve-java-project-harness.html">传统 Java 项目用 AI 写代码总翻车？先把 harness 修好</a></li>
+      <li><a href="https://www.fanyamin.com/ai-skill-growth-loop.html">酒香也怕巷子深：用 AI Skill 给内容和产品装上运营循环</a></li>
+      <li><a href="https://www.fanyamin.com/loop-engineering.html">Loop Engineering：别再手摇 AI 了，去设计那台摇柄</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

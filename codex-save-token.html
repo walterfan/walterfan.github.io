@@ -1,0 +1,579 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'G-VZL08BHDPP', 'auto');
+  ga('send', 'pageview');
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="用 Codex 写代码，token 烧得最快的往往不是模型多能干，而是上下文管理不当。这篇文章从 Codex 的 agent loop、项目指令和 prompt 缓存机制讲起，给出一份能直接照做、也能度量效果的省 token 清单：什么时候开新会话、AGENTS.md 怎么瘦身、怎么选模型和推理档位、怎么监控自己的消耗。" />
+<meta name="keywords" content="codex, ai, token, cost, context, productivity, agents-md">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "用 Codex 怎么省 Token：账单别让上下文偷偷烧掉",
+  "description": "用 Codex 写代码，token 烧得最快的往往不是模型多能干，而是上下文管理不当。这篇文章从 Codex 的 agent loop、项目指令和 prompt 缓存机制讲起，给出一份能直接照做、也能度量效果的省 token 清单：什么时候开新会话、AGENTS.md 怎么瘦身、怎么选模型和推理档位、怎么监控自己的消耗。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-06-23T17:20:00+08:00",
+  "dateModified": "2026-06-23T22:33:00+08:00",
+  "url": "https://www.fanyamin.com/codex-save-token.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/codex-save-token.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "codex, ai, token, cost, context, productivity, agents-md"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="用 Codex 怎么省 Token：账单别让上下文偷偷烧掉"/>
+  <meta property="og:description" content="用 Codex 写代码，token 烧得最快的往往不是模型多能干，而是上下文管理不当。这篇文章从 Codex 的 agent loop、项目指令和 prompt 缓存机制讲起，给出一份能直接照做、也能度量效果的省 token 清单：什么时候开新会话、AGENTS.md 怎么瘦身、怎么选模型和推理档位、怎么监控自己的消耗。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/codex-save-token.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-06-23 17:20:00+08:00"/>
+  <meta property="article:modified_time" content="2026-06-23 22:33:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="codex"/>
+  <meta property="article:tag" content="ai"/>
+  <meta property="article:tag" content="token"/>
+  <meta property="article:tag" content="cost"/>
+  <meta property="article:tag" content="context"/>
+  <meta property="article:tag" content="productivity"/>
+  <meta property="article:tag" content="agents-md"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 用 Codex 怎么省 Token：账单别让上下文偷偷烧掉</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/">Walter Fan</a>
+    </h1>
+
+    <p>手握灵珠常奋笔, 心开天籁不吹箫</p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/search.html" role="search">
+      <input type="text" name="q" id="tipue_search_input" placeholder="Search...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank" href="tao.html" >tao</a>
+          </li>
+          <li>
+            <a target="_blank" href="article.html" >article</a>
+          </li>
+          <li>
+            <a target="_blank" href="manual.html" >manual</a>
+          </li>
+          <li>
+            <a target="_blank" href="interest.html" >interest</a>
+          </li>
+          <li>
+            <a target="_self" href="/wordpress" >notebook</a>
+          </li>
+          <li>
+            <a target="_blank" href="bookmark.html" >bookmark</a>
+          </li>
+          <li>
+            <a target="_self" href="/webrtc/examples/index.html" >webrtc</a>
+          </li>
+          <li>
+            <a target="_blank" href="https://github.com/walterfan" >github</a>
+          </li>
+          <li>
+            <a target="_blank" href="categories.html" >categories</a>
+          </li>
+          <li>
+            <a target="_blank" href="tags.html" >tags</a>
+          </li>
+      </ul>
+    </nav>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+</aside>
+  <main>
+
+
+<article class="single">
+  <header>
+      
+    <h1 id="codex-save-token">用 Codex 怎么省 Token：账单别让上下文偷偷烧掉</h1>
+    <p>
+      Posted on 二 23 6月 2026 in <a href="https://www.fanyamin.com/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>用 Codex 怎么省 Token：账单别让上下文偷偷烧掉</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-06-23</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">一个让人肉疼的早晨</h2>
+<p>某天我盯着 Codex 的 <code>/status</code>，发现一个简单的小任务——就改了三行代码——居然吃掉了将近七万 token。我当时第一反应是："这模型是不是把我整个仓库背了一遍？"</p>
+<p>后来发现，还真差不多。</p>
+<p>很多人用 Codex 觉得 token 烧得快，第一反应是"模型太贵了""换个便宜的模型吧"。这个方向不算错，但通常不是第一刀。<strong>真正的大头往往不在模型多能干，而在上下文管理。</strong> 一个臃肿、跑偏、塞满无关文件的会话，在一些实测场景里会比干净会话多吃数倍 token；而调整回复啰嗦程度这类动作，通常只是小头（可以参考 <a href="https://www.reddit.com/r/codex/comments/1sieigp/how_to_reduce_your_token_usage/">r/codex 社区的实测讨论</a>，但别把社区数字当成物理定律）。</p>
+<p>换句话说：<strong>你抠模型回复的字数，是在捡芝麻；你管好上下文，才是在保西瓜。</strong></p>
+<p>这篇文章不灌鸡汤，咱们先搞懂 Codex 的 token 到底花在哪，再给一份能直接照着做的清单。</p>
+<h2 id="codex-token">一、先搞懂：Codex 的 token 到底烧在哪</h2>
+<p>要省钱，得先知道钱怎么花的。OpenAI 官方有一篇 <a href="https://openai.com/index/unrolling-the-codex-agent-loop/">《Unrolling the Codex agent loop》</a> 把这事讲得很透，我给你提炼三个关键点。</p>
+<h3 id="1">1. 每一轮对话，都要继续带着"历史包袱"</h3>
+<p>这是最反直觉、也最烧钱的一点。</p>
+<p>你以为多聊一句只花一句的钱？不是。<strong>模型每一轮都需要看到可用的历史上下文；从计费和上下文窗口的角度看，之前的消息、工具调用、文件内容，都会继续占用输入预算。</strong></p>
+<p>所以一个会话越聊越长，每一轮的成本就越高——不是线性增长，是越滚越大的雪球。这就解释了我那个"改三行花七万 token"的早晨：不是这次改动贵，是这个会话之前已经堆了一屁股上下文。</p>
+<h3 id="2">2. 开局就有一大坨"固定开销"</h3>
+<p>你还没说话，Codex 已经先往 prompt 里塞了一堆东西：</p>
+<ul>
+<li>权限和沙箱说明</li>
+<li>模型自带的指令（base instructions）</li>
+<li>全局和项目里的 <code>AGENTS.md</code> / <code>AGENTS.override.md</code>。按 <a href="https://developers.openai.com/codex/guides/agents-md#how-codex-discovers-guidance">官方说明</a>，项目指令会从项目根目录沿着当前工作目录往下收集，默认合并上限是 32 KiB</li>
+<li>如果你配了 skills，开局会带上技能名称、描述和路径；<a href="https://developers.openai.com/codex/skills">skills 使用 progressive disclosure</a>，只有真正用到某个 skill 时，才会再读取完整的 <code>SKILL.md</code></li>
+<li>环境上下文（当前目录、shell 等）</li>
+</ul>
+<p>社区有人拆过，在某些配置下，光这些默认上下文就能让一次交互的 prompt 很快膨胀到上万 token（见 <a href="https://www.dev.build/optimize-codex-configuration-for-blazing-fast-cli-automation~zbrdn">dev.build 的拆解</a>）。具体数字会随着客户端、模型、工具和项目配置变化，但结论很稳：<strong>你的 <code>AGENTS.md</code> 写得越胖，每一个任务都要背着它出门。</strong></p>
+<h3 id="3-prompt">3. Prompt 缓存：省钱的关键，但很"脆"</h3>
+<p>好消息是，OpenAI 有 <strong>prompt 缓存（prompt caching）</strong>——如果你这次请求的开头部分（前缀）跟上次完全一致，服务器可以复用之前的计算，缓存命中的部分便宜很多。</p>
+<p>坏消息是，prompt cache 喜欢稳定的前缀。下面这些变化，都容易降低缓存命中率：</p>
+<ul>
+<li>会话中途<strong>切换模型</strong>；</li>
+<li>会话中途<strong>增减工具</strong>（比如 MCP server 动态改变了工具列表）；</li>
+<li>改了沙箱配置、审批模式，或者切换了工作目录。</li>
+</ul>
+<p>记住这条原则：<strong>静态的东西放前面，多变的东西放后面，中途少乱动配置。</strong> 这是省 token 的底层逻辑，后面很多招都从这儿派生出来。</p>
+<h2 id="_2">二、最值钱的一招：会话脏了就开新的</h2>
+<p>如果这篇文章你只记一条，就记这条：</p>
+<blockquote>
+<p><strong>不相关的新任务，开新会话（new thread）；当前会话明显跑偏或臃肿，果断重开。</strong></p>
+</blockquote>
+<p>为什么这是性价比最高的动作？回到第一节——每轮都要继续携带历史上下文。当一个会话里堆满了上一个任务的文件、试错、跑偏的搜索，你做下一件事时，这些<strong>全都在陪绑收费</strong>。</p>
+<p>我自己的经验法则：</p>
+<ul>
+<li><strong>任务切换 = 会话切换</strong>。修完登录 bug，要去写个新接口，别在同一个会话里接着聊，开新的。</li>
+<li><strong>跑偏早打断</strong>。如果 Codex 前几步在读一堆无关文件、反复搜索、或者范围越做越大，别等它把这一轮额度烧完——立刻打断，把它拉回最小的下一步动作。</li>
+<li><strong>长任务用 handoff 交接</strong>。当一个会话快变"老油条"了，与其让它带着一身陈年上下文继续，不如让它先输出一份交接纪要（当前目标、相关文件、已做的决定、已知的坑、验证命令、下一步），然后开个干净会话，把纪要贴进去重新开始。</li>
+</ul>
+<p>补一句原理：Codex 的上下文压缩（compaction）本质就是在做这件事——它在 token 逼近窗口上限时，自动把会话压成一份"交接摘要"。既然如此，<strong>与其等它被动压缩，不如你主动在干净的时候就切，省得为那一大坨膨胀的上下文付费。</strong></p>
+<h2 id="agentsmd">三、给 AGENTS.md 瘦身：每个任务都在为它付费</h2>
+<p>前面说了，<code>AGENTS.md</code> 是开局固定开销的一部分，新会话、新任务通常都要带着它跑。所以它不是越详细越好，而是<strong>越精准越好</strong>。（<code>AGENTS.md</code> 到底该写什么、怎么和 rules、hooks、skills 配合，我在 <a href="https://www.fanyamin.com/codex-best-practice-full-stack.html">《给全栈程序员的 Codex 实战手册》</a> 里专门拆过，这里只谈"省 token"这一面。）</p>
+<p>r/codex 上有位用户分享过一个很实在的做法（我深以为然）:</p>
+<blockquote>
+<p>我把 AGENTS.md 里所有关于"好习惯""行为规范"的泛泛指导全删了，现在只留两类内容：一是功能上必需的，二是 Codex 不写就会反复犯错的。</p>
+</blockquote>
+<p>这个标准很好用。给你一张自检表，对 <code>AGENTS.md</code> 里的每一条问一句：</p>
+<table>
+<thead>
+<tr>
+<th>这条内容</th>
+<th>处理方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>删了 Codex 就会犯具体的错</td>
+<td><strong>留下</strong>，这是真有用的</td>
+</tr>
+<tr>
+<td>是功能/环境必需的信息（怎么跑测试、关键路径）</td>
+<td><strong>留下</strong></td>
+</tr>
+<tr>
+<td>是"要写清晰的代码""注意安全"这类正确的废话</td>
+<td><strong>删掉</strong>，模型本来就会，白花钱</td>
+</tr>
+<tr>
+<td>是某个一次性任务才需要的细节</td>
+<td><strong>挪走</strong>，临时贴进对话里就行</td>
+</tr>
+</tbody>
+</table>
+<p>一句话：<strong><code>AGENTS.md</code> 是给 Codex 的项目说明书，不是给它的思想品德课本。</strong></p>
+<h2 id="_3">四、模型和推理档位：别用高射炮打蚊子</h2>
+<p>Codex 现在有不同的模型和推理档位（reasoning effort），价格差很多。最常见的浪费，就是<strong>所有任务，无论大小，一律拉满</strong>。</p>
+<p>我的搭配策略：</p>
+<ul>
+<li><strong>规划用强的，执行用弱的</strong>。复杂任务先用高推理档（high/xhigh）的模型做规划、拆解，想清楚了，再切到中/小档（medium/mini）去执行具体编码。</li>
+<li><strong>按风险选推理档</strong>。改文案、调格式、小重构、明摆着的修复——这些低风险活儿用轻推理就够了；只有涉及架构决策、复杂逻辑、容易出错的地方，才值得上高推理。</li>
+<li><strong>默认用 standard，别默认用 fast</strong>。fast 模式是用更高 credit 成本换更低延迟，它适合"等待成本 &gt; 费用成本"的场景，比如现场排障、实时调试、需要快速来回确认的问题。常规任务先用 standard，别把加速当默认档。</li>
+</ul>
+<p>注意一个<strong>缓存的坑</strong>：会话中途切换模型、工具和配置，都可能影响 prompt cache。所以更稳的做法是"规划"和"执行"分在不同会话里做，而不是在同一个会话里反复横跳着换档。</p>
+<h2 id="_4">五、把消耗"看得见"：你管不了你看不见的东西</h2>
+<p>省钱的最后一步，是<strong>别再当睁眼瞎</strong>。Codex 已经能通过 <code>/status</code>、<code>/usage</code> 这类命令展示会话配置和 token 使用。账看得见，优化才有抓手。</p>
+<p>几个能落地的监控手段：</p>
+<ul>
+<li><strong>会话中随手敲 <code>/status</code></strong>：看当前这个会话烧了多少 token。逼近窗口上限了，就别让它继续往上堆，开新会话。</li>
+<li><strong>用 <code>ccusage</code> 做周审计</strong>：这个小工具会读 <code>~/.codex</code> 下的会话日志，按天/按月算出 input、output、reasoning、cache 各项的 token 和花费。</li>
+</ul>
+<p><code>bash
+  # 看 Codex 的每日 token 消耗明细
+  npx @ccusage/codex</code></p>
+<p>重点盯一个指标：<strong>cached-input 占比</strong>。如果某些会话明显偏低，说明你的 prompt 缓存可能在频繁失效——多半是中途切了模型、改了工具或目录，对照第一节去查。不要迷信一个固定阈值，先拿自己的项目做基线。
+- <strong>盯紧客户端版本</strong>：客户端的展示、统计和缓存策略都可能变。建议<strong>锁定一个已知良好的版本</strong>，升级前先拿一个小任务测一下 token 消耗，别盲目跟最新版。</p>
+<p><code>bash
+  codex --version</code></p>
+<h3 id="_5">怎么度量：别只凭感觉省钱</h3>
+<p>省 token 不能靠玄学，也不能靠"我感觉这次挺省"。至少做一张小表，每周看一次：</p>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>怎么看</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>每任务 total tokens</td>
+<td><code>/status</code>、<code>/usage</code> 或审计工具</td>
+<td>同类任务横向比较，别拿修 typo 和重构模块比</td>
+</tr>
+<tr>
+<td>input / output / reasoning 比例</td>
+<td>会话统计或日志</td>
+<td>input 高，多半是上下文太胖；reasoning 高，多半是推理档位或任务复杂度问题</td>
+</tr>
+<tr>
+<td>cached-input 占比</td>
+<td>usage 明细或 <code>ccusage</code></td>
+<td>占比突然下降，优先查模型、工具、目录和指令是否变了</td>
+</tr>
+<tr>
+<td>turn 数</td>
+<td>手工记录即可</td>
+<td>轮数越多，历史越重；轮数异常多通常说明任务边界没说清</td>
+</tr>
+<tr>
+<td>AGENTS.md 大小</td>
+<td><code>wc -c AGENTS.md</code></td>
+<td>先看趋势，别把 byte 粗暴等同于 token</td>
+</tr>
+<tr>
+<td>返工率</td>
+<td>是否需要二次修复</td>
+<td>省 token 的底线是质量不能塌；少花钱但多返工，就是假节约</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_6">六、几个容易被忽略的小动作</h2>
+<p>上面讲的是大原则。落到每天写代码，还有一些很小、但很管用的习惯。它们的共同点是：<strong>少给上下文，但给准上下文。</strong></p>
+<h3 id="1_1">1. 开工前先要"最小上下文计划"</h3>
+<p>不要一上来就说"帮我修这个问题"。这句话太宽，Codex 很可能先在仓库里跑一圈，读一堆暂时用不上的文件。更好的开场是：</p>
+<div class="highlight"><pre><span></span><code>先不要改代码。请先判断这个任务最少需要读哪些文件，
+列出 3-8 个候选文件和理由。
+</code></pre></div>
+
+<p>这一步看似多花了一轮，其实常常更省。因为它把搜索范围先框住了，后面少走很多冤枉路。</p>
+<h3 id="2_1">2. 先搜索，再局部读文件</h3>
+<p>好顺序是：<code>rg</code> 找入口，<code>sed</code> 读局部，必要时再读完整文件。别让 Codex "先浏览一下项目"，这个说法太豪放，token 也会很豪放。</p>
+<div class="highlight"><pre><span></span><code>rg<span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;refreshToken&quot;</span><span class="w"> </span>src<span class="w"> </span><span class="nb">test</span>
+sed<span class="w"> </span>-n<span class="w"> </span><span class="s1">&#39;120,190p&#39;</span><span class="w"> </span>path/to/file
+git<span class="w"> </span>diff<span class="w"> </span>--<span class="w"> </span>path/to/file
+</code></pre></div>
+
+<p>同理，能说"看 <code>FooService.java</code> 的 <code>refreshToken()</code>"就别贴 300 行代码。贴代码只贴最小片段，最好带上行号、错误信息和你已经排除过的可能性。</p>
+<h3 id="3">3. 管住命令输出，别让日志淹死人</h3>
+<p>很多 token 不是模型说掉的，是工具输出刷掉的。<code>cat</code> 大文件、全量 <code>git diff</code>、测试日志刷屏，都是隐形大户。</p>
+<p>给 Codex 下命令时，可以明确限制：</p>
+<div class="highlight"><pre><span></span><code>只看失败测试的最后 80 行日志。
+不要展开无关模块的 diff。
+如果连续两次搜索没有新线索，请停下来汇报，不要继续扩大范围。
+</code></pre></div>
+
+<p>长日志也不要整锅端。先给最后 50 行、关键 exception、复现命令、最近改动文件、期望行为和实际行为。排障不是吃自助餐，夹太多反而消化不了。</p>
+<h3 id="4-checkpoint">4. 大任务拆 checkpoint，不要一口吞</h3>
+<p>大任务最容易烧 token，因为它会把"读需求、找入口、改代码、补测试、跑验证、写总结"全混在一锅粥里。</p>
+<p>更稳的节奏是：</p>
+<ol>
+<li>先读需求和相关文件，输出计划，不改代码。</li>
+<li>确认计划后，只改核心逻辑。</li>
+<li>再补测试。</li>
+<li>最后跑验证，给出风险和回滚点。</li>
+</ol>
+<p>这不是流程洁癖，而是给上下文做分段管理。每一步都能停下来检查，少返工，也少让旧上下文滚雪球。</p>
+<h3 id="5-ide">5. 管住 IDE 上下文和长提示词</h3>
+<p>如果你用 <code>/ide</code> 或 IDE 插件，注意打开的文件也可能被带进上下文。任务前把无关 tab 关掉，或者明确说：</p>
+<div class="highlight"><pre><span></span><code>不要使用 IDE open files，只看我指定的文件。
+</code></pre></div>
+
+<p>还有一种常见浪费：每次都贴一大段 code review 规则、写作规则、测试规则。反复出现的长提示，应该沉淀成 skill。Codex skills 本来就支持 progressive disclosure：平时只带名称、描述和路径，用到时才读取完整说明。该沉淀的沉淀，该临时贴的临时贴，别把一次性说明塞进长期上下文。</p>
+<h3 id="6">6. 少要长篇解释，多要结构化结果</h3>
+<p>实现类任务里，解释太多也会变成后续历史包袱。可以直接限制输出：</p>
+<div class="highlight"><pre><span></span><code>只给：变更点、风险、验证命令。不要解释背景。
+</code></pre></div>
+
+<p>测试失败也一样。先让 Codex 抽取失败测试名、错误类型、第一处业务相关栈帧、可能相关文件。必要时开新会话，只带这份摘要继续查。</p>
+<p>最后提醒一句：省 token 不是让 Codex 少知道，而是让它只知道当下必须知道的东西。该给的安全约束、数据迁移风险、并发边界、测试要求、发布限制，不能省。省掉这些，后面返工更贵。</p>
+<h2 id="token">总结：省 token 的本质是"管好上下文"</h2>
+<p>绕了一圈，你会发现省 token 的所有招数，根上其实就一句话：</p>
+<blockquote>
+<p><strong>每一轮都要继续携带历史上下文，所以让历史保持短、保持干净、保持缓存友好，就是省钱。</strong></p>
+</blockquote>
+<p>抠模型回复字数那些事，是小优化；管好会话边界、AGENTS.md、模型选择和缓存命中，才是大账。别捡了芝麻丢了西瓜。</p>
+<h3 id="token_1">省 Token 核对清单（可以直接抄走）</h3>
+<ul>
+<li>[ ] <strong>换任务就换会话</strong>：不相关的新活儿一律开新 thread，别在老会话里接着聊。</li>
+<li>[ ] <strong>跑偏早打断</strong>：前几步就发现 Codex 在读无关文件、范围蔓延，立刻拦下拉回最小动作。</li>
+<li>[ ] <strong>先要最小上下文计划</strong>：开工前让 Codex 列出需要读的 3-8 个文件和理由，别直接全仓库探索。</li>
+<li>[ ] <strong>限制工具输出</strong>：优先 <code>rg</code>、局部 <code>sed</code>、指定文件 <code>git diff</code>，少用全量日志和大文件输出。</li>
+<li>[ ] <strong>AGENTS.md 只留两类</strong>：功能必需的 + 不写就会犯错的，其余正确的废话全删。</li>
+<li>[ ] <strong>规划强、执行弱</strong>：高推理档做规划，中小档做编码，分会话进行。</li>
+<li>[ ] <strong>默认 standard</strong>：没有非常充分的理由，别用 fast。</li>
+<li>[ ] <strong>中途别乱动配置</strong>：别在一个会话里反复切模型、增减工具、换目录，护住 prompt 缓存。</li>
+<li>[ ] <strong>长任务拆 checkpoint</strong>：计划、实现、测试、验证分段做，别一口吞。</li>
+<li>[ ] <strong><code>/status</code> 随手看，<code>ccusage</code> 每周查</strong>：盯住 cached-input 占比和 input/output/reasoning 结构，先建立自己的基线。</li>
+<li>[ ] <strong>锁定客户端版本</strong>：升级前用小任务测 token，别让展示变化或客户端 bug 偷偷影响判断。</li>
+</ul>
+<h3 id="_7">明日行动</h3>
+<p>明天打开 Codex，先做四件事：</p>
+<ol>
+<li>把你的 <code>AGENTS.md</code> 拿出来，按"删了会不会犯错"的标准过一遍，砍掉所有正确的废话。</li>
+<li>给常用任务准备一句开场白："先不要改代码，先列最小需要阅读的文件和理由。"</li>
+<li>跑一次 <code>npx @ccusage/codex</code>，看看过去一周哪几个会话的 token 异常高、缓存命中异常低，找出你自己的烧钱模式。</li>
+<li>给自己定个肌肉记忆：<strong>做完一件事，养成开新会话的习惯</strong>，而不是在一个会话里从早聊到晚。</li>
+</ol>
+<p>最后留个问题：你现在的 Codex 会话，平均一个任务烧多少 token？如果你答不上来，那第一件该做的事，就是先把 <code>/status</code> 和 <code>ccusage</code> 用起来——毕竟，你管不了你看不见的东西。</p>
+  </div>
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/tag/codex.html">codex</a>
+      <a href="https://www.fanyamin.com/tag/ai.html">ai</a>
+      <a href="https://www.fanyamin.com/tag/token.html">token</a>
+      <a href="https://www.fanyamin.com/tag/cost.html">cost</a>
+      <a href="https://www.fanyamin.com/tag/context.html">context</a>
+      <a href="https://www.fanyamin.com/tag/productivity.html">productivity</a>
+      <a href="https://www.fanyamin.com/tag/agents-md.html">agents-md</a>
+    </p>
+  </div>
+
+
+  <div class="center social-share" style="margin: 1.5em 0; text-align: center;">
+    <p style="margin-bottom: 0.5em; color: #888;">📤 Share this article</p>
+    <a href="https://twitter.com/intent/tweet?text=%E7%94%A8%20Codex%20%E6%80%8E%E4%B9%88%E7%9C%81%20Token%EF%BC%9A%E8%B4%A6%E5%8D%95%E5%88%AB%E8%AE%A9%E4%B8%8A%E4%B8%8B%E6%96%87%E5%81%B7%E5%81%B7%E7%83%A7%E6%8E%89&url=https://www.fanyamin.com/codex-save-token.html"
+       target="_blank" rel="noopener" title="Share on Twitter/X"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#1da1f2; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      𝕏 Twitter
+    </a>
+    <a href="https://www.linkedin.com/sharing/share-offsite/?url=https://www.fanyamin.com/codex-save-token.html"
+       target="_blank" rel="noopener" title="Share on LinkedIn"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#0077b5; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+      💼 LinkedIn
+    </a>
+    <a href="javascript:void(0);" onclick="copyLink('https://www.fanyamin.com/codex-save-token.html')" title="Copy link"
+       style="display:inline-block; margin:0 8px; padding:6px 14px; background:#666; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em; cursor:pointer;">
+      🔗 Copy Link
+    </a>
+    <script>
+    function copyLink(url) {
+      navigator.clipboard.writeText(url).then(function() {
+        alert('链接已复制！');
+      });
+    }
+    </script>
+  </div>
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/deepfake-fraud.html" title="一通视频会议骗走 2500 万：当 CFO 的脸也能伪造">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/steps-in-the-walking.html" title="步履不停：人生总是慢那么一拍">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/codex-best-practice-full-stack.html">给全栈程序员的 Codex 实战手册：别再只会写 Prompt 了</a></li>
+      <li><a href="https://www.fanyamin.com/llm-api-token-cost-control.html">LLM API 越来越贵，别让 token 像自来水一样哗哗流</a></li>
+      <li><a href="https://www.fanyamin.com/loop-engineering.html">Loop Engineering：别再手摇 AI 了，去设计那台摇柄</a></li>
+      <li><a href="https://www.fanyamin.com/2026-04-20-test-ai-skill-for-coding-agents.html">给 Cursor、Codex、Claude Code 用的 AI Skill，到底该怎么测</a></li>
+      <li><a href="https://www.fanyamin.com/ai-information-resource-management.html">AI 时代的信息资源管理：让八面来风变成知识流水线</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

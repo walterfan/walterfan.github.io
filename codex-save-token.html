@@ -78,8 +78,8 @@
     "@type": "Person",
     "name": "Walter Fan"
   },
-  "datePublished": "2026-06-23T17:20:00+08:00",
-  "dateModified": "2026-06-23T22:33:00+08:00",
+  "datePublished": "2026-06-23T19:20:00+08:00",
+  "dateModified": "2026-06-24T22:45:00+08:00",
   "url": "https://www.fanyamin.com/codex-save-token.html",
   "mainEntityOfPage": {
     "@type": "WebPage",
@@ -105,8 +105,8 @@
   <meta property="og:locale" content="zh_CN"/>
   <meta property="og:url" content="https://www.fanyamin.com/codex-save-token.html"/>
   <meta property="og:type" content="article"/>
-  <meta property="article:published_time" content="2026-06-23 17:20:00+08:00"/>
-  <meta property="article:modified_time" content="2026-06-23 22:33:00+08:00"/>
+  <meta property="article:published_time" content="2026-06-23 19:20:00+08:00"/>
+  <meta property="article:modified_time" content="2026-06-24 22:45:00+08:00"/>
   <meta property="article:author" content="https://www.fanyamin.com/author/walter-fan.html">
   <meta property="article:section" content="Tech"/>
   <meta property="article:tag" content="codex"/>
@@ -223,11 +223,11 @@
 </tr>
 <tr>
 <td><strong>Status</strong></td>
-<td>v1.0</td>
+<td>v1.1</td>
 </tr>
 <tr>
 <td><strong>Updated</strong></td>
-<td>2026-06-23</td>
+<td>2026-06-24</td>
 </tr>
 <tr>
 <td><strong>License</strong></td>
@@ -326,6 +326,7 @@
 <p>省钱的最后一步，是<strong>别再当睁眼瞎</strong>。Codex 已经能通过 <code>/status</code>、<code>/usage</code> 这类命令展示会话配置和 token 使用。账看得见，优化才有抓手。</p>
 <p>几个能落地的监控手段：</p>
 <ul>
+<li><strong>官方 Usage &amp; Billing 页面</strong>：登录 OpenAI 后台，<code>Settings → Usage &amp; Billing</code> 能看到当月 API/Codex 的整体消耗趋势。它是粒度最粗、但最权威的"对账单"，建议每周扫一眼，发现异常上扬就回头查最近一周的会话。</li>
 <li><strong>会话中随手敲 <code>/status</code></strong>：看当前这个会话烧了多少 token。逼近窗口上限了，就别让它继续往上堆，开新会话。</li>
 <li><strong>用 <code>ccusage</code> 做周审计</strong>：这个小工具会读 <code>~/.codex</code> 下的会话日志，按天/按月算出 input、output、reasoning、cache 各项的 token 和花费。</li>
 </ul>
@@ -427,6 +428,42 @@ git<span class="w"> </span>diff<span class="w"> </span>--<span class="w"> </span
 </code></pre></div>
 
 <p>测试失败也一样。先让 Codex 抽取失败测试名、错误类型、第一处业务相关栈帧、可能相关文件。必要时开新会话，只带这份摘要继续查。</p>
+<h3 id="7">7. 迭代时只贴"变化的部分"，不要每轮整段重发</h3>
+<p>很多人改 bug 的方式是这样的：第一轮贴 200 行函数 + "这里有个 bug"；第二轮贴<strong>同样的 200 行</strong> + "你刚才的方案在 X 情况下不对"；第三轮再贴一遍……</p>
+<p>每一轮都把同样的代码原文塞进去，等于每一轮都为同一坨上下文付一次"重新理解费"。哪怕 prompt cache 能帮你打折，输出和推理那部分还是真金白银。</p>
+<p>更好的姿势：</p>
+<ul>
+<li>第一轮把代码贴清楚。</li>
+<li>第二轮只贴<strong>新的信息</strong>：错误日志、复现命令、你已经试过哪些方案、不希望它再走哪条路。</li>
+<li>第三轮只贴<strong>对它上轮回复的具体反驳</strong>："你建议 X，但 X 在 Y 场景会失败，因为 Z。请基于这个约束继续。"</li>
+</ul>
+<p>让会话的每一轮都是"加增量"，而不是"复读旧的"。</p>
+<h3 id="8">8. 批量活儿走脚本/批处理，别在对话里手搓</h3>
+<p>下面这类活儿如果一条一条在 Codex 对话里干，会把账单烧成烟花：</p>
+<ul>
+<li>跨几十个文件加同一种注解</li>
+<li>给一整个 package 生成单测</li>
+<li>仓库级别的 rename / 接口签名变更</li>
+<li>把一份大文档翻成另一种语言</li>
+</ul>
+<p>正确的姿势是：<strong>让 Codex 一次性给你写一个能干这活儿的脚本</strong>（Python、Bash、<code>ast-grep</code>、<code>comby</code>、<code>jscodeshift</code> 等等），然后你跑脚本。脚本跑 100 次几乎没成本，对话来回 100 次每一次都要带历史上下文。</p>
+<p>判断标准很简单：<strong>如果同一种动作要重复 5 次以上，先停下来问自己"能不能写个脚本一次干完"</strong>。</p>
+<h3 id="9">9. 重复的提问 = 该沉淀的信号</h3>
+<p>如果你发现自己一周里第 3 次在 Codex 里输入差不多的一段背景说明（"我们这个仓库是 Go monorepo，统一用 zap 打日志，错误处理走 …"），那不是"巧合"，那是它在提醒你：<strong>这段东西该沉淀了</strong>。</p>
+<p>可选去处：</p>
+<ul>
+<li>项目通用约定 → <code>AGENTS.md</code>（注意保持精简，参考 §三）</li>
+<li>多步骤工作流 → Skill（progressive disclosure，平时不占 token）</li>
+<li>一次性但你以后还会复用的提示 → 团队 Wiki / <code>prompts/</code> 目录里存个模板</li>
+</ul>
+<p><strong>把"反复出现的临时提示"变成"按需加载的长期资产"，是把烧钱模式改成省钱模式的最直接动作之一。</strong></p>
+<h3 id="10">10. 简单活儿可以分流到本地/小模型</h3>
+<p>不是所有任务都值得喂给最贵的模型。</p>
+<ul>
+<li>改个 typo、调个格式、生成一段标准 boilerplate——本地的 Ollama / LM Studio 跑个开源 OSS 模型就够了，零成本，离线也能干。</li>
+<li>自动补全这类高频低难度的活儿，用便宜的小模型（如 mini 档），把贵模型留给复杂任务。</li>
+</ul>
+<p>这套"分流"的关键不是"省到极致"，而是<strong>把高单价的模型用在它真正值钱的地方</strong>——架构决策、复杂调试、跨模块重构。把它当顾问用，别当打字员用。</p>
 <p>最后提醒一句：省 token 不是让 Codex 少知道，而是让它只知道当下必须知道的东西。该给的安全约束、数据迁移风险、并发边界、测试要求、发布限制，不能省。省掉这些，后面返工更贵。</p>
 <h2 id="token">总结：省 token 的本质是"管好上下文"</h2>
 <p>绕了一圈，你会发现省 token 的所有招数，根上其实就一句话：</p>
@@ -445,7 +482,11 @@ git<span class="w"> </span>diff<span class="w"> </span>--<span class="w"> </span
 <li>[ ] <strong>默认 standard</strong>：没有非常充分的理由，别用 fast。</li>
 <li>[ ] <strong>中途别乱动配置</strong>：别在一个会话里反复切模型、增减工具、换目录，护住 prompt 缓存。</li>
 <li>[ ] <strong>长任务拆 checkpoint</strong>：计划、实现、测试、验证分段做，别一口吞。</li>
-<li>[ ] <strong><code>/status</code> 随手看，<code>ccusage</code> 每周查</strong>：盯住 cached-input 占比和 input/output/reasoning 结构，先建立自己的基线。</li>
+<li>[ ] <strong>迭代只贴增量</strong>：第二轮起只贴新信息和新约束，别复读旧代码。</li>
+<li>[ ] <strong>批量活儿写脚本</strong>：同一种动作重复 5 次以上，先想能不能让 Codex 写个一次性脚本。</li>
+<li>[ ] <strong>反复出现的提示沉淀掉</strong>：第 3 次输入同一段背景，就该挪进 <code>AGENTS.md</code> / skill / 提示模板。</li>
+<li>[ ] <strong>简单活儿分流到小模型或本地 OSS 模型</strong>：把贵模型留给真值钱的任务。</li>
+<li>[ ] <strong><code>/status</code> 随手看，<code>ccusage</code> 每周查，官方 Usage 页面对账</strong>：盯住 cached-input 占比和 input/output/reasoning 结构，先建立自己的基线。</li>
 <li>[ ] <strong>锁定客户端版本</strong>：升级前用小任务测 token，别让展示变化或客户端 bug 偷偷影响判断。</li>
 </ul>
 <h3 id="_7">明日行动</h3>
@@ -510,9 +551,9 @@ git<span class="w"> </span>diff<span class="w"> </span>--<span class="w"> </span
     <ul class="related-posts">
       <li><a href="https://www.fanyamin.com/codex-best-practice-full-stack.html">给全栈程序员的 Codex 实战手册：别再只会写 Prompt 了</a></li>
       <li><a href="https://www.fanyamin.com/llm-api-token-cost-control.html">LLM API 越来越贵，别让 token 像自来水一样哗哗流</a></li>
+      <li><a href="https://www.fanyamin.com/2026-06-24-ai-code-review-bottleneck.html">AI 写得太快，肉眼看不过来：当 Code Review 成为新瓶颈</a></li>
       <li><a href="https://www.fanyamin.com/loop-engineering.html">Loop Engineering：别再手摇 AI 了，去设计那台摇柄</a></li>
       <li><a href="https://www.fanyamin.com/2026-04-20-test-ai-skill-for-coding-agents.html">给 Cursor、Codex、Claude Code 用的 AI Skill，到底该怎么测</a></li>
-      <li><a href="https://www.fanyamin.com/ai-information-resource-management.html">AI 时代的信息资源管理：让八面来风变成知识流水线</a></li>
     </ul>
   </div>
 

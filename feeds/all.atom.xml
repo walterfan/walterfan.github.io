@@ -1,5 +1,1547 @@
 <?xml version="1.0" encoding="utf-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom"><title>Walter Fan's Blog</title><link href="https://www.fanyamin.com/" rel="alternate"/><link href="https://www.fanyamin.com/feeds/all.atom.xml" rel="self"/><id>https://www.fanyamin.com/</id><updated>2026-06-27T10:55:00+08:00</updated><subtitle>手握灵珠常奋笔, 心开天籁不吹箫</subtitle><entry><title>老程序员的护城河：思想与方法，比技巧更耐用</title><link href="https://www.fanyamin.com/old-programmer-moat.html" rel="alternate"/><published>2026-06-27T10:30:00+08:00</published><updated>2026-06-27T10:55:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-06-27:/old-programmer-moat.html</id><summary type="html">&lt;p&gt;老程序员真正的护城河，不是会几道 LeetCode、背几个算法，而是胸中的丘壑、心中的准则、脑子里的体系，以及知道自己几斤几两的清醒。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Walter Fan's Blog</title><link href="https://www.fanyamin.com/" rel="alternate"/><link href="https://www.fanyamin.com/feeds/all.atom.xml" rel="self"/><id>https://www.fanyamin.com/</id><updated>2026-06-27T22:40:00+08:00</updated><subtitle>手握灵珠常奋笔, 心开天籁不吹箫</subtitle><entry><title>人脸识别其实挺简单：从一张脸到一个名字</title><link href="https://www.fanyamin.com/face-recognition-is-simple.html" rel="alternate"/><published>2026-06-27T22:10:00+08:00</published><updated>2026-06-27T22:40:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-06-27:/face-recognition-is-simple.html</id><summary type="html">&lt;p&gt;人脸识别听起来像玄学，其实把它拆开，就是检测人脸、裁剪样本、训练模型、设定阈值这几步。本文基于一个 OpenCV + MediaPipe 的小 demo，讲清楚 Haar、Face Mesh、LBPH 各自负责什么，如何用 Poetry 跑通采集、训练和识别链路，以及为什么教学级 demo 不能直接拿去当门禁或支付系统。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;人脸识别其实挺简单：从一张脸到一个名字&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;Tech&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Status&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;v1.0&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;2026-06-27&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 id="_1"&gt;别被“人脸识别”四个字吓住&lt;/h2&gt;
+&lt;p&gt;一说起人脸识别，很多人脑子里先跳出来的画面，不是机场安检，就是刷脸支付，再不然就是电影里黑客敲几下键盘，全城摄像头一起点亮。听起来很高级，像是得先念三年博士，再买一张显卡祭天。&lt;/p&gt;
+&lt;p&gt;可我最近写了一个小 demo，跑下来之后的感觉是：&lt;strong&gt;人脸识别入门并不神秘，真正难的是把它做可靠、做安全、做可控。&lt;/strong&gt; 这话有点像说“写个 HTTP server 很简单，做一个高可用网关很难”。两句话都对，只是层次不同。&lt;/p&gt;
+&lt;p&gt;这个 demo 放在 &lt;a href="https://github.com/walterfan/face-detection-demo"&gt;face-detection-demo&lt;/a&gt; 项目里，用的是几件朴素工具：OpenCV 做人脸检测和 LBPH 识别，MediaPipe 做面部关键点，Poetry 管依赖。没有深度模型训练，没有云服务，也没有几十页论文。目的无他，先把链路跑通。&lt;/p&gt;
+&lt;p&gt;咱们先把大词拆开。&lt;strong&gt;检测&lt;/strong&gt;回答“脸在哪里”，&lt;strong&gt;关键点&lt;/strong&gt;回答“眼睛、鼻子、嘴大概在哪些位置”，&lt;strong&gt;识别&lt;/strong&gt;才回答“这是谁”。很多文章把这三个词揉成一团，越讲越玄。其实工程里最怕的就是词没分清，词一混，设计就像一锅没撇沫的汤。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="1"&gt;1. 整条链路只有四步&lt;/h2&gt;
+&lt;p&gt;这个 demo 的主流程可以写成一行：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;输入图片/摄像头 -&amp;gt; 检测人脸框 -&amp;gt; 裁剪灰度人脸 -&amp;gt; LBPH 比对 -&amp;gt; 输出名字和距离
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;换成脚本，就是这几个文件各司其职：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;脚本&lt;/th&gt;
+&lt;th&gt;作用&lt;/th&gt;
+&lt;th&gt;你可以把它理解成&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;detect.py&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;Haar 级联检测人脸框&lt;/td&gt;
+&lt;td&gt;先在人群里圈出“疑似人脸”&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;landmarks.py&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;MediaPipe Face Mesh 画 468 个关键点&lt;/td&gt;
+&lt;td&gt;给脸贴一张网格地图&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;capture.py&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;采集灰度人脸样本&lt;/td&gt;
+&lt;td&gt;给每个人建一个小相册&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;train.py&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;训练 LBPH 模型&lt;/td&gt;
+&lt;td&gt;把相册整理成可查询索引&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;recognize.py&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;加载模型并识别&lt;/td&gt;
+&lt;td&gt;拿新脸去相册里找最像的&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;verify_olivetti.py&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;用公开数据集做 sanity check&lt;/td&gt;
+&lt;td&gt;不开摄像头也能验链路&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;这里有个小设计我很喜欢：&lt;code&gt;common.py&lt;/code&gt; 把输入源统一了。图片、视频、摄像头，在上层脚本看来都是一帧一帧的 &lt;code&gt;frame&lt;/code&gt;。这就是典型的工程小技巧，谈不上惊天动地，但能让代码少很多分叉。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;iter_frames&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;source&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;is_image_path&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;source&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+        &lt;span class="n"&gt;frame&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;cv2&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;imread&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;source&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="k"&gt;yield&lt;/span&gt; &lt;span class="n"&gt;frame&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt;
+
+    &lt;span class="n"&gt;cap&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;cv2&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;VideoCapture&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;_resolve_source&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;source&lt;/span&gt;&lt;span class="p"&gt;))&lt;/span&gt;
+    &lt;span class="k"&gt;try&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="k"&gt;while&lt;/span&gt; &lt;span class="kc"&gt;True&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+            &lt;span class="n"&gt;ok&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;frame&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;cap&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;read&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+            &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="ow"&gt;not&lt;/span&gt; &lt;span class="n"&gt;ok&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+                &lt;span class="k"&gt;break&lt;/span&gt;
+            &lt;span class="k"&gt;yield&lt;/span&gt; &lt;span class="n"&gt;frame&lt;/span&gt;
+    &lt;span class="k"&gt;finally&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;cap&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;release&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;从这个角度看，人脸识别的第一个“简单”，不是算法简单，而是&lt;strong&gt;流程可以被拆得很清楚&lt;/strong&gt;。先把输入统一，再把检测、采样、训练、识别分开。代码不装深沉，读的人也少掉几根白头发。咱年纪大了，白头发已经够多，不必让 demo 再雪上加霜。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="2-haar"&gt;2. Haar：先把脸框出来&lt;/h2&gt;
+&lt;p&gt;&lt;code&gt;detect.py&lt;/code&gt; 用的是 OpenCV 自带的 Haar cascade，也就是经典的 Viola-Jones 思路。它的任务很单纯：在一张图里滑动窗口，看看哪个区域像人脸，然后返回 &lt;code&gt;(x, y, w, h)&lt;/code&gt;。&lt;/p&gt;
+&lt;p&gt;在代码里，它大概长这样：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="n"&gt;gray&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;cv2&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;cvtColor&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;frame&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;cv2&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;COLOR_BGR2GRAY&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="n"&gt;gray&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;cv2&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;equalizeHist&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;gray&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="n"&gt;faces&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;cascade&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;detectMultiScale&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+    &lt;span class="n"&gt;gray&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="n"&gt;scaleFactor&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mf"&gt;1.1&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="n"&gt;minNeighbors&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;5&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="n"&gt;minSize&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mi"&gt;60&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mi"&gt;60&lt;/span&gt;&lt;span class="p"&gt;),&lt;/span&gt;
+&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这里有三个关键词。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;灰度化&lt;/strong&gt;。检测人脸不一定需要颜色，灰度图计算更快，也更稳定。很多时候，算法并不需要知道你今天穿了红衣服还是蓝衣服，它只想看明暗结构。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;直方图均衡&lt;/strong&gt;。&lt;code&gt;equalizeHist&lt;/code&gt; 用来改善对比度，弱光、背光时能帮一点忙。别指望它救回所有烂光线，它不是魔法，只是给图像擦擦眼镜。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;多尺度检测&lt;/strong&gt;。人离摄像头有远有近，脸有大有小，所以检测窗口要按比例缩放。&lt;code&gt;scaleFactor=1.1&lt;/code&gt; 的意思就是每次缩放一点点，慢一些，但细一点。&lt;/p&gt;
+&lt;p&gt;Haar 的好处是轻、快、离线，教学演示很合适。它的问题也明显：侧脸、大角度、遮挡、光线差，它就容易犯迷糊。就像老保安认人，正脸来了基本没问题，帽子口罩墨镜一戴，就开始“你是哪位”。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="3-mediapipe"&gt;3. MediaPipe：给脸画一张网&lt;/h2&gt;
+&lt;p&gt;&lt;code&gt;landmarks.py&lt;/code&gt; 不参与训练和识别主链路，它更像一个可视化工具。它用 MediaPipe Face Mesh 在脸上画 468 个 3D 关键点，再用 &lt;code&gt;FACEMESH_TESSELATION&lt;/code&gt; 和 &lt;code&gt;FACEMESH_CONTOURS&lt;/code&gt; 连成网。&lt;/p&gt;
+&lt;p&gt;运行一下：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;poetry&lt;span class="w"&gt; &lt;/span&gt;run&lt;span class="w"&gt; &lt;/span&gt;python&lt;span class="w"&gt; &lt;/span&gt;landmarks.py&lt;span class="w"&gt; &lt;/span&gt;--source&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="m"&gt;0&lt;/span&gt;
+poetry&lt;span class="w"&gt; &lt;/span&gt;run&lt;span class="w"&gt; &lt;/span&gt;python&lt;span class="w"&gt; &lt;/span&gt;landmarks.py&lt;span class="w"&gt; &lt;/span&gt;--source&lt;span class="w"&gt; &lt;/span&gt;face.jpg&lt;span class="w"&gt; &lt;/span&gt;--save&lt;span class="w"&gt; &lt;/span&gt;mesh.jpg
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;你会看到脸上像戴了一张细密的“面具”。这东西很适合给初学者建立直觉：计算机看到的人脸，不是“这个人很亲切”这种抽象评价，而是一堆点、一堆边、一堆坐标。&lt;/p&gt;
+&lt;p&gt;传统 dlib 常讲 68 个关键点，MediaPipe Face Mesh 则是 468 个点，还带一点深度信息。点更多，能表达的局部结构也更细。比如眼睛轮廓、嘴唇边界、脸颊曲线，都能画得更像样。&lt;/p&gt;
+&lt;p&gt;不过在这个 demo 里，关键点不是识别身份的核心。真正负责“这是谁”的，是后面的 LBPH。Face Mesh 在这里更多是帮你看明白：所谓人脸特征，可以被拆成可计算的几何结构。听起来玄，画出来就朴素了。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="4-lbph"&gt;4. LBPH：小样本识别的老手艺&lt;/h2&gt;
+&lt;p&gt;&lt;code&gt;train.py&lt;/code&gt; 和 &lt;code&gt;recognize.py&lt;/code&gt; 用的是 OpenCV 的 &lt;code&gt;cv2.face.LBPHFaceRecognizer_create()&lt;/code&gt;。这玩意儿藏在 &lt;code&gt;opencv-contrib-python&lt;/code&gt; 里，不在普通的 &lt;code&gt;opencv-python&lt;/code&gt; 里。安装时如果两个包混装，&lt;code&gt;cv2.face&lt;/code&gt; 可能直接消失，排查起来像找袜子，明明昨晚还在，早上就没了。&lt;/p&gt;
+&lt;p&gt;LBPH 全名是 Local Binary Patterns Histograms。名字有点长，其实思路不复杂：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;对每个像素，看它周围 8 个邻居比它亮还是暗；&lt;/li&gt;
+&lt;li&gt;亮记 1，暗记 0，拼成一个 8 位二进制数；&lt;/li&gt;
+&lt;li&gt;把整张脸分成很多小格子，每个格子统计这些数的直方图；&lt;/li&gt;
+&lt;li&gt;识别时，把新脸的直方图和训练样本做距离比较。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;所以 LBPH 看的不是“这人长得像谁”，而是“这张灰度脸的局部纹理分布，和训练库里哪一类更接近”。它是老手艺，不炫，但对小样本、本地 demo、教学场景很友好。&lt;/p&gt;
+&lt;p&gt;采样时，&lt;code&gt;capture.py&lt;/code&gt; 会做三件要紧的事：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="n"&gt;x&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;y&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;w&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;h&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nb"&gt;max&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;faces&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;key&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="k"&gt;lambda&lt;/span&gt; &lt;span class="n"&gt;b&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;b&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt; &lt;span class="o"&gt;*&lt;/span&gt; &lt;span class="n"&gt;b&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;3&lt;/span&gt;&lt;span class="p"&gt;])&lt;/span&gt;
+&lt;span class="n"&gt;face&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;cv2&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;resize&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;gray&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="n"&gt;y&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="n"&gt;y&lt;/span&gt; &lt;span class="o"&gt;+&lt;/span&gt; &lt;span class="n"&gt;h&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;x&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="n"&gt;x&lt;/span&gt; &lt;span class="o"&gt;+&lt;/span&gt; &lt;span class="n"&gt;w&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mi"&gt;200&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mi"&gt;200&lt;/span&gt;&lt;span class="p"&gt;))&lt;/span&gt;
+&lt;span class="n"&gt;cv2&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;imwrite&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;path&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;face&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;只取最大的脸，是为了避免把旁边路过的人也收进你的样本。裁剪成灰度，是为了和 LBPH 的输入习惯一致。统一缩放到 &lt;code&gt;200x200&lt;/code&gt;，是为了保证训练和识别时特征维度一致。&lt;/p&gt;
+&lt;p&gt;这就是第二个“简单”：&lt;strong&gt;同一种预处理，贯穿采集、训练、识别。&lt;/strong&gt; 很多机器学习问题不是输给模型，而是输给前处理不一致。训练时一套尺寸，预测时另一套尺寸；训练时做了灰度化，预测时忘了做。结果模型背锅，代码偷笑。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="5"&gt;5. 跑起来其实就几条命令&lt;/h2&gt;
+&lt;p&gt;这个项目用 Poetry 管依赖，Python 版本限定在 &lt;code&gt;3.11&lt;/code&gt; 到 &lt;code&gt;3.12&lt;/code&gt;。原因很现实：MediaPipe wheel 对 Python 版本有约束，&lt;code&gt;verify&lt;/code&gt; 额外依赖的 scikit-learn 也有自己的下限。&lt;/p&gt;
+&lt;p&gt;安装依赖：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;poetry&lt;span class="w"&gt; &lt;/span&gt;install
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;如果要跑公开数据集验证，再装 extra：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;poetry&lt;span class="w"&gt; &lt;/span&gt;install&lt;span class="w"&gt; &lt;/span&gt;--extras&lt;span class="w"&gt; &lt;/span&gt;verify
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;看人脸检测：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;poetry&lt;span class="w"&gt; &lt;/span&gt;run&lt;span class="w"&gt; &lt;/span&gt;python&lt;span class="w"&gt; &lt;/span&gt;detect.py&lt;span class="w"&gt; &lt;/span&gt;--source&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="m"&gt;0&lt;/span&gt;
+poetry&lt;span class="w"&gt; &lt;/span&gt;run&lt;span class="w"&gt; &lt;/span&gt;python&lt;span class="w"&gt; &lt;/span&gt;detect.py&lt;span class="w"&gt; &lt;/span&gt;--source&lt;span class="w"&gt; &lt;/span&gt;face.jpg&lt;span class="w"&gt; &lt;/span&gt;--save&lt;span class="w"&gt; &lt;/span&gt;out.jpg
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;采集两个人的数据：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;poetry&lt;span class="w"&gt; &lt;/span&gt;run&lt;span class="w"&gt; &lt;/span&gt;python&lt;span class="w"&gt; &lt;/span&gt;capture.py&lt;span class="w"&gt; &lt;/span&gt;--username&lt;span class="w"&gt; &lt;/span&gt;walter&lt;span class="w"&gt; &lt;/span&gt;--label&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="m"&gt;1&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;--count&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="m"&gt;30&lt;/span&gt;
+poetry&lt;span class="w"&gt; &lt;/span&gt;run&lt;span class="w"&gt; &lt;/span&gt;python&lt;span class="w"&gt; &lt;/span&gt;capture.py&lt;span class="w"&gt; &lt;/span&gt;--username&lt;span class="w"&gt; &lt;/span&gt;fiona&lt;span class="w"&gt; &lt;/span&gt;--label&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="m"&gt;2&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;--count&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="m"&gt;30&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;数据会保存成类似这样的目录：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;dataset/
+├── 1_walter/
+│   ├── 000.png
+│   ├── 001.png
+│   └── ...
+├── 2_fiona/
+│   ├── 000.png
+│   └── ...
+└── labels.json
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;训练模型：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;poetry&lt;span class="w"&gt; &lt;/span&gt;run&lt;span class="w"&gt; &lt;/span&gt;python&lt;span class="w"&gt; &lt;/span&gt;train.py
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;训练后会生成：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;model/lbph.yml
+model/labels.json
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;识别：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;poetry&lt;span class="w"&gt; &lt;/span&gt;run&lt;span class="w"&gt; &lt;/span&gt;python&lt;span class="w"&gt; &lt;/span&gt;recognize.py&lt;span class="w"&gt; &lt;/span&gt;--source&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="m"&gt;0&lt;/span&gt;
+poetry&lt;span class="w"&gt; &lt;/span&gt;run&lt;span class="w"&gt; &lt;/span&gt;python&lt;span class="w"&gt; &lt;/span&gt;recognize.py&lt;span class="w"&gt; &lt;/span&gt;--source&lt;span class="w"&gt; &lt;/span&gt;group.jpg&lt;span class="w"&gt; &lt;/span&gt;--threshold&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="m"&gt;70&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这里的 &lt;code&gt;threshold&lt;/code&gt; 很关键。LBPH 返回的 &lt;code&gt;confidence&lt;/code&gt; 不是“百分之多少可信”，而是一个&lt;strong&gt;距离&lt;/strong&gt;，数值越小越像。&lt;code&gt;70&lt;/code&gt; 不是宇宙真理，只是一个默认起点。你的摄像头、光线、样本数量、采样角度一变，这个阈值就要重新调。&lt;/p&gt;
+&lt;p&gt;如果不想拿自己的脸做实验，可以跑公开的 Olivetti/ORL 数据集：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;poetry&lt;span class="w"&gt; &lt;/span&gt;run&lt;span class="w"&gt; &lt;/span&gt;python&lt;span class="w"&gt; &lt;/span&gt;verify_olivetti.py&lt;span class="w"&gt; &lt;/span&gt;--train-per-person&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="m"&gt;8&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;它会用 40 个人、每人 10 张的灰度人脸做训练和测试。这个脚本的价值不在于证明算法多厉害，而是证明你的 OpenCV contrib、LBPH、数据拆分、训练预测链路是通的。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="6"&gt;6. 简单不等于可以乱用&lt;/h2&gt;
+&lt;p&gt;讲到这里，可能有人会想：既然几条命令就能跑起来，那是不是可以拿它做门禁、考勤、支付验证？&lt;/p&gt;
+&lt;p&gt;先别急。能跑通 demo，和能扛真实世界，是两回事。就像你在本地起了个 Flask 服务，不代表它已经具备全球流量调度能力。做人脸识别，最容易踩的坑有五个。&lt;/p&gt;
+&lt;h3 id="_2"&gt;坑一：检测和识别不是一回事&lt;/h3&gt;
+&lt;p&gt;画面里有脸，不代表知道是谁。检测错了，后面识别也会错。检测框偏一点，裁剪出来的脸少半边，LBPH 的距离就会飘。&lt;/p&gt;
+&lt;h3 id="_3"&gt;坑二：样本太少，模型会“认亲”&lt;/h3&gt;
+&lt;p&gt;每个人只采几张正脸，光线还都一样，demo 里看着挺准。换个角度、换个灯、换个表情，结果可能马上变脸。训练样本要覆盖真实场景，否则模型只是记住了“你在书房台灯下的样子”。&lt;/p&gt;
+&lt;h3 id="confidence"&gt;坑三：&lt;code&gt;confidence&lt;/code&gt; 不是信心，是距离&lt;/h3&gt;
+&lt;p&gt;这个名字很容易误导人。很多人一看 confidence，就以为越大越好。LBPH 正好反过来，越小越像。阈值设太松，陌生人容易混进来；设太严，自己也可能被拒之门外。&lt;/p&gt;
+&lt;h3 id="_4"&gt;坑四：人脸是隐私数据&lt;/h3&gt;
+&lt;p&gt;&lt;code&gt;dataset/&lt;/code&gt; 里存的不是普通图片，而是生物特征样本。哪怕只是灰度小图，也不能随手丢到公开仓库里。教学 demo 可以放空目录和说明，真实采样数据要加访问控制、加密存储、明确删除策略。&lt;/p&gt;
+&lt;h3 id="demo"&gt;坑五：活体检测和防伪不在这个 demo 里&lt;/h3&gt;
+&lt;p&gt;拿一张照片、一段视频，甚至一张屏幕怼到摄像头前，教学级系统可能并不知道。这不是它“笨”，而是它本来就没做活体检测、攻击检测、风控策略。别把小刀当保险柜。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="7"&gt;7. 如果真要做成产品，该怎么走&lt;/h2&gt;
+&lt;p&gt;这个 demo 适合入门。如果要把它做成一个可实际应用的人脸识别产品，第一步不是换模型，而是先把问题问清楚：&lt;strong&gt;它到底在什么场景里，替谁做什么决定，错了会怎样？&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;人脸识别产品大致有三类场景，难度完全不同：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;场景&lt;/th&gt;
+&lt;th&gt;目标&lt;/th&gt;
+&lt;th&gt;错误代价&lt;/th&gt;
+&lt;th&gt;产品要求&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;相册归类&lt;/td&gt;
+&lt;td&gt;给照片自动打人名&lt;/td&gt;
+&lt;td&gt;标错了可以手动改&lt;/td&gt;
+&lt;td&gt;体验优先，安全压力小&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;考勤/门禁&lt;/td&gt;
+&lt;td&gt;判断当前人是不是本人&lt;/td&gt;
+&lt;td&gt;误放、误拒都会影响业务&lt;/td&gt;
+&lt;td&gt;稳定、可审计、可申诉&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;支付/政务/金融&lt;/td&gt;
+&lt;td&gt;用脸参与高风险身份确认&lt;/td&gt;
+&lt;td&gt;可能造成资金或身份损失&lt;/td&gt;
+&lt;td&gt;安全、合规、风控缺一不可&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;所以不要一上来就问“准确率能到多少”。更应该先问：&lt;strong&gt;我能接受多少误识别，能接受多少拒识别，出了错有没有补救流程？&lt;/strong&gt; 做产品不是刷榜，刷榜只管分数，产品要管后果。&lt;/p&gt;
+&lt;h3 id="_5"&gt;第一步：先把威胁模型写出来&lt;/h3&gt;
+&lt;p&gt;Demo 只面对一种“友善用户”：摄像头前的人愿意配合你，光线也不太捣乱。产品面对的是现实世界，现实世界从来不按剧本演。&lt;/p&gt;
+&lt;p&gt;最少要回答这些问题：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;问题&lt;/th&gt;
+&lt;th&gt;要想清楚的点&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;谁会攻击系统&lt;/td&gt;
+&lt;td&gt;普通误用者、冒名者、内部人员、专业攻击者&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;攻击者有什么材料&lt;/td&gt;
+&lt;td&gt;照片、视频、3D 面具、被盗账号、内部接口权限&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;系统保护什么资产&lt;/td&gt;
+&lt;td&gt;门禁权限、考勤记录、账号登录、支付动作、身份信息&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;哪些链路最脆弱&lt;/td&gt;
+&lt;td&gt;注册、采集、模型存储、识别接口、日志、人工审核&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;失败后怎么补救&lt;/td&gt;
+&lt;td&gt;二次验证、人工复核、冻结账号、撤销授权、告警追踪&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;没有威胁模型，产品就会变成“看起来能用”。而安全系统最怕的就是“看起来”。就像门口放了个保安，但保安只认正脸照片，别人拿手机屏幕晃一下也放行，那还不如老老实实写个“请自觉登记”。&lt;/p&gt;
+&lt;h3 id="_6"&gt;第二步：把算法链路升级成可替换架构&lt;/h3&gt;
+&lt;p&gt;Demo 里用 Haar + LBPH 没问题，它们轻、快、好理解。产品里通常要拆成几个独立模块，便于替换和评估：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;图像输入
+  -&amp;gt; 质量检测
+  -&amp;gt; 人脸检测
+  -&amp;gt; 人脸对齐
+  -&amp;gt; 活体检测
+  -&amp;gt; 特征提取 embedding
+  -&amp;gt; 特征库检索或 1:1 比对
+  -&amp;gt; 阈值策略
+  -&amp;gt; 风险决策
+  -&amp;gt; 审计记录
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这里有几个 demo 里没有、产品里绕不开的环节。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;质量检测&lt;/strong&gt;。图像太暗、太糊、脸太小、遮挡太多、角度太偏，都应该在前面拦掉。不要把垃圾输入硬塞给模型，再抱怨模型不准。输入质量不过关，就提示用户调整姿态和光线。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;人脸对齐&lt;/strong&gt;。检测框只是框出脸，人脸还要按眼睛、鼻子、嘴的位置做旋转和裁剪。否则同一个人，头歪一点，特征就可能变形。MediaPipe 或别的 landmark 模型，在这里就能派上用场。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;特征提取&lt;/strong&gt;。产品级识别一般不会用 LBPH 这种纹理直方图，而会用深度模型把人脸转成 embedding，比如 128 维、512 维的向量。后面做的不是“图片比图片”，而是“向量比向量”。常见路线是 FaceNet、ArcFace、MagFace 这类模型思路，具体选型要看许可证、性能、部署环境和数据表现。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;阈值策略&lt;/strong&gt;。不要全系统一个阈值走天下。不同摄像头、不同场景、不同风险级别，可以有不同阈值。比如相册归类可以松一点，门禁要严一点，支付则不能只靠脸，必须叠加其他认证因素。&lt;/p&gt;
+&lt;h3 id="_7"&gt;第三步：把“注册”当成产品核心，而不是附属页面&lt;/h3&gt;
+&lt;p&gt;很多人做人脸识别，只盯着识别接口。其实注册采集才是根。注册时样本质量差，后面模型再好也难救。&lt;/p&gt;
+&lt;p&gt;一个可用的注册流程，至少应该包含：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;注册环节&lt;/th&gt;
+&lt;th&gt;产品要求&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;明确告知&lt;/td&gt;
+&lt;td&gt;告诉用户采集什么、用途是什么、保留多久、如何删除&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;用户同意&lt;/td&gt;
+&lt;td&gt;获取明确授权，不要用默认勾选糊弄人&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;多姿态采集&lt;/td&gt;
+&lt;td&gt;正脸、轻微左转、轻微右转、不同表情，覆盖真实使用场景&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;质量门槛&lt;/td&gt;
+&lt;td&gt;模糊、逆光、遮挡、多人入镜时拒收&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;活体校验&lt;/td&gt;
+&lt;td&gt;注册时就防照片和视频注入&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;重复身份检查&lt;/td&gt;
+&lt;td&gt;防止同一张脸注册多个身份，或多人共用一个身份&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;可撤销机制&lt;/td&gt;
+&lt;td&gt;用户能删除样本，系统能同步删除 embedding 和缓存&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;这里有个老手提醒：&lt;strong&gt;注册质量比识别算法更像地基。&lt;/strong&gt; 地基歪了，楼上装修再漂亮也没用。很多系统上线后识别不稳，不是模型选错了，而是注册时什么照片都收，最后特征库像一间没人整理的仓库。&lt;/p&gt;
+&lt;h3 id="_8"&gt;第四步：活体检测不能省&lt;/h3&gt;
+&lt;p&gt;Demo 里摄像头看到一张脸就识别，产品里这不够。你要判断摄像头前是一个真实的人，而不是照片、视频、屏幕翻拍或面具。&lt;/p&gt;
+&lt;p&gt;活体检测大致有两类：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;类型&lt;/th&gt;
+&lt;th&gt;做法&lt;/th&gt;
+&lt;th&gt;优缺点&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;配合式活体&lt;/td&gt;
+&lt;td&gt;眨眼、摇头、读随机数字、按提示转头&lt;/td&gt;
+&lt;td&gt;容易理解，但打扰用户，体验较重&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;静默式活体&lt;/td&gt;
+&lt;td&gt;通过纹理、反光、深度、红外、多帧变化判断&lt;/td&gt;
+&lt;td&gt;体验好，但模型和硬件要求更高&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;实际产品常常两者结合。低风险场景用静默式，风险升高时触发配合式。比如日常考勤可以轻一点，异地登录、设备异常、连续失败时再要求用户做动作。&lt;/p&gt;
+&lt;p&gt;不过别把活体检测神化。它不是护身符，只是提高攻击成本。专业攻击者总会进化，所以活体检测要和设备指纹、账号风险、地理位置、行为历史一起看。安全不是一招鲜，是多道门。&lt;/p&gt;
+&lt;h3 id="11-1n"&gt;第五步：明确是 1:1 还是 1:N&lt;/h3&gt;
+&lt;p&gt;这两个词看起来只差一个字母，工程复杂度差很多。&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;模式&lt;/th&gt;
+&lt;th&gt;问题&lt;/th&gt;
+&lt;th&gt;例子&lt;/th&gt;
+&lt;th&gt;难点&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;1:1 验证&lt;/td&gt;
+&lt;td&gt;你是不是你声称的那个人&lt;/td&gt;
+&lt;td&gt;登录、支付、员工打卡&lt;/td&gt;
+&lt;td&gt;阈值、活体、防冒用&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;1:N 识别&lt;/td&gt;
+&lt;td&gt;你是谁&lt;/td&gt;
+&lt;td&gt;相册归类、黑名单检索&lt;/td&gt;
+&lt;td&gt;大规模检索、误识别、性能和合规&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;Demo 里的 &lt;code&gt;recognize.py&lt;/code&gt; 更接近小规模识别，但产品上如果做身份确认，很多时候应该走 1:1：用户先声明身份，比如账号、工号、手机号，然后系统拿当前人脸和该账号绑定的人脸特征比对。&lt;/p&gt;
+&lt;p&gt;1:N 更敏感。库越大，误命中的概率越高，性能压力也越大。你需要向量索引、分库分区、候选集召回、二次排序，还要处理“长得像的人”“双胞胎”“同一人年龄变化”这些现实问题。别轻易把 1:N 用在高风险决策里，除非你有足够的业务理由和防错流程。&lt;/p&gt;
+&lt;h3 id="_9"&gt;第六步：用数据闭环校准阈值，而不是拍脑袋&lt;/h3&gt;
+&lt;p&gt;产品级系统必须关心两类错误：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;指标&lt;/th&gt;
+&lt;th&gt;含义&lt;/th&gt;
+&lt;th&gt;业务影响&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;FAR / FMR&lt;/td&gt;
+&lt;td&gt;把别人错认成本人&lt;/td&gt;
+&lt;td&gt;安全风险&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;FRR / FNMR&lt;/td&gt;
+&lt;td&gt;把本人拒绝掉&lt;/td&gt;
+&lt;td&gt;体验和业务中断&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;阈值越松，用户越容易通过，但冒用风险上升。阈值越严，安全性提高，但本人也可能被拒。这里没有免费午餐，只能按业务风险做取舍。&lt;/p&gt;
+&lt;p&gt;更靠谱的做法是准备独立测试集：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;注册集：用于建库
+验证集：用于调阈值
+测试集：用于最终评估
+灰度集：用于上线后观察真实表现
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;测试集要覆盖不同光线、不同设备、不同年龄段、戴眼镜、换发型、轻微遮挡、多人背景等场景。不要只拿办公室同事在同一盏灯下拍的照片测，那种准确率容易让人误判，就像拿自己出的题考自己，分数当然漂亮。&lt;/p&gt;
+&lt;h3 id="_10"&gt;第七步：把人脸数据当敏感资产管&lt;/h3&gt;
+&lt;p&gt;产品级应用里，人脸原图、裁剪图、embedding、标签映射、识别日志，都属于高敏数据。即使 embedding 不是原图，也不能当普通字符串随便存。它仍然能代表一个人的生物特征。&lt;/p&gt;
+&lt;p&gt;基本要求包括：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;数据环节&lt;/th&gt;
+&lt;th&gt;要求&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;采集&lt;/td&gt;
+&lt;td&gt;明确用途，最小化采集，不要顺手多拿数据&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;传输&lt;/td&gt;
+&lt;td&gt;全链路 TLS，移动端防中间人攻击&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;存储&lt;/td&gt;
+&lt;td&gt;加密存储，密钥分离管理，按租户或业务隔离&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;访问&lt;/td&gt;
+&lt;td&gt;最小权限，管理员也不能随便看原图&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;日志&lt;/td&gt;
+&lt;td&gt;不记录原始图片，不把 embedding 打进普通日志&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;删除&lt;/td&gt;
+&lt;td&gt;用户撤销后可删除、可验证删除完成&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;留存&lt;/td&gt;
+&lt;td&gt;到期清理，不要无限期保存&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;还有一点容易被忽略：开发和测试环境不要使用生产人脸数据。真要排查问题，也应该用脱敏样本、合成样本或经过授权的测试集。否则哪天日志、备份、对象存储桶漏出去，事故报告会写得很难看。&lt;/p&gt;
+&lt;h3 id="_11"&gt;第八步：产品体验要兜住失败&lt;/h3&gt;
+&lt;p&gt;真实用户不会按算法工程师的理想姿势站在镜头前。他可能在地铁口，脸上有汗，背后有强光，手机摄像头还贴了膜。识别失败时，产品不能只甩一句 “failed”。&lt;/p&gt;
+&lt;p&gt;好的体验应该告诉用户怎么修正：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;失败原因&lt;/th&gt;
+&lt;th&gt;用户提示&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;光线太暗&lt;/td&gt;
+&lt;td&gt;请移动到光线更好的地方&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;脸太小&lt;/td&gt;
+&lt;td&gt;请靠近摄像头&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;多人入镜&lt;/td&gt;
+&lt;td&gt;请确保画面中只有本人&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;遮挡严重&lt;/td&gt;
+&lt;td&gt;请摘下口罩或移开遮挡物，若业务允许&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;连续失败&lt;/td&gt;
+&lt;td&gt;切换到短信、硬件 key、人工审核等备用流程&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;产品级系统一定要有 fallback。人脸识别不该是唯一入口，更不该是唯一出口。尤其在金融、医疗、企业权限这类场景里，用户被误拒以后要有申诉和人工处理流程。技术再好，也别把人关在系统外面干着急。&lt;/p&gt;
+&lt;h3 id="_12"&gt;第九步：后端服务要按“身份系统”设计&lt;/h3&gt;
+&lt;p&gt;Demo 是本地脚本，产品通常会变成服务。服务化之后，复杂度立刻上来：认证、授权、限流、审计、模型版本、特征库、缓存、告警，一个都跑不掉。&lt;/p&gt;
+&lt;p&gt;一个相对稳妥的后端拆法是：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;服务/模块&lt;/th&gt;
+&lt;th&gt;职责&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;Enrollment Service&lt;/td&gt;
+&lt;td&gt;注册、样本质量检查、用户授权记录&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Face Feature Service&lt;/td&gt;
+&lt;td&gt;人脸检测、对齐、embedding 提取&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Matching Service&lt;/td&gt;
+&lt;td&gt;1:1 比对或 1:N 检索&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Risk Engine&lt;/td&gt;
+&lt;td&gt;阈值策略、设备风险、行为风险、二次验证决策&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Audit Service&lt;/td&gt;
+&lt;td&gt;记录谁在什么时间因为什么结果通过或失败&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Admin Console&lt;/td&gt;
+&lt;td&gt;特征重建、账号冻结、申诉处理、指标查看&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;接口也要小心。不要设计一个“传照片，返回用户是谁”的万能接口，然后让所有业务随便调。每个调用方都要有身份、权限、用途、速率限制和审计记录。否则人脸识别服务很容易变成内部“查人接口”，这在合规上很危险。&lt;/p&gt;
+&lt;h3 id="_13"&gt;第十步：上线前要有验收门槛&lt;/h3&gt;
+&lt;p&gt;产品不是“代码能跑”就上线。至少要过几道门：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;验收项&lt;/th&gt;
+&lt;th&gt;要看什么&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;算法评估&lt;/td&gt;
+&lt;td&gt;FAR、FRR、ROC 曲线、不同人群和设备的表现&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;安全测试&lt;/td&gt;
+&lt;td&gt;照片、视频、屏幕翻拍、接口重放、越权调用&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;隐私评审&lt;/td&gt;
+&lt;td&gt;数据用途、授权、存储、删除、跨境和第三方处理&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;压力测试&lt;/td&gt;
+&lt;td&gt;峰值 QPS、延迟、GPU/CPU 利用率、降级策略&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;可观测性&lt;/td&gt;
+&lt;td&gt;成功率、失败原因、活体失败率、异常流量告警&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;灰度发布&lt;/td&gt;
+&lt;td&gt;小范围试点、人工复核、误判回收、阈值调整&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;应急预案&lt;/td&gt;
+&lt;td&gt;模型回滚、特征库恢复、密钥轮换、数据泄漏响应&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;我会特别强调灰度发布。人脸识别这种系统，实验室里再漂亮，也要到真实场景里走一圈。不同门口的光线、不同手机的摄像头、不同用户的使用习惯，都会给你上课。上线前少听口号，多看失败样本。&lt;/p&gt;
+&lt;h3 id="_14"&gt;一张产品化路线图&lt;/h3&gt;
+&lt;p&gt;如果把上面这些压成阶段，我会这样排：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;阶段&lt;/th&gt;
+&lt;th&gt;目标&lt;/th&gt;
+&lt;th&gt;交付物&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;PoC&lt;/td&gt;
+&lt;td&gt;证明链路可行&lt;/td&gt;
+&lt;td&gt;demo、公开数据集验证、初步误差分析&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;MVP&lt;/td&gt;
+&lt;td&gt;面向一个低风险场景试用&lt;/td&gt;
+&lt;td&gt;注册流程、1:1 比对、基础活体、人工兜底&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Pilot&lt;/td&gt;
+&lt;td&gt;小范围真实用户灰度&lt;/td&gt;
+&lt;td&gt;指标看板、告警、申诉流程、阈值校准报告&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Production&lt;/td&gt;
+&lt;td&gt;正式承载业务&lt;/td&gt;
+&lt;td&gt;合规评审、安全测试、SLA、审计、灾备和回滚&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Continuous Improvement&lt;/td&gt;
+&lt;td&gt;持续优化&lt;/td&gt;
+&lt;td&gt;数据闭环、模型版本管理、漂移监控、定期复评&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;这里最重要的不是换成多高级的模型，而是先问清楚：&lt;strong&gt;这个识别结果要拿来做什么决策？&lt;/strong&gt; 如果只是课堂演示，LBPH 足够。如果是家庭相册自动分类，误判了也就是多点一下鼠标。如果是开门、扣钱、放行，那就进入安全系统范畴，要求完全不同。&lt;/p&gt;
+&lt;p&gt;工程里有句老话，叫“先定义失败”。人脸识别也一样。你得先想清楚：认错一个人，代价是什么？认不出本人，代价是什么？系统被照片骗过，代价是什么？这些问题答不清，模型准确率写到 99% 也只是好看。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="8"&gt;8. 给初学者的一张路线图&lt;/h2&gt;
+&lt;p&gt;如果你也想从零开始练，我建议不要一上来就冲 ArcFace、向量数据库、GPU 推理服务。先用这种小 demo 把概念摸一遍：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;第 1 天：跑 detect.py，看懂 Haar 检测框
+第 2 天：跑 landmarks.py，看懂关键点和网格
+第 3 天：用 capture.py 采 2 个人，每人 30 张
+第 4 天：跑 train.py，生成 lbph.yml
+第 5 天：跑 recognize.py，调 threshold
+第 6 天：换光线、换角度、戴眼镜，记录失败案例
+第 7 天：写一页总结，列出哪些场景不能用
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;注意，第 6 天最值钱。成功案例让你开心，失败案例让你长本事。很多工程经验就是这么来的：不是把 demo 跑绿，而是把它故意跑坏，再看它坏在哪里。&lt;/p&gt;
+&lt;p&gt;咱们学技术，最怕两种状态。一种是被名词吓住，觉得“这个我不配碰”；另一种是跑通一次，就觉得“这个我已经会了”。前者让人不敢开始，后者让人开始乱来。比较靠谱的路，是先承认它可以入门，再尊重它的边界。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_15"&gt;小结：入门要轻，落地要重&lt;/h2&gt;
+&lt;p&gt;人脸识别其实挺简单。至少，做一个能演示“从摄像头采集样本、训练 LBPH、识别出名字”的本地 demo，并不需要多神秘的装备。&lt;/p&gt;
+&lt;p&gt;可是，把它做成可信身份系统，就不简单了。你要处理数据隐私、样本偏差、阈值校准、攻击防护、活体检测、审计追踪，还要回答“认错了谁负责”这种不那么技术、却更要命的问题。&lt;/p&gt;
+&lt;p&gt;最后留一张 CheckList，给自己也给读者：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;我是否分清了 detection、landmark、recognition？&lt;/li&gt;
+&lt;li&gt;采集、训练、识别是否使用同样的灰度化和尺寸？&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;opencv-contrib-python&lt;/code&gt; 是否正确安装，且没有和 &lt;code&gt;opencv-python&lt;/code&gt; 打架？&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;confidence&lt;/code&gt; 是否按“距离越小越像”理解？&lt;/li&gt;
+&lt;li&gt;阈值是否用自己的数据校准过，而不是照抄默认值？&lt;/li&gt;
+&lt;li&gt;数据集里的人脸样本是否有隐私保护？&lt;/li&gt;
+&lt;li&gt;是否明确说明：这是教学 demo，不是门禁、支付或风控系统？&lt;/li&gt;
+&lt;li&gt;如果要产品化，是否已经写清威胁模型和失败补救流程？&lt;/li&gt;
+&lt;li&gt;注册采集、活体检测、1:1/1:N 模式、审计日志是否都有设计？&lt;/li&gt;
+&lt;li&gt;是否准备了独立测试集、灰度指标、模型回滚和数据删除机制？&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;一句话：&lt;strong&gt;入门时，把它当小练习；上线前，把它当安全系统。&lt;/strong&gt; 图难于其易，为大于其细，技术也差不多是这个理。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap
+&amp;lt;style&amp;gt;
+node {
+  BackgroundColor White
+}
+rootNode {
+    BackgroundColor #ffe0b2
+    LineColor #f57c00
+    LineThickness 4
+}
+&amp;lt;/style&amp;gt;
+* 人脸识别其实挺简单
+** 拆清概念
+*** Detection: 脸在哪里
+*** Landmark: 关键点在哪里
+*** Recognition: 这是谁
+** 跑通链路
+*** capture.py 采集样本
+*** train.py 训练 LBPH
+*** recognize.py 阈值判断
+** 关键约定
+*** 灰度化
+*** 统一 resize 到 200x200
+*** confidence 是距离
+** 工程边界
+*** 隐私保护
+*** 阈值校准
+*** 活体检测
+*** 威胁模型
+** 产品化路线
+*** 明确场景和错误代价
+*** 注册质量控制
+*** 深度 embedding 架构
+*** 1:1 与 1:N 分开设计
+*** 数据闭环和灰度发布
+*** 审计、合规、应急预案
+** 一句话
+*** 入门要轻
+*** 落地要重
+@endmindmap
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;img alt="人脸识别其实挺简单思维导图" src="../images/tech_20260627_face-recognition-is-simple_mindmap.png"&gt;&lt;/p&gt;</content><category term="Tech"/><category term="python"/><category term="opencv"/><category term="mediapipe"/><category term="face-recognition"/><category term="lbph"/><category term="computer-vision"/><category term="demo"/></entry><entry><title>为什么需要 KMS 和信封加密</title><link href="https://www.fanyamin.com/why-kms-envelope-encryption.html" rel="alternate"/><published>2026-06-27T22:02:00+08:00</published><updated>2026-06-27T22:02:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-06-27:/why-kms-envelope-encryption.html</id><summary type="html">&lt;p&gt;从数据库泄露、密钥轮换和故障边界说起，解释为什么需要 KMS，以及信封加密如何把密钥管理这件事做得更稳。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;为什么需要 KMS 和信封加密&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;Tech&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Status&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;v0.1&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;2026-06-27&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h1 id="kms"&gt;为什么需要 KMS 和信封加密&lt;/h1&gt;
+&lt;p&gt;做后端久了，总会遇到一个朴素而危险的问题：数据库里到底能不能放明文密码、Token、私钥、证书、API Key？&lt;/p&gt;
+&lt;p&gt;答案当然是不能。可工程里最麻烦的地方在于，“不能放明文”只是第一步。你把数据加密了，新的问题马上排队进门：加密密钥放哪里？谁能访问？怎么轮换？数据库泄露时损失多大？日志里会不会不小心打印出来？KMS 挂了系统怎么办？&lt;/p&gt;
+&lt;p&gt;我认为，KMS 和信封加密的价值不在于“看起来很安全”，而在于把密钥管理从一坨散落在配置文件、环境变量、脚本和数据库里的胶水，变成一个边界清楚、可审计、可轮换、可失败关闭的工程体系。&lt;/p&gt;
+&lt;p&gt;一句话：&lt;strong&gt;KMS 管主钥匙，业务系统管数据；信封加密让每份数据都有自己的小钥匙，而小钥匙再被主钥匙锁起来。&lt;/strong&gt;&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="1"&gt;1. 最常见的误区：我已经加密了，所以安全了&lt;/h2&gt;
+&lt;p&gt;很多团队第一次做敏感数据保护，会写出这样的方案：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;生成一个 AES key。&lt;/li&gt;
+&lt;li&gt;把它放到配置文件或环境变量里。&lt;/li&gt;
+&lt;li&gt;写入数据库前用它加密。&lt;/li&gt;
+&lt;li&gt;读取数据库后用它解密。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;比明文强吗？强。&lt;/p&gt;
+&lt;p&gt;够好吗？通常不够。&lt;/p&gt;
+&lt;p&gt;因为这套方案把问题从“数据明文暴露”改成了“密钥在哪里暴露”。如果数据库备份、应用配置、容器环境变量、CI 日志、运维脚本里任何一个地方泄露，攻击者拿到密文和密钥，就像拿到了保险柜和钥匙串。剩下的只是体力活。&lt;/p&gt;
+&lt;p&gt;更麻烦的是轮换。&lt;/p&gt;
+&lt;p&gt;如果全库都用同一个 key，一旦要换 key，就得把所有历史数据读出来、解密、再加密、再写回去。数据量小的时候像搬家，数据量大了就像半夜换城市供水管道：理论上可以，实际会把值班同学熬成熊猫。&lt;/p&gt;
+&lt;p&gt;所以，加密本身不是终点。&lt;strong&gt;密钥生命周期管理&lt;/strong&gt;才是正菜。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="2-kms"&gt;2. KMS 到底解决什么问题&lt;/h2&gt;
+&lt;p&gt;KMS，全称 Key Management Service，直译是密钥管理服务。它不是一个“万能加密按钮”，而是一个专门管理高价值密钥的系统。&lt;/p&gt;
+&lt;p&gt;你可以把它想成银行金库：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;金库里保管主钥匙，不让主钥匙到处乱跑。&lt;/li&gt;
+&lt;li&gt;谁来用钥匙，要认证、授权、审计。&lt;/li&gt;
+&lt;li&gt;钥匙什么时候轮换，有策略和记录。&lt;/li&gt;
+&lt;li&gt;操作失败时，宁可不开门，也不临时发一把塑料钥匙。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;在工程上，KMS 主要承担几类职责：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;问题&lt;/th&gt;
+&lt;th&gt;没有 KMS 时的常见做法&lt;/th&gt;
+&lt;th&gt;有 KMS 后的做法&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;主密钥存放&lt;/td&gt;
+&lt;td&gt;配置文件、环境变量、数据库、脚本&lt;/td&gt;
+&lt;td&gt;存在独立的密钥管理系统或 HSM 中&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;访问控制&lt;/td&gt;
+&lt;td&gt;依赖应用自己的权限&lt;/td&gt;
+&lt;td&gt;KMS 自己做认证、授权和审计&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;密钥轮换&lt;/td&gt;
+&lt;td&gt;应用自己实现，容易遗漏&lt;/td&gt;
+&lt;td&gt;通过 KMS 版本和策略管理&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;审计&lt;/td&gt;
+&lt;td&gt;很难知道谁什么时候用了 key&lt;/td&gt;
+&lt;td&gt;每次关键操作都可记录&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;爆炸半径&lt;/td&gt;
+&lt;td&gt;一个 key 可能解开一大片数据&lt;/td&gt;
+&lt;td&gt;可以按用途、租户、环境或数据域拆分&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;这里有一个关键点：&lt;strong&gt;KMS 最好不要把主密钥明文交给业务系统。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;业务系统可以请求 KMS 做加密、解密、签名、验签，或者包装、解包装某个数据密钥。但主密钥本身不应该在应用进程里散步，更不应该被写进日志。密钥一旦开始旅游，安全边界就开始漏风。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="3-kms"&gt;3. 只用 KMS 直接加密数据，为什么还不够&lt;/h2&gt;
+&lt;p&gt;既然 KMS 这么好，能不能把每一段敏感数据都直接发给 KMS 加密？&lt;/p&gt;
+&lt;p&gt;可以，但通常不划算，也不总是合适。&lt;/p&gt;
+&lt;p&gt;原因有三点。&lt;/p&gt;
+&lt;p&gt;第一，KMS 是高价值服务，不适合承载所有大块数据的加解密流量。业务数据可能很大、访问频繁、延迟敏感，把每次读写都变成远程 KMS 调用，成本和延迟都不好看。&lt;/p&gt;
+&lt;p&gt;第二，很多 KMS 对单次加密数据大小有限制。它们更适合处理密钥、小块材料和加密操作的控制面，不适合当成通用数据加密管道。&lt;/p&gt;
+&lt;p&gt;第三，系统可靠性会被放大。每读一条数据都必须远程调用 KMS，KMS 抖一下，业务读路径也跟着哆嗦。&lt;/p&gt;
+&lt;p&gt;于是，信封加密就登场了。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="4"&gt;4. 什么是信封加密&lt;/h2&gt;
+&lt;p&gt;信封加密的英文是 Envelope Encryption。名字很形象：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;真正的数据放进信里。&lt;/li&gt;
+&lt;li&gt;这封信，用一把一次性或短生命周期的小钥匙锁上。&lt;/li&gt;
+&lt;li&gt;小钥匙再放进信封。&lt;/li&gt;
+&lt;li&gt;信封用金库里的主钥匙封起来。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;在密码学术语里，通常会有两类 key：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;名称&lt;/th&gt;
+&lt;th&gt;常见缩写&lt;/th&gt;
+&lt;th&gt;作用&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;Data Encryption Key&lt;/td&gt;
+&lt;td&gt;DEK&lt;/td&gt;
+&lt;td&gt;直接加密业务数据&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Key Encryption Key&lt;/td&gt;
+&lt;td&gt;KEK&lt;/td&gt;
+&lt;td&gt;加密或包装 DEK，本身由 KMS 管理&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;写入数据时，大致流程是：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;业务系统为这份数据生成一个随机 DEK。&lt;/li&gt;
+&lt;li&gt;用 DEK 加密敏感数据，得到 ciphertext。&lt;/li&gt;
+&lt;li&gt;把 DEK 交给 KMS，用 KEK 包装成 wrapped DEK。&lt;/li&gt;
+&lt;li&gt;数据库存 ciphertext、wrapped DEK 和必要的 key metadata。&lt;/li&gt;
+&lt;li&gt;明文数据、明文 DEK 不落库，不写日志，用完就丢。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;读取数据时，流程反过来：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;从数据库读出 ciphertext 和 wrapped DEK。&lt;/li&gt;
+&lt;li&gt;调用 KMS，把 wrapped DEK 解包装成临时明文 DEK。&lt;/li&gt;
+&lt;li&gt;用 DEK 解密 ciphertext。&lt;/li&gt;
+&lt;li&gt;返回明文给已授权的调用方。&lt;/li&gt;
+&lt;li&gt;明文 DEK 只在内存里短暂停留，用完清理。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;数据库里看到的不是“秘密”，而是被锁好的信件和被金库封好的小钥匙。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="5"&gt;5. 为什么这套设计更稳&lt;/h2&gt;
+&lt;h3 id="51"&gt;5.1 数据库泄露，不等于秘密泄露&lt;/h3&gt;
+&lt;p&gt;如果攻击者只拿到数据库，他能看到 ciphertext 和 wrapped DEK，但拿不到 KMS 里的 KEK。没有 KEK，wrapped DEK 解不开；没有 DEK，ciphertext 也解不开。&lt;/p&gt;
+&lt;p&gt;这就是分层防御的意义：不要假设某一层永远不失守。数据库会有备份，会有只读账号，会被导出，会被误传。好的设计要承认现实，然后让单点泄露无法直接变成事故。&lt;/p&gt;
+&lt;h3 id="52"&gt;5.2 主密钥轮换更便宜&lt;/h3&gt;
+&lt;p&gt;如果数据直接用 KEK 加密，换 KEK 就要重加密所有数据。&lt;/p&gt;
+&lt;p&gt;信封加密下，数据由 DEK 加密，KEK 只包装 DEK。换 KEK 时，通常只需要：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;用旧 KEK 解开 wrapped DEK。&lt;/li&gt;
+&lt;li&gt;用新 KEK 重新包装同一个 DEK。&lt;/li&gt;
+&lt;li&gt;更新 wrapped DEK 和 key version metadata。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;业务密文不用动。这就像换保险柜，不用把仓库里每个箱子拆开重装一遍。&lt;/p&gt;
+&lt;h3 id="53"&gt;5.3 可以更细地控制爆炸半径&lt;/h3&gt;
+&lt;p&gt;一个全局 key 解全部数据，是最省事的设计，也是最吓人的设计。&lt;/p&gt;
+&lt;p&gt;信封加密允许你按不同维度生成 DEK：每条记录、每个对象、每个租户、每个文件、每个数据版本。怎么拆，取决于你的性能、成本和隔离要求。&lt;/p&gt;
+&lt;p&gt;拆得越细，管理成本越高，但单个 key 失控时的影响越小。工程不是背诵“最佳实践”，而是在约束里找合理边界。&lt;/p&gt;
+&lt;h3 id="54"&gt;5.4 审计和权限更清楚&lt;/h3&gt;
+&lt;p&gt;谁能解包装 DEK？谁能创建 KEK？谁能禁用旧 key？谁在什么时候访问过 KMS？&lt;/p&gt;
+&lt;p&gt;这些问题如果散在应用配置和脚本里，最后多半靠人肉考古。放到 KMS 边界里，至少可以把权限、审计、告警、轮换策略集中起来。&lt;/p&gt;
+&lt;p&gt;安全系统最怕“没人说得清”。KMS 的一个现实价值，就是让关键问题有地方问，有日志查，有策略改。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="6"&gt;6. 一个最小可用的落地模型&lt;/h2&gt;
+&lt;p&gt;不要一上来就搞成论文。多数系统先把下面这个模型做扎实，就已经比“配置文件里放一把万能钥匙”强很多。&lt;/p&gt;
+&lt;h3 id="_1"&gt;写入路径&lt;/h3&gt;
+&lt;ol&gt;
+&lt;li&gt;校验调用方权限。&lt;/li&gt;
+&lt;li&gt;生成随机 DEK，常见选择是 256-bit key。&lt;/li&gt;
+&lt;li&gt;使用 AEAD 算法加密数据，例如 AES-GCM 或 ChaCha20-Poly1305。&lt;/li&gt;
+&lt;li&gt;调用 KMS，用指定 KEK 包装 DEK。&lt;/li&gt;
+&lt;li&gt;持久化 ciphertext、wrapped DEK、algorithm、key id、key version 等 metadata。&lt;/li&gt;
+&lt;li&gt;明文 secret 和明文 DEK 不落库、不进日志、不进异常消息。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h3 id="_2"&gt;读取路径&lt;/h3&gt;
+&lt;ol&gt;
+&lt;li&gt;校验调用方权限。&lt;/li&gt;
+&lt;li&gt;读取 ciphertext、wrapped DEK 和 key metadata。&lt;/li&gt;
+&lt;li&gt;调用 KMS 解包装 DEK。&lt;/li&gt;
+&lt;li&gt;用 DEK 解密并校验认证标签。&lt;/li&gt;
+&lt;li&gt;失败就失败关闭，不回退到明文、不尝试弱算法、不吞异常。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h3 id="_3"&gt;轮换路径&lt;/h3&gt;
+&lt;ol&gt;
+&lt;li&gt;在 KMS 中准备新 KEK 或新 key version。&lt;/li&gt;
+&lt;li&gt;新写入数据使用新的 KEK metadata 包装 DEK。&lt;/li&gt;
+&lt;li&gt;历史数据逐步 rewrap：解开旧 wrapped DEK，再用新 KEK 包装。&lt;/li&gt;
+&lt;li&gt;确认没有数据引用旧 KEK 后，再按策略禁用或销毁旧 key。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;这套模型的重点不是“术语齐全”，而是边界清楚：数据加密在业务侧，主密钥托管在 KMS，数据库只保存密文和被包装过的数据密钥。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="7-python"&gt;7. Python 关键代码示例&lt;/h2&gt;
+&lt;p&gt;下面给一个最小示例，演示信封加密的核心动作：生成 DEK、用 AEAD 加密数据、调用 KMS 包装 DEK、读取时再解包装 DEK。&lt;/p&gt;
+&lt;p&gt;先说清楚边界：这里的 &lt;code&gt;DemoKMS&lt;/code&gt; 只用于本地演示和单元测试。生产环境不要把 KEK 放在应用进程里，也不要自己在业务服务里实现“本地 KMS”。真实系统里，&lt;code&gt;KMSClient&lt;/code&gt; 应该替换成云 KMS、HSM、Vault Transit 或公司统一密钥管理系统的 SDK。&lt;/p&gt;
+&lt;p&gt;依赖：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;pip&lt;span class="w"&gt; &lt;/span&gt;install&lt;span class="w"&gt; &lt;/span&gt;cryptography
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h3 id="71-kms"&gt;7.1 定义 KMS 接口和密文信封&lt;/h3&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="kn"&gt;from&lt;/span&gt; &lt;span class="nn"&gt;__future__&lt;/span&gt; &lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="n"&gt;annotations&lt;/span&gt;
+
+&lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="nn"&gt;os&lt;/span&gt;
+&lt;span class="kn"&gt;from&lt;/span&gt; &lt;span class="nn"&gt;dataclasses&lt;/span&gt; &lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="n"&gt;dataclass&lt;/span&gt;
+&lt;span class="kn"&gt;from&lt;/span&gt; &lt;span class="nn"&gt;typing&lt;/span&gt; &lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="n"&gt;Protocol&lt;/span&gt;
+
+&lt;span class="kn"&gt;from&lt;/span&gt; &lt;span class="nn"&gt;cryptography.hazmat.primitives.ciphers.aead&lt;/span&gt; &lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="n"&gt;AESGCM&lt;/span&gt;
+
+
+&lt;span class="k"&gt;class&lt;/span&gt; &lt;span class="nc"&gt;KMSClient&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;Protocol&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+    &lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;wrap_key&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;plaintext_dek&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;bytes&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;key_id&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;key_version&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="nb"&gt;bytes&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="sd"&gt;&amp;quot;&amp;quot;&amp;quot;Use KEK in KMS to wrap a plaintext DEK.&amp;quot;&amp;quot;&amp;quot;&lt;/span&gt;
+
+    &lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;unwrap_key&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;wrapped_dek&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;bytes&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;key_id&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;key_version&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="nb"&gt;bytes&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="sd"&gt;&amp;quot;&amp;quot;&amp;quot;Use KEK in KMS to recover a plaintext DEK.&amp;quot;&amp;quot;&amp;quot;&lt;/span&gt;
+
+
+&lt;span class="nd"&gt;@dataclass&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;frozen&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="kc"&gt;True&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="k"&gt;class&lt;/span&gt; &lt;span class="nc"&gt;EnvelopeRecord&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;algorithm&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;
+    &lt;span class="n"&gt;key_id&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;
+    &lt;span class="n"&gt;key_version&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;
+    &lt;span class="n"&gt;nonce&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;bytes&lt;/span&gt;
+    &lt;span class="n"&gt;ciphertext&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;bytes&lt;/span&gt;
+    &lt;span class="n"&gt;wrapped_dek&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;bytes&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;code&gt;EnvelopeRecord&lt;/code&gt; 对应数据库里要保存的最小信息：密文、nonce、wrapped DEK、算法、key id 和 key version。注意，这里没有保存明文 DEK，也没有保存 KEK。&lt;/p&gt;
+&lt;h3 id="72-seal-secret"&gt;7.2 写入：seal secret&lt;/h3&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;seal_secret&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+    &lt;span class="n"&gt;plaintext&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;bytes&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="n"&gt;kms&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;KMSClient&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="n"&gt;key_id&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="n"&gt;key_version&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="n"&gt;aad&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;bytes&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;EnvelopeRecord&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+    &lt;span class="c1"&gt;# 256-bit DEK. In production, use a CSPRNG from a trusted library/runtime.&lt;/span&gt;
+    &lt;span class="n"&gt;plaintext_dek&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;os&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;urandom&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mi"&gt;32&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="n"&gt;nonce&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;os&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;urandom&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mi"&gt;12&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;  &lt;span class="c1"&gt;# 96-bit nonce is the common AES-GCM choice.&lt;/span&gt;
+
+    &lt;span class="k"&gt;try&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;aesgcm&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;AESGCM&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;plaintext_dek&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="n"&gt;ciphertext&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;aesgcm&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;encrypt&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;nonce&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;plaintext&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;aad&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="n"&gt;wrapped_dek&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;kms&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;wrap_key&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;plaintext_dek&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;key_id&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;key_version&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+        &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;EnvelopeRecord&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+            &lt;span class="n"&gt;algorithm&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;AES-256-GCM&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+            &lt;span class="n"&gt;key_id&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;key_id&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+            &lt;span class="n"&gt;key_version&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;key_version&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+            &lt;span class="n"&gt;nonce&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;nonce&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+            &lt;span class="n"&gt;ciphertext&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;ciphertext&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+            &lt;span class="n"&gt;wrapped_dek&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;wrapped_dek&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+        &lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;finally&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="c1"&gt;# Python bytes cannot be reliably zeroized because objects may be copied.&lt;/span&gt;
+        &lt;span class="c1"&gt;# For high-assurance systems, use platform/KMS features and avoid keeping&lt;/span&gt;
+        &lt;span class="c1"&gt;# plaintext keys in memory longer than necessary.&lt;/span&gt;
+        &lt;span class="k"&gt;del&lt;/span&gt; &lt;span class="n"&gt;plaintext_dek&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这里的 &lt;code&gt;aad&lt;/code&gt; 是 Additional Authenticated Data，可以放不敏感但必须绑定的上下文，例如 record id、tenant id、数据类型、版本号等。AAD 不会被加密，但会参与认证校验。读取时必须传入同样的 AAD，否则解密失败。&lt;/p&gt;
+&lt;h3 id="73-open-secret"&gt;7.3 读取：open secret&lt;/h3&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;open_secret&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;record&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;EnvelopeRecord&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;kms&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;KMSClient&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;aad&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;bytes&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="nb"&gt;bytes&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;record&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;algorithm&lt;/span&gt; &lt;span class="o"&gt;!=&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;AES-256-GCM&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="k"&gt;raise&lt;/span&gt; &lt;span class="ne"&gt;ValueError&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;unsupported algorithm: &lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;record&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;algorithm&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+    &lt;span class="n"&gt;plaintext_dek&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;kms&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;unwrap_key&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+        &lt;span class="n"&gt;record&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;wrapped_dek&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+        &lt;span class="n"&gt;record&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;key_id&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+        &lt;span class="n"&gt;record&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;key_version&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="p"&gt;)&lt;/span&gt;
+
+    &lt;span class="k"&gt;try&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;aesgcm&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;AESGCM&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;plaintext_dek&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;aesgcm&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;decrypt&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;record&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;nonce&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;record&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;ciphertext&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;aad&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;finally&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="k"&gt;del&lt;/span&gt; &lt;span class="n"&gt;plaintext_dek&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;如果 KMS 解包装失败，或者 AES-GCM 认证标签校验失败，这段代码会直接抛异常。调用方应该记录脱敏后的错误、告警、重试或返回通用错误，但不要回退到明文、默认 key 或旧算法。&lt;/p&gt;
+&lt;h3 id="74-demokms"&gt;7.4 测试用 DemoKMS&lt;/h3&gt;
+&lt;p&gt;再次强调：下面这个 &lt;code&gt;DemoKMS&lt;/code&gt; 只用于让示例能跑起来，不是生产做法。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;class&lt;/span&gt; &lt;span class="nc"&gt;DemoKMS&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+    &lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="fm"&gt;__init__&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="kc"&gt;None&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;_keks&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;dict&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="nb"&gt;tuple&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt; &lt;span class="nb"&gt;bytes&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;{}&lt;/span&gt;
+
+    &lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;create_kek&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;key_id&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;key_version&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="kc"&gt;None&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;_keks&lt;/span&gt;&lt;span class="p"&gt;[(&lt;/span&gt;&lt;span class="n"&gt;key_id&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;key_version&lt;/span&gt;&lt;span class="p"&gt;)]&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;os&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;urandom&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mi"&gt;32&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+    &lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;wrap_key&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;plaintext_dek&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;bytes&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;key_id&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;key_version&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="nb"&gt;bytes&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;kek&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;_keks&lt;/span&gt;&lt;span class="p"&gt;[(&lt;/span&gt;&lt;span class="n"&gt;key_id&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;key_version&lt;/span&gt;&lt;span class="p"&gt;)]&lt;/span&gt;
+        &lt;span class="n"&gt;nonce&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;os&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;urandom&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mi"&gt;12&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="n"&gt;wrapped&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;AESGCM&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;kek&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;encrypt&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;nonce&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;plaintext_dek&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="sa"&gt;b&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;dek-wrap&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;nonce&lt;/span&gt; &lt;span class="o"&gt;+&lt;/span&gt; &lt;span class="n"&gt;wrapped&lt;/span&gt;
+
+    &lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;unwrap_key&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;wrapped_dek&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;bytes&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;key_id&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;key_version&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="nb"&gt;bytes&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;kek&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="bp"&gt;self&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;_keks&lt;/span&gt;&lt;span class="p"&gt;[(&lt;/span&gt;&lt;span class="n"&gt;key_id&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;key_version&lt;/span&gt;&lt;span class="p"&gt;)]&lt;/span&gt;
+        &lt;span class="n"&gt;nonce&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;wrapped_dek&lt;/span&gt;&lt;span class="p"&gt;[:&lt;/span&gt;&lt;span class="mi"&gt;12&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+        &lt;span class="n"&gt;ciphertext&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;wrapped_dek&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;12&lt;/span&gt;&lt;span class="p"&gt;:]&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;AESGCM&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;kek&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;decrypt&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;nonce&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;ciphertext&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="sa"&gt;b&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;dek-wrap&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h3 id="75"&gt;7.5 跑一个完整例子&lt;/h3&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;main&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="kc"&gt;None&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;kms&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;DemoKMS&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+    &lt;span class="n"&gt;kms&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;create_kek&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;customer-secret-kek&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;v1&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+    &lt;span class="n"&gt;aad&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="sa"&gt;b&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;record_type=api_token;record_id=123&amp;quot;&lt;/span&gt;
+    &lt;span class="n"&gt;record&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;seal_secret&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+        &lt;span class="n"&gt;plaintext&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="sa"&gt;b&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;sk_live_not_a_real_secret&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+        &lt;span class="n"&gt;kms&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;kms&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+        &lt;span class="n"&gt;key_id&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;customer-secret-kek&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+        &lt;span class="n"&gt;key_version&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;v1&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+        &lt;span class="n"&gt;aad&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;aad&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="p"&gt;)&lt;/span&gt;
+
+    &lt;span class="n"&gt;recovered&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;open_secret&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;record&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;kms&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;aad&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;assert&lt;/span&gt; &lt;span class="n"&gt;recovered&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="sa"&gt;b&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;sk_live_not_a_real_secret&amp;quot;&lt;/span&gt;
+
+    &lt;span class="c1"&gt;# AAD 被篡改时，AES-GCM 会校验失败。&lt;/span&gt;
+    &lt;span class="k"&gt;try&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;open_secret&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;record&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;kms&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="sa"&gt;b&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;record_type=api_token;record_id=456&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;except&lt;/span&gt; &lt;span class="ne"&gt;Exception&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="nb"&gt;print&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;decrypt failed as expected&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+
+&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="vm"&gt;__name__&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;__main__&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;main&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这段代码的重点不是 &lt;code&gt;DemoKMS&lt;/code&gt;，而是几个工程约束：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;每份数据使用独立随机 DEK。&lt;/li&gt;
+&lt;li&gt;业务数据由 DEK 加密。&lt;/li&gt;
+&lt;li&gt;DEK 被 KMS 中的 KEK 包装后再保存。&lt;/li&gt;
+&lt;li&gt;数据库只保存密文和 wrapped DEK。&lt;/li&gt;
+&lt;li&gt;解密失败就失败，不做不安全回退。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h3 id="76-kek-rewrap"&gt;7.6 KEK 轮换时的 rewrap 示例&lt;/h3&gt;
+&lt;p&gt;主密钥轮换时，不需要重新加密业务密文，只要重新包装 DEK。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;rewrap_dek&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+    &lt;span class="n"&gt;record&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;EnvelopeRecord&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="n"&gt;kms&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;KMSClient&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="n"&gt;new_key_id&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="n"&gt;new_key_version&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;EnvelopeRecord&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;plaintext_dek&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;kms&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;unwrap_key&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+        &lt;span class="n"&gt;record&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;wrapped_dek&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+        &lt;span class="n"&gt;record&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;key_id&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+        &lt;span class="n"&gt;record&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;key_version&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="p"&gt;)&lt;/span&gt;
+
+    &lt;span class="k"&gt;try&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;new_wrapped_dek&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;kms&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;wrap_key&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+            &lt;span class="n"&gt;plaintext_dek&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+            &lt;span class="n"&gt;new_key_id&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+            &lt;span class="n"&gt;new_key_version&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+        &lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;EnvelopeRecord&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+            &lt;span class="n"&gt;algorithm&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;record&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;algorithm&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+            &lt;span class="n"&gt;key_id&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;new_key_id&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+            &lt;span class="n"&gt;key_version&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;new_key_version&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+            &lt;span class="n"&gt;nonce&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;record&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;nonce&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+            &lt;span class="n"&gt;ciphertext&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;record&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;ciphertext&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+            &lt;span class="n"&gt;wrapped_dek&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;new_wrapped_dek&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+        &lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;finally&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="k"&gt;del&lt;/span&gt; &lt;span class="n"&gt;plaintext_dek&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;可以看到，&lt;code&gt;ciphertext&lt;/code&gt; 没有变化。变的只是 &lt;code&gt;wrapped_dek&lt;/code&gt; 和 key metadata。这就是信封加密在轮换时省心的地方。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="8"&gt;8. 容易踩的坑&lt;/h2&gt;
+&lt;h3 id="kek"&gt;坑一：把 KEK 放进应用配置&lt;/h3&gt;
+&lt;p&gt;如果 KEK 放在配置文件、环境变量或数据库里，再喊 KMS 就有点像把保险柜门拆了，外面贴一张“高级安防”的标签。&lt;/p&gt;
+&lt;p&gt;KMS 的核心价值之一，是让 KEK 不离开它自己的安全边界。&lt;/p&gt;
+&lt;h3 id="wrapped-dek"&gt;坑二：把 wrapped DEK 当成普通字段随便打印&lt;/h3&gt;
+&lt;p&gt;wrapped DEK 不是明文密钥，但它仍然是敏感材料。日志、错误消息、监控标签里都不应该出现完整值。&lt;/p&gt;
+&lt;p&gt;别小看日志。很多事故不是黑客拍电影式入侵，而是某个 DEBUG 日志在凌晨三点诚实得过了头。&lt;/p&gt;
+&lt;h3 id="gcm-nonce"&gt;坑三：GCM nonce 重复&lt;/h3&gt;
+&lt;p&gt;如果使用 AES-GCM，nonce 不能在同一把 key 下重复。重复 nonce 不是“小瑕疵”，而是会严重破坏安全性。&lt;/p&gt;
+&lt;p&gt;简单做法是：每次加密生成新的随机 nonce，并把 nonce 和认证标签作为密文信封的一部分保存。不要自己发明半吊子的 nonce 规则。&lt;/p&gt;
+&lt;h3 id="kms_1"&gt;坑四：KMS 失败时偷偷降级&lt;/h3&gt;
+&lt;p&gt;有些系统为了“可用性”，会在 KMS 解密失败时尝试备用明文、旧算法、默认 key。&lt;/p&gt;
+&lt;p&gt;这基本等于给攻击者留了后门。安全关键路径要 fail closed：失败就失败，告警、重试、熔断、降级读缓存都可以讨论，但不能回退到不安全路径。&lt;/p&gt;
+&lt;h3 id="_4"&gt;坑五：只做加密，不做授权&lt;/h3&gt;
+&lt;p&gt;加密不是授权。能解密，不代表应该解密。&lt;/p&gt;
+&lt;p&gt;读取敏感数据前，仍然要检查调用方身份、作用域、租户边界、数据归属和业务权限。否则就是给错误的人发了一把正确的钥匙。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="9"&gt;9. 什么时候不需要信封加密&lt;/h2&gt;
+&lt;p&gt;不是所有字段都要上这套重装备。&lt;/p&gt;
+&lt;p&gt;如果只是低敏感度、短生命周期、可公开或可重新生成的数据，普通数据库加密、磁盘加密、访问控制和日志脱敏可能已经够用。&lt;/p&gt;
+&lt;p&gt;信封加密适合这些场景：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;数据本身高度敏感，例如密码、Token、私钥、证书、支付或身份相关材料。&lt;/li&gt;
+&lt;li&gt;数据需要长期保存，不能简单丢弃。&lt;/li&gt;
+&lt;li&gt;数据库、备份、分析链路、运维访问存在泄露风险。&lt;/li&gt;
+&lt;li&gt;有合规、审计、轮换、租户隔离要求。&lt;/li&gt;
+&lt;li&gt;需要把密钥管理职责从业务代码中拆出去。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;如果你的系统只是保存用户头像 URL，硬套信封加密，多半是给自己添堵。安全设计不是把所有门都焊死，而是知道哪扇门后面真有值钱东西。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="10"&gt;10. 设计检查清单&lt;/h2&gt;
+&lt;p&gt;如果你正在设计一个保存敏感数据的服务，可以用下面这张表先自查。&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;检查项&lt;/th&gt;
+&lt;th&gt;建议&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;明文数据是否落库&lt;/td&gt;
+&lt;td&gt;不落库&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;明文 DEK 是否持久化&lt;/td&gt;
+&lt;td&gt;不持久化&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;KEK 是否离开 KMS&lt;/td&gt;
+&lt;td&gt;不离开&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;日志是否可能包含 secret、DEK、wrapped DEK&lt;/td&gt;
+&lt;td&gt;默认脱敏，必要时禁止打印&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;加密算法是否是 AEAD&lt;/td&gt;
+&lt;td&gt;优先使用成熟库里的 AES-GCM 或 ChaCha20-Poly1305&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;nonce/IV 是否正确生成&lt;/td&gt;
+&lt;td&gt;每次加密唯一，避免复用&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;key metadata 是否保存&lt;/td&gt;
+&lt;td&gt;保存 key id、version、algorithm，便于解密和轮换&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;KMS 失败时怎么办&lt;/td&gt;
+&lt;td&gt;fail closed，并配套重试、告警和恢复流程&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;是否有 rewrap 策略&lt;/td&gt;
+&lt;td&gt;支持主密钥轮换，不重加密业务数据&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;是否有访问审计&lt;/td&gt;
+&lt;td&gt;记录关键 KMS 操作和敏感数据访问&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;hr&gt;
+&lt;h2 id="_5"&gt;总结&lt;/h2&gt;
+&lt;p&gt;KMS 和信封加密解决的不是“如何调用一个加密函数”这么小的问题，而是一个更现实的问题：当系统越来越大、数据越来越敏感、人越来越多、事故越来越难预测时，怎样让密钥不失控。&lt;/p&gt;
+&lt;p&gt;我的经验是，安全设计最怕两个极端：一个是“先明文跑起来，以后再说”；另一个是“照着安全名词堆满架构图”。前者容易欠债，后者容易自嗨。&lt;/p&gt;
+&lt;p&gt;比较靠谱的做法是：先明确威胁模型，再把边界画清楚。数据库可以被拿走，应用日志可能出错，配置可能泄露，KMS 也可能短暂不可用。设计不是假装这些事不会发生，而是让它们发生时不要一锅端。&lt;/p&gt;
+&lt;p&gt;一句话收尾：&lt;strong&gt;KMS 负责看住主钥匙，信封加密负责把风险拆小；两者合起来，才是能在生产环境里站得住的敏感数据保护方案。&lt;/strong&gt;&lt;/p&gt;
+&lt;h3 id="5_1"&gt;明天可以做的 5 件事&lt;/h3&gt;
+&lt;ol&gt;
+&lt;li&gt;列出系统里所有敏感字段，按风险分级。&lt;/li&gt;
+&lt;li&gt;检查是否有密钥、Token、secret 出现在配置、日志、脚本或测试数据里。&lt;/li&gt;
+&lt;li&gt;确认高敏感数据是否使用 AEAD 加密，而不是自制算法。&lt;/li&gt;
+&lt;li&gt;设计 DEK/KEK 分层和 key metadata，不要只存一段裸密文。&lt;/li&gt;
+&lt;li&gt;写清楚 KMS 不可用、key 轮换、解密失败时的系统行为。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;如果你只能先做一件事，就从日志和配置查起。很多安全事故，不是输给密码学，而是输给了“我以为没人会看到这个文件”。&lt;/p&gt;
+&lt;hr/&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Tech"/><category term="security"/><category term="cryptography"/><category term="kms"/><category term="envelope-encryption"/></entry><entry><title>Markpad：我给 Markdown 装了一个本地驾驶舱</title><link href="https://www.fanyamin.com/markpad-local-markdown-reader-translator.html" rel="alternate"/><published>2026-06-27T20:49:00+08:00</published><updated>2026-06-27T21:27:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-06-27:/markpad-local-markdown-reader-translator.html</id><summary type="html">&lt;p&gt;Markdown 写起来很舒服，但读起来、预览起来、跨中英文翻译起来并不总是舒服。Markpad 是我做的一个本地 Markdown Web 工具，把文件索引、左右分栏编辑预览、主题、图表渲染、实时分享和 LLM 翻译放在一起，解决自己每天写文档时的一个小但扎人的痛点。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;Markpad：我给 Markdown 装了一个本地驾驶舱&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;Tech&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Status&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;v0.1&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;2026-06-27&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 id="markdown"&gt;Markdown 很好，但别假装它没有痛点&lt;/h2&gt;
+&lt;p&gt;我写东西越来越离不开 Markdown。博客、README、设计笔记、周报草稿、AI prompt、会议纪要，基本都能塞进去。它像一把趁手的小刀，轻、快、没有太多仪式感。&lt;/p&gt;
+&lt;p&gt;问题是，小刀再趁手，也不等于拿它切西瓜就舒服。&lt;/p&gt;
+&lt;p&gt;Markdown 最大的优点是“好写”，可它并不天然“好看”。你在终端里 &lt;code&gt;vim README.md&lt;/code&gt; 写得很顺，回头想认真读一遍，眼睛就开始抗议：标题层级不够直观，表格挤成一坨，Mermaid 图还躺在代码块里装睡。更麻烦的是，现在很多内容都要在中文和英文之间来回切换，复制到网页翻译，再复制回来，格式一不小心就散架。&lt;/p&gt;
+&lt;p&gt;所以我做了一个小工具：&lt;code&gt;markpad&lt;/code&gt;。&lt;/p&gt;
+&lt;p&gt;一句话：&lt;strong&gt;Markpad 是一个本地 Markdown reader / editor / translator，把“文件索引 + 左右分栏编辑预览 + 图表渲染 + 实时分享 + LLM 翻译”放进浏览器里，但文件仍然留在本地。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;它不是要取代 VS Code、Typora 或 Obsidian。我的目标更朴素：打开一个有很多 Markdown 的目录，能舒服地读，直观地改，必要时一键翻译，不要在工具之间来回搬砖。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="1"&gt;1. 我到底被什么问题折磨了&lt;/h2&gt;
+&lt;p&gt;这个痛点不是“没有 Markdown 编辑器”。编辑器太多了，少说也够排一支篮球队。&lt;/p&gt;
+&lt;p&gt;真正烦人的是几个小问题叠在一起：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;场景&lt;/th&gt;
+&lt;th&gt;表面问题&lt;/th&gt;
+&lt;th&gt;实际消耗&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;翻 README 或设计文档&lt;/td&gt;
+&lt;td&gt;源码和预览来回切&lt;/td&gt;
+&lt;td&gt;注意力被打断&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;看一堆 Markdown 笔记&lt;/td&gt;
+&lt;td&gt;不知道文件在哪、哪个更新过&lt;/td&gt;
+&lt;td&gt;搜索和打开成本高&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;改表格、列表、标题&lt;/td&gt;
+&lt;td&gt;写完才发现渲染效果不好&lt;/td&gt;
+&lt;td&gt;来回试错&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;文档里有 Mermaid / PlantUML&lt;/td&gt;
+&lt;td&gt;代码块不直观&lt;/td&gt;
+&lt;td&gt;图和文字脱节&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;中文英文互译&lt;/td&gt;
+&lt;td&gt;复制到翻译工具再粘回来&lt;/td&gt;
+&lt;td&gt;格式、链接、代码块容易坏&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;临时给同事看一个 Markdown&lt;/td&gt;
+&lt;td&gt;发文件、截图或贴聊天&lt;/td&gt;
+&lt;td&gt;对方看不到最新版本&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;单独看，每个问题都不大。合在一起，就像鞋里进了一颗小石子。你说它不严重吧，它又能让你一路走得别扭。&lt;/p&gt;
+&lt;p&gt;我以前的做法也很典型：写的时候用编辑器，看的时候用预览插件，翻译的时候再开一个 LLM 页面。最后一天结束，浏览器 tab 像韭菜一样长了一茬又一茬。&lt;/p&gt;
+&lt;p&gt;Markpad 想解决的，就是这类不致命、但天天烦你的摩擦。它们不像线上事故那样惊心动魄，可一天硌你十次，也够人心烦。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="2-markpad"&gt;2. Markpad 是什么&lt;/h2&gt;
+&lt;p&gt;Markpad 本质上很朴素：一个 Python 3.11+ 的本地 CLI 工具。进入一个 Markdown 目录后，运行：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;markpad
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;它会启动一个本地 Web 服务，默认监听在：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;127.0.0.1:9526
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;如果 &lt;code&gt;9526&lt;/code&gt; 被占用，它会自动尝试 &lt;code&gt;9527&lt;/code&gt;、&lt;code&gt;9528&lt;/code&gt;，直到找到可用端口。浏览器打开后，大概就是三块区域：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;左边是 Markdown 文件索引，递归扫描当前目录和子目录。&lt;/li&gt;
+&lt;li&gt;中间是 Markdown 源码编辑区。&lt;/li&gt;
+&lt;li&gt;右边是 HTML 预览区。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;也可以显式指定目录：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;markpad&lt;span class="w"&gt; &lt;/span&gt;/path/to/markdown
+markpad&lt;span class="w"&gt; &lt;/span&gt;--root&lt;span class="w"&gt; &lt;/span&gt;/path/to/markdown
+markpad&lt;span class="w"&gt; &lt;/span&gt;serve&lt;span class="w"&gt; &lt;/span&gt;/path/to/markdown
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;如果你只想打开某个文件，也可以直接传文件路径：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;markpad&lt;span class="w"&gt; &lt;/span&gt;docs/guide.md
+markpad&lt;span class="w"&gt; &lt;/span&gt;docs/guide.md&lt;span class="w"&gt; &lt;/span&gt;--open
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;code&gt;--open&lt;/code&gt; 不是必需参数，它只是让 Markpad 启动后自动打开默认浏览器。不加也可以，命令行会打印访问地址，你自己复制到浏览器即可。&lt;/p&gt;
+&lt;p&gt;绝对路径也支持：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;markpad&lt;span class="w"&gt; &lt;/span&gt;/Users/me/notes/today.md&lt;span class="w"&gt; &lt;/span&gt;--open
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;它会把这个文件放到左侧源码、右侧预览的同一个工作台里。对我来说，这一点很重要：我不是每次都想启动一个“大知识库”，很多时候只是想把某个 Markdown 文件好好看一眼、改两段、翻译一节。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="3"&gt;3. 为什么不是直接用现成工具&lt;/h2&gt;
+&lt;p&gt;这类问题当然不是没人管。现成工具能解决一部分，而且不少工具做得很好。&lt;/p&gt;
+&lt;p&gt;VS Code 很强，插件生态也丰富；Obsidian 很适合个人知识库；Typora 写作体验也很好。问题是，我当时想要的是一个更“窄”的工具：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;不要求建立 vault。&lt;/li&gt;
+&lt;li&gt;不要求打开一个完整 IDE。&lt;/li&gt;
+&lt;li&gt;不要求把文件导入某个系统。&lt;/li&gt;
+&lt;li&gt;不要求把文档上传到外部服务。&lt;/li&gt;
+&lt;li&gt;最好一条命令在任意目录里启动。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这就是 Markpad 的取舍：&lt;strong&gt;它不是重型编辑器，而是本地 Markdown 目录的临时驾驶舱。&lt;/strong&gt; 需要的时候开一下，用完就关，不跟你抢项目主角的位置。&lt;/p&gt;
+&lt;p&gt;这有点像修车。你不一定每次都要把车开进 4S 店。有时候你只是想打开引擎盖，看一下机油尺，顺手拧紧一个螺丝。Markpad 做的就是这个“打开引擎盖”的动作。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="4"&gt;4. 几个我最常用的功能&lt;/h2&gt;
+&lt;h3 id="41-markdown"&gt;4.1 文件索引：先把 Markdown 找出来&lt;/h3&gt;
+&lt;p&gt;Markpad 会递归扫描 Markdown 文件，支持 &lt;code&gt;.md&lt;/code&gt;、&lt;code&gt;.markdown&lt;/code&gt;、&lt;code&gt;.mdown&lt;/code&gt;。像 &lt;code&gt;.git&lt;/code&gt;、&lt;code&gt;.venv&lt;/code&gt;、&lt;code&gt;node_modules&lt;/code&gt;、&lt;code&gt;dist&lt;/code&gt;、&lt;code&gt;__pycache__&lt;/code&gt; 这些明显不该打扰你的目录，它会绕过去。&lt;/p&gt;
+&lt;p&gt;这听起来很小，但很实用。很多项目里的 Markdown 不只在根目录：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;README.md
+docs/design.md
+docs/api/auth.md
+notes/meeting/2026-06-27.md
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;打开后左侧有一个文件树，搜索框可以过滤文件。大目录里找文档，终于不用在终端和编辑器之间反复横跳。&lt;/p&gt;
+&lt;h3 id="42"&gt;4.2 左右分栏：源码和效果不要分居&lt;/h3&gt;
+&lt;p&gt;Markdown 最大的问题之一，是“源码很清爽，效果要脑补”。&lt;/p&gt;
+&lt;p&gt;Markpad 的默认工作方式是左边写、右边看。改一段，预览就跟着变。你可以隐藏文件树、隐藏源码区、隐藏预览区，也可以调整分栏宽度。&lt;/p&gt;
+&lt;p&gt;我常用的节奏是：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;写作时：左边源码宽一点，右边预览检查结构。&lt;/li&gt;
+&lt;li&gt;审稿时：隐藏源码，只看预览，避免被 Markdown 符号干扰。&lt;/li&gt;
+&lt;li&gt;改格式时：左右对半，重点看表格、列表、代码块。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这不是花哨功能，而是让大脑少切几次上下文。人脑不是线程池，切多了也会抖，尤其是年纪上来以后。&lt;/p&gt;
+&lt;h3 id="43"&gt;4.3 阅读主题：让眼睛少加班&lt;/h3&gt;
+&lt;p&gt;Markpad 现在有三个阅读主题：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;主题&lt;/th&gt;
+&lt;th&gt;适合场景&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;Clear&lt;/td&gt;
+&lt;td&gt;普通白天阅读，清爽直接&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Paper&lt;/td&gt;
+&lt;td&gt;长文阅读，偏纸张质感&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Dark&lt;/td&gt;
+&lt;td&gt;晚上或低光环境&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;设置会保存在浏览器的 &lt;code&gt;localStorage&lt;/code&gt; 里。这个设计没有什么技术含量，但很符合老程序员的养生需求：代码可以硬，眼睛不能硬扛。&lt;/p&gt;
+&lt;h3 id="44"&gt;4.4 图表渲染：让图真的像图&lt;/h3&gt;
+&lt;p&gt;很多技术文档里都有 Mermaid 或 PlantUML。直接看源码当然也能看懂，但那种感觉像读菜谱想象红烧肉，理论上没问题，心理上差点意思。&lt;/p&gt;
+&lt;p&gt;Markpad 支持 Mermaid fenced block 在浏览器里渲染：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="sb"&gt;```mermaid&lt;/span&gt;
+&lt;span class="s"&gt;sequenceDiagram&lt;/span&gt;
+&lt;span class="s"&gt;  participant User&lt;/span&gt;
+&lt;span class="s"&gt;  participant Markpad&lt;/span&gt;
+&lt;span class="s"&gt;  User-&amp;gt;&amp;gt;Markpad: Open markdown folder&lt;/span&gt;
+&lt;span class="s"&gt;  Markpad--&amp;gt;&amp;gt;User: File index + live preview&lt;/span&gt;
+&lt;span class="sb"&gt;```&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;PlantUML 也支持，不过需要本地有 plantuml 命令&lt;/p&gt;
+&lt;p&gt;这也是一个有意的边界：能在本地解决的，就在本地解决。为了渲染一张图就把文档送到外部服务，我心里总有点不踏实。&lt;/p&gt;
+&lt;h3 id="45-llm-markdown"&gt;4.5 LLM 翻译和改写：别把 Markdown 格式翻烂&lt;/h3&gt;
+&lt;p&gt;这是最贴近我痛点的部分。&lt;/p&gt;
+&lt;p&gt;Markpad 的工具栏里有 &lt;code&gt;Translate&lt;/code&gt;。如果选中了文本，它就翻译选中部分；如果没有选中，就翻译整个编辑器内容。翻译结果会流式写回编辑器，最后刷新预览。&lt;/p&gt;
+&lt;p&gt;它使用 OpenAI-compatible 的 Chat Completions API，配置来自环境变量或当前目录下的 &lt;code&gt;.env&lt;/code&gt;：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nv"&gt;LLM_BASE_URL&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;https://api.example.com/v1
+&lt;span class="nv"&gt;LLM_MODEL&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;your-model
+&lt;span class="nv"&gt;LLM_API_KEY&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;your-api-key
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;系统提示里明确要求保留 Markdown 结构、代码块、front matter、链接、表格和图表代码。也就是说，它不是把文档当普通文本翻译，而是尽量把 Markdown 当 Markdown 处理。&lt;/p&gt;
+&lt;p&gt;旁边还有一个 LLM edit 输入框，可以对选中内容或全文做改写，比如：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;把这一段翻译成英文，语气自然一点，保留代码块和链接
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这对我写中英文文档很有用。以前的流程是：复制、打开 LLM、粘贴、提示“保留 Markdown”、复制回来、检查格式。听起来只多几步，实际很容易把写作节奏打断。现在至少在一个界面里完成，少搬几次砖。&lt;/p&gt;
+&lt;h3 id="46"&gt;4.6 临时分享：让同事看到正在看的那一版&lt;/h3&gt;
+&lt;p&gt;还有一个很顺手的场景：&lt;strong&gt;临时把一个 Markdown 文件分享给同事看&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;比如你刚写完一份设计草稿，想让同事快速看一下结构、图表和段落。发 Markdown 文件，对方未必有合适预览；发截图，改一处就要重截；复制一大段到聊天窗口里，格式经常当场去世。&lt;/p&gt;
+&lt;p&gt;Markpad 本身是一个 Web 服务，所以在可信内网里可以临时绑定到可访问地址：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;markpad&lt;span class="w"&gt; &lt;/span&gt;serve&lt;span class="w"&gt; &lt;/span&gt;docs/design.md&lt;span class="w"&gt; &lt;/span&gt;--host&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="m"&gt;0&lt;/span&gt;.0.0.0&lt;span class="w"&gt; &lt;/span&gt;--port&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="m"&gt;9526&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;然后把链接发给同事：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;http://&amp;lt;your-ip&amp;gt;:9526/docs/design.md
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;你本地保存后，对方刷新浏览器就能看到更新后的渲染效果。对于设计讨论、README 预览、会议纪要同步，这比“我再发你一个最新版”省心得多。&lt;/p&gt;
+&lt;p&gt;不过这里要划重点：这适合&lt;strong&gt;临时、小范围、可信网络&lt;/strong&gt;下使用。Markpad 目前不是带登录、权限、审计的在线文档平台。你如果用 &lt;code&gt;--host 0.0.0.0&lt;/code&gt; 暴露服务，就要默认对方能访问这个 Web UI，也可能触达编辑、保存、删除、关闭服务这些操作。分享前先确认网络范围和文档敏感度，别把临时分享玩成临时事故。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="5"&gt;5. 工程上我比较在意的几个边界&lt;/h2&gt;
+&lt;p&gt;小工具也有边界。边界不清楚，小工具很快就会长成一个谁也不敢碰的平台。很多系统不是被需求打败的，是被“顺手再加一个”熬死的。&lt;/p&gt;
+&lt;h3 id="51"&gt;5.1 本地优先&lt;/h3&gt;
+&lt;p&gt;Markpad 默认绑定 &lt;code&gt;127.0.0.1&lt;/code&gt;。也就是说，它不是默认暴露到局域网的服务。它读写的是你指定目录里的 Markdown 文件，所以这个默认值很重要。&lt;/p&gt;
+&lt;p&gt;当然，CLI 支持 &lt;code&gt;--host&lt;/code&gt;，这让临时分享 Markdown 给同事很方便。但我的建议是：除非你清楚自己在做什么，否则保持本地访问即可。真要分享，也优先在可信内网里短时间打开，用完就关。&lt;/p&gt;
+&lt;h3 id="52"&gt;5.2 路径要管住&lt;/h3&gt;
+&lt;p&gt;服务端对相对路径做了限制，避免通过 &lt;code&gt;../&lt;/code&gt; 逃出内容根目录。普通文件读写只允许在选定 root 内发生。&lt;/p&gt;
+&lt;p&gt;同时，它也支持打开绝对路径的单个 Markdown 文件。这是为了方便处理“临时文件”场景，但也做了扩展名检查，只接受 Markdown 文件。&lt;/p&gt;
+&lt;p&gt;一句话：工具要方便，但不能方便到把家门钥匙挂在门口。&lt;/p&gt;
+&lt;h3 id="53"&gt;5.3 渲染要消毒&lt;/h3&gt;
+&lt;p&gt;Markdown 转 HTML 后会经过 &lt;code&gt;bleach&lt;/code&gt; 清洗，只放行必要的标签和属性。Markdown 预览工具很容易让人放松警惕，尤其是当你打开不完全信任的文档时。&lt;/p&gt;
+&lt;p&gt;Markpad 不是浏览器安全沙箱的替代品，但至少不应该把“预览 Markdown”变成“随便执行 HTML”。&lt;/p&gt;
+&lt;h3 id="54"&gt;5.4 密钥不要进仓库&lt;/h3&gt;
+&lt;p&gt;LLM 翻译需要 &lt;code&gt;LLM_API_KEY&lt;/code&gt;。如果你把配置写进 &lt;code&gt;.env&lt;/code&gt;，请确保它不要进 Git。&lt;/p&gt;
+&lt;p&gt;我建议在项目根目录加好 &lt;code&gt;.gitignore&lt;/code&gt;，或者只在 shell 里临时 export：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nb"&gt;export&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nv"&gt;LLM_BASE_URL&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;https://api.example.com/v1
+&lt;span class="nb"&gt;export&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nv"&gt;LLM_MODEL&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;your-model
+&lt;span class="nb"&gt;export&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nv"&gt;LLM_API_KEY&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;your-api-key
+markpad
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;省事不能省到把 token 贴到墙上。墙可能不会说话，Git 历史会。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="6"&gt;6. 安装和自检&lt;/h2&gt;
+&lt;p&gt;项目里提供了一个安装脚本：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;./install.sh
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;它会检查 Python 3.11+ 和 Poetry，构建包，安装到：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;~/.local/share/markpad/venv
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;并把 &lt;code&gt;markpad&lt;/code&gt; 命令链接到：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;~/.local/bin
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;安装后可以检查：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;markpad&lt;span class="w"&gt; &lt;/span&gt;--help
+markpad&lt;span class="w"&gt; &lt;/span&gt;doctor
+markpad&lt;span class="w"&gt; &lt;/span&gt;doctor&lt;span class="w"&gt; &lt;/span&gt;--format&lt;span class="w"&gt; &lt;/span&gt;json
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;卸载也走同一个脚本：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;./install.sh&lt;span class="w"&gt; &lt;/span&gt;uninstall
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;开发时常用命令也很直接：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;poetry&lt;span class="w"&gt; &lt;/span&gt;install
+poetry&lt;span class="w"&gt; &lt;/span&gt;run&lt;span class="w"&gt; &lt;/span&gt;markpad&lt;span class="w"&gt; &lt;/span&gt;--help
+poetry&lt;span class="w"&gt; &lt;/span&gt;run&lt;span class="w"&gt; &lt;/span&gt;markpad
+poetry&lt;span class="w"&gt; &lt;/span&gt;run&lt;span class="w"&gt; &lt;/span&gt;ruff&lt;span class="w"&gt; &lt;/span&gt;check&lt;span class="w"&gt; &lt;/span&gt;.
+poetry&lt;span class="w"&gt; &lt;/span&gt;run&lt;span class="w"&gt; &lt;/span&gt;ruff&lt;span class="w"&gt; &lt;/span&gt;format&lt;span class="w"&gt; &lt;/span&gt;.
+poetry&lt;span class="w"&gt; &lt;/span&gt;run&lt;span class="w"&gt; &lt;/span&gt;pytest
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;技术栈没搞复杂：FastAPI + Uvicorn 做本地服务，&lt;code&gt;markdown-it-py&lt;/code&gt; 做 Markdown 渲染，&lt;code&gt;bleach&lt;/code&gt; 做 HTML 清洗，&lt;code&gt;watchfiles&lt;/code&gt; 和 WebSocket 处理文件变化，前端就是普通 HTML/CSS/JavaScript。&lt;/p&gt;
+&lt;p&gt;朴素有朴素的好处。工具越小，越容易理解，也越容易修。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="7"&gt;7. 它不是什么&lt;/h2&gt;
+&lt;p&gt;我得把丑话说在前面。&lt;/p&gt;
+&lt;p&gt;Markpad 现在不是完整的知识管理系统，不负责双链、标签图谱、同步、多端协作，也不负责发布博客。它也不是多人协同编辑器，不是复杂 WYSIWYG 编辑器，更不打算把 Markdown 变成 Word。&lt;/p&gt;
+&lt;p&gt;至少目前，我还不想把它做成一个 Markdown 在线实时多人编辑工具。那条路当然有价值，但一开这个口，用户登录、权限控制、冲突合并、历史版本、审计日志这些“平台级家伙事”都会排队进门。到那时，它就不是小工具了，是另一份工作。&lt;/p&gt;
+&lt;p&gt;Markdown 编辑工具栏也还没有加。不是不能做，而是我自己现在更习惯直接写源码，点按钮反而慢半拍。不过，如果你确实需要这些能力，比如多人协同、按钮式插入标题/表格/链接、评论批注、只读分享模式，尽管告诉我。我可以考虑把真正高频的需求加进去，前提是它不把这个小工具变成一艘航空母舰。&lt;/p&gt;
+&lt;p&gt;它更像一个“本地 Markdown 工作台”：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;读：把 Markdown 渲染成舒服的 HTML。&lt;/li&gt;
+&lt;li&gt;找：把目录里的 Markdown 建索引。&lt;/li&gt;
+&lt;li&gt;改：左右分栏编辑和保存。&lt;/li&gt;
+&lt;li&gt;看图：渲染 Mermaid / PlantUML。&lt;/li&gt;
+&lt;li&gt;翻译：通过 LLM 保留结构地翻译或改写。&lt;/li&gt;
+&lt;li&gt;分享：在可信网络里临时把当前 Markdown 预览给同事看。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;如果以后继续扩展，我会优先考虑这些方向：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;更好的全文搜索。&lt;/li&gt;
+&lt;li&gt;更细的中英文翻译选项，比如目标语言、术语表、风格预设。&lt;/li&gt;
+&lt;li&gt;更稳的图片和附件处理。&lt;/li&gt;
+&lt;li&gt;更完善的快捷键。&lt;/li&gt;
+&lt;li&gt;更好的移动端阅读体验。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;但我会尽量克制。工具最怕“初心是瑞士军刀，结局是军火库”。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="8"&gt;8. 一个典型工作流&lt;/h2&gt;
+&lt;p&gt;假设我有一个博客目录或项目文档目录：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nb"&gt;cd&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;~/workspace/walter/wfblog
+markpad&lt;span class="w"&gt; &lt;/span&gt;content/journal
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;然后我会：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;在左侧搜索最近的草稿。&lt;/li&gt;
+&lt;li&gt;打开后先只看右侧预览，检查结构是否顺。&lt;/li&gt;
+&lt;li&gt;需要改句子时打开左侧编辑区，边改边看。&lt;/li&gt;
+&lt;li&gt;遇到英文段落，选中后点 &lt;code&gt;Translate&lt;/code&gt;，翻成中文草稿。&lt;/li&gt;
+&lt;li&gt;对翻译结果再用 LLM edit 提示“更像技术博客，不要翻译腔”。&lt;/li&gt;
+&lt;li&gt;保存文件，回到原来的 Git 流程里提交。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;如果要给同事实时看某个文件，我会单独启动一个临时服务：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;markpad&lt;span class="w"&gt; &lt;/span&gt;serve&lt;span class="w"&gt; &lt;/span&gt;docs/design.md&lt;span class="w"&gt; &lt;/span&gt;--host&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="m"&gt;0&lt;/span&gt;.0.0.0&lt;span class="w"&gt; &lt;/span&gt;--port&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="m"&gt;9526&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;讨论结束后，直接关掉服务。它的定位就是“临时给人看一眼”，不是长期挂着当文档站。&lt;/p&gt;
+&lt;p&gt;这个流程没有什么惊天动地的地方。它的价值就在于：少开几个窗口，少复制几次，少丢几次格式。工具顺不顺手，往往就藏在这些小地方。&lt;/p&gt;
+&lt;p&gt;很多效率工具并不是让你一小时省下五十分钟，而是每天少烦十次。十次不烦，心情就不一样。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="markdown_1"&gt;总结：给 Markdown 一张舒服的工作台&lt;/h2&gt;
+&lt;p&gt;Markdown 的美德是简单，但简单不等于只能忍受粗糙。&lt;/p&gt;
+&lt;p&gt;我做 Markpad，是因为自己每天都在写 Markdown，也每天都被这些小摩擦硌一下：看起来不够直观，图表不够直观，中英文互译容易把格式弄乱，临时发给同事看又总差那么一口气。与其继续抱怨，不如写个小工具，把最常用的动作放到一个本地 Web 工作台里。&lt;/p&gt;
+&lt;p&gt;一句话：&lt;strong&gt;Markpad 不是 Markdown 世界的新大陆，它只是我给自己修的一条小路。路不宽，但每天走，省脚。&lt;/strong&gt;&lt;/p&gt;
+&lt;h3 id="_1"&gt;使用清单&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;[ ] 进入 Markdown 目录，运行 &lt;code&gt;markpad&lt;/code&gt; 或 &lt;code&gt;markpad --root /path/to/docs&lt;/code&gt;。&lt;/li&gt;
+&lt;li&gt;[ ] 用左侧文件树和搜索框快速定位文档。&lt;/li&gt;
+&lt;li&gt;[ ] 用左右分栏检查源码和预览是否一致。&lt;/li&gt;
+&lt;li&gt;[ ] 文档里有 Mermaid / PlantUML 时确认图能正常渲染。&lt;/li&gt;
+&lt;li&gt;[ ] 需要翻译时配置 &lt;code&gt;LLM_BASE_URL&lt;/code&gt;、&lt;code&gt;LLM_MODEL&lt;/code&gt;、&lt;code&gt;LLM_API_KEY&lt;/code&gt;。&lt;/li&gt;
+&lt;li&gt;[ ] 需要临时分享时，用 &lt;code&gt;markpad serve file.md --host 0.0.0.0 --port 9526&lt;/code&gt;，只在可信网络中短时间打开。&lt;/li&gt;
+&lt;li&gt;[ ] 不要把 &lt;code&gt;.env&lt;/code&gt; 和 API key 提交进 Git。&lt;/li&gt;
+&lt;li&gt;[ ] 对外打开 &lt;code&gt;--host&lt;/code&gt; 前，先确认访问范围和文件读写风险。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id="_2"&gt;适合谁&lt;/h3&gt;
+&lt;p&gt;如果你符合下面几条，Markpad 可能对你有用：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;你有一堆散落在项目里的 Markdown 文档。&lt;/li&gt;
+&lt;li&gt;你经常在“源码”和“预览”之间切换。&lt;/li&gt;
+&lt;li&gt;你写技术文档时会用 Mermaid 或 PlantUML。&lt;/li&gt;
+&lt;li&gt;你经常需要中英文互译，还想保住 Markdown 格式。&lt;/li&gt;
+&lt;li&gt;你经常需要把正在写的 Markdown 草稿临时分享给同事看。&lt;/li&gt;
+&lt;li&gt;你偏好本地文件、本地服务，不想为了看文档先上传到某个平台。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;如果你只是偶尔写一篇 README，现成编辑器已经够好；如果你需要完整知识管理，Obsidian 之类的工具更合适。工具选型和写代码一样，最怕拿高射炮打蚊子，也怕拿苍蝇拍打飞机。&lt;/p&gt;
+&lt;p&gt;愿每个写文档的人，都少一点格式搬运，多一点顺手成章。&lt;/p&gt;
+&lt;hr/&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Tech"/><category term="markpad"/><category term="markdown"/><category term="editor"/><category term="preview"/><category term="llm"/><category term="translation"/><category term="sharing"/><category term="local-first"/><category term="python"/><category term="fastapi"/></entry><entry><title>老程序员的护城河：思想与方法，比技巧更耐用</title><link href="https://www.fanyamin.com/old-programmer-moat.html" rel="alternate"/><published>2026-06-27T10:30:00+08:00</published><updated>2026-06-27T10:55:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-06-27:/old-programmer-moat.html</id><summary type="html">&lt;p&gt;老程序员真正的护城河，不是会几道 LeetCode、背几个算法，而是胸中的丘壑、心中的准则、脑子里的体系，以及知道自己几斤几两的清醒。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
 &lt;thead&gt;
 &lt;tr&gt;
 &lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
@@ -42019,1510 +43561,4 @@ skinparam backgroundColor #FEFEFE
 &lt;li&gt;SPIFFE and SPIRE: https://spiffe.io/docs/latest/spiffe-about/overview/&lt;/li&gt;
 &lt;/ul&gt;
 &lt;hr/&gt;
-&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Journal"/><category term="journal"/><category term="blog"/><category term="security"/><category term="cloud"/><category term="kubernetes"/><category term="iam"/><category term="workload identity"/></entry><entry><title>如何写好一个 AI Skill：让 AI Agent 从"什么都会"变成"真的能干活"</title><link href="https://www.fanyamin.com/2026-03-17-ai-skill-writing.html" rel="alternate"/><published>2026-03-17T14:00:00+08:00</published><updated>2026-03-17T14:00:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-03-17:/2026-03-17-ai-skill-writing.html</id><summary type="html">&lt;p&gt;AI Agent 就像你新招的天才实习生——什么都学过，但到了你的项目里，连 CI 怎么跑都不知道。AI Skill 就是那份"入职培训手册"，把你的领域知识、工作流程、最佳实践打包成 AI 能理解和执行的模块。本文拆解写好 AI Skill 的方法、原则、示例和自检清单。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
-&lt;th&gt;如何写好一个 AI Skill&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;Tech&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Version&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;v1.0&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;2026-03-17&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;details&gt;
-&lt;summary&gt;大纲&lt;/summary&gt;
-
-1. 扎心场景：AI 什么都会，但什么都不精
-2. What：AI Skill 到底是什么
-3. Why：为什么你需要写 Skill
-4. How：六步法写出一个好 Skill
-5. 好 Skill 长什么样（真实案例拆解）
-6. 写 Skill 的核心原则
-7. 常见反模式
-8. 行动清单 + 思维导图
-9. 扩展阅读
-
-&lt;/details&gt;
-
-&lt;hr&gt;
-&lt;h2 id="ai-agent"&gt;一、你的 AI Agent 是个"高学历文盲"&lt;/h2&gt;
-&lt;p&gt;上周我让 Claude 帮我处理一个 PDF 表单——填写一份报销单。它很聪明，知道 PDF 的原理，能侃侃而谈 PDF 1.7 规范里 AcroForm 和 XFA 的区别。但你猜怎么着？它不知道我用的是 &lt;code&gt;pypdf&lt;/code&gt; 还是 &lt;code&gt;pdftk&lt;/code&gt;，不知道我的表单字段名叫什么，不知道填完之后要存到哪个目录。&lt;/p&gt;
-&lt;p&gt;它就像你从清华招来的实习生：微积分能手推，但公司的 Git 分支策略、CI/CD 流水线、代码规范，一概不知。&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;这不是 AI 的问题，是你没给它"入职培训"。&lt;/strong&gt;&lt;/p&gt;
-&lt;p&gt;AI Skill 就是这份入职培训手册。它把你的领域知识、工具链、工作流程和最佳实践，打包成一个 AI 能理解、能执行的模块。写得好，AI 就是你团队里最靠谱的成员；写得烂，它还是那个"高学历文盲"。&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="ai-skill"&gt;二、AI Skill 到底是什么&lt;/h2&gt;
-&lt;p&gt;简单说，AI Skill 是一个&lt;strong&gt;模块化的知识包&lt;/strong&gt;，用来把通用 AI 变成某个领域的专家。&lt;/p&gt;
-&lt;p&gt;它一般包含三层：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;my-skill/
-├── SKILL.md          # 核心：指令 + 工作流（必须有）
-└── 可选资源
-    ├── scripts/      # 可复用的脚本（Python/Bash 等）
-    ├── references/   # 参考文档（API 文档、Schema 等）
-    └── assets/       # 输出用的素材（模板、图片、字体等）
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;h3 id="skillmd"&gt;SKILL.md 的两个部分&lt;/h3&gt;
-&lt;p&gt;&lt;strong&gt;1) Frontmatter（元数据）：决定"什么时候触发"&lt;/strong&gt;&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nn"&gt;---&lt;/span&gt;
-&lt;span class="nt"&gt;name&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l l-Scalar l-Scalar-Plain"&gt;pdf-editor&lt;/span&gt;
-&lt;span class="nt"&gt;description&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p p-Indicator"&gt;&amp;gt;&lt;/span&gt;
-&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="no"&gt;PDF 处理工具包：支持文本提取、表格解析、文档合并拆分、表单填写。&lt;/span&gt;
-&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="no"&gt;当需要处理 PDF 文件时使用。&lt;/span&gt;
-&lt;span class="nn"&gt;---&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;这段 YAML 是 Skill 的"门牌号"。AI Agent 扫描所有 Skill 的 name 和 description，决定哪个 Skill 该上场。写得模糊，Agent 就不知道什么时候该用你；写得精准，它才能在正确的时机把你请出来。&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;2) Body（正文）：告诉 AI "怎么干活"&lt;/strong&gt;&lt;/p&gt;
-&lt;p&gt;正文是 Markdown 格式的指令，包括工作流步骤、代码示例、决策树、注意事项等。它只在 Skill 被触发后才加载——所以不用担心浪费 context window。&lt;/p&gt;
-&lt;h3 id="_1"&gt;一句话总结&lt;/h3&gt;
-&lt;blockquote&gt;
-&lt;p&gt;Skill = 触发条件（description）+ 操作手册（body）+ 工具箱（scripts/references/assets）&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;hr&gt;
-&lt;h2 id="skill"&gt;三、为什么你需要写 Skill&lt;/h2&gt;
-&lt;p&gt;你可能会想："直接在 Prompt 里写清楚不就行了？"&lt;/p&gt;
-&lt;p&gt;当然可以。就像你每次做菜都可以从头搜菜谱，而不是把常做的菜记在本子上。但如果你每周做三次红烧肉，你早晚会把步骤写下来。&lt;/p&gt;
-&lt;p&gt;写 Skill 的理由就三个：&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;1) 复用&lt;/strong&gt; —— 一次写好，到处触发。你不用每次对话都重复"请用 pypdf 库""请保存到 content/images/ 目录"。&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;2) 一致性&lt;/strong&gt; —— 团队里五个人用 AI，如果没有统一的 Skill，五个人写出来的代码风格、文件命名、工作流程全不一样。&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;3) 质量天花板更高&lt;/strong&gt; —— Prompt 写得再好，2000 字是极限。Skill 可以拆成多层：SKILL.md 放核心流程，references/ 放详细文档，scripts/ 放可执行代码。AI 按需加载，既不浪费 token，又能保证深度。&lt;/p&gt;
-&lt;p&gt;打个比方：Prompt 是口头叮嘱，Skill 是 SOP 手册。口头叮嘱对简单任务够用了，但当任务变复杂、需要多步骤、涉及多文件，你需要一本手册。&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="skill_1"&gt;四、六步法：从想法到可用的 Skill&lt;/h2&gt;
-&lt;p&gt;这是我总结的创建 AI Skill 的完整流程，核心参考了 Anthropic 的 Skill Creator 指南，再结合自己踩坑的经验。&lt;/p&gt;
-&lt;h3 id="step-1"&gt;Step 1：用具体例子理解需求&lt;/h3&gt;
-&lt;p&gt;别急着动手写 SKILL.md。先问自己三个问题：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;用户会怎么触发这个 Skill？（"帮我处理这个 PDF"、"生成一份周报"、"把这段代码重构一下"）&lt;/li&gt;
-&lt;li&gt;Skill 需要处理哪些变体？（不同格式的 PDF？不同模板的周报？）&lt;/li&gt;
-&lt;li&gt;什么是"做得好"的标准？（输出的 PDF 能正确填表？周报格式统一？）&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;举个例子：如果你要做一个"PDF 处理 Skill"，你的具体场景可能是：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;场景 1：用户说&amp;quot;帮我把这三个 PDF 合并成一个&amp;quot;
-场景 2：用户说&amp;quot;把这个 PDF 表单填好&amp;quot;
-场景 3：用户说&amp;quot;提取这份报告里的所有表格&amp;quot;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;三个场景，三种工作流。如果你一开始没想清楚，写出来的 Skill 就会"什么都能做，什么都做不好"。&lt;/p&gt;
-&lt;h3 id="step-2"&gt;Step 2：规划可复用的资源&lt;/h3&gt;
-&lt;p&gt;拿着 Step 1 的场景，逐个分析：&lt;/p&gt;
-&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;场景&lt;/th&gt;
-&lt;th&gt;重复性工作&lt;/th&gt;
-&lt;th&gt;可抽取的资源&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;合并/拆分 PDF&lt;/td&gt;
-&lt;td&gt;每次都要写 pypdf 的样板代码&lt;/td&gt;
-&lt;td&gt;SKILL.md 里放代码片段&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;填写 PDF 表单&lt;/td&gt;
-&lt;td&gt;检测字段、坐标转换、校验&lt;/td&gt;
-&lt;td&gt;&lt;code&gt;scripts/&lt;/code&gt; 放表单处理脚本&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;提取表格&lt;/td&gt;
-&lt;td&gt;pdfplumber 的配置和后处理&lt;/td&gt;
-&lt;td&gt;&lt;code&gt;references/&lt;/code&gt; 放高级用法文档&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;p&gt;原则是：&lt;strong&gt;如果同样的代码/文档你写了两次以上，就该抽出来。&lt;/strong&gt;&lt;/p&gt;
-&lt;h3 id="step-3-skill"&gt;Step 3：初始化 Skill 目录&lt;/h3&gt;
-&lt;p&gt;创建目录结构。如果你用 Anthropic 的 Skill Creator，它提供了一个脚手架脚本：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;scripts/init_skill.py&lt;span class="w"&gt; &lt;/span&gt;my-skill&lt;span class="w"&gt; &lt;/span&gt;--path&lt;span class="w"&gt; &lt;/span&gt;./skills/
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;如果你自己搭，只需要一个 SKILL.md 和按需的子目录：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;pdf-editor/
-├── SKILL.md
-├── scripts/
-│   ├── check_fillable_fields.py
-│   └── fill_form.py
-└── references/
-    └── advanced-usage.md
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;h3 id="step-4-skillmd"&gt;Step 4：写 SKILL.md&lt;/h3&gt;
-&lt;p&gt;这是最关键的一步。分两部分写：&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;Frontmatter：写好触发条件&lt;/strong&gt;&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nn"&gt;---&lt;/span&gt;
-&lt;span class="nt"&gt;name&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l l-Scalar l-Scalar-Plain"&gt;pdf-editor&lt;/span&gt;
-&lt;span class="nt"&gt;description&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p p-Indicator"&gt;&amp;gt;&lt;/span&gt;
-&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="no"&gt;PDF 处理工具包：支持文本提取、表格解析、合并拆分、旋转、水印、&lt;/span&gt;
-&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="no"&gt;表单填写、加密解密、图片提取、OCR 识别。&lt;/span&gt;
-&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="no"&gt;当用户提到 .pdf 文件或需要生成 PDF 时使用。&lt;/span&gt;
-&lt;span class="nn"&gt;---&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;注意几个要点：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;description 要同时说&lt;strong&gt;做什么&lt;/strong&gt;和&lt;strong&gt;什么时候用&lt;/strong&gt;&lt;/li&gt;
-&lt;li&gt;把可能的触发词、触发场景都列出来&lt;/li&gt;
-&lt;li&gt;不要只写功能描述，要写用户意图&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;&lt;strong&gt;Body：写操作手册&lt;/strong&gt;&lt;/p&gt;
-&lt;p&gt;把工作流写清楚。关键是&lt;strong&gt;用祈使句&lt;/strong&gt;——你在给 AI 下指令，不是写论文。&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="gh"&gt;# PDF Editor&lt;/span&gt;
-
-&lt;span class="gu"&gt;## Quick Start&lt;/span&gt;
-[3 行代码示例：读取 + 提取文本]
-
-&lt;span class="gu"&gt;## 合并 PDF&lt;/span&gt;
-&lt;span class="k"&gt;1.&lt;/span&gt; 用 pypdf 的 PdfWriter 逐页添加
-&lt;span class="k"&gt;2.&lt;/span&gt; 保存到用户指定路径
-
-&lt;span class="gu"&gt;## 填写表单&lt;/span&gt;
-&lt;span class="k"&gt;1.&lt;/span&gt; 运行 &lt;span class="sb"&gt;`scripts/check_fillable_fields.py`&lt;/span&gt; 检测字段类型
-&lt;span class="k"&gt;2.&lt;/span&gt; 如果有可填写字段 → 走 Fillable 工作流
-&lt;span class="k"&gt;3.&lt;/span&gt; 如果没有 → 走注解方式填写
-&lt;span class="k"&gt;4.&lt;/span&gt; 详细步骤见 forms.md
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;h3 id="step-5"&gt;Step 5：测试 + 打包&lt;/h3&gt;
-&lt;p&gt;写完之后，用真实场景测一遍。让 AI Agent 加载你的 Skill，然后模拟用户请求，看它能不能正确触发、正确执行。&lt;/p&gt;
-&lt;p&gt;常见的翻车点：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;description 写得太模糊，Agent 不知道什么时候该触发&lt;/li&gt;
-&lt;li&gt;工作流步骤漏了关键环节（比如忘了说"先读文件再编辑"）&lt;/li&gt;
-&lt;li&gt;scripts 里有 bug 没测过&lt;/li&gt;
-&lt;li&gt;引用了不存在的文件路径&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3 id="step-6"&gt;Step 6：迭代&lt;/h3&gt;
-&lt;p&gt;Skill 不是写一次就完事的。每次使用后，注意 AI 在哪些地方"跑偏"了，然后回来改 SKILL.md。&lt;/p&gt;
-&lt;p&gt;这跟写代码一样：第一版能跑，第二版好用，第三版才算优雅。&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="anthropic-pdf-skill"&gt;五、完整案例拆解：Anthropic 官方 PDF Skill&lt;/h2&gt;
-&lt;p&gt;光讲原则太抽象，咱们拿一个真实的、设计精良的 Skill 开膛破肚——Anthropic 官方的 PDF 处理 Skill（来自 &lt;code&gt;anthropics-skills/skills/pdf&lt;/code&gt;）。&lt;/p&gt;
-&lt;h3 id="51"&gt;5.1 目录结构一览&lt;/h3&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;pdf/
-├── SKILL.md                           # 核心指令（~315 行）
-├── forms.md                           # 表单填写专题（~295 行）
-├── reference.md                       # 高级用法参考（~612 行）
-├── scripts/                           # 8 个可复用脚本
-│   ├── check_fillable_fields.py       # 检查 PDF 是否有可填写字段
-│   ├── extract_form_field_info.py     # 提取表单字段信息
-│   ├── extract_form_structure.py      # 提取表单结构（标签、行、复选框）
-│   ├── fill_fillable_fields.py        # 填写可填写字段
-│   ├── fill_pdf_form_with_annotations.py  # 用注解方式填写非表单 PDF
-│   ├── convert_pdf_to_images.py       # PDF 转图片
-│   ├── check_bounding_boxes.py        # 校验边界框
-│   └── create_validation_image.py     # 生成验证图片
-└── LICENSE.txt
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;先看整体：&lt;strong&gt;一个 SKILL.md，两个参考文档，八个脚本&lt;/strong&gt;。没有 README，没有 CHANGELOG，没有 CONTRIBUTING.md——只有 AI 干活需要的东西，一个多余的文件都没有。&lt;/p&gt;
-&lt;h3 id="52-frontmatter"&gt;5.2 Frontmatter：触发条件写得像搜索引擎&lt;/h3&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nn"&gt;---&lt;/span&gt;
-&lt;span class="nt"&gt;name&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l l-Scalar l-Scalar-Plain"&gt;pdf&lt;/span&gt;
-&lt;span class="nt"&gt;description&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p p-Indicator"&gt;&amp;gt;&lt;/span&gt;
-&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="no"&gt;Use this skill whenever the user wants to do anything with PDF files.&lt;/span&gt;
-&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="no"&gt;This includes reading or extracting text/tables from PDFs, combining&lt;/span&gt;
-&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="no"&gt;or merging multiple PDFs into one, splitting PDFs apart, rotating pages,&lt;/span&gt;
-&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="no"&gt;adding watermarks, creating new PDFs, filling PDF forms, encrypting/&lt;/span&gt;
-&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="no"&gt;decrypting PDFs, extracting images, and OCR on scanned PDFs to make&lt;/span&gt;
-&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="no"&gt;them searchable. If the user mentions a .pdf file or asks to produce&lt;/span&gt;
-&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="no"&gt;one, use this skill.&lt;/span&gt;
-&lt;span class="nn"&gt;---&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;这个 description 的写法值得细品：&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;&lt;strong&gt;总括句打头&lt;/strong&gt;："whenever the user wants to do anything with PDF files" —— 一句话兜底，确保不漏&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;穷举式列举&lt;/strong&gt;：reading、extracting、combining、merging、splitting、rotating、watermarks、creating、filling forms、encrypting/decrypting、extracting images、OCR —— 把用户可能说的每种意图都覆盖了&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;兜底触发条件&lt;/strong&gt;："If the user mentions a .pdf file or asks to produce one" —— 即使用户没说具体操作，只要提到 &lt;code&gt;.pdf&lt;/code&gt;，也触发&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;跟这个对比一下反面教材：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# ❌ 太模糊，AI 不知道什么时候该用&lt;/span&gt;
-&lt;span class="nt"&gt;description&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;处理&lt;/span&gt;&lt;span class="nv"&gt; &lt;/span&gt;&lt;span class="s"&gt;PDF&lt;/span&gt;&lt;span class="nv"&gt; &lt;/span&gt;&lt;span class="s"&gt;文件&amp;quot;&lt;/span&gt;
-
-&lt;span class="c1"&gt;# ❌ 只说了功能，没说触发场景&lt;/span&gt;
-&lt;span class="nt"&gt;description&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;PDF&lt;/span&gt;&lt;span class="nv"&gt; &lt;/span&gt;&lt;span class="s"&gt;toolkit&lt;/span&gt;&lt;span class="nv"&gt; &lt;/span&gt;&lt;span class="s"&gt;with&lt;/span&gt;&lt;span class="nv"&gt; &lt;/span&gt;&lt;span class="s"&gt;text&lt;/span&gt;&lt;span class="nv"&gt; &lt;/span&gt;&lt;span class="s"&gt;extraction&lt;/span&gt;&lt;span class="nv"&gt; &lt;/span&gt;&lt;span class="s"&gt;and&lt;/span&gt;&lt;span class="nv"&gt; &lt;/span&gt;&lt;span class="s"&gt;form&lt;/span&gt;&lt;span class="nv"&gt; &lt;/span&gt;&lt;span class="s"&gt;filling&amp;quot;&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;h3 id="53-body-quick-start"&gt;5.3 Body 结构：Quick Start → 分类工具 → 速查表 → 路由&lt;/h3&gt;
-&lt;p&gt;SKILL.md 的正文用了经典的"金字塔"结构：&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;第一层：Quick Start（5 行代码，10 秒上手）&lt;/strong&gt;&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="kn"&gt;from&lt;/span&gt; &lt;span class="nn"&gt;pypdf&lt;/span&gt; &lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="n"&gt;PdfReader&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;PdfWriter&lt;/span&gt;
-
-&lt;span class="n"&gt;reader&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;PdfReader&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;document.pdf&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
-&lt;span class="nb"&gt;print&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;Pages: &lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="nb"&gt;len&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;reader&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;pages&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
-&lt;span class="n"&gt;text&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;&amp;quot;&lt;/span&gt;
-&lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;page&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;reader&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;pages&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
-    &lt;span class="n"&gt;text&lt;/span&gt; &lt;span class="o"&gt;+=&lt;/span&gt; &lt;span class="n"&gt;page&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;extract_text&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;不管 AI 要做什么，先给它一个能跑的 baseline。&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;第二层：按工具库分类的操作手册&lt;/strong&gt;&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;Python Libraries
-├── pypdf       → 合并、拆分、旋转、元数据、加密
-├── pdfplumber  → 文本提取（带布局）、表格提取
-└── reportlab   → 创建新 PDF（含下标/上标的坑点提醒）
-
-Command-Line Tools
-├── pdftotext   → 命令行文本提取
-├── qpdf        → 合并、拆分、旋转、解密
-└── pdftk       → 备选命令行工具
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;每个工具下面都是&lt;strong&gt;可以直接复制粘贴的代码&lt;/strong&gt;，不是伪代码，不是"请参考文档"。&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;第三层：Quick Reference 速查表&lt;/strong&gt;&lt;/p&gt;
-&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;Task&lt;/th&gt;
-&lt;th&gt;Best Tool&lt;/th&gt;
-&lt;th&gt;Command/Code&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;Merge PDFs&lt;/td&gt;
-&lt;td&gt;pypdf&lt;/td&gt;
-&lt;td&gt;&lt;code&gt;writer.add_page(page)&lt;/code&gt;&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;Extract text&lt;/td&gt;
-&lt;td&gt;pdfplumber&lt;/td&gt;
-&lt;td&gt;&lt;code&gt;page.extract_text()&lt;/code&gt;&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;Create PDFs&lt;/td&gt;
-&lt;td&gt;reportlab&lt;/td&gt;
-&lt;td&gt;Canvas or Platypus&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;Fill PDF forms&lt;/td&gt;
-&lt;td&gt;pypdf or pdf-lib&lt;/td&gt;
-&lt;td&gt;See FORMS.md&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;p&gt;这张表是给 AI 的"决策索引"——先查表选工具，再按工具找代码。&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;第四层：路由到深度文档&lt;/strong&gt;&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;→ 高级用法？   读 reference.md
-→ 填表单？     读 forms.md
-→ 问题排查？   读 reference.md 的 Troubleshooting 部分
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;SKILL.md 自己&lt;strong&gt;不超过 315 行&lt;/strong&gt;，但通过路由可以调动 900+ 行的深度内容。&lt;/p&gt;
-&lt;h3 id="54-formsmd"&gt;5.4 forms.md：低自由度任务的"保姆级"工作流&lt;/h3&gt;
-&lt;p&gt;表单填写是 PDF 处理里最脆弱的操作——坐标差一个像素，文字就跑偏了。所以这部分用了&lt;strong&gt;极低自由度&lt;/strong&gt;的写法。&lt;/p&gt;
-&lt;p&gt;先看开头，一句话定调：&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;&lt;strong&gt;CRITICAL: You MUST complete these steps in order. Do not skip ahead to writing code.&lt;/strong&gt;&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;p&gt;直接告诉 AI："别自作聪明，老老实实按步骤来。"&lt;/p&gt;
-&lt;p&gt;然后是一个&lt;strong&gt;二分决策&lt;/strong&gt;：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;检查 PDF 是否有可填写字段
-├── 有 → Fillable fields 工作流
-└── 没有 → Non-fillable fields 工作流（注解方式）
-    ├── 先尝试 Structure Extraction（更精准）
-    └── 不行再用 Visual Estimation（兜底）
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;Fillable 工作流，4 步走：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;1. python scripts/check_fillable_fields.py &amp;lt;file.pdf&amp;gt;
-   → 判断是否有可填写字段
-
-2. python scripts/extract_form_field_info.py &amp;lt;input.pdf&amp;gt; &amp;lt;field_info.json&amp;gt;
-   → 提取字段列表（field_id, page, rect, type）
-
-3. 创建 field_values.json
-   → 按指定 JSON 格式填入值
-
-4. python scripts/fill_fillable_fields.py &amp;lt;input.pdf&amp;gt; &amp;lt;field_values.json&amp;gt; &amp;lt;output.pdf&amp;gt;
-   → 执行填写
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;Non-fillable 工作流更复杂，但结构同样清晰——先试结构提取（Approach A），不行再用视觉估算（Approach B），还有一个混合方案（Hybrid Approach）。每种方案都给了&lt;strong&gt;完整的命令行调用示例和 JSON 格式规范&lt;/strong&gt;。&lt;/p&gt;
-&lt;p&gt;这是"自由度匹配脆弱性"原则的教科书级实现：&lt;strong&gt;越容易出错的环节，指令写得越死。&lt;/strong&gt;&lt;/p&gt;
-&lt;h3 id="55-scripts"&gt;5.5 scripts/：把重复代码变成确定性工具&lt;/h3&gt;
-&lt;p&gt;8 个 Python 脚本，各司其职：&lt;/p&gt;
-&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;脚本&lt;/th&gt;
-&lt;th&gt;职责&lt;/th&gt;
-&lt;th&gt;为什么要抽成脚本&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;code&gt;check_fillable_fields.py&lt;/code&gt;&lt;/td&gt;
-&lt;td&gt;检查 PDF 是否有可填写字段&lt;/td&gt;
-&lt;td&gt;判断用哪条工作流分支&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;code&gt;extract_form_field_info.py&lt;/code&gt;&lt;/td&gt;
-&lt;td&gt;提取表单字段的 ID、坐标、类型&lt;/td&gt;
-&lt;td&gt;每次都要写的重复代码&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;code&gt;extract_form_structure.py&lt;/code&gt;&lt;/td&gt;
-&lt;td&gt;提取文本标签、行线、复选框&lt;/td&gt;
-&lt;td&gt;复杂的 PDF 解析逻辑&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;code&gt;fill_fillable_fields.py&lt;/code&gt;&lt;/td&gt;
-&lt;td&gt;填写可填写字段 + 自动校验&lt;/td&gt;
-&lt;td&gt;脆弱操作，不能让 AI 自由发挥&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;code&gt;fill_pdf_form_with_annotations.py&lt;/code&gt;&lt;/td&gt;
-&lt;td&gt;用注解方式填写非表单 PDF&lt;/td&gt;
-&lt;td&gt;坐标转换容易出错&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;code&gt;convert_pdf_to_images.py&lt;/code&gt;&lt;/td&gt;
-&lt;td&gt;PDF 转图片&lt;/td&gt;
-&lt;td&gt;视觉验证的基础工具&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;code&gt;check_bounding_boxes.py&lt;/code&gt;&lt;/td&gt;
-&lt;td&gt;校验边界框有没有重叠/过小&lt;/td&gt;
-&lt;td&gt;防错机制&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;code&gt;create_validation_image.py&lt;/code&gt;&lt;/td&gt;
-&lt;td&gt;生成校验用图片&lt;/td&gt;
-&lt;td&gt;让 AI 自己检查填写结果&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;p&gt;关键洞察：这些脚本不只是"省得 AI 重写"，更重要的是&lt;strong&gt;确定性&lt;/strong&gt;。AI 生成的代码每次可能不一样，但脚本每次跑出来的结果都一样。对于"差一个像素就出错"的表单填写，这种确定性就是生命线。&lt;/p&gt;
-&lt;h3 id="56-referencemd"&gt;5.6 reference.md：按需加载的知识库&lt;/h3&gt;
-&lt;p&gt;612 行的深度参考文档，涵盖：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;pypdfium2（PyMuPDF 的替代品）&lt;/li&gt;
-&lt;li&gt;JavaScript 库（pdf-lib、pdfjs-dist）&lt;/li&gt;
-&lt;li&gt;高级命令行操作&lt;/li&gt;
-&lt;li&gt;复杂工作流（批量处理、图片提取、裁剪）&lt;/li&gt;
-&lt;li&gt;性能优化&lt;/li&gt;
-&lt;li&gt;问题排查&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;这些内容&lt;strong&gt;不在 SKILL.md 里&lt;/strong&gt;——只有当 AI 需要高级功能时才加载。99% 的 PDF 任务用 SKILL.md 就够了。&lt;/p&gt;
-&lt;h3 id="57-skill"&gt;5.7 这个 Skill 教给我们什么&lt;/h3&gt;
-&lt;p&gt;把 PDF Skill 的设计模式提炼出来，就是这五条：&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;&lt;strong&gt;description 要像搜索引擎的索引&lt;/strong&gt;：穷举动词（reading, extracting, merging...）+ 兜底条件（mentions .pdf）&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Body 用金字塔结构&lt;/strong&gt;：Quick Start → 分类工具 → 速查表 → 路由到深度文档&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;脆弱操作用脚本兜底&lt;/strong&gt;：表单填写不让 AI 自由发挥，全走预置脚本&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;决策树比工具列表有用&lt;/strong&gt;：告诉 AI "什么时候用什么"，而不只是"有什么"&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;文档分层加载&lt;/strong&gt;：SKILL.md（315 行）→ forms.md（295 行）→ reference.md（612 行）&lt;/li&gt;
-&lt;/ol&gt;
-&lt;hr&gt;
-&lt;h3 id="docx-skill"&gt;补充案例：DOCX 处理 Skill 的决策树&lt;/h3&gt;
-&lt;p&gt;除了 PDF Skill，DOCX Skill 的&lt;strong&gt;决策树&lt;/strong&gt;也值得一提：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;读/分析 → 用 pandoc 提取文本
-创建新文档 → 用 docx-js
-编辑已有文档：
-  ├── 自己的文档 + 简单修改 → 直接编辑 XML
-  └── 别人的文档 / 正式文档 → 用 Redlining 工作流（保留修订记录）
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;Skill 里最难写的不是"怎么做"，而是"什么情况下用哪种方式做"。决策树帮 AI 在不同场景下选择正确的路径，比给一堆工具让它自己猜强得多。&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="skill_2"&gt;六、写 Skill 的三条核心原则&lt;/h2&gt;
-&lt;h3 id="1context-window"&gt;原则 1：Context Window 是公共资源，别浪费&lt;/h3&gt;
-&lt;p&gt;AI 的 context window 就像会议室的白板——你写得越多，留给别人（其他 Skill、用户消息、对话历史）的空间就越少。&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;默认假设：AI 已经很聪明了。&lt;/strong&gt; 只写它不知道的东西。&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;❌ &amp;quot;Python 是一种编程语言，可以用 pip 安装包...&amp;quot;
-✅ &amp;quot;使用 pypdf&amp;gt;=3.0，注意 PdfReader 的 API 在 3.x 有 breaking change&amp;quot;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;具体策略：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;SKILL.md 控制在 500 行以内&lt;/li&gt;
-&lt;li&gt;详细文档放 &lt;code&gt;references/&lt;/code&gt;，按需加载&lt;/li&gt;
-&lt;li&gt;重复执行的代码放 &lt;code&gt;scripts/&lt;/code&gt;，不用每次重写&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3 id="2"&gt;原则 2：自由度匹配任务的脆弱性&lt;/h3&gt;
-&lt;p&gt;不是所有指令都要写得一样细。关键看任务有多"脆弱"——出错的代价有多大。&lt;/p&gt;
-&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;自由度&lt;/th&gt;
-&lt;th&gt;适用场景&lt;/th&gt;
-&lt;th&gt;示例&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;高&lt;/strong&gt;（文字描述）&lt;/td&gt;
-&lt;td&gt;多种方式都行，取决于上下文&lt;/td&gt;
-&lt;td&gt;"根据文章主题选择合适的开头方式"&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;中&lt;/strong&gt;（伪代码/参数化脚本）&lt;/td&gt;
-&lt;td&gt;有最佳实践，但允许变化&lt;/td&gt;
-&lt;td&gt;"输出 JSON 格式：&lt;code&gt;{field_id, page, value}&lt;/code&gt;"&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;低&lt;/strong&gt;（具体脚本，不能改）&lt;/td&gt;
-&lt;td&gt;操作脆弱、容错率低&lt;/td&gt;
-&lt;td&gt;"渲染 PlantUML 必须用这个脚本和这组参数"&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;p&gt;打个比方：过独木桥需要护栏（低自由度），走草原只需要指个方向（高自由度）。&lt;/p&gt;
-&lt;h3 id="3"&gt;原则 3：渐进式披露——别一次倒完&lt;/h3&gt;
-&lt;p&gt;别把所有信息都塞进 SKILL.md。用三层结构：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;第 1 层：Frontmatter（name + description）
-    → 始终在 context 里，~100 词
-    → 决定&amp;quot;要不要触发这个 Skill&amp;quot;
-
-第 2 层：SKILL.md Body
-    → 触发后才加载，&amp;lt;5000 词
-    → 核心工作流和决策逻辑
-
-第 3 层：scripts/ + references/ + assets/
-    → 按需加载，无上限
-    → 详细文档、可执行代码、模板素材
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;实战模式举例：&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;模式 A：总纲 + 参考文档&lt;/strong&gt;&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="gh"&gt;# PDF 处理&lt;/span&gt;
-
-&lt;span class="gu"&gt;## Quick Start&lt;/span&gt;
-[3 行代码示例]
-
-&lt;span class="gu"&gt;## 高级功能&lt;/span&gt;
-&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;表单填写：见 [&lt;span class="nt"&gt;forms.md&lt;/span&gt;](&lt;span class="na"&gt;forms.md&lt;/span&gt;)
-&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;API 参考：见 [&lt;span class="nt"&gt;reference.md&lt;/span&gt;](&lt;span class="na"&gt;reference.md&lt;/span&gt;)
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;&lt;strong&gt;模式 B：按领域拆分&lt;/strong&gt;&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;bigquery-skill/
-├── SKILL.md（概览 + 路由）
-└── references/
-    ├── finance.md     # 财务指标
-    ├── sales.md       # 销售数据
-    └── product.md     # 产品数据
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;用户问销售数据时，AI 只加载 &lt;code&gt;sales.md&lt;/code&gt;，不会把财务和产品的内容也塞进 context。&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="_2"&gt;七、常见反模式：这些坑我都踩过&lt;/h2&gt;
-&lt;h3 id="1description"&gt;反模式 1：description 太模糊&lt;/h3&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# ❌ 差&lt;/span&gt;
-&lt;span class="nt"&gt;description&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;处理文档&amp;quot;&lt;/span&gt;
-
-&lt;span class="c1"&gt;# ✅ 好&lt;/span&gt;
-&lt;span class="nt"&gt;description&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p p-Indicator"&gt;&amp;gt;&lt;/span&gt;
-&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="no"&gt;DOCX 文档创建、编辑和分析，支持批注、修订追踪、格式保持和文本提取。&lt;/span&gt;
-&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="no"&gt;当需要创建/修改/分析 .docx 文件时触发。&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;模糊的 description 就像门牌号写着"某公司"——快递员找不到你。&lt;/p&gt;
-&lt;h3 id="2-skillmd"&gt;反模式 2：把所有东西都塞进 SKILL.md&lt;/h3&gt;
-&lt;p&gt;如果你的 SKILL.md 超过 500 行，说明你该拆了。把详细内容移到 references/，把重复代码移到 scripts/。&lt;/p&gt;
-&lt;h3 id="3-what-when-how"&gt;反模式 3：只写了 What，没写 When 和 How&lt;/h3&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="gh"&gt;# ❌ 差：只告诉 AI 有这个功能&lt;/span&gt;
-支持 PDF 表单填写。
-
-&lt;span class="gh"&gt;# ✅ 好：告诉 AI 什么时候用、怎么用&lt;/span&gt;
-&lt;span class="gu"&gt;## 表单填写&lt;/span&gt;
-当用户需要填写 PDF 表单时：
-&lt;span class="k"&gt;1.&lt;/span&gt; 先读取 forms.md 了解表单处理流程
-&lt;span class="k"&gt;2.&lt;/span&gt; 使用 pypdf 打开 PDF
-&lt;span class="k"&gt;3.&lt;/span&gt; 用 reader.get_fields() 获取表单字段
-&lt;span class="k"&gt;4.&lt;/span&gt; 填充字段值
-&lt;span class="k"&gt;5.&lt;/span&gt; 保存到输出路径
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;h3 id="4"&gt;反模式 4：创建一堆"辅助文件"&lt;/h3&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;# ❌ 不需要这些
-README.md
-INSTALLATION_GUIDE.md
-QUICK_REFERENCE.md
-CHANGELOG.md
-CONTRIBUTING.md
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;Skill 是给 AI 用的，不是给人类读的开源项目。AI 不需要 README，不需要安装指南，不需要 CHANGELOG。只保留 AI 干活需要的文件。&lt;/p&gt;
-&lt;h3 id="5"&gt;反模式 5：没测就发布&lt;/h3&gt;
-&lt;p&gt;这和不写单测就上线是一个道理。写完 Skill 之后，至少用 3 个不同的真实场景测一遍：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;能正确触发吗？&lt;/li&gt;
-&lt;li&gt;工作流步骤跑得通吗？&lt;/li&gt;
-&lt;li&gt;scripts 有 bug 吗？&lt;/li&gt;
-&lt;li&gt;输出符合预期吗？&lt;/li&gt;
-&lt;/ul&gt;
-&lt;hr&gt;
-&lt;h2 id="skill_3"&gt;八、Skill 写作自检清单&lt;/h2&gt;
-&lt;p&gt;写完一个 Skill 之后，对着这张表过一遍：&lt;/p&gt;
-&lt;h3 id="description"&gt;触发层（description）&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;[ ] description 同时说了"做什么"和"什么时候触发"&lt;/li&gt;
-&lt;li&gt;[ ] 列出了用户可能的触发词和意图&lt;/li&gt;
-&lt;li&gt;[ ] 与其他 Skill 的 description 没有歧义重叠&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3 id="skillmd-body"&gt;工作流层（SKILL.md Body）&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;[ ] 用祈使句写指令（"读取文件"，不是"可以读取文件"）&lt;/li&gt;
-&lt;li&gt;[ ] 关键步骤有具体代码示例&lt;/li&gt;
-&lt;li&gt;[ ] 有决策树/条件分支（if-else 逻辑清晰）&lt;/li&gt;
-&lt;li&gt;[ ] SKILL.md 不超过 500 行&lt;/li&gt;
-&lt;li&gt;[ ] 引用的文件路径都存在&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3 id="scriptsreferencesassets"&gt;资源层（scripts/references/assets）&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;[ ] 重复执行的代码抽成了 script&lt;/li&gt;
-&lt;li&gt;[ ] 详细文档放在了 references/，而不是塞在 SKILL.md 里&lt;/li&gt;
-&lt;li&gt;[ ] scripts 经过了真实测试&lt;/li&gt;
-&lt;li&gt;[ ] assets 的模板是最新版&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3 id="_3"&gt;质量检查&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;[ ] 用 3 个以上真实场景测试过&lt;/li&gt;
-&lt;li&gt;[ ] AI 能在正确时机触发这个 Skill&lt;/li&gt;
-&lt;li&gt;[ ] AI 按工作流执行时，不会跑偏&lt;/li&gt;
-&lt;li&gt;[ ] 输出质量符合预期&lt;/li&gt;
-&lt;li&gt;[ ] 没有"AI 不需要知道的废话"&lt;/li&gt;
-&lt;/ul&gt;
-&lt;hr&gt;
-&lt;h2 id="_4"&gt;九、一些有启发的观点&lt;/h2&gt;
-&lt;p&gt;写 AI Skill 这件事，本质上是一个&lt;strong&gt;知识工程&lt;/strong&gt;问题。这里有几个我觉得值得深思的观点：&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;"Skill 是给另一个你的 Onboarding 文档"&lt;/strong&gt; —— 想象你要把工作交接给一个聪明但对你的项目一无所知的人。你不会从"什么是 Python"开始教，但你会告诉他"我们的 CI 用 Jenkins，部署流程是这样的，注意这几个坑"。写 Skill 的心态应该跟这个一样。&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;"Context window 是公共资源"&lt;/strong&gt; —— 这句话来自 Anthropic 的 Skill Creator 文档，我觉得是最被低估的观点。每多一行废话，AI 就少一行理解用户需求的空间。写 Skill 最难的不是写什么，而是&lt;strong&gt;不写什么&lt;/strong&gt;。&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;"自由度应该和脆弱性成反比"&lt;/strong&gt; —— 这是工程思维在 AI 指令设计上的体现。不是所有步骤都需要 step-by-step，也不是所有步骤都可以"随机应变"。关键是识别哪些环节容错率低，给这些环节上"护栏"。&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;"Progressive Disclosure 是 Skill 架构的核心模式"&lt;/strong&gt; —— 和 UI 设计一样，信息不是越多越好。好的 Skill 像好的 API 文档：首页只有 Quick Start，详细内容按需跳转。&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="skill-skill"&gt;十、附赠：一个用来检查 Skill 的 Skill&lt;/h2&gt;
-&lt;p&gt;既然有了写 Skill 的方法论，能不能让 AI 自己来检查 Skill 质量？&lt;/p&gt;
-&lt;p&gt;我写了一个 &lt;code&gt;skill-reviewer&lt;/code&gt; Skill，它会按 5 个维度（触发层、工作流层、资源层、渐进式披露、脆弱性匹配）给目标 Skill 打分，输出结构化的审查报告，并给出具体修改建议。&lt;/p&gt;
-&lt;p&gt;目录结构很简单：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;skill-reviewer/
-├── skill.md                      # 审查流程 + 评分标准
-└── references/
-    └── checklist-quick.md        # 快速检查清单（轻量版）
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;评分维度示例：&lt;/p&gt;
-&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;维度&lt;/th&gt;
-&lt;th&gt;检查项（示例）&lt;/th&gt;
-&lt;th&gt;满分&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;A. 触发层&lt;/td&gt;
-&lt;td&gt;description 说了 What + When？触发条件不含歧义？&lt;/td&gt;
-&lt;td&gt;12&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;B. 工作流层&lt;/td&gt;
-&lt;td&gt;有 Quick Start？决策树清晰？代码能跑？≤500 行？&lt;/td&gt;
-&lt;td&gt;18&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;C. 资源层&lt;/td&gt;
-&lt;td&gt;重复代码抽成 script？无冗余文件？引用不孤立？&lt;/td&gt;
-&lt;td&gt;15&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;D. 渐进式披露&lt;/td&gt;
-&lt;td&gt;三层加载有效？Body 是路由层不是百科全书？&lt;/td&gt;
-&lt;td&gt;9&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;E. 脆弱性匹配&lt;/td&gt;
-&lt;td&gt;脆弱操作低自由度？有验证步骤？&lt;/td&gt;
-&lt;td&gt;9&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;p&gt;你可以从 &lt;a href="https://github.com/walterfan/lazy-ai-coder/tree/master/assets/skills/skill-reviewer"&gt;这里&lt;/a&gt; 下载&lt;/p&gt;
-&lt;h3 id="_5"&gt;但有一个重要提醒&lt;/h3&gt;
-&lt;p&gt;&lt;strong&gt;让同一个 LLM 审查它自己写的 Skill，效果未必好。&lt;/strong&gt;&lt;/p&gt;
-&lt;p&gt;这不是谦虚，是认知科学。人类有个偏差叫 "blind spot bias"——你很难发现自己的盲区，因为它之所以是盲区，恰恰是因为你看不见。LLM 也一样：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;它倾向于给自己的输出打高分（self-serving bias 的 AI 版本）&lt;/li&gt;
-&lt;li&gt;它会遗漏与自己同类的问题——如果它写 description 时习惯性地太模糊，审查时也不会觉得模糊&lt;/li&gt;
-&lt;li&gt;它不会质疑自己的"常识"——如果它默认某个工作流是对的，审查时也不会挑战&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;所以，更有效的做法是：&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;&lt;strong&gt;交叉审查&lt;/strong&gt;：用 Claude 写的 Skill，拿 GPT 来审；反过来也行。不同模型的盲区不一样，交叉审查能互补。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;人类抽查&lt;/strong&gt;：至少让一个人快速过一遍审查报告，看看有没有"明显正确但实际有问题"的评分。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;真实任务验证&lt;/strong&gt;：任何审查都替代不了实际使用。跑 3 个真实场景，比读 10 遍审查报告有用。&lt;/li&gt;
-&lt;/ol&gt;
-&lt;blockquote&gt;
-&lt;p&gt;这就像代码审查：你不会让作者自己 Review 自己的 PR。同理，Skill 的质量保障最好也引入"第二双眼睛"——哪怕那双眼睛也是 AI 的。&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;hr&gt;
-&lt;h2 id="_6"&gt;十一、总结&lt;/h2&gt;
-&lt;p&gt;AI Skill 不是什么高深的东西——它就是一份写给 AI 的操作手册。但"写清楚"这件事，从来都不简单。&lt;/p&gt;
-&lt;p&gt;回顾一下核心方法：&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;&lt;strong&gt;从场景出发&lt;/strong&gt;：先列举具体的使用场景，再动手写&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;三层架构&lt;/strong&gt;：Frontmatter（触发）→ Body（工作流）→ Resources（深度内容）&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;三条原则&lt;/strong&gt;：省 token、匹配自由度、渐进式披露&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;测试驱动&lt;/strong&gt;：写完就测，测完就改&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;如果你只记住一句话，记住这个：&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;&lt;strong&gt;写 Skill 的最高境界，是 AI 读完之后觉得"这不就是我自己总结的经验吗？"——它没有意识到在被教。&lt;/strong&gt;&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;hr&gt;
-&lt;h2 id="_7"&gt;思维导图&lt;/h2&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap
-&amp;lt;style&amp;gt;
-mindmapDiagram {
-  node { BackgroundColor #FAFAFA }
-  :depth(0) { BackgroundColor #FFD700 }
-  :depth(1) { BackgroundColor #E3F2FD }
-  :depth(2) { BackgroundColor #F5F5F5 }
-}
-&amp;lt;/style&amp;gt;
-* AI Skill 写作指南
-** 是什么
-*** SKILL.md + scripts/ + references/ + assets/
-*** 触发条件(description) + 操作手册(body) + 工具箱
-** 六步法
-*** 1. 用具体场景理解需求
-*** 2. 规划可复用资源(scripts/references/assets)
-*** 3. 初始化目录结构
-*** 4. 写 SKILL.md(Frontmatter + Body)
-*** 5. 真实场景测试
-*** 6. 使用中持续迭代
-** 三条核心原则
-*** Context Window 是公共资源\n只写 AI 不知道的
-*** 自由度匹配脆弱性\n独木桥要护栏 草原给方向
-*** 渐进式披露\nSKILL.md → references → scripts
-** PDF Skill 设计模式
-*** description 像搜索引擎索引
-*** Body 用金字塔结构
-*** 脆弱操作用脚本兜底
-*** 决策树比工具列表有用
-*** 文档分层加载(315+295+612行)
-** 常见反模式
-*** description 太模糊
-*** 全塞进 SKILL.md
-*** 只写 What 没写 When/How
-*** 创建无用辅助文件
-*** 没测就发布
-@endmindmap
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;&lt;img alt="思维导图" src="../images/journal_20260317_ai_skill_mindmap.png"&gt;&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="_8"&gt;扩展阅读&lt;/h2&gt;
-&lt;ol&gt;
-&lt;li&gt;Anthropic —— &lt;a href="https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/skills"&gt;Skill Creator 官方指南&lt;/a&gt;（本文方法论的主要参考来源）&lt;/li&gt;
-&lt;li&gt;Anthropic —— &lt;a href="https://docs.anthropic.com/en/docs/claude-code"&gt;Claude Code 文档&lt;/a&gt;（SKILL.md 的宿主环境）&lt;/li&gt;
-&lt;li&gt;Cursor —— &lt;a href="https://docs.cursor.com/context/rules"&gt;Rules &amp;amp; Skills 文档&lt;/a&gt;（另一种 Skill 实现方式）&lt;/li&gt;
-&lt;li&gt;Ethan Mollick —— &lt;a href="https://www.amazon.com/Co-Intelligence-Living-Working-Ethan-Mollick/dp/0593716728"&gt;《Co-Intelligence: Living and Working with AI》&lt;/a&gt;（AI 协作的底层思维）&lt;/li&gt;
-&lt;li&gt;Daniel Kahneman —— &lt;a href="https://www.amazon.com/Thinking-Fast-Slow-Daniel-Kahneman/dp/0374533555"&gt;《Thinking, Fast and Slow》&lt;/a&gt;（渐进式披露的认知科学基础）&lt;/li&gt;
-&lt;/ol&gt;
-&lt;hr&gt;
-&lt;hr/&gt;
-&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Tech"/><category term="AI"/><category term="Skill"/><category term="Agent"/><category term="Prompt Engineering"/><category term="Claude Code"/><category term="Cursor"/><category term="方法论"/></entry><entry><title>职场工具箱之 Radical Candor：怎样既不当老好人，也不当刺头？</title><link href="https://www.fanyamin.com/2026-03-17-radical-candor-tool.html" rel="alternate"/><published>2026-03-17T10:00:00+08:00</published><updated>2026-03-17T10:00:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-03-17:/2026-03-17-radical-candor-tool.html</id><summary type="html">&lt;p&gt;你要么什么都不说（老好人），要么一开口就得罪人（刺头）。Radical Candor（彻底坦诚）告诉你：好的反馈 = 关心对方 + 直接挑战。两个维度画出四个象限：彻底坦诚、恶意攻击、虚伪客套、过度同情。本文教你怎么在"关心"和"直接"之间找到那个甜蜜点。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
-&lt;th&gt;职场工具箱之 Radical Candor：怎样既不当老好人，也不当刺头？&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;Journal&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Version&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;v1.0&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;2026-03-17&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;details&gt;
-&lt;summary&gt;📋 大纲&lt;/summary&gt;
-
-1. 扎心场景：不说实话 vs 说了得罪人
-2. What：Radical Candor 是什么（两维度 + 四象限）
-3. Why：为什么大多数人卡在"过度同情"
-4. How：怎么做到 Radical Candor（三个场景改写）
-5. 与 SBI / 困难对话 / 非暴力沟通的配合
-6. 总结 + 行动清单
-7. 思维导图
-8. 系列回顾
-
-&lt;/details&gt;
-
-&lt;hr&gt;
-&lt;h2 id="_1"&gt;一、扎心场景：说还是不说？&lt;/h2&gt;
-&lt;p&gt;新来的同事小张，技术不错，但有个问题：他写的技术方案总是只考虑 happy path，异常处理几乎为零。&lt;/p&gt;
-&lt;p&gt;你发现了。你有两个选择：&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;选择 A：不说。&lt;/strong&gt;&lt;/p&gt;
-&lt;p&gt;你想："他刚来，说了怕打击积极性。"于是你在 Code Review 里默默帮他补上异常处理，写了个"LGTM"。&lt;/p&gt;
-&lt;p&gt;三个月后，小张的方案在生产环境出了事故——一个没处理的空指针导致服务雪崩。老板问："谁 review 的？为什么没发现？"&lt;/p&gt;
-&lt;p&gt;你帮他擦了三个月的屁股，最后还是崩了。而且小张错过了三个月的成长机会。&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;选择 B：说。&lt;/strong&gt;&lt;/p&gt;
-&lt;p&gt;你在群里写了一句："@小张 你这个方案异常处理完全没考虑，线上分分钟出事。"&lt;/p&gt;
-&lt;p&gt;小张觉得你在公开场合让他难堪，从此对你有了心结。以后你说什么他都带着防御心态听。&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;两个选择都不对。&lt;/strong&gt; A 是过度同情，B 是恶意攻击。&lt;/p&gt;
-&lt;p&gt;那正确的做法是什么？&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="whatradical-candor"&gt;二、What：Radical Candor 的两个维度和四个象限&lt;/h2&gt;
-&lt;p&gt;Kim Scott 在她的书《Radical Candor》里提出了一个简单但深刻的框架：&lt;/p&gt;
-&lt;p&gt;好的反馈 = &lt;strong&gt;Care Personally（关心对方）&lt;/strong&gt; + &lt;strong&gt;Challenge Directly（直接挑战）&lt;/strong&gt;&lt;/p&gt;
-&lt;p&gt;这两个维度画出四个象限：&lt;/p&gt;
-&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;&lt;/th&gt;
-&lt;th&gt;&lt;strong&gt;高直接（Challenge Directly）&lt;/strong&gt;&lt;/th&gt;
-&lt;th&gt;&lt;strong&gt;低直接&lt;/strong&gt;&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;高关心（Care Personally）&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;✅ &lt;strong&gt;Radical Candor 彻底坦诚&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;⚠️ &lt;strong&gt;Ruinous Empathy 过度同情&lt;/strong&gt;&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;低关心&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;❌ &lt;strong&gt;Obnoxious Aggression 恶意攻击&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;💀 &lt;strong&gt;Manipulative Insincerity 虚伪客套&lt;/strong&gt;&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;h3 id="_2"&gt;四个象限详解&lt;/h3&gt;
-&lt;p&gt;&lt;strong&gt;✅ Radical Candor（彻底坦诚）= 高关心 + 高直接&lt;/strong&gt;&lt;/p&gt;
-&lt;p&gt;"我关心你的成长，所以我要直接告诉你问题在哪。"&lt;/p&gt;
-&lt;p&gt;这是唯一正确的象限。你既在乎对方，又不回避问题。&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;⚠️ Ruinous Empathy（过度同情）= 高关心 + 低直接&lt;/strong&gt;&lt;/p&gt;
-&lt;p&gt;"我怕伤害你，所以我什么都不说。"&lt;/p&gt;
-&lt;p&gt;这是大多数人待的象限。你以为你在保护对方，其实你在害他——他错过了改进的机会。就像医生发现了肿瘤但不告诉病人，因为"怕他难过"。&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;❌ Obnoxious Aggression（恶意攻击）= 低关心 + 高直接&lt;/strong&gt;&lt;/p&gt;
-&lt;p&gt;"我不在乎你的感受，我只在乎事情对不对。"&lt;/p&gt;
-&lt;p&gt;技术人特别容易掉进这个象限。你觉得你在"就事论事"，但因为缺少关心的信号，对方感受到的是攻击。&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;💀 Manipulative Insincerity（虚伪客套）= 低关心 + 低直接&lt;/strong&gt;&lt;/p&gt;
-&lt;p&gt;"我既不在乎你，也懒得说。"&lt;/p&gt;
-&lt;p&gt;会上说"挺好的"，背后说"他那方案根本不行"。这是最糟糕的象限——既不解决问题，又消耗信任。&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;&lt;strong&gt;小白提示&lt;/strong&gt;：Radical Candor 不是"想说什么就说什么"。"直接"不等于"粗暴"。Radical Candor 的前提是&lt;strong&gt;你真的关心对方&lt;/strong&gt;，而不是借"坦诚"之名发泄情绪。如果你说完之后对方感受到的是"他在帮我"，那就是 Radical Candor。如果感受到的是"他在攻击我"，那就是 Obnoxious Aggression。&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;hr&gt;
-&lt;h2 id="why"&gt;三、Why：为什么大多数人卡在"过度同情"&lt;/h2&gt;
-&lt;h3 id="_3"&gt;中国职场的"面子"文化&lt;/h3&gt;
-&lt;p&gt;我们从小被教育"说话要给人留面子""做人要圆滑"。直接指出别人的问题，在很多人看来等于"不给面子"。&lt;/p&gt;
-&lt;p&gt;所以大多数人的默认模式是：&lt;strong&gt;能不说就不说，能委婉就委婉，能暗示就暗示。&lt;/strong&gt;&lt;/p&gt;
-&lt;p&gt;结果就是：你暗示了三次，对方一次都没听懂。&lt;/p&gt;
-&lt;h3 id="_4"&gt;"不说"比"说错"安全——短期是，长期不是&lt;/h3&gt;
-&lt;p&gt;不说的短期成本 = 0。说了的短期成本 = 可能尴尬、可能冲突。&lt;/p&gt;
-&lt;p&gt;所以从短期博弈来看，不说永远是"最优策略"。&lt;/p&gt;
-&lt;p&gt;但长期呢？&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;对方的问题没有改善，越来越严重&lt;/li&gt;
-&lt;li&gt;你的不满越积越多，迟早爆发&lt;/li&gt;
-&lt;li&gt;团队里形成了"不说真话"的文化，所有人都在猜&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;&lt;strong&gt;过度同情的长期成本远大于短期的尴尬。&lt;/strong&gt;&lt;/p&gt;
-&lt;h3 id="vs"&gt;过度同情 vs 恶意攻击的代价&lt;/h3&gt;
-&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;象限&lt;/th&gt;
-&lt;th&gt;短期效果&lt;/th&gt;
-&lt;th&gt;长期效果&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;过度同情&lt;/td&gt;
-&lt;td&gt;关系看起来不错&lt;/td&gt;
-&lt;td&gt;对方错过成长，问题恶化，你积累不满&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;恶意攻击&lt;/td&gt;
-&lt;td&gt;问题被指出了&lt;/td&gt;
-&lt;td&gt;关系破裂，对方不再信任你，团队氛围变差&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;Radical Candor&lt;/td&gt;
-&lt;td&gt;可能有点尴尬&lt;/td&gt;
-&lt;td&gt;对方成长了，问题解决了，信任加深了&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;hr&gt;
-&lt;h2 id="how-radical-candor"&gt;四、How：怎么做到 Radical Candor&lt;/h2&gt;
-&lt;h3 id="_5"&gt;核心原则：先建立关心，再给挑战&lt;/h3&gt;
-&lt;p&gt;顺序很重要。&lt;/p&gt;
-&lt;p&gt;如果你平时从来不关心对方，突然给一个直接的反馈，对方只会觉得你在攻击他。&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;关心的信号&lt;/strong&gt;：
-- 了解对方的目标和困难
-- 记住对方说过的话（"你上次说想学 Rust，最近怎么样了？"）
-- 在公开场合维护对方
-- 帮对方争取资源和机会&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;直接的技巧&lt;/strong&gt;：
-- 对事不对人
-- 及时反馈（不要攒着）
-- 私下说批评，公开说表扬
-- 用 SBI 框架组织语言&lt;/p&gt;
-&lt;hr&gt;
-&lt;h3 id="_6"&gt;实战场景改写&lt;/h3&gt;
-&lt;h4 id="1"&gt;场景 1：同事的方案有明显漏洞&lt;/h4&gt;
-&lt;p&gt;❌ &lt;strong&gt;过度同情版&lt;/strong&gt;：&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;"挺好的，就是有些小地方可以优化。"（对方根本不知道哪里有问题）&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;p&gt;❌ &lt;strong&gt;恶意攻击版&lt;/strong&gt;：&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;"这方案根本没想清楚，异常处理呢？降级策略呢？监控呢？"（对方觉得被全盘否定）&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;p&gt;❌ &lt;strong&gt;虚伪客套版&lt;/strong&gt;：&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;会上说"不错不错"，会后跟别人说"他那方案漏洞百出"。&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;p&gt;✅ &lt;strong&gt;Radical Candor 版&lt;/strong&gt;：&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;（私下 1:1）"小张，你这个方案的核心链路设计得很清晰，我能看出你花了不少时间（先认可）。我有一个担心想和你讨论：异常处理这块我没看到，比如下游服务超时了怎么办、数据库连接池满了怎么办。上次我们线上出过类似的问题，所以我对这块比较敏感（说明为什么关心）。你要不要补充一下这部分？需要的话我可以把上次的事故复盘文档发给你参考。"&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;h4 id="2"&gt;场景 2：下属/新人代码质量差&lt;/h4&gt;
-&lt;p&gt;❌ &lt;strong&gt;过度同情版&lt;/strong&gt;：&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;自己偷偷把代码改了，提交时用对方的名字。（对方永远不知道自己的问题）&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;p&gt;❌ &lt;strong&gt;恶意攻击版&lt;/strong&gt;：&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;Code Review 里写："你这代码谁教你写的？变量命名像加密，函数长得像小说。"&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;p&gt;✅ &lt;strong&gt;Radical Candor 版&lt;/strong&gt;：&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;（Code Review 里）"这个函数有 200 行，建议拆成 3-4 个小函数，每个函数做一件事。我标注了几个可以拆分的点，你看看。"
-（私下补充）"我注意到最近几次 PR 的代码结构都比较长，我猜你可能还在适应我们的代码规范。我整理了一份我们团队的 best practices 文档，你有空看看。有问题随时问我。"&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;h4 id="3"&gt;场景 3：向上反馈老板的决策有问题&lt;/h4&gt;
-&lt;p&gt;❌ &lt;strong&gt;虚伪客套版&lt;/strong&gt;：&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;会上不说，背后跟同事吐槽"老板这个决定太离谱了"。&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;p&gt;❌ &lt;strong&gt;恶意攻击版&lt;/strong&gt;：&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;会上当众说："这个方向我觉得有问题，你们想过后果吗？"&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;p&gt;✅ &lt;strong&gt;Radical Candor 版&lt;/strong&gt;：&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;（会后私下找老板）"关于刚才讨论的全面重构方案，我理解你想提升系统的可维护性（认可意图）。我有一个顾虑：全面重构预计要 3 个月，期间新功能开发会停滞，这可能影响 Q3 的业务目标（事实+影响）。我有一个替代思路：我们可以用'绞杀者模式'逐步替换，每个 Sprint 重构一个模块，同时不影响新功能开发。你觉得这个方向值得评估吗？"&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;h3 id="_7"&gt;四象限话术对比&lt;/h3&gt;
-&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;象限&lt;/th&gt;
-&lt;th&gt;典型话术&lt;/th&gt;
-&lt;th&gt;对方感受&lt;/th&gt;
-&lt;th&gt;长期效果&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;彻底坦诚&lt;/td&gt;
-&lt;td&gt;"我注意到X，我担心Y，建议Z"&lt;/td&gt;
-&lt;td&gt;"他在帮我"&lt;/td&gt;
-&lt;td&gt;信任加深，问题解决&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;恶意攻击&lt;/td&gt;
-&lt;td&gt;"你这个不行/你没想清楚"&lt;/td&gt;
-&lt;td&gt;"他在攻击我"&lt;/td&gt;
-&lt;td&gt;关系破裂，不再沟通&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;过度同情&lt;/td&gt;
-&lt;td&gt;"挺好的/没事的/慢慢来"&lt;/td&gt;
-&lt;td&gt;"他觉得我还行"&lt;/td&gt;
-&lt;td&gt;问题恶化，错过成长&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;虚伪客套&lt;/td&gt;
-&lt;td&gt;"不错不错"（背后吐槽）&lt;/td&gt;
-&lt;td&gt;"他好像不太真诚"&lt;/td&gt;
-&lt;td&gt;信任消耗，团队内耗&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;hr&gt;
-&lt;h3 id="_8"&gt;技术人常踩的坑&lt;/h3&gt;
-&lt;p&gt;&lt;strong&gt;坑 1：以为"直接"就够了，忘了"关心"&lt;/strong&gt;&lt;/p&gt;
-&lt;p&gt;很多技术人觉得"我就事论事，不针对人"就是 Radical Candor。但如果对方感受不到你的关心，"就事论事"和"攻击"在他听来没有区别。&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;直接是必要条件，不是充分条件。&lt;/strong&gt;&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;坑 2：用技术优越感碾压&lt;/strong&gt;&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;❌ &amp;quot;这个问题很基础啊，你不应该犯这种错误。&amp;quot;
-✅ &amp;quot;这个问题我之前也踩过，当时花了很长时间才搞明白。我把我的笔记发给你。&amp;quot;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;&lt;strong&gt;坑 3：反馈时机不对&lt;/strong&gt;&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;❌ 在对方刚被客户骂完之后给反馈&lt;/li&gt;
-&lt;li&gt;❌ 在全组会上指出个人问题&lt;/li&gt;
-&lt;li&gt;❌ 攒了一个月在绩效面谈时一次性倒出来&lt;/li&gt;
-&lt;li&gt;✅ 事情发生后 24-48 小时内，私下 1:1&lt;/li&gt;
-&lt;/ul&gt;
-&lt;blockquote&gt;
-&lt;p&gt;&lt;strong&gt;小白提示&lt;/strong&gt;：Kim Scott 有一个简单的检验标准——&lt;strong&gt;如果你说完之后，对方的反应是"谢谢你告诉我"，那就是 Radical Candor。如果对方的反应是"你凭什么这么说我"，那你可能掉进了 Obnoxious Aggression。&lt;/strong&gt;&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;hr&gt;
-&lt;h2 id="radical-candor"&gt;五、Radical Candor 与其他工具的配合&lt;/h2&gt;
-&lt;p&gt;这个系列里有好几个沟通工具，它们不是互相替代，而是互相配合：&lt;/p&gt;
-&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;工具&lt;/th&gt;
-&lt;th&gt;解决什么问题&lt;/th&gt;
-&lt;th&gt;和 RC 的关系&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;SBI&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;"怎么说"——用什么结构组织反馈&lt;/td&gt;
-&lt;td&gt;SBI 是 RC 的表达工具&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Radical Candor&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;"以什么心态说"——关心 + 直接&lt;/td&gt;
-&lt;td&gt;RC 是 SBI 的底层心态&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;困难对话&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;"什么时候说"——在问题还小的时候&lt;/td&gt;
-&lt;td&gt;RC 帮你降低困难对话的门槛&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;非暴力沟通&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;"怎么听"——理解对方的感受和需求&lt;/td&gt;
-&lt;td&gt;NVC 帮你在 RC 中保持关心&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;p&gt;一个完整的反馈流程：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;1. 心态：Radical Candor（我关心你，所以我要直说）
-2. 时机：困难对话原则（趁早，别攒着）
-3. 结构：SBI（场景→行为→影响）
-4. 倾听：非暴力沟通（理解对方的感受和需求）
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;hr&gt;
-&lt;h2 id="_9"&gt;六、总结 + 行动清单&lt;/h2&gt;
-&lt;p&gt;Radical Candor 的核心就两句话：&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;&lt;strong&gt;因为关心，所以直说。&lt;/strong&gt;&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;因为直说，所以要关心。&lt;/strong&gt;&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;不是二选一，是两个都要。&lt;/p&gt;
-&lt;h3 id="_10"&gt;行动清单&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;[ ] 画一个四象限图，标出你最常待的象限（大多数人是"过度同情"）&lt;/li&gt;
-&lt;li&gt;[ ] 想一个你一直没说的反馈，用 SBI 框架写出来&lt;/li&gt;
-&lt;li&gt;[ ] 下次给反馈前，先问自己："我是真的关心对方，还是在发泄情绪？"&lt;/li&gt;
-&lt;li&gt;[ ] 练习"先认可，再挑战"的顺序&lt;/li&gt;
-&lt;li&gt;[ ] 批评私下说，表扬公开说——这周试一次&lt;/li&gt;
-&lt;li&gt;[ ] 给反馈后观察对方的反应：对方感受到的是"你在帮我"，还是"你在怼我"？&lt;/li&gt;
-&lt;/ul&gt;
-&lt;blockquote&gt;
-&lt;p&gt;💡 &lt;strong&gt;记住&lt;/strong&gt;：Radical Candor 就像 Code Review——最好的 Review 不是"LGTM"（过度同情），也不是"这代码是垃圾"（恶意攻击），而是"这里有个潜在的 NPE，建议加个 null check，我之前在生产环境踩过这个坑"（关心 + 直接）。&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;hr&gt;
-&lt;h2 id="_11"&gt;思维导图&lt;/h2&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap
-&amp;lt;style&amp;gt;
-mindmapDiagram {
-  node { BackgroundColor #FAFAFA }
-  :depth(0) { BackgroundColor #FFD700 }
-  :depth(1) { BackgroundColor #E3F2FD }
-  :depth(2) { BackgroundColor #F5F5F5 }
-}
-&amp;lt;/style&amp;gt;
-* Radical Candor\n关心+直接=彻底坦诚
-** 两个维度
-*** Care Personally 关心对方
-*** Challenge Directly 直接挑战
-** 四个象限
-*** 彻底坦诚（高关心+高直接）
-*** 恶意攻击（低关心+高直接）
-*** 过度同情（高关心+低直接）
-*** 虚伪客套（低关心+低直接）
-** 怎么做到
-*** 先建立关心再给挑战
-*** 对事不对人
-*** 及时反馈不攒着
-*** 私下批评公开表扬
-** 与其他工具配合
-*** SBI = 怎么说
-*** RC = 以什么心态说
-*** 困难对话 = 什么时候说
-** 常见坑
-*** 以为直接就够了
-*** 技术优越感碾压
-*** 反馈时机不对
-@endmindmap
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;&lt;img alt="思维导图" src="./images/journal_20260317_radical_candor_mindmap.png"&gt;&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="_12"&gt;系列回顾&lt;/h2&gt;
-&lt;blockquote&gt;
-&lt;p&gt;职场工具箱系列，每篇一个工具，现学现用：&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;ol&gt;
-&lt;li&gt;&lt;a href="/2026-01-18-tool-summary.html"&gt;4D 总结法&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-01-19-tool.html"&gt;黄金圈法则&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-01-20-tnb-tool.html"&gt;TNB 表达模型&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-01-21-fab.html"&gt;FAB 提案法&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-01-21-star-tool.html"&gt;STAR 面试法&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-01-25-issue.html"&gt;同理心三方法&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-01-27-w1h-c1d-tool.html"&gt;5W1H + 8C1D&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-01-28-journal.html"&gt;艾森豪威尔矩阵&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-01-28-pdca-tool.html"&gt;PDCA 循环&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-01-28-smart-tool.html"&gt;SMART 原则&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-01-30-title-tool.html"&gt;领导力&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-01-30-tool-issue.html"&gt;逻辑树&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-01-tool-growth-issue.html"&gt;解决问题五步法&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-02-why-tool.html"&gt;5 个 Why&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-04-care-tool.html"&gt;沟通四要素 CARE&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-05-tool-principle.html"&gt;金字塔原理&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-06-tool.html"&gt;三点法&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-07-daci-tool-meeting.html"&gt;DACI&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-07-tool.html"&gt;四线复盘法&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-07-rapid-tool.html"&gt;RAPID&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-09-tool-issue.html"&gt;5S 问题处理法&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-10-swot.html"&gt;SWOT 自我定位&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-11-aarrr-tool-growth.html"&gt;AARRR 漏斗&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-13-tool-principle.html"&gt;第一性原理&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-13-raci-tool.html"&gt;RACI&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-14-tool.html"&gt;非暴力沟通&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-15-scamper-tool.html"&gt;SCAMPER&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-20-mvp-tool.html"&gt;MVP 思维&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-23-abc-kpi-tool.html"&gt;ABC 情绪理论&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-23-ai-agent-tool.html"&gt;AI Agent 学职场英语&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-25-tool-management.html"&gt;向上管理&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-27-ooda-tool.html"&gt;OODA 循环&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-03-07-okr-tool.html"&gt;OKR&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-03-08-moscow-tool.html"&gt;MoSCoW 优先级&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-03-09-rice-ice-tool.html"&gt;RICE / ICE 评分&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-03-10-milestone-tool.html"&gt;里程碑计划&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-03-11-dod-tool.html"&gt;验收标准 DoD&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-03-12-scope-tool.html"&gt;范围管理&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-03-13-sbi-tool.html"&gt;SBI 反馈法&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-03-14-difficult-conversation-tool.html"&gt;困难对话&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-03-15-batna-tool.html"&gt;BATNA 谈判&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-03-16-interest-position-tool.html"&gt;利益-立场拆分&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Radical Candor&lt;/strong&gt;（本篇）&lt;/li&gt;
-&lt;/ol&gt;
-&lt;hr&gt;
-&lt;h2 id="_13"&gt;扩展阅读&lt;/h2&gt;
-&lt;ol&gt;
-&lt;li&gt;Kim Scott —— &lt;a href="https://www.amazon.com/Radical-Candor-Revised-Kick-Ass-Humanity/dp/1250235375"&gt;《Radical Candor: Be a Kick-Ass Boss Without Losing Your Humanity》&lt;/a&gt;（本文的理论来源）&lt;/li&gt;
-&lt;li&gt;Kim Scott —— &lt;a href="https://www.radicalcandor.com/"&gt;Radical Candor 官网&lt;/a&gt;（有免费的四象限自评工具）&lt;/li&gt;
-&lt;li&gt;Brené Brown —— &lt;a href="https://www.amazon.com/Dare-Lead-Brave-Conversations-Hearts/dp/0399592520"&gt;《Dare to Lead》&lt;/a&gt;（勇敢领导力，和 RC 理念相通）&lt;/li&gt;
-&lt;li&gt;Ed Catmull —— &lt;a href="https://www.amazon.com/Creativity-Inc-Overcoming-Unseen-Inspiration/dp/0812993012"&gt;《Creativity, Inc.》&lt;/a&gt;（Pixar 的坦诚文化实践）&lt;/li&gt;
-&lt;/ol&gt;
-&lt;hr&gt;
-&lt;hr/&gt;
-&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Journal"/><category term="职场工具箱"/><category term="Radical Candor"/><category term="反馈"/><category term="管理"/><category term="沟通"/><category term="方法论"/></entry><entry><title>职场工具箱之利益-立场拆分：为什么"我不同意"背后可能是同一目标？</title><link href="https://www.fanyamin.com/2026-03-16-interest-position-tool.html" rel="alternate"/><published>2026-03-16T10:00:00+08:00</published><updated>2026-03-16T10:00:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-03-16:/2026-03-16-interest-position-tool.html</id><summary type="html">&lt;p&gt;你和同事吵了半小时"用 Redis 还是用 Kafka"，最后发现你们其实都想解决同一个问题——消息不丢。立场是"我要什么"，利益是"我为什么要"。大多数职场冲突不是利益冲突，而是立场冲突。学会拆分利益和立场，你会发现 80% 的"不同意"其实可以变成"换个方式都同意"。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
-&lt;th&gt;职场工具箱之利益-立场拆分：为什么"我不同意"背后可能是同一目标？&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;Journal&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Version&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;v1.0&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;2026-03-16&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;details&gt;
-&lt;summary&gt;📋 大纲&lt;/summary&gt;
-
-1. 扎心场景：技术选型会吵了一小时
-2. What：利益-立场拆分是什么(冰山模型 + 橙子故事)
-3. Why：为什么大多数冲突是立场冲突
-4. How：四步拆分法 + 三个场景改写
-5. 技术人常踩的坑
-6. 总结 + 行动清单
-7. 思维导图
-8. 系列回顾
-
-&lt;/details&gt;
-
-&lt;hr&gt;
-&lt;h2 id="_1"&gt;一、扎心场景：吵了一小时，发现咱们想要的是同一个东西&lt;/h2&gt;
-&lt;p&gt;周三下午，技术评审会。&lt;/p&gt;
-&lt;p&gt;你提议用 Redis Stream 做消息队列。老王当场反对："不行，得用 Kafka。"&lt;/p&gt;
-&lt;p&gt;你说："Redis Stream 够用了，咱们的量没那么大，Kafka 太重了。"&lt;/p&gt;
-&lt;p&gt;老王说："Kafka 才是正经的消息队列，Redis 那个是玩具。"&lt;/p&gt;
-&lt;p&gt;你说："日均消息量才 10 万条，杀鸡用牛刀。"&lt;/p&gt;
-&lt;p&gt;老王说："现在 10 万，半年后呢？到时候再迁移成本更高。"&lt;/p&gt;
-&lt;p&gt;来回拉锯了 40 分钟，谁也说服不了谁。就像两个人拔河，绳子纹丝不动，倒是把自己累得够呛。&lt;/p&gt;
-&lt;p&gt;最后架构师老张问了一句："你们俩到底想解决什么问题？"&lt;/p&gt;
-&lt;p&gt;你说："我想要消息不丢。"&lt;/p&gt;
-&lt;p&gt;老王说："我也想要消息不丢，而且要能扛住未来的量。"&lt;/p&gt;
-&lt;p&gt;老张说："那你们的目标是一样的啊。消息不丢 + 可扩展。咱们看看有没有方案能同时满足？"&lt;/p&gt;
-&lt;p&gt;最后的方案：先用 Redis Stream 快速上线，但接口层做一层抽象，后续量上来了可以无缝切换到 Kafka。&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;吵了 40 分钟的 "Redis vs Kafka"，其实是在吵立场，不是在吵利益。&lt;/strong&gt;&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="what"&gt;二、What：利益和立场到底有什么区别&lt;/h2&gt;
-&lt;h3 id="vs"&gt;立场 vs 利益&lt;/h3&gt;
-&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;概念&lt;/th&gt;
-&lt;th&gt;定义&lt;/th&gt;
-&lt;th&gt;举例&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Position(立场)&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;你表面上要的东西——你的"解决方案"&lt;/td&gt;
-&lt;td&gt;"我要用 Redis"&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Interest(利益)&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;你真正关心的东西——你的"需求"&lt;/td&gt;
-&lt;td&gt;"我要消息不丢，而且部署简单"&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;p&gt;立场是 "What"——你要什么。
-利益是 "Why"——你为什么要。&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;用咱们写代码的话说，立场是 &lt;strong&gt;implementation&lt;/strong&gt;(具体实现)，利益是 &lt;strong&gt;interface&lt;/strong&gt;(接口/需求)。两个人可以用不同的 implementation 满足同一个 interface。争论 implementation 没意义，先对齐 interface 才是正事。——面向接口编程嘛，这道理写代码时都懂，跟人沟通时反而忘了。&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;h3 id="_2"&gt;冰山模型&lt;/h3&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;        ┌─────────────┐
-        │   立场       │  ← 水面上：看得见的(&amp;quot;我要用Redis&amp;quot;)
-        │  Position    │
-   ─────┴─────────────┴─────── 水面线
-        │   利益       │  ← 水面下：看不见的
-        │  Interest    │
-        │             │
-        │  需求        │  (消息不丢、部署简单)
-        │  恐惧        │  (怕系统扛不住、怕背锅)
-        │  价值观      │  (技术选型要务实/要前瞻)
-        └─────────────┘
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;大多数争论发生在水面上。但真正决定结果的，是水面下的东西。&lt;/p&gt;
-&lt;h3 id="_3"&gt;经典案例：两姐妹争一个橙子&lt;/h3&gt;
-&lt;p&gt;这是《Getting to Yes》里的经典故事：&lt;/p&gt;
-&lt;p&gt;两个姐妹争一个橙子。妈妈"公平"地把橙子切成两半，一人一半。&lt;/p&gt;
-&lt;p&gt;结果呢？姐姐把果肉榨了汁，皮扔了。妹妹把皮拿去做蛋糕，果肉扔了。&lt;/p&gt;
-&lt;p&gt;如果妈妈多问一句"你们要橙子干什么"，就会发现：姐姐要果肉，妹妹要皮。&lt;strong&gt;一个橙子可以 100% 满足两个人&lt;/strong&gt;。&lt;/p&gt;
-&lt;p&gt;可她们只在"立场"层面沟通("我要橙子")，结果两个人都只拿到了 50%。&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;一句话：明明可以双赢，硬是打成了零和。这就是立场冲突的代价。&lt;/strong&gt;&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="why"&gt;三、Why：为什么大多数冲突是立场冲突&lt;/h2&gt;
-&lt;h3 id="_4"&gt;咱们习惯用"方案"沟通，而不是用"问题"沟通&lt;/h3&gt;
-&lt;p&gt;技术人在这一点上尤其"出色"。&lt;/p&gt;
-&lt;p&gt;你不会说"我想要消息不丢"，你会直接说"我要用 Kafka"。因为你已经在脑子里把问题分析了一遍，直接给出了结论。&lt;/p&gt;
-&lt;p&gt;但对方不知道你的推理过程。他只看到你的结论，然后用他自己的推理过程得出了一个不同的结论。&lt;/p&gt;
-&lt;p&gt;两个结论打架，就变成了立场之争。就像两个程序员各自在本地跑通了代码，一合并就冲突——不是代码有问题，是没有先对齐 spec。&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;这在软件工程里叫"过早优化"(premature optimization)。你还没对齐需求，就开始争论实现方案了。先写 spec，再写 code。先对齐问题，再讨论方案。&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;h3 id="_5"&gt;锚定效应&lt;/h3&gt;
-&lt;p&gt;心理学研究表明：&lt;strong&gt;先说出来的立场会锚定整个讨论的方向。&lt;/strong&gt;&lt;/p&gt;
-&lt;p&gt;你说"用 Redis"，讨论就变成了"Redis 行不行"。老王说"用 Kafka"，讨论就变成了"Redis vs Kafka"。&lt;/p&gt;
-&lt;p&gt;但真正该讨论的是："咱们的消息队列需要满足什么条件？"&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;一旦立场被锚定，讨论就从"解决问题"滑向了"谁对谁错"。&lt;/strong&gt;&lt;/p&gt;
-&lt;h3 id="_6"&gt;面子问题&lt;/h3&gt;
-&lt;p&gt;改立场 = 认输。这是人之常情。&lt;/p&gt;
-&lt;p&gt;你说了"用 Redis"，如果最后用了 Kafka，你会觉得"我输了"。即使 Kafka 确实更合适，心里也不舒服。&lt;/p&gt;
-&lt;p&gt;但如果讨论的是利益层面——"咱们需要消息不丢 + 可扩展"——那最后不管用什么方案，都不存在"谁输了"的问题。&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;在利益层面讨论，没有输家。在立场层面讨论，至少有一个输家。&lt;/strong&gt; 这笔账，划算不划算，一目了然。&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="how"&gt;四、How：四步拆分法&lt;/h2&gt;
-&lt;h3 id="_7"&gt;步骤&lt;/h3&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;第一步：识别双方立场(&amp;quot;你要什么？我要什么？&amp;quot;)
-第二步：追问背后利益(&amp;quot;你为什么要这个？&amp;quot;——连问 3 个 Why)
-第三步：找到共同利益(&amp;quot;咱们都想要什么？&amp;quot;)
-第四步：基于共同利益重新设计方案
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;核心提问句式，就这三句，够用了：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;"这个方案帮你解决什么问题？"&lt;/li&gt;
-&lt;li&gt;"你最担心的是什么？"&lt;/li&gt;
-&lt;li&gt;"如果不用这个方案，你觉得什么条件必须满足？"&lt;/li&gt;
-&lt;/ul&gt;
-&lt;hr&gt;
-&lt;h3 id="_8"&gt;实战场景改写&lt;/h3&gt;
-&lt;h4 id="1redis-vs-kafka"&gt;场景 1：技术选型争论(Redis vs Kafka)&lt;/h4&gt;
-&lt;p&gt;❌ &lt;strong&gt;立场对抗版&lt;/strong&gt;：&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;你："用 Redis Stream，轻量够用。"
-老王："不行，Kafka 才靠谱。"
-你："咱们量没那么大。"
-老王："你怎么知道以后量不大？"
-(循环 40 分钟，不了了之)&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;p&gt;✅ &lt;strong&gt;利益拆分版&lt;/strong&gt;：&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;你："老王，咱们先不说用什么，先对齐一下需求。我理解咱们需要：①消息不丢 ②延迟 &amp;lt; 100ms ③日均 10 万条。你还有什么补充？"
-老王："我还担心扩展性，万一半年后量涨 10 倍呢。"
-你："好，那需求是：消息不丢 + 低延迟 + 当前 10 万条 + 未来可扩展到 100 万条。基于这四个条件，咱们看看哪个方案最合适？"&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;p&gt;&lt;strong&gt;结果&lt;/strong&gt;：讨论从 "Redis vs Kafka" 变成了"哪个方案满足这四个条件"，10 分钟就有结论了。&lt;/p&gt;
-&lt;h4 id="2-vs"&gt;场景 2：产品要加功能 vs 你要还技术债&lt;/h4&gt;
-&lt;p&gt;❌ &lt;strong&gt;互相否定版&lt;/strong&gt;：&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;产品："这个季度必须上推荐功能，老板要的。"
-你："不行，数据库快扛不住了，必须先做分库分表。"
-产品："用户看不到分库分表，老板只看功能。"
-你："数据库崩了什么功能都没有。"
-(升级到老板，老板说"都做"，然后你加班到死)&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;p&gt;✅ &lt;strong&gt;利益拆分版&lt;/strong&gt;：&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;你："我理解推荐功能对 DAU 很重要(先认可对方利益)。我这边的担心是，数据库现在的慢查询已经影响了首页加载速度，P99 从 200ms 涨到了 800ms(摆事实)。如果不处理，推荐功能上了也会卡(共同利益：用户体验)。"
-产品："那你的意思是先优化数据库？"
-你："不一定。咱们可以这样：推荐功能先用缓存方案做一版，不依赖复杂查询，两周能上。同时我用两周做数据库优化。四周后推荐功能切到正式方案。功能和性能都不耽误。"&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;p&gt;&lt;strong&gt;关键&lt;/strong&gt;：你们的共同利益是"用户体验好"。产品要功能是为了用户体验，你要还技术债也是为了用户体验。找到这个交集，方案自然就出来了。&lt;/p&gt;
-&lt;h4 id="3"&gt;场景 3：两个项目抢同一个人&lt;/h4&gt;
-&lt;p&gt;❌ &lt;strong&gt;升级到老板版&lt;/strong&gt;：&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;A 项目负责人："小陈这个季度必须在我这边，我们要上线。"
-B 项目负责人："小陈是唯一懂支付模块的人，我们也离不开。"
-(两人找老板，老板说"你们自己协调"，然后小陈被两边拉扯)&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;p&gt;✅ &lt;strong&gt;利益拆分版&lt;/strong&gt;：&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;A："我需要小陈，是因为他熟悉用户系统的数据模型，我们的新功能要改用户表。"
-B："我需要小陈，是因为支付模块只有他能改，下个月有合规审计。"
-协调者："那 A 的利益是'有人能改用户表'，B 的利益是'支付模块能通过审计'。小陈前两周在 B 做支付审计(时间紧迫)，同时花两天给 A 的同事做用户表的知识转移。第三周起 A 的同事就可以独立改用户表了。"&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;p&gt;你看，A 要的不是"小陈这个人"，而是"有人能改用户表"。把立场拆开，资源冲突就变成了排期问题。&lt;/p&gt;
-&lt;h3 id="_9"&gt;对比表&lt;/h3&gt;
-&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;维度&lt;/th&gt;
-&lt;th&gt;立场对抗&lt;/th&gt;
-&lt;th&gt;利益协商&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;讨论焦点&lt;/td&gt;
-&lt;td&gt;"用 Redis 还是 Kafka"&lt;/td&gt;
-&lt;td&gt;"咱们需要什么"&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;沟通方式&lt;/td&gt;
-&lt;td&gt;各自陈述结论&lt;/td&gt;
-&lt;td&gt;追问背后原因&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;情绪&lt;/td&gt;
-&lt;td&gt;对立、防御&lt;/td&gt;
-&lt;td&gt;协作、探索&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;结果&lt;/td&gt;
-&lt;td&gt;一方妥协或僵持&lt;/td&gt;
-&lt;td&gt;可能找到双赢方案&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;关系影响&lt;/td&gt;
-&lt;td&gt;赢的人爽，输的人记仇&lt;/td&gt;
-&lt;td&gt;双方都觉得被尊重&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;hr&gt;
-&lt;h3 id="_10"&gt;技术人常踩的坑&lt;/h3&gt;
-&lt;p&gt;&lt;strong&gt;坑 1：把技术偏好当利益&lt;/strong&gt;&lt;/p&gt;
-&lt;p&gt;"我喜欢 Go"不是利益，"我需要高并发性能"才是利益。"我习惯用 Vim"不是利益，"我需要高效的编辑体验"才是利益。&lt;/p&gt;
-&lt;p&gt;问自己一句：如果有另一个方案也能满足我的需求，我还会坚持吗？如果会，那你坚持的是偏好，不是利益。偏好固然重要，可它不该成为说服别人的论据。&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;坑 2：不愿意问 Why&lt;/strong&gt;&lt;/p&gt;
-&lt;p&gt;技术人觉得问"你为什么要这个"是在质疑对方。其实不是。换个说法就好了：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;❌ &amp;quot;你为什么非要用 Kafka？&amp;quot;(听起来像质疑)
-✅ &amp;quot;Kafka 帮你解决什么问题？我想理解一下你的考虑。&amp;quot;(听起来像好奇)
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;同一个意思，语气不同，效果天差地别。&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;坑 3：找到共同利益后忘了设计新方案&lt;/strong&gt;&lt;/p&gt;
-&lt;p&gt;"哦，咱们都想要消息不丢，太好了！"——然后呢？&lt;/p&gt;
-&lt;p&gt;找到共同利益只是第一步。&lt;strong&gt;你还得基于共同利益重新设计一个方案&lt;/strong&gt;，而不是回到原来的两个方案里选一个。&lt;/p&gt;
-&lt;p&gt;最好的方案往往不是 A 也不是 B，而是 C——一个你们之前都没想到的方案。就像 Git 的 merge 一样，最好的结果不是 theirs 也不是 ours，而是一个新的 commit。&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="_11"&gt;五、总结 + 行动清单&lt;/h2&gt;
-&lt;p&gt;利益-立场拆分，目的无他，就一句话：&lt;strong&gt;别急着讨论"怎么做"，先对齐"为什么做"。&lt;/strong&gt;&lt;/p&gt;
-&lt;p&gt;下次遇到分歧，先问一句："咱们各自想解决什么问题？"&lt;/p&gt;
-&lt;p&gt;你会发现，大多数时候，你们要的不是同一个方案，但大概率是同一个结果。&lt;/p&gt;
-&lt;h3 id="_12"&gt;行动清单&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;[ ] 回忆一次你和同事的争论，分别写出双方的立场和利益&lt;/li&gt;
-&lt;li&gt;[ ] 下次技术评审，先花 5 分钟对齐"咱们要解决什么问题"&lt;/li&gt;
-&lt;li&gt;[ ] 练习提问句式："这个方案帮你解决什么问题？"&lt;/li&gt;
-&lt;li&gt;[ ] 当你发现自己在坚持一个方案时，问自己"我是在坚持利益还是偏好？"&lt;/li&gt;
-&lt;li&gt;[ ] 找到共同利益后，花 10 分钟一起设计新方案，别从旧方案里二选一&lt;/li&gt;
-&lt;/ul&gt;
-&lt;blockquote&gt;
-&lt;p&gt;💡 立场是 implementation，利益是 interface。面向接口编程，不要面向实现编程。——写代码如此，做人亦然。&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;hr&gt;
-&lt;h2 id="_13"&gt;思维导图&lt;/h2&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap
-&amp;lt;style&amp;gt;
-mindmapDiagram {
-  node { BackgroundColor #FAFAFA }
-  :depth(0) { BackgroundColor #FFD700 }
-  :depth(1) { BackgroundColor #E3F2FD }
-  :depth(2) { BackgroundColor #F5F5F5 }
-}
-&amp;lt;/style&amp;gt;
-* 利益-立场拆分\n&amp;quot;我不同意&amp;quot;背后可能是同一目标
-** Position 立场
-*** 表面上要的东西
-*** &amp;quot;我要用Redis&amp;quot;
-*** 容易锚定讨论
-** Interest 利益
-*** 真正关心的东西
-*** &amp;quot;我要消息不丢&amp;quot;
-*** 往往有共同点
-** 冰山模型
-*** 立场=水面上
-*** 利益=水面下
-*** 需求/恐惧/价值观
-** 四步拆分法
-*** 识别双方立场
-*** 追问背后利益
-*** 找到共同利益
-*** 重新设计方案
-** 常见坑
-*** 技术偏好当利益
-*** 不愿意问Why
-*** 找到利益忘了设计方案
-@endmindmap
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;&lt;img alt="思维导图" src="./images/journal_20260316_interest_position_mindmap.png"&gt;&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="_14"&gt;系列回顾&lt;/h2&gt;
-&lt;blockquote&gt;
-&lt;p&gt;职场工具箱系列，每篇一个工具，现学现用：&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;ol&gt;
-&lt;li&gt;&lt;a href="/2026-01-18-tool-summary.html"&gt;4D 总结法&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-01-19-tool.html"&gt;黄金圈法则&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-01-20-tnb-tool.html"&gt;TNB 表达模型&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-01-21-fab.html"&gt;FAB 提案法&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-01-21-star-tool.html"&gt;STAR 面试法&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-01-25-issue.html"&gt;同理心三方法&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-01-27-w1h-c1d-tool.html"&gt;5W1H + 8C1D&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-01-28-journal.html"&gt;艾森豪威尔矩阵&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-01-28-pdca-tool.html"&gt;PDCA 循环&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-01-28-smart-tool.html"&gt;SMART 原则&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-01-30-title-tool.html"&gt;领导力&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-01-30-tool-issue.html"&gt;逻辑树&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-01-tool-growth-issue.html"&gt;解决问题五步法&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-02-why-tool.html"&gt;5 个 Why&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-04-care-tool.html"&gt;沟通四要素 CARE&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-05-tool-principle.html"&gt;金字塔原理&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-06-tool.html"&gt;三点法&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-07-daci-tool-meeting.html"&gt;DACI&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-07-tool.html"&gt;四线复盘法&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-07-rapid-tool.html"&gt;RAPID&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-09-tool-issue.html"&gt;5S 问题处理法&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-10-swot.html"&gt;SWOT 自我定位&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-11-aarrr-tool-growth.html"&gt;AARRR 漏斗&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-13-tool-principle.html"&gt;第一性原理&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-13-raci-tool.html"&gt;RACI&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-14-tool.html"&gt;非暴力沟通&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-15-scamper-tool.html"&gt;SCAMPER&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-20-mvp-tool.html"&gt;MVP 思维&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-23-abc-kpi-tool.html"&gt;ABC 情绪理论&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-23-ai-agent-tool.html"&gt;AI Agent 学职场英语&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-25-tool-management.html"&gt;向上管理&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-02-27-ooda-tool.html"&gt;OODA 循环&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-03-07-okr-tool.html"&gt;OKR&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-03-08-moscow-tool.html"&gt;MoSCoW 优先级&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-03-09-rice-ice-tool.html"&gt;RICE / ICE 评分&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-03-10-milestone-tool.html"&gt;里程碑计划&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-03-11-dod-tool.html"&gt;验收标准 DoD&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-03-12-scope-tool.html"&gt;范围管理&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-03-13-sbi-tool.html"&gt;SBI 反馈法&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-03-14-difficult-conversation-tool.html"&gt;困难对话&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-03-15-batna-tool.html"&gt;BATNA 谈判&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;利益-立场拆分&lt;/strong&gt;(本篇)&lt;/li&gt;
-&lt;li&gt;&lt;a href="/2026-03-17-radical-candor-tool.html"&gt;Radical Candor&lt;/a&gt;&lt;/li&gt;
-&lt;/ol&gt;
-&lt;hr&gt;
-&lt;h2 id="_15"&gt;扩展阅读&lt;/h2&gt;
-&lt;ol&gt;
-&lt;li&gt;Roger Fisher, William Ury —— &lt;a href="https://www.amazon.com/Getting-Yes-Negotiating-Agreement-Without/dp/0143118757"&gt;《Getting to Yes》&lt;/a&gt;(利益-立场拆分的理论源头)&lt;/li&gt;
-&lt;li&gt;William Ury —— &lt;a href="https://www.amazon.com/Getting-Past-No-Negotiating-Difficult/dp/0553371312"&gt;《Getting Past No》&lt;/a&gt;(当对方不配合时怎么办)&lt;/li&gt;
-&lt;li&gt;Chris Voss —— &lt;a href="https://www.amazon.com/Never-Split-Difference-Negotiating-Depended/dp/0062407805"&gt;《Never Split the Difference》&lt;/a&gt;(FBI 谈判专家的实战技巧)&lt;/li&gt;
-&lt;li&gt;Adam Grant —— &lt;a href="https://www.amazon.com/Think-Again-Power-Knowing-What/dp/1984878107"&gt;《Think Again》&lt;/a&gt;(如何改变自己和别人的想法)&lt;/li&gt;
-&lt;/ol&gt;
-&lt;hr&gt;
-&lt;hr/&gt;
-&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Journal"/><category term="职场工具箱"/><category term="利益"/><category term="立场"/><category term="谈判"/><category term="沟通"/><category term="方法论"/></entry></feed>
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Journal"/><category term="journal"/><category term="blog"/><category term="security"/><category term="cloud"/><category term="kubernetes"/><category term="iam"/><category term="workload identity"/></entry></feed>

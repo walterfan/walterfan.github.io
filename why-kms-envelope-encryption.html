@@ -1,0 +1,961 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'G-VZL08BHDPP', 'auto');
+  ga('send', 'pageview');
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="从数据库泄露、密钥轮换和故障边界说起，解释为什么需要 KMS，以及信封加密如何把密钥管理这件事做得更稳。" />
+<meta name="keywords" content="security, cryptography, kms, envelope-encryption">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "为什么需要 KMS 和信封加密",
+  "description": "从数据库泄露、密钥轮换和故障边界说起，解释为什么需要 KMS，以及信封加密如何把密钥管理这件事做得更稳。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-06-27T22:02:00+08:00",
+  "dateModified": "2026-06-27T22:02:00+08:00",
+  "url": "https://www.fanyamin.com/why-kms-envelope-encryption.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/why-kms-envelope-encryption.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "security, cryptography, kms, envelope-encryption"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="为什么需要 KMS 和信封加密"/>
+  <meta property="og:description" content="从数据库泄露、密钥轮换和故障边界说起，解释为什么需要 KMS，以及信封加密如何把密钥管理这件事做得更稳。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/why-kms-envelope-encryption.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-06-27 22:02:00+08:00"/>
+  <meta property="article:modified_time" content="2026-06-27 22:02:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="security"/>
+  <meta property="article:tag" content="cryptography"/>
+  <meta property="article:tag" content="kms"/>
+  <meta property="article:tag" content="envelope-encryption"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 为什么需要 KMS 和信封加密</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="why-kms-envelope-encryption">为什么需要 KMS 和信封加密</h1>
+    <p>
+      Posted on 六 27 6月 2026 in <a href="https://www.fanyamin.com/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>为什么需要 KMS 和信封加密</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v0.1</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-06-27</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h1 id="kms">为什么需要 KMS 和信封加密</h1>
+<p>做后端久了，总会遇到一个朴素而危险的问题：数据库里到底能不能放明文密码、Token、私钥、证书、API Key？</p>
+<p>答案当然是不能。可工程里最麻烦的地方在于，“不能放明文”只是第一步。你把数据加密了，新的问题马上排队进门：加密密钥放哪里？谁能访问？怎么轮换？数据库泄露时损失多大？日志里会不会不小心打印出来？KMS 挂了系统怎么办？</p>
+<p>我认为，KMS 和信封加密的价值不在于“看起来很安全”，而在于把密钥管理从一坨散落在配置文件、环境变量、脚本和数据库里的胶水，变成一个边界清楚、可审计、可轮换、可失败关闭的工程体系。</p>
+<p>一句话：<strong>KMS 管主钥匙，业务系统管数据；信封加密让每份数据都有自己的小钥匙，而小钥匙再被主钥匙锁起来。</strong></p>
+<hr>
+<h2 id="1">1. 最常见的误区：我已经加密了，所以安全了</h2>
+<p>很多团队第一次做敏感数据保护，会写出这样的方案：</p>
+<ol>
+<li>生成一个 AES key。</li>
+<li>把它放到配置文件或环境变量里。</li>
+<li>写入数据库前用它加密。</li>
+<li>读取数据库后用它解密。</li>
+</ol>
+<p>比明文强吗？强。</p>
+<p>够好吗？通常不够。</p>
+<p>因为这套方案把问题从“数据明文暴露”改成了“密钥在哪里暴露”。如果数据库备份、应用配置、容器环境变量、CI 日志、运维脚本里任何一个地方泄露，攻击者拿到密文和密钥，就像拿到了保险柜和钥匙串。剩下的只是体力活。</p>
+<p>更麻烦的是轮换。</p>
+<p>如果全库都用同一个 key，一旦要换 key，就得把所有历史数据读出来、解密、再加密、再写回去。数据量小的时候像搬家，数据量大了就像半夜换城市供水管道：理论上可以，实际会把值班同学熬成熊猫。</p>
+<p>所以，加密本身不是终点。<strong>密钥生命周期管理</strong>才是正菜。</p>
+<hr>
+<h2 id="2-kms">2. KMS 到底解决什么问题</h2>
+<p>KMS，全称 Key Management Service，直译是密钥管理服务。它不是一个“万能加密按钮”，而是一个专门管理高价值密钥的系统。</p>
+<p>你可以把它想成银行金库：</p>
+<ol>
+<li>金库里保管主钥匙，不让主钥匙到处乱跑。</li>
+<li>谁来用钥匙，要认证、授权、审计。</li>
+<li>钥匙什么时候轮换，有策略和记录。</li>
+<li>操作失败时，宁可不开门，也不临时发一把塑料钥匙。</li>
+</ol>
+<p>在工程上，KMS 主要承担几类职责：</p>
+<table>
+<thead>
+<tr>
+<th>问题</th>
+<th>没有 KMS 时的常见做法</th>
+<th>有 KMS 后的做法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>主密钥存放</td>
+<td>配置文件、环境变量、数据库、脚本</td>
+<td>存在独立的密钥管理系统或 HSM 中</td>
+</tr>
+<tr>
+<td>访问控制</td>
+<td>依赖应用自己的权限</td>
+<td>KMS 自己做认证、授权和审计</td>
+</tr>
+<tr>
+<td>密钥轮换</td>
+<td>应用自己实现，容易遗漏</td>
+<td>通过 KMS 版本和策略管理</td>
+</tr>
+<tr>
+<td>审计</td>
+<td>很难知道谁什么时候用了 key</td>
+<td>每次关键操作都可记录</td>
+</tr>
+<tr>
+<td>爆炸半径</td>
+<td>一个 key 可能解开一大片数据</td>
+<td>可以按用途、租户、环境或数据域拆分</td>
+</tr>
+</tbody>
+</table>
+<p>这里有一个关键点：<strong>KMS 最好不要把主密钥明文交给业务系统。</strong></p>
+<p>业务系统可以请求 KMS 做加密、解密、签名、验签，或者包装、解包装某个数据密钥。但主密钥本身不应该在应用进程里散步，更不应该被写进日志。密钥一旦开始旅游，安全边界就开始漏风。</p>
+<hr>
+<h2 id="3-kms">3. 只用 KMS 直接加密数据，为什么还不够</h2>
+<p>既然 KMS 这么好，能不能把每一段敏感数据都直接发给 KMS 加密？</p>
+<p>可以，但通常不划算，也不总是合适。</p>
+<p>原因有三点。</p>
+<p>第一，KMS 是高价值服务，不适合承载所有大块数据的加解密流量。业务数据可能很大、访问频繁、延迟敏感，把每次读写都变成远程 KMS 调用，成本和延迟都不好看。</p>
+<p>第二，很多 KMS 对单次加密数据大小有限制。它们更适合处理密钥、小块材料和加密操作的控制面，不适合当成通用数据加密管道。</p>
+<p>第三，系统可靠性会被放大。每读一条数据都必须远程调用 KMS，KMS 抖一下，业务读路径也跟着哆嗦。</p>
+<p>于是，信封加密就登场了。</p>
+<hr>
+<h2 id="4">4. 什么是信封加密</h2>
+<p>信封加密的英文是 Envelope Encryption。名字很形象：</p>
+<ol>
+<li>真正的数据放进信里。</li>
+<li>这封信，用一把一次性或短生命周期的小钥匙锁上。</li>
+<li>小钥匙再放进信封。</li>
+<li>信封用金库里的主钥匙封起来。</li>
+</ol>
+<p>在密码学术语里，通常会有两类 key：</p>
+<table>
+<thead>
+<tr>
+<th>名称</th>
+<th>常见缩写</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Data Encryption Key</td>
+<td>DEK</td>
+<td>直接加密业务数据</td>
+</tr>
+<tr>
+<td>Key Encryption Key</td>
+<td>KEK</td>
+<td>加密或包装 DEK，本身由 KMS 管理</td>
+</tr>
+</tbody>
+</table>
+<p>写入数据时，大致流程是：</p>
+<ol>
+<li>业务系统为这份数据生成一个随机 DEK。</li>
+<li>用 DEK 加密敏感数据，得到 ciphertext。</li>
+<li>把 DEK 交给 KMS，用 KEK 包装成 wrapped DEK。</li>
+<li>数据库存 ciphertext、wrapped DEK 和必要的 key metadata。</li>
+<li>明文数据、明文 DEK 不落库，不写日志，用完就丢。</li>
+</ol>
+<p>读取数据时，流程反过来：</p>
+<ol>
+<li>从数据库读出 ciphertext 和 wrapped DEK。</li>
+<li>调用 KMS，把 wrapped DEK 解包装成临时明文 DEK。</li>
+<li>用 DEK 解密 ciphertext。</li>
+<li>返回明文给已授权的调用方。</li>
+<li>明文 DEK 只在内存里短暂停留，用完清理。</li>
+</ol>
+<p>数据库里看到的不是“秘密”，而是被锁好的信件和被金库封好的小钥匙。</p>
+<hr>
+<h2 id="5">5. 为什么这套设计更稳</h2>
+<h3 id="51">5.1 数据库泄露，不等于秘密泄露</h3>
+<p>如果攻击者只拿到数据库，他能看到 ciphertext 和 wrapped DEK，但拿不到 KMS 里的 KEK。没有 KEK，wrapped DEK 解不开；没有 DEK，ciphertext 也解不开。</p>
+<p>这就是分层防御的意义：不要假设某一层永远不失守。数据库会有备份，会有只读账号，会被导出，会被误传。好的设计要承认现实，然后让单点泄露无法直接变成事故。</p>
+<h3 id="52">5.2 主密钥轮换更便宜</h3>
+<p>如果数据直接用 KEK 加密，换 KEK 就要重加密所有数据。</p>
+<p>信封加密下，数据由 DEK 加密，KEK 只包装 DEK。换 KEK 时，通常只需要：</p>
+<ol>
+<li>用旧 KEK 解开 wrapped DEK。</li>
+<li>用新 KEK 重新包装同一个 DEK。</li>
+<li>更新 wrapped DEK 和 key version metadata。</li>
+</ol>
+<p>业务密文不用动。这就像换保险柜，不用把仓库里每个箱子拆开重装一遍。</p>
+<h3 id="53">5.3 可以更细地控制爆炸半径</h3>
+<p>一个全局 key 解全部数据，是最省事的设计，也是最吓人的设计。</p>
+<p>信封加密允许你按不同维度生成 DEK：每条记录、每个对象、每个租户、每个文件、每个数据版本。怎么拆，取决于你的性能、成本和隔离要求。</p>
+<p>拆得越细，管理成本越高，但单个 key 失控时的影响越小。工程不是背诵“最佳实践”，而是在约束里找合理边界。</p>
+<h3 id="54">5.4 审计和权限更清楚</h3>
+<p>谁能解包装 DEK？谁能创建 KEK？谁能禁用旧 key？谁在什么时候访问过 KMS？</p>
+<p>这些问题如果散在应用配置和脚本里，最后多半靠人肉考古。放到 KMS 边界里，至少可以把权限、审计、告警、轮换策略集中起来。</p>
+<p>安全系统最怕“没人说得清”。KMS 的一个现实价值，就是让关键问题有地方问，有日志查，有策略改。</p>
+<hr>
+<h2 id="6">6. 一个最小可用的落地模型</h2>
+<p>不要一上来就搞成论文。多数系统先把下面这个模型做扎实，就已经比“配置文件里放一把万能钥匙”强很多。</p>
+<h3 id="_1">写入路径</h3>
+<ol>
+<li>校验调用方权限。</li>
+<li>生成随机 DEK，常见选择是 256-bit key。</li>
+<li>使用 AEAD 算法加密数据，例如 AES-GCM 或 ChaCha20-Poly1305。</li>
+<li>调用 KMS，用指定 KEK 包装 DEK。</li>
+<li>持久化 ciphertext、wrapped DEK、algorithm、key id、key version 等 metadata。</li>
+<li>明文 secret 和明文 DEK 不落库、不进日志、不进异常消息。</li>
+</ol>
+<h3 id="_2">读取路径</h3>
+<ol>
+<li>校验调用方权限。</li>
+<li>读取 ciphertext、wrapped DEK 和 key metadata。</li>
+<li>调用 KMS 解包装 DEK。</li>
+<li>用 DEK 解密并校验认证标签。</li>
+<li>失败就失败关闭，不回退到明文、不尝试弱算法、不吞异常。</li>
+</ol>
+<h3 id="_3">轮换路径</h3>
+<ol>
+<li>在 KMS 中准备新 KEK 或新 key version。</li>
+<li>新写入数据使用新的 KEK metadata 包装 DEK。</li>
+<li>历史数据逐步 rewrap：解开旧 wrapped DEK，再用新 KEK 包装。</li>
+<li>确认没有数据引用旧 KEK 后，再按策略禁用或销毁旧 key。</li>
+</ol>
+<p>这套模型的重点不是“术语齐全”，而是边界清楚：数据加密在业务侧，主密钥托管在 KMS，数据库只保存密文和被包装过的数据密钥。</p>
+<hr>
+<h2 id="7-python">7. Python 关键代码示例</h2>
+<p>下面给一个最小示例，演示信封加密的核心动作：生成 DEK、用 AEAD 加密数据、调用 KMS 包装 DEK、读取时再解包装 DEK。</p>
+<p>先说清楚边界：这里的 <code>DemoKMS</code> 只用于本地演示和单元测试。生产环境不要把 KEK 放在应用进程里，也不要自己在业务服务里实现“本地 KMS”。真实系统里，<code>KMSClient</code> 应该替换成云 KMS、HSM、Vault Transit 或公司统一密钥管理系统的 SDK。</p>
+<p>依赖：</p>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>cryptography
+</code></pre></div>
+
+<h3 id="71-kms">7.1 定义 KMS 接口和密文信封</h3>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Protocol</span>
+
+<span class="kn">from</span> <span class="nn">cryptography.hazmat.primitives.ciphers.aead</span> <span class="kn">import</span> <span class="n">AESGCM</span>
+
+
+<span class="k">class</span> <span class="nc">KMSClient</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">wrap_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">plaintext_dek</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">,</span> <span class="n">key_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">key_version</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bytes</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Use KEK in KMS to wrap a plaintext DEK.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">unwrap_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">wrapped_dek</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">,</span> <span class="n">key_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">key_version</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bytes</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Use KEK in KMS to recover a plaintext DEK.&quot;&quot;&quot;</span>
+
+
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span> <span class="nc">EnvelopeRecord</span><span class="p">:</span>
+    <span class="n">algorithm</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">key_id</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">key_version</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">nonce</span><span class="p">:</span> <span class="nb">bytes</span>
+    <span class="n">ciphertext</span><span class="p">:</span> <span class="nb">bytes</span>
+    <span class="n">wrapped_dek</span><span class="p">:</span> <span class="nb">bytes</span>
+</code></pre></div>
+
+<p><code>EnvelopeRecord</code> 对应数据库里要保存的最小信息：密文、nonce、wrapped DEK、算法、key id 和 key version。注意，这里没有保存明文 DEK，也没有保存 KEK。</p>
+<h3 id="72-seal-secret">7.2 写入：seal secret</h3>
+<div class="highlight"><pre><span></span><code><span class="k">def</span> <span class="nf">seal_secret</span><span class="p">(</span>
+    <span class="n">plaintext</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">,</span>
+    <span class="n">kms</span><span class="p">:</span> <span class="n">KMSClient</span><span class="p">,</span>
+    <span class="n">key_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">key_version</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">aad</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">EnvelopeRecord</span><span class="p">:</span>
+    <span class="c1"># 256-bit DEK. In production, use a CSPRNG from a trusted library/runtime.</span>
+    <span class="n">plaintext_dek</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">urandom</span><span class="p">(</span><span class="mi">32</span><span class="p">)</span>
+    <span class="n">nonce</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">urandom</span><span class="p">(</span><span class="mi">12</span><span class="p">)</span>  <span class="c1"># 96-bit nonce is the common AES-GCM choice.</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">aesgcm</span> <span class="o">=</span> <span class="n">AESGCM</span><span class="p">(</span><span class="n">plaintext_dek</span><span class="p">)</span>
+        <span class="n">ciphertext</span> <span class="o">=</span> <span class="n">aesgcm</span><span class="o">.</span><span class="n">encrypt</span><span class="p">(</span><span class="n">nonce</span><span class="p">,</span> <span class="n">plaintext</span><span class="p">,</span> <span class="n">aad</span><span class="p">)</span>
+        <span class="n">wrapped_dek</span> <span class="o">=</span> <span class="n">kms</span><span class="o">.</span><span class="n">wrap_key</span><span class="p">(</span><span class="n">plaintext_dek</span><span class="p">,</span> <span class="n">key_id</span><span class="p">,</span> <span class="n">key_version</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">EnvelopeRecord</span><span class="p">(</span>
+            <span class="n">algorithm</span><span class="o">=</span><span class="s2">&quot;AES-256-GCM&quot;</span><span class="p">,</span>
+            <span class="n">key_id</span><span class="o">=</span><span class="n">key_id</span><span class="p">,</span>
+            <span class="n">key_version</span><span class="o">=</span><span class="n">key_version</span><span class="p">,</span>
+            <span class="n">nonce</span><span class="o">=</span><span class="n">nonce</span><span class="p">,</span>
+            <span class="n">ciphertext</span><span class="o">=</span><span class="n">ciphertext</span><span class="p">,</span>
+            <span class="n">wrapped_dek</span><span class="o">=</span><span class="n">wrapped_dek</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="c1"># Python bytes cannot be reliably zeroized because objects may be copied.</span>
+        <span class="c1"># For high-assurance systems, use platform/KMS features and avoid keeping</span>
+        <span class="c1"># plaintext keys in memory longer than necessary.</span>
+        <span class="k">del</span> <span class="n">plaintext_dek</span>
+</code></pre></div>
+
+<p>这里的 <code>aad</code> 是 Additional Authenticated Data，可以放不敏感但必须绑定的上下文，例如 record id、tenant id、数据类型、版本号等。AAD 不会被加密，但会参与认证校验。读取时必须传入同样的 AAD，否则解密失败。</p>
+<h3 id="73-open-secret">7.3 读取：open secret</h3>
+<div class="highlight"><pre><span></span><code><span class="k">def</span> <span class="nf">open_secret</span><span class="p">(</span><span class="n">record</span><span class="p">:</span> <span class="n">EnvelopeRecord</span><span class="p">,</span> <span class="n">kms</span><span class="p">:</span> <span class="n">KMSClient</span><span class="p">,</span> <span class="n">aad</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bytes</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">record</span><span class="o">.</span><span class="n">algorithm</span> <span class="o">!=</span> <span class="s2">&quot;AES-256-GCM&quot;</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;unsupported algorithm: </span><span class="si">{</span><span class="n">record</span><span class="o">.</span><span class="n">algorithm</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="n">plaintext_dek</span> <span class="o">=</span> <span class="n">kms</span><span class="o">.</span><span class="n">unwrap_key</span><span class="p">(</span>
+        <span class="n">record</span><span class="o">.</span><span class="n">wrapped_dek</span><span class="p">,</span>
+        <span class="n">record</span><span class="o">.</span><span class="n">key_id</span><span class="p">,</span>
+        <span class="n">record</span><span class="o">.</span><span class="n">key_version</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">aesgcm</span> <span class="o">=</span> <span class="n">AESGCM</span><span class="p">(</span><span class="n">plaintext_dek</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">aesgcm</span><span class="o">.</span><span class="n">decrypt</span><span class="p">(</span><span class="n">record</span><span class="o">.</span><span class="n">nonce</span><span class="p">,</span> <span class="n">record</span><span class="o">.</span><span class="n">ciphertext</span><span class="p">,</span> <span class="n">aad</span><span class="p">)</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="k">del</span> <span class="n">plaintext_dek</span>
+</code></pre></div>
+
+<p>如果 KMS 解包装失败，或者 AES-GCM 认证标签校验失败，这段代码会直接抛异常。调用方应该记录脱敏后的错误、告警、重试或返回通用错误，但不要回退到明文、默认 key 或旧算法。</p>
+<h3 id="74-demokms">7.4 测试用 DemoKMS</h3>
+<p>再次强调：下面这个 <code>DemoKMS</code> 只用于让示例能跑起来，不是生产做法。</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span> <span class="nc">DemoKMS</span><span class="p">:</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_keks</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span> <span class="nb">bytes</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="k">def</span> <span class="nf">create_kek</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">key_version</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_keks</span><span class="p">[(</span><span class="n">key_id</span><span class="p">,</span> <span class="n">key_version</span><span class="p">)]</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">urandom</span><span class="p">(</span><span class="mi">32</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">wrap_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">plaintext_dek</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">,</span> <span class="n">key_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">key_version</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bytes</span><span class="p">:</span>
+        <span class="n">kek</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_keks</span><span class="p">[(</span><span class="n">key_id</span><span class="p">,</span> <span class="n">key_version</span><span class="p">)]</span>
+        <span class="n">nonce</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">urandom</span><span class="p">(</span><span class="mi">12</span><span class="p">)</span>
+        <span class="n">wrapped</span> <span class="o">=</span> <span class="n">AESGCM</span><span class="p">(</span><span class="n">kek</span><span class="p">)</span><span class="o">.</span><span class="n">encrypt</span><span class="p">(</span><span class="n">nonce</span><span class="p">,</span> <span class="n">plaintext_dek</span><span class="p">,</span> <span class="sa">b</span><span class="s2">&quot;dek-wrap&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">nonce</span> <span class="o">+</span> <span class="n">wrapped</span>
+
+    <span class="k">def</span> <span class="nf">unwrap_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">wrapped_dek</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">,</span> <span class="n">key_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">key_version</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bytes</span><span class="p">:</span>
+        <span class="n">kek</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_keks</span><span class="p">[(</span><span class="n">key_id</span><span class="p">,</span> <span class="n">key_version</span><span class="p">)]</span>
+        <span class="n">nonce</span> <span class="o">=</span> <span class="n">wrapped_dek</span><span class="p">[:</span><span class="mi">12</span><span class="p">]</span>
+        <span class="n">ciphertext</span> <span class="o">=</span> <span class="n">wrapped_dek</span><span class="p">[</span><span class="mi">12</span><span class="p">:]</span>
+        <span class="k">return</span> <span class="n">AESGCM</span><span class="p">(</span><span class="n">kek</span><span class="p">)</span><span class="o">.</span><span class="n">decrypt</span><span class="p">(</span><span class="n">nonce</span><span class="p">,</span> <span class="n">ciphertext</span><span class="p">,</span> <span class="sa">b</span><span class="s2">&quot;dek-wrap&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<h3 id="75">7.5 跑一个完整例子</h3>
+<div class="highlight"><pre><span></span><code><span class="k">def</span> <span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">kms</span> <span class="o">=</span> <span class="n">DemoKMS</span><span class="p">()</span>
+    <span class="n">kms</span><span class="o">.</span><span class="n">create_kek</span><span class="p">(</span><span class="s2">&quot;customer-secret-kek&quot;</span><span class="p">,</span> <span class="s2">&quot;v1&quot;</span><span class="p">)</span>
+
+    <span class="n">aad</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">&quot;record_type=api_token;record_id=123&quot;</span>
+    <span class="n">record</span> <span class="o">=</span> <span class="n">seal_secret</span><span class="p">(</span>
+        <span class="n">plaintext</span><span class="o">=</span><span class="sa">b</span><span class="s2">&quot;sk_live_not_a_real_secret&quot;</span><span class="p">,</span>
+        <span class="n">kms</span><span class="o">=</span><span class="n">kms</span><span class="p">,</span>
+        <span class="n">key_id</span><span class="o">=</span><span class="s2">&quot;customer-secret-kek&quot;</span><span class="p">,</span>
+        <span class="n">key_version</span><span class="o">=</span><span class="s2">&quot;v1&quot;</span><span class="p">,</span>
+        <span class="n">aad</span><span class="o">=</span><span class="n">aad</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">recovered</span> <span class="o">=</span> <span class="n">open_secret</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="n">kms</span><span class="p">,</span> <span class="n">aad</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">recovered</span> <span class="o">==</span> <span class="sa">b</span><span class="s2">&quot;sk_live_not_a_real_secret&quot;</span>
+
+    <span class="c1"># AAD 被篡改时，AES-GCM 会校验失败。</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">open_secret</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="n">kms</span><span class="p">,</span> <span class="sa">b</span><span class="s2">&quot;record_type=api_token;record_id=456&quot;</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;decrypt failed as expected&quot;</span><span class="p">)</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">main</span><span class="p">()</span>
+</code></pre></div>
+
+<p>这段代码的重点不是 <code>DemoKMS</code>，而是几个工程约束：</p>
+<ol>
+<li>每份数据使用独立随机 DEK。</li>
+<li>业务数据由 DEK 加密。</li>
+<li>DEK 被 KMS 中的 KEK 包装后再保存。</li>
+<li>数据库只保存密文和 wrapped DEK。</li>
+<li>解密失败就失败，不做不安全回退。</li>
+</ol>
+<h3 id="76-kek-rewrap">7.6 KEK 轮换时的 rewrap 示例</h3>
+<p>主密钥轮换时，不需要重新加密业务密文，只要重新包装 DEK。</p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span> <span class="nf">rewrap_dek</span><span class="p">(</span>
+    <span class="n">record</span><span class="p">:</span> <span class="n">EnvelopeRecord</span><span class="p">,</span>
+    <span class="n">kms</span><span class="p">:</span> <span class="n">KMSClient</span><span class="p">,</span>
+    <span class="n">new_key_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">new_key_version</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">EnvelopeRecord</span><span class="p">:</span>
+    <span class="n">plaintext_dek</span> <span class="o">=</span> <span class="n">kms</span><span class="o">.</span><span class="n">unwrap_key</span><span class="p">(</span>
+        <span class="n">record</span><span class="o">.</span><span class="n">wrapped_dek</span><span class="p">,</span>
+        <span class="n">record</span><span class="o">.</span><span class="n">key_id</span><span class="p">,</span>
+        <span class="n">record</span><span class="o">.</span><span class="n">key_version</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">new_wrapped_dek</span> <span class="o">=</span> <span class="n">kms</span><span class="o">.</span><span class="n">wrap_key</span><span class="p">(</span>
+            <span class="n">plaintext_dek</span><span class="p">,</span>
+            <span class="n">new_key_id</span><span class="p">,</span>
+            <span class="n">new_key_version</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">EnvelopeRecord</span><span class="p">(</span>
+            <span class="n">algorithm</span><span class="o">=</span><span class="n">record</span><span class="o">.</span><span class="n">algorithm</span><span class="p">,</span>
+            <span class="n">key_id</span><span class="o">=</span><span class="n">new_key_id</span><span class="p">,</span>
+            <span class="n">key_version</span><span class="o">=</span><span class="n">new_key_version</span><span class="p">,</span>
+            <span class="n">nonce</span><span class="o">=</span><span class="n">record</span><span class="o">.</span><span class="n">nonce</span><span class="p">,</span>
+            <span class="n">ciphertext</span><span class="o">=</span><span class="n">record</span><span class="o">.</span><span class="n">ciphertext</span><span class="p">,</span>
+            <span class="n">wrapped_dek</span><span class="o">=</span><span class="n">new_wrapped_dek</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="k">del</span> <span class="n">plaintext_dek</span>
+</code></pre></div>
+
+<p>可以看到，<code>ciphertext</code> 没有变化。变的只是 <code>wrapped_dek</code> 和 key metadata。这就是信封加密在轮换时省心的地方。</p>
+<hr>
+<h2 id="8">8. 容易踩的坑</h2>
+<h3 id="kek">坑一：把 KEK 放进应用配置</h3>
+<p>如果 KEK 放在配置文件、环境变量或数据库里，再喊 KMS 就有点像把保险柜门拆了，外面贴一张“高级安防”的标签。</p>
+<p>KMS 的核心价值之一，是让 KEK 不离开它自己的安全边界。</p>
+<h3 id="wrapped-dek">坑二：把 wrapped DEK 当成普通字段随便打印</h3>
+<p>wrapped DEK 不是明文密钥，但它仍然是敏感材料。日志、错误消息、监控标签里都不应该出现完整值。</p>
+<p>别小看日志。很多事故不是黑客拍电影式入侵，而是某个 DEBUG 日志在凌晨三点诚实得过了头。</p>
+<h3 id="gcm-nonce">坑三：GCM nonce 重复</h3>
+<p>如果使用 AES-GCM，nonce 不能在同一把 key 下重复。重复 nonce 不是“小瑕疵”，而是会严重破坏安全性。</p>
+<p>简单做法是：每次加密生成新的随机 nonce，并把 nonce 和认证标签作为密文信封的一部分保存。不要自己发明半吊子的 nonce 规则。</p>
+<h3 id="kms_1">坑四：KMS 失败时偷偷降级</h3>
+<p>有些系统为了“可用性”，会在 KMS 解密失败时尝试备用明文、旧算法、默认 key。</p>
+<p>这基本等于给攻击者留了后门。安全关键路径要 fail closed：失败就失败，告警、重试、熔断、降级读缓存都可以讨论，但不能回退到不安全路径。</p>
+<h3 id="_4">坑五：只做加密，不做授权</h3>
+<p>加密不是授权。能解密，不代表应该解密。</p>
+<p>读取敏感数据前，仍然要检查调用方身份、作用域、租户边界、数据归属和业务权限。否则就是给错误的人发了一把正确的钥匙。</p>
+<hr>
+<h2 id="9">9. 什么时候不需要信封加密</h2>
+<p>不是所有字段都要上这套重装备。</p>
+<p>如果只是低敏感度、短生命周期、可公开或可重新生成的数据，普通数据库加密、磁盘加密、访问控制和日志脱敏可能已经够用。</p>
+<p>信封加密适合这些场景：</p>
+<ol>
+<li>数据本身高度敏感，例如密码、Token、私钥、证书、支付或身份相关材料。</li>
+<li>数据需要长期保存，不能简单丢弃。</li>
+<li>数据库、备份、分析链路、运维访问存在泄露风险。</li>
+<li>有合规、审计、轮换、租户隔离要求。</li>
+<li>需要把密钥管理职责从业务代码中拆出去。</li>
+</ol>
+<p>如果你的系统只是保存用户头像 URL，硬套信封加密，多半是给自己添堵。安全设计不是把所有门都焊死，而是知道哪扇门后面真有值钱东西。</p>
+<hr>
+<h2 id="10">10. 设计检查清单</h2>
+<p>如果你正在设计一个保存敏感数据的服务，可以用下面这张表先自查。</p>
+<table>
+<thead>
+<tr>
+<th>检查项</th>
+<th>建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>明文数据是否落库</td>
+<td>不落库</td>
+</tr>
+<tr>
+<td>明文 DEK 是否持久化</td>
+<td>不持久化</td>
+</tr>
+<tr>
+<td>KEK 是否离开 KMS</td>
+<td>不离开</td>
+</tr>
+<tr>
+<td>日志是否可能包含 secret、DEK、wrapped DEK</td>
+<td>默认脱敏，必要时禁止打印</td>
+</tr>
+<tr>
+<td>加密算法是否是 AEAD</td>
+<td>优先使用成熟库里的 AES-GCM 或 ChaCha20-Poly1305</td>
+</tr>
+<tr>
+<td>nonce/IV 是否正确生成</td>
+<td>每次加密唯一，避免复用</td>
+</tr>
+<tr>
+<td>key metadata 是否保存</td>
+<td>保存 key id、version、algorithm，便于解密和轮换</td>
+</tr>
+<tr>
+<td>KMS 失败时怎么办</td>
+<td>fail closed，并配套重试、告警和恢复流程</td>
+</tr>
+<tr>
+<td>是否有 rewrap 策略</td>
+<td>支持主密钥轮换，不重加密业务数据</td>
+</tr>
+<tr>
+<td>是否有访问审计</td>
+<td>记录关键 KMS 操作和敏感数据访问</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="_5">总结</h2>
+<p>KMS 和信封加密解决的不是“如何调用一个加密函数”这么小的问题，而是一个更现实的问题：当系统越来越大、数据越来越敏感、人越来越多、事故越来越难预测时，怎样让密钥不失控。</p>
+<p>我的经验是，安全设计最怕两个极端：一个是“先明文跑起来，以后再说”；另一个是“照着安全名词堆满架构图”。前者容易欠债，后者容易自嗨。</p>
+<p>比较靠谱的做法是：先明确威胁模型，再把边界画清楚。数据库可以被拿走，应用日志可能出错，配置可能泄露，KMS 也可能短暂不可用。设计不是假装这些事不会发生，而是让它们发生时不要一锅端。</p>
+<p>一句话收尾：<strong>KMS 负责看住主钥匙，信封加密负责把风险拆小；两者合起来，才是能在生产环境里站得住的敏感数据保护方案。</strong></p>
+<h3 id="5_1">明天可以做的 5 件事</h3>
+<ol>
+<li>列出系统里所有敏感字段，按风险分级。</li>
+<li>检查是否有密钥、Token、secret 出现在配置、日志、脚本或测试数据里。</li>
+<li>确认高敏感数据是否使用 AEAD 加密，而不是自制算法。</li>
+<li>设计 DEK/KEK 分层和 key metadata，不要只存一段裸密文。</li>
+<li>写清楚 KMS 不可用、key 轮换、解密失败时的系统行为。</li>
+</ol>
+<p>如果你只能先做一件事，就从日志和配置查起。很多安全事故，不是输给密码学，而是输给了“我以为没人会看到这个文件”。</p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/why-kms-envelope-encryption.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/tag/security.html">security</a>
+      <a href="https://www.fanyamin.com/tag/cryptography.html">cryptography</a>
+      <a href="https://www.fanyamin.com/tag/kms.html">kms</a>
+      <a href="https://www.fanyamin.com/tag/envelope-encryption.html">envelope-encryption</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/markpad-local-markdown-reader-translator.html" title="Markpad：我给 Markdown 装了一个本地驾驶舱">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/face-recognition-is-simple.html" title="人脸识别其实挺简单：从一张脸到一个名字">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/2026-04-22-aws-kms-private-key-hosting.html">从 AWS KMS 到用户私钥托管：把加密这条链路一次讲清楚</a></li>
+      <li><a href="https://www.fanyamin.com/2025-09-14-journal.html">密码存储的艺术</a></li>
+      <li><a href="https://www.fanyamin.com/deepfake-fraud.html">一通视频会议骗走 2500 万：当 CFO 的脸也能伪造</a></li>
+      <li><a href="https://www.fanyamin.com/llm-agent-security-checklist.html">给 AI Agent 上把锁：LLM 应用的安全清单</a></li>
+      <li><a href="https://www.fanyamin.com/authz-domain-model.html">授权的领域模型：从 RBAC、ABAC 到 Keycloak、Vault 的一张全景图</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

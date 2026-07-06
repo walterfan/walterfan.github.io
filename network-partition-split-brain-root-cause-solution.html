@@ -1,0 +1,713 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="分区(partition)是网络把集群切成了几块,谁也看不见谁;脑裂(split-brain)是切开之后,每一块都以为&#34;就剩我了,我来当家&#34;。于是两个主节点同时写数据,等网络恢复,数据对不上,谁都不认谁。这篇讲清楚脑裂的根因(网络分区 + 各自选主),以及业界公认的解法:多数派仲裁(quorum)、fencing、见证节点,配一份可抄的排查与设计清单。" />
+<meta name="keywords" content="distributed systems, split-brain, network partition, consensus, quorum, raft, high availability">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "脑裂:脑子裂成两半,谁也不认谁",
+  "description": "分区(partition)是网络把集群切成了几块,谁也看不见谁;脑裂(split-brain)是切开之后,每一块都以为&#34;就剩我了,我来当家&#34;。于是两个主节点同时写数据,等网络恢复,数据对不上,谁都不认谁。这篇讲清楚脑裂的根因(网络分区 + 各自选主),以及业界公认的解法:多数派仲裁(quorum)、fencing、见证节点,配一份可抄的排查与设计清单。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-07-06T20:30:00+08:00",
+  "dateModified": "2026-07-06T20:45:00+08:00",
+  "url": "https://www.fanyamin.com/blog/network-partition-split-brain-root-cause-solution.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/network-partition-split-brain-root-cause-solution.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "distributed systems, split-brain, network partition, consensus, quorum, raft, high availability"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="脑裂:脑子裂成两半,谁也不认谁"/>
+  <meta property="og:description" content="分区(partition)是网络把集群切成了几块,谁也看不见谁;脑裂(split-brain)是切开之后,每一块都以为&#34;就剩我了,我来当家&#34;。于是两个主节点同时写数据,等网络恢复,数据对不上,谁都不认谁。这篇讲清楚脑裂的根因(网络分区 + 各自选主),以及业界公认的解法:多数派仲裁(quorum)、fencing、见证节点,配一份可抄的排查与设计清单。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/network-partition-split-brain-root-cause-solution.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-07-06 20:30:00+08:00"/>
+  <meta property="article:modified_time" content="2026-07-06 20:45:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="distributed systems"/>
+  <meta property="article:tag" content="split-brain"/>
+  <meta property="article:tag" content="network partition"/>
+  <meta property="article:tag" content="consensus"/>
+  <meta property="article:tag" content="quorum"/>
+  <meta property="article:tag" content="raft"/>
+  <meta property="article:tag" content="high availability"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 脑裂:脑子裂成两半,谁也不认谁</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="network-partition-split-brain-root-cause-solution">脑裂:脑子裂成两半,谁也不认谁</h1>
+    <p>
+      Posted on 一 06 7月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>脑裂:脑子裂成两半,谁也不认谁</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Version</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-07-06</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h1 id="_1">脑裂:脑子裂成两半,谁也不认谁</h1>
+<p>先讲个让我后背发凉的故障。有套主备数据库,一主一备,备机时刻盯着主机的心跳,一旦主机没动静就自动接管、把自己升成主。设计得挺漂亮——直到某天,机房两台交换机之间的一条链路抽风了。</p>
+<p>主机没死,还在好好地对外服务、接收写入。可备机那边呢?它收不到主机的心跳了,一拍脑袋:"主机挂了!我上!" 于是它也把自己升成主,也开始对外接收写入。这下好了,<strong>同一时刻,系统里冒出了两个主库,两边都在改数据,而且互相不知道对方的存在。</strong></p>
+<p>等那条链路恢复,两个主库一照面,傻眼了:同一条记录,A 库说余额是 100,B 库说是 80,到底谁对?没人说得清。这就是分布式系统里最经典、也最致命的一类故障——<strong>脑裂(split-brain)</strong>。这篇我想把它讲透:分区和脑裂到底是啥关系、根因在哪、业界又是怎么解的。看完你能拿走一份可以照着抄的排查和设计清单。</p>
+<blockquote>
+<p>先约定几个词,怕有读者不熟:
+- <strong>节点(node)</strong>:集群里的一台机器/一个实例。
+- <strong>主节点(master/leader/primary)</strong>:负责接收写入、对外拍板的那个;其他叫从节点(replica/follower)。
+- <strong>心跳(heartbeat)</strong>:节点之间定期发的"我还活着"信号,断了就认为对方可能挂了。</p>
+</blockquote>
+<hr>
+<h2 id="_2">一、先分清:分区是"因",脑裂是"果"</h2>
+<p>这俩词经常被混着说,其实是一条因果链上的两环。</p>
+<p><strong>网络分区(Network Partition)</strong>:集群内部的网络断了,把节点切成了互相不通的几组。就像一栋楼突然被一堵墙从中间隔开,东边的人和西边的人谁也联系不上谁——但两边的人其实都还活得好好的。注意,分区断的是<strong>节点之间的通信</strong>,不是节点本身宕机。</p>
+<p><strong>脑裂(Split-Brain)</strong>:分区发生后,被隔开的每一组都发现"联系不上其他人了",于是各自作出判断:"是不是就剩我了?那我来当家。" 结果<strong>多个分区各自选出了自己的主节点,各自独立干活</strong>。这就好比楼被隔开后,东边选了个楼长,西边也选了个楼长,两个楼长都对着各自这半栋楼发号施令,还都以为自己管着整栋楼。</p>
+<p>一句话拎清:</p>
+<blockquote>
+<p><strong>分区是网络把大家切开了;脑裂是切开之后,每一块都以为"天下就剩我了",于是自立为王。</strong></p>
+</blockquote>
+<p>为什么脑裂这么可怕?因为它破坏的是分布式系统最根本的一个假设——<strong>同一时刻,一份数据只能有一个"说了算"的人</strong>。一旦有两个主节点同时接受写入,数据就会分叉(diverge),而分叉的数据几乎无法自动合并:钱到底是花了还是没花?订单到底是发货了还是没发?系统给不出唯一答案。</p>
+<hr>
+<h2 id="cap">二、CAP 定理:分区来了,你只能二选一</h2>
+<p>要理解为什么脑裂难缠,得请出分布式系统的一条铁律——<strong>CAP 定理</strong>。它说的是:一个分布式系统,在<strong>一致性(Consistency)</strong>、<strong>可用性(Availability)</strong>、<strong>分区容错(Partition tolerance)</strong> 这三样里,<strong>最多同时满足两样</strong>。</p>
+<p>用大白话解释这三个词:</p>
+<ul>
+<li><strong>一致性(C)</strong>:所有节点看到的数据都一样,你读到的永远是最新写入的。</li>
+<li><strong>可用性(A)</strong>:每个请求都能得到响应,系统不摆烂、不拒绝服务。</li>
+<li><strong>分区容错(P)</strong>:网络断了、分区了,系统还能继续工作。</li>
+</ul>
+<p>关键在于:<strong>在真实世界里,网络分区是迟早会发生的事——光纤会被挖断,交换机会抽风,机房之间会丢包</strong>。所以 P 你没得选,必须容忍。于是问题就退化成一道二选一的题:<strong>分区发生的那一刻,你是保 C 还是保 A?</strong></p>
+<table>
+<thead>
+<tr>
+<th>你的选择</th>
+<th>分区时的行为</th>
+<th>代价</th>
+<th>典型系统</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>保一致性(CP)</strong></td>
+<td>少数派那边<strong>停止服务</strong>,宁可不干活也不写错</td>
+<td>分区期间部分节点不可用</td>
+<td>ZooKeeper、etcd、传统强一致数据库</td>
+</tr>
+<tr>
+<td><strong>保可用性(AP)</strong></td>
+<td>各分区都<strong>继续服务</strong>,事后再想办法合并</td>
+<td>数据可能分叉,需要冲突解决</td>
+<td>Cassandra、DynamoDB、DNS</td>
+</tr>
+</tbody>
+</table>
+<p><strong>脑裂的本质,就是一个本想做 CP 的系统,在分区时错误地表现成了 AP。</strong> 你以为你在保一致性(只有一个主),结果分区一来,两边都自封为主、都在写——一致性没保住,还搞出了数据分叉。开头那个"两个主库"的故障,就是典型:它本该在分区时让备机"忍住别升主",结果备机沉不住气,系统从 CP 滑向了灾难性的双主。</p>
+<hr>
+<h2 id="_3">三、根因:三个条件凑齐,脑裂必然发生</h2>
+<p>把脑裂拆到最底层,它的发生需要<strong>同时满足三个条件</strong>,缺一个都裂不起来:</p>
+<ol>
+<li><strong>发生了网络分区</strong>——节点之间通信中断,这是外部诱因,你挡不住,只能容忍。</li>
+<li><strong>用"心跳超时"来判定对方死活</strong>——收不到心跳就认为对方挂了。可<strong>"收不到心跳"和"对方真的挂了"是两回事</strong>:也可能只是网络断了、对方还活蹦乱跳。这个判断天生不可靠。</li>
+<li><strong>每个分区都能独立选出主并独立干活</strong>——没有一个全局的"谁能当家"的仲裁机制,于是各分区各自为政。</li>
+</ol>
+<p>看明白没?第 1 条是天灾,第 2 条是分布式系统的固有难题(你永远无法百分百确定远端节点到底是死了还是只是失联),<strong>真正能动手根治的是第 3 条:别让每个分区都能随便自立为王。</strong></p>
+<blockquote>
+<p><strong>脑裂的病根,不在网络,而在"缺少一个全局仲裁"——谁也没资格独自决定"我说了算"。</strong></p>
+</blockquote>
+<p>这就引出了所有主流解法的共同思路:<strong>引入一个"多数决"的裁判,只有拿到多数票的那一方,才有资格当主、才有资格写。</strong></p>
+<hr>
+<h2 id="_4">四、解法:让"多数派"说了算</h2>
+<h3 id="41-quorum">4.1 核心武器:Quorum(法定人数)与奇数节点</h3>
+<p>最根本、最优雅的解法叫 <strong>Quorum(法定人数)</strong>,思路简单到近乎狡猾:</p>
+<p><strong>规定"只有拿到超过半数节点认可的那一方,才有资格当主。"</strong></p>
+<p>假设集群有 5 个节点。网络把它切成 3 + 2 两块:</p>
+<ul>
+<li>有 3 个节点的那块:占多数(3 &gt; 5/2),<strong>有资格选主、继续服务</strong>。</li>
+<li>有 2 个节点的那块:是少数派,<strong>自觉停摆,拒绝写入</strong>。</li>
+</ul>
+<p>关键点在于:<strong>一个集群里,永远不可能同时存在两个"超过半数"的分组</strong>(3+2 里不可能两边都过半)。所以任何时刻,最多只有一方能当主。<strong>从数学上杜绝了双主。</strong></p>
+<p>这也是为什么集群节点数<strong>一定要设成奇数(3、5、7)</strong> 的原因:</p>
+<table>
+<thead>
+<tr>
+<th>节点数</th>
+<th>容忍几个节点故障还能工作</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>3</td>
+<td>1</td>
+<td>过半需要 2 票</td>
+</tr>
+<tr>
+<td>4</td>
+<td>1</td>
+<td>也只容忍 1 个!比 3 还多花一台,白搭</td>
+</tr>
+<tr>
+<td>5</td>
+<td>2</td>
+<td>过半需要 3 票</td>
+</tr>
+<tr>
+<td>6</td>
+<td>2</td>
+<td>同样白搭一台</td>
+</tr>
+</tbody>
+</table>
+<p>看出来了吧,<strong>偶数节点是纯浪费</strong>:4 个节点和 3 个节点一样只容忍 1 台故障,却多花一台机器,还可能出现 2+2 的对半分裂——两边都不过半,谁都当不了主,整个集群卡死。所以业界铁律:<strong>集群节点数用奇数。</strong></p>
+<p>Raft、Paxos 这些共识算法(consensus algorithm),底层拼的就是这套多数派投票。etcd、ZooKeeper、Consul 之所以能被信赖来做"选主"和"配置中心"这种最怕脑裂的活,靠的正是它。</p>
+<h3 id="42">4.2 只有两个节点怎么办?加个"见证者"</h3>
+<p>主备数据库、双机热备这类<strong>只有 2 个节点</strong>的场景,天生凑不出奇数,过不了半——这正是开头那个故障的温床。解法是<strong>再引入一个轻量的第三方来投票</strong>:</p>
+<ul>
+<li><strong>见证节点 / 仲裁节点(Witness / Arbiter)</strong>:一个不存数据、只负责投票的小节点。MongoDB 的 Arbiter、SQL Server 的 Witness 都是干这个的。平时不干活,分区时它的一票就成了打破平局的关键——主备哪边能联系上它,哪边才算过半、才有资格当主。</li>
+<li><strong>第三可用区(Availability Zone)</strong>:把见证者放在独立于主备两机房的第三个地方。这样任何两个机房之间断链,总有一方能连上第三方拿到多数票。</li>
+</ul>
+<h3 id="43-fencing">4.3 光"选对主"还不够:Fencing(隔离)</h3>
+<p>这里有个魔鬼细节,很多人栽在这上面。假设备机误判主机挂了、升成了新主,可<strong>老主机其实没死,它只是网络卡了一下</strong>——过一会儿它缓过来,以为自己还是主,又开始写数据。这下还是双主。</p>
+<p>解决这个的机制叫 <strong>Fencing(隔离/围栏)</strong>,思路是:<strong>新主上位前,先想办法确保老主再也写不进去。</strong> 常见手法:</p>
+<ul>
+<li><strong>STONITH</strong>(Shoot The Other Node In The Head,名字很暴力,意思是"爆了对方的头"):新主直接通过带外管理接口把老主断电或重启,物理上让它闭嘴。</li>
+<li><strong>Fencing token(隔离令牌)</strong>:每次选主都发一个单调递增的编号(比如老主的 token 是 33,新主是 34)。存储层只认最大编号的写入,老主拿着过期的 33 去写,直接被拒。这是 Martin Kleppmann 在讨论分布式锁时反复强调的一招。</li>
+</ul>
+<blockquote>
+<p><strong>选主解决"谁该当家",fencing 解决"下岗的赶紧交权"——两个都做到,才真正防住脑裂。</strong></p>
+</blockquote>
+<h3 id="44-ap">4.4 如果你选了 AP:承认分叉,事后合并</h3>
+<p>如果业务能接受最终一致(比如购物车、点赞数),走 AP 路线也行,但你得<strong>正视数据会分叉这件事</strong>,提前准备好合并策略:</p>
+<ul>
+<li><strong>向量时钟(Vector Clock)</strong> / <strong>版本向量</strong>:给每次写打上因果关系的戳,合并时能判断谁先谁后、有没有冲突。</li>
+<li><strong>CRDT(无冲突复制数据类型)</strong>:一类特殊设计的数据结构,数学上保证无论怎么分叉,最后都能自动合并到一致(比如"只增计数器")。</li>
+<li><strong>LWW(最后写入者胜)</strong>:简单粗暴按时间戳取最新的。省事,但可能丢数据,慎用。</li>
+</ul>
+<hr>
+<h2 id="_5">五、一次真实的排查:怎么判断自己遇上了脑裂</h2>
+<p>回到开头那个双主故障。当年的复盘,我们踩过的坑和学到的东西,整理成一套可复用的排查思路:</p>
+<p><strong>第一步,别急着重启,先看"是谁失联,还是谁真死了"。</strong> 登上各个节点,看它们各自认为的集群状态。如果 A 节点说"我是主,B 挂了",同时 B 节点说"我是主,A 挂了"——<strong>两边都自称主,这就是脑裂的铁证</strong>。</p>
+<p><strong>第二步,查网络,而不是查进程。</strong> 脑裂的根子在网络分区,先确认节点之间的连通性(<code>ping</code>、<code>telnet</code> 端口、查交换机链路),往往会发现进程都活着,是中间的网断了。</p>
+<p><strong>第三步,确定"以谁为准",牺牲另一方。</strong> 这一步最疼:你必须选一个分区的数据作为权威(通常选多数派那边,或写入量/业务更关键的那边),<strong>丢弃或人工合并另一边的数据</strong>。脑裂一旦发生,数据丢失几乎不可避免,你能做的是把损失降到最小。</p>
+<p><strong>第四步,复盘时问一句灵魂拷问:为什么我们的系统允许了双主?</strong> 答案十有八九是——<strong>没有多数派仲裁,靠的是"收不到心跳就升主"这种拍脑袋逻辑</strong>。这才是要修的根。</p>
+<hr>
+<h2 id="_6">六、写在最后:承认"我可能判断错了"</h2>
+<p>复盘脑裂这么多年,我最大的体会是:<strong>它本质上是一个"过度自信"的故障</strong>。备机太自信了,收不到心跳就笃定"主机死了,我该上",却没考虑"也许只是我俩之间的网断了,主机好好的"。</p>
+<p>而所有靠谱的解法,骨子里都是一种<strong>谦逊</strong>:引入 quorum,是承认"我一个人说了不算,得听多数人的";加见证节点,是承认"我和对方各执一词时,需要一个第三方来评理";做 fencing,是承认"我升主之前,得先确保老主真的下台了,不能光凭我以为"。</p>
+<p>这套思路其实不只在机器里成立。团队协作、组织决策,一样怕"脑裂"——信息一断,各个小团队都按自己那点局部信息拍板,最后动作对不上、返工一大片。防法也类似:<strong>关键决策要有共同的仲裁机制,别让任何一方在信息不全时独自当家。</strong></p>
+<p>技术的进步,很多时候不是让机器变得更聪明,而是<strong>让它学会在不确定时保持克制</strong>。下次你设计任何"自动故障切换"的东西,不妨先问自己一句:<strong>当它以为对方挂了的时候,它凭什么这么肯定?</strong></p>
+<hr>
+<h4 id="_7">防脑裂设计与排查清单</h4>
+<p><strong>设计阶段:</strong></p>
+<ol>
+<li><strong>集群节点数用奇数</strong>(3、5、7),偶数是纯浪费还可能对半分裂卡死。</li>
+<li><strong>一切"谁当主"的决定,交给多数派仲裁</strong>(Raft/Paxos/quorum),别用"收不到心跳就升主"的裸逻辑。</li>
+<li><strong>只有两个节点时,必上第三方</strong>——见证节点或第三可用区,凑够打破平局的一票。</li>
+<li><strong>配 fencing 机制</strong>(STONITH 或 fencing token),确保老主下台后再也写不进去。</li>
+<li><strong>想清楚自己是 CP 还是 AP</strong>;选 AP 就提前设计好冲突合并(向量时钟 / CRDT)。</li>
+<li><strong>把见证者、多数派节点跨机房/跨可用区部署</strong>,别让它们和主备死在同一场分区里。</li>
+</ol>
+<p><strong>排查阶段:</strong></p>
+<ol>
+<li>先确认是<strong>节点真死</strong>还是<strong>网络失联</strong>(查连通性,别只看进程)。</li>
+<li>登上各节点看它们<strong>各自认为谁是主</strong>;出现两个自称主的,即脑裂。</li>
+<li>选一方数据为权威(通常多数派),牺牲另一方,把损失降到最小。</li>
+<li>复盘直击根因:<strong>系统为什么允许了双主?</strong> 大概率是缺仲裁。</li>
+</ol>
+<hr>
+<h3 id="_8">思维导图</h3>
+<div class="highlight"><pre><span></span><code>mindmap
+  root((分区与脑裂))
+    概念辨析
+      网络分区是因
+      节点通信中断
+      脑裂是果
+      各分区自立为主
+    CAP定理
+      P必须容忍
+      分区时CP或AP二选一
+      脑裂=想CP却成双主
+    根因三条件
+      发生网络分区
+      靠心跳判死活不可靠
+      分区可独立选主
+    解法
+      Quorum多数派
+      节点用奇数
+      两节点加见证者
+      Fencing隔离老主
+      AP则事后合并
+    排查步骤
+      查网络非查进程
+      看谁自称主
+      选权威牺牲另一方
+      复盘为何允许双主
+</code></pre></div>
+
+<p><img alt="分区与脑裂思维导图" src="../images/partition-split-brain-mindmap.png"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/network-partition-split-brain-root-cause-solution.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/distributed-systems.html">distributed systems</a>
+      <a href="https://www.fanyamin.com/blog/tag/split-brain.html">split-brain</a>
+      <a href="https://www.fanyamin.com/blog/tag/network-partition.html">network partition</a>
+      <a href="https://www.fanyamin.com/blog/tag/consensus.html">consensus</a>
+      <a href="https://www.fanyamin.com/blog/tag/quorum.html">quorum</a>
+      <a href="https://www.fanyamin.com/blog/tag/raft.html">raft</a>
+      <a href="https://www.fanyamin.com/blog/tag/high-availability.html">high availability</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/string-design-evolution-c-cpp-java-python-go-rune.html" title="一个字符串引发的血案：从 C 到 Go 的 rune，字符串是怎么一步步进化的">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/zero-downtime-http-service.html">如何做一个接近零停机的 HTTP 服务</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

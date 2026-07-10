@@ -1,0 +1,853 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="做后端的，跟高并发、大流量打交道是家常便饭。分而治之是基本思想，多进程、多线程、多路复用、异步是基本手段。到了 Go 这里，最常被问的一个问题是：面对资源竞争，到底该用 Channel 还是互斥锁？这篇给一个能记住的判断口诀，再把 Go 里几种真正好用的并发模式一个个拆开讲——附可跑的代码和一张选型清单。" />
+<meta name="keywords" content="Go, concurrency, channel, mutex, goroutine, pattern, backend">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Channel 还是锁？聊聊 Go 里那些好用的并发模式",
+  "description": "做后端的，跟高并发、大流量打交道是家常便饭。分而治之是基本思想，多进程、多线程、多路复用、异步是基本手段。到了 Go 这里，最常被问的一个问题是：面对资源竞争，到底该用 Channel 还是互斥锁？这篇给一个能记住的判断口诀，再把 Go 里几种真正好用的并发模式一个个拆开讲——附可跑的代码和一张选型清单。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-07-07T21:30:00+08:00",
+  "dateModified": "2026-07-07T23:20:00+08:00",
+  "url": "https://www.fanyamin.com/blog/go-concurrency-channel-vs-mutex-patterns.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/go-concurrency-channel-vs-mutex-patterns.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "Go, concurrency, channel, mutex, goroutine, pattern, backend"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="Channel 还是锁？聊聊 Go 里那些好用的并发模式"/>
+  <meta property="og:description" content="做后端的，跟高并发、大流量打交道是家常便饭。分而治之是基本思想，多进程、多线程、多路复用、异步是基本手段。到了 Go 这里，最常被问的一个问题是：面对资源竞争，到底该用 Channel 还是互斥锁？这篇给一个能记住的判断口诀，再把 Go 里几种真正好用的并发模式一个个拆开讲——附可跑的代码和一张选型清单。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/go-concurrency-channel-vs-mutex-patterns.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-07-07 21:30:00+08:00"/>
+  <meta property="article:modified_time" content="2026-07-07 23:20:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="Go"/>
+  <meta property="article:tag" content="concurrency"/>
+  <meta property="article:tag" content="channel"/>
+  <meta property="article:tag" content="mutex"/>
+  <meta property="article:tag" content="goroutine"/>
+  <meta property="article:tag" content="pattern"/>
+  <meta property="article:tag" content="backend"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; Channel 还是锁？聊聊 Go 里那些好用的并发模式</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="go-concurrency-channel-vs-mutex-patterns">Channel 还是锁？聊聊 Go 里那些好用的并发模式</h1>
+    <p>
+      Posted on 二 07 7月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>Channel 还是锁？Go 并发模式实战</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Version</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-07-07</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h1 id="channel-go">Channel 还是锁？聊聊 Go 里那些好用的并发模式</h1>
+<p>先说个场景。做后端的都熟：某个接口平时 QPS 几百，风平浪静，一到大促或者某个热点事件，流量瞬间翻几十倍。这时候你脑子里过的第一件事，永远是那句老话——<strong>分而治之</strong>。</p>
+<p>一个人干不完的活，就拆给一群人干。落到工程上，就是我们熟悉的那几板斧：多进程（比如 Nginx 起一堆 worker）、多线程（Java 的线程池、Go 的 goroutine）、多路复用（一个线程盯一堆连接，epoll 那套）、异步（别傻等，回调或者 future 通知你）。手段就这么多，翻来覆去用。</p>
+<p>但只要一"分",就绕不开一个头疼事:<strong>这群人同时去动同一份数据,怎么办?</strong> 这就是资源竞争。在 Go 里,这个问题会具体成一个每个人都纠结过的选择题——<strong>面对共享数据,我该用 Channel,还是老老实实加一把互斥锁(Mutex)?</strong></p>
+<p>这篇就想把这事说清楚:先给一个能记住的判断口诀,再把 Go 里几种真正扛用的并发模式一个个拆开,配上能直接跑的代码。看完你至少不会再对着 Channel 和 Mutex 两眼一抹黑。</p>
+<blockquote>
+<p>先约定几个词,怕有读者不熟:
+- <strong>goroutine</strong>:Go 里的"轻量级线程",起一个只要几 KB 栈,一个进程里跑几十万个都不稀奇。可以理解成"很便宜的一个干活的人"。
+- <strong>Channel</strong>:goroutine 之间传数据的"管道"。一头塞进去,另一头拿出来,天然带同步。像流水线上传递零件的传送带。
+- <strong>Mutex(互斥锁)</strong>:同一时刻只让一个 goroutine 进"临界区"动共享数据的锁。像公共厕所的门闩,进去了就锁上,别人得等。
+- <strong>数据竞争(Data Race)</strong>:多个 goroutine 同时读写同一份内存,且至少有一个在写,结果不可预测。Go 自带的 <code>-race</code> 检测器(<code>go test -race</code>)能在程序跑到竞争时报警。</p>
+</blockquote>
+<hr>
+<h2 id="_1">一、那句被神化、又被误读的口诀</h2>
+<p>Go 官方有句名言,几乎是并发编程的"祖训":</p>
+<blockquote>
+<p><strong>Don't communicate by sharing memory; share memory by communicating.</strong>
+不要通过共享内存来通信,而要通过通信来共享内存。</p>
+</blockquote>
+<p>这话很漂亮,却常被念歪成:"Go 推荐 Channel,那锁就是落后的、要避免的。" 于是什么场景都硬套 Channel,把一个简单计数器写成一坨绕来绕去的管道。</p>
+<p>这是典型的"把手段当目的"。祖训的本意其实是:<strong>当问题本质是"数据要在不同单元之间流动、交接"时,Channel 表达最自然;当问题本质是"保护一小块共享状态别被同时改坏"时,一把锁反而最直接。</strong> Go 团队自己也在官方 Wiki 里说过,这不是铁律,该用锁就用锁——<code>sync</code>(Mutex、RWMutex)和 <code>sync/atomic</code> 一直在标准库里,不是历史包袱,而是本就有不可替代的场合。</p>
+<p>所以别纠结"哪个更高级"了。它俩不是竞品,是分工。</p>
+<hr>
+<h2 id="_2">二、一张表 + 一句口诀:到底怎么选</h2>
+<p>我自己的判断,浓缩成一句话:</p>
+<blockquote>
+<p><strong>传递数据的所有权,用 Channel;保护共享的状态,用锁。</strong></p>
+</blockquote>
+<p>再展开成一张对照表,方便你对号入座:</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>更适合用 Channel</th>
+<th>更适合用 Mutex / atomic</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>问题本质</strong></td>
+<td>数据要"传递、交接、流动"</td>
+<td>数据要"就地保护,别改坏"</td>
+</tr>
+<tr>
+<td><strong>典型场景</strong></td>
+<td>生产者-消费者、任务分发、流水线、事件通知</td>
+<td>计数器、缓存 map、共享配置、状态标志位</td>
+</tr>
+<tr>
+<td><strong>临界区大小</strong></td>
+<td>一段处理逻辑,数据要转手给别人</td>
+<td>一两行,读写一个字段就完事</td>
+</tr>
+<tr>
+<td><strong>性能</strong></td>
+<td>有调度和拷贝开销,不适合超高频小操作</td>
+<td>极轻量,尤其 atomic 几乎零成本</td>
+</tr>
+<tr>
+<td><strong>心智负担</strong></td>
+<td>结构清晰但容易多起 goroutine、忘关 channel</td>
+<td>简单直接,但容易忘解锁、死锁</td>
+</tr>
+<tr>
+<td><strong>一句话</strong></td>
+<td>"把活儿和数据一起交出去"</td>
+<td>"我就锁一下,改完马上放"</td>
+</tr>
+</tbody>
+</table>
+<p>打个生活里的比方。<strong>Channel 像是外卖流水线</strong>:接单的、备菜的、打包的、送餐的,各管一段,订单(数据)顺着传送带往下走,谁也不用去抢别人手里的东西。<strong>Mutex 像是公司里那台唯一的彩色打印机</strong>:大家都要用,但同一时刻只能一个人操作,你得先占着,打完赶紧让给下一个。</p>
+<p>你看,这两个场景硬要互换就很别扭:让四个厨师抢一口锅(该用流水线的地方用了锁),或者给一台打印机修一条传送带(该用锁的地方用了 channel),都是自找麻烦。</p>
+<hr>
+<h2 id="_3">三、先看反面教材:什么时候老老实实用锁</h2>
+<p>我见过太多人,一上来就想秀 Channel。最典型的翻车,是拿 Channel 去实现一个"并发安全的计数器"。</p>
+<p>先看<strong>该用锁</strong>的正确写法,简单到无聊——这恰恰是它的优点:</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// 一个并发安全的计数器:用锁,清爽</span>
+<span class="kd">type</span><span class="w"> </span><span class="nx">Counter</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">mu</span><span class="w">    </span><span class="nx">sync</span><span class="p">.</span><span class="nx">Mutex</span>
+<span class="w">    </span><span class="nx">count</span><span class="w"> </span><span class="kt">int64</span>
+<span class="p">}</span>
+
+<span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">c</span><span class="w"> </span><span class="o">*</span><span class="nx">Counter</span><span class="p">)</span><span class="w"> </span><span class="nx">Inc</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">c</span><span class="p">.</span><span class="nx">mu</span><span class="p">.</span><span class="nx">Lock</span><span class="p">()</span>
+<span class="w">    </span><span class="nx">c</span><span class="p">.</span><span class="nx">count</span><span class="o">++</span>
+<span class="w">    </span><span class="nx">c</span><span class="p">.</span><span class="nx">mu</span><span class="p">.</span><span class="nx">Unlock</span><span class="p">()</span>
+<span class="p">}</span>
+
+<span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">c</span><span class="w"> </span><span class="o">*</span><span class="nx">Counter</span><span class="p">)</span><span class="w"> </span><span class="nx">Value</span><span class="p">()</span><span class="w"> </span><span class="kt">int64</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">c</span><span class="p">.</span><span class="nx">mu</span><span class="p">.</span><span class="nx">Lock</span><span class="p">()</span>
+<span class="w">    </span><span class="k">defer</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">mu</span><span class="p">.</span><span class="nx">Unlock</span><span class="p">()</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">count</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>临界区就 <code>c.count++</code> 一行,锁的范围小得不能再小。如果嫌 Mutex 都重,这种纯计数场景直接上 <code>atomic</code> 更快:</p>
+<div class="highlight"><pre><span></span><code><span class="kd">type</span><span class="w"> </span><span class="nx">Counter</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">count</span><span class="w"> </span><span class="kt">int64</span>
+<span class="p">}</span>
+
+<span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">c</span><span class="w"> </span><span class="o">*</span><span class="nx">Counter</span><span class="p">)</span><span class="w"> </span><span class="nx">Inc</span><span class="p">()</span><span class="w">          </span><span class="p">{</span><span class="w"> </span><span class="nx">atomic</span><span class="p">.</span><span class="nx">AddInt64</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">c</span><span class="p">.</span><span class="nx">count</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="p">}</span>
+<span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">c</span><span class="w"> </span><span class="o">*</span><span class="nx">Counter</span><span class="p">)</span><span class="w"> </span><span class="nx">Value</span><span class="p">()</span><span class="w"> </span><span class="kt">int64</span><span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="nx">atomic</span><span class="p">.</span><span class="nx">LoadInt64</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">c</span><span class="p">.</span><span class="nx">count</span><span class="p">)</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+
+<p>那<strong>硬用 Channel</strong> 呢?得起一个专门的 goroutine 守着计数,所有加减和读取都通过 channel 发指令进去——代码量翻几倍,每次加一都过一遍调度器,<strong>更慢、更绕、还更容易死锁</strong>。这就是为祖训而祖训。</p>
+<p>一句话记住:<strong>临界区就一两行、只是保护一个字段,别犹豫,上锁。</strong></p>
+<hr>
+<h2 id="go">四、Go 里真正扛用的几种并发模式</h2>
+<p>选型讲完,下面几种模式在生产里反复出现,吃透了大部分并发需求都能拼出来。</p>
+<h3 id="41-worker-pool">4.1 Worker Pool(工作池):控制并发度的老实人</h3>
+<p>我用得最多的模式。核心诉求一句话:<strong>任务很多,但我不想无脑起几万个 goroutine 把下游(数据库、第三方 API)打爆,得控制同时干活的人数。</strong></p>
+<p>思路是:开固定数量的 worker,从同一个任务 channel 里抢活,干完把结果丢到结果 channel。</p>
+<div class="highlight"><pre><span></span><code><span class="kd">func</span><span class="w"> </span><span class="nx">workerPool</span><span class="p">(</span><span class="nx">jobs</span><span class="w"> </span><span class="o">&lt;-</span><span class="kd">chan</span><span class="w"> </span><span class="kt">int</span><span class="p">,</span><span class="w"> </span><span class="nx">results</span><span class="w"> </span><span class="kd">chan</span><span class="o">&lt;-</span><span class="w"> </span><span class="kt">int</span><span class="p">,</span><span class="w"> </span><span class="nx">workerNum</span><span class="w"> </span><span class="kt">int</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kd">var</span><span class="w"> </span><span class="nx">wg</span><span class="w"> </span><span class="nx">sync</span><span class="p">.</span><span class="nx">WaitGroup</span>
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="nx">workerNum</span><span class="p">;</span><span class="w"> </span><span class="nx">i</span><span class="o">++</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">wg</span><span class="p">.</span><span class="nx">Add</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="w">        </span><span class="k">go</span><span class="w"> </span><span class="kd">func</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="k">defer</span><span class="w"> </span><span class="nx">wg</span><span class="p">.</span><span class="nx">Done</span><span class="p">()</span>
+<span class="w">            </span><span class="k">for</span><span class="w"> </span><span class="nx">job</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="k">range</span><span class="w"> </span><span class="nx">jobs</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="c1">// channel 关了,range 自动退出</span>
+<span class="w">                </span><span class="nx">results</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="nx">job</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nx">job</span><span class="w"> </span><span class="c1">// 假装这是耗时的处理</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">        </span><span class="p">}()</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="c1">// 单独一个 goroutine 等所有 worker 干完,再关结果 channel</span>
+<span class="w">    </span><span class="k">go</span><span class="w"> </span><span class="kd">func</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">wg</span><span class="p">.</span><span class="nx">Wait</span><span class="p">()</span>
+<span class="w">        </span><span class="nb">close</span><span class="p">(</span><span class="nx">results</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}()</span>
+<span class="p">}</span>
+
+<span class="kd">func</span><span class="w"> </span><span class="nx">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">jobs</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nb">make</span><span class="p">(</span><span class="kd">chan</span><span class="w"> </span><span class="kt">int</span><span class="p">,</span><span class="w"> </span><span class="mi">100</span><span class="p">)</span>
+<span class="w">    </span><span class="nx">results</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nb">make</span><span class="p">(</span><span class="kd">chan</span><span class="w"> </span><span class="kt">int</span><span class="p">,</span><span class="w"> </span><span class="mi">100</span><span class="p">)</span>
+
+<span class="w">    </span><span class="nx">workerPool</span><span class="p">(</span><span class="nx">jobs</span><span class="p">,</span><span class="w"> </span><span class="nx">results</span><span class="p">,</span><span class="w"> </span><span class="mi">4</span><span class="p">)</span><span class="w"> </span><span class="c1">// 只用 4 个 worker</span>
+
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mi">10</span><span class="p">;</span><span class="w"> </span><span class="nx">i</span><span class="o">++</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">jobs</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="nx">i</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="nb">close</span><span class="p">(</span><span class="nx">jobs</span><span class="p">)</span><span class="w"> </span><span class="c1">// 活派完了,关掉,worker 们 range 结束后自然收工</span>
+
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="nx">r</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="k">range</span><span class="w"> </span><span class="nx">results</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="nx">r</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong>Channel 和 Mutex 各司其职的味道就出来了</strong>:任务分发、结果回收是"数据流动",用 channel;<code>sync.WaitGroup</code> 本质是个带锁的计数器,负责"等所有人干完"这个状态同步。两者搭配,不是二选一。</p>
+<p>一个坑:<code>workerNum</code> 别拍脑袋,它应该由<strong>下游能承受的并发上限</strong>决定,而不是你机器几个核——32 核不代表数据库连接池能扛 32 个并发写。</p>
+<h3 id="42-fan-out-fan-in">4.2 Fan-out / Fan-in(扇出/扇入):把一件大事拆成小事再合并</h3>
+<p>名字唬人,其实就是"分而治之"的 Channel 版:</p>
+<ul>
+<li><strong>Fan-out(扇出)</strong>:把一个 channel 的活儿分给多个 goroutine 并行处理。</li>
+<li><strong>Fan-in(扇入)</strong>:把多个 goroutine 的结果汇总回一个 channel。</li>
+</ul>
+<p>Worker Pool 就是它的一个特例。适合"一批数据,每条都要做同样的重活儿(比如各自去调一个慢接口)、彼此不依赖"的场景:扇出去并行跑,再扇回来统一收。</p>
+<p>关键点是 Fan-in 的合并:</p>
+<div class="highlight"><pre><span></span><code><span class="kd">func</span><span class="w"> </span><span class="nx">fanIn</span><span class="p">(</span><span class="nx">channels</span><span class="w"> </span><span class="o">...&lt;-</span><span class="kd">chan</span><span class="w"> </span><span class="kt">int</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;-</span><span class="kd">chan</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">out</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nb">make</span><span class="p">(</span><span class="kd">chan</span><span class="w"> </span><span class="kt">int</span><span class="p">)</span>
+<span class="w">    </span><span class="kd">var</span><span class="w"> </span><span class="nx">wg</span><span class="w"> </span><span class="nx">sync</span><span class="p">.</span><span class="nx">WaitGroup</span>
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">ch</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="k">range</span><span class="w"> </span><span class="nx">channels</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">wg</span><span class="p">.</span><span class="nx">Add</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="w">        </span><span class="k">go</span><span class="w"> </span><span class="kd">func</span><span class="p">(</span><span class="nx">c</span><span class="w"> </span><span class="o">&lt;-</span><span class="kd">chan</span><span class="w"> </span><span class="kt">int</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="k">defer</span><span class="w"> </span><span class="nx">wg</span><span class="p">.</span><span class="nx">Done</span><span class="p">()</span>
+<span class="w">            </span><span class="k">for</span><span class="w"> </span><span class="nx">v</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="k">range</span><span class="w"> </span><span class="nx">c</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="nx">out</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="nx">v</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">        </span><span class="p">}(</span><span class="nx">ch</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="k">go</span><span class="w"> </span><span class="kd">func</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">wg</span><span class="p">.</span><span class="nx">Wait</span><span class="p">()</span>
+<span class="w">        </span><span class="nb">close</span><span class="p">(</span><span class="nx">out</span><span class="p">)</span><span class="w"> </span><span class="c1">// 所有源都干完了,才关合并出口</span>
+<span class="w">    </span><span class="p">}()</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">out</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="43-context">4.3 用 context 做超时与取消:并发里最容易被忽略的一环</h3>
+<p>前面都在讲"怎么把活干起来",但更要命的问题是:<strong>活干到一半,不想干了怎么办?</strong> 客户端断开、超时、上游取消——你得让一堆正在跑的 goroutine 及时收手,别空转泄漏。</p>
+<p><code>context</code> 就是干这个的,像发给所有下属的一个"随时可能拉响的收工哨":</p>
+<div class="highlight"><pre><span></span><code><span class="kd">func</span><span class="w"> </span><span class="nx">worker</span><span class="p">(</span><span class="nx">ctx</span><span class="w"> </span><span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span><span class="w"> </span><span class="nx">id</span><span class="w"> </span><span class="kt">int</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">select</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="o">&lt;-</span><span class="nx">ctx</span><span class="p">.</span><span class="nx">Done</span><span class="p">():</span><span class="w"> </span><span class="c1">// 哨声响了,赶紧收工</span>
+<span class="w">            </span><span class="nx">fmt</span><span class="p">.</span><span class="nx">Printf</span><span class="p">(</span><span class="s">&quot;worker %d 收到取消信号: %v\n&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">id</span><span class="p">,</span><span class="w"> </span><span class="nx">ctx</span><span class="p">.</span><span class="nx">Err</span><span class="p">())</span>
+<span class="w">            </span><span class="k">return</span>
+<span class="w">        </span><span class="k">default</span><span class="p">:</span>
+<span class="w">            </span><span class="c1">// 干一小步活,然后回来再看看哨响没</span>
+<span class="w">            </span><span class="nx">time</span><span class="p">.</span><span class="nx">Sleep</span><span class="p">(</span><span class="mi">100</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nx">time</span><span class="p">.</span><span class="nx">Millisecond</span><span class="p">)</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="kd">func</span><span class="w"> </span><span class="nx">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">cancel</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">context</span><span class="p">.</span><span class="nx">WithTimeout</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nx">Background</span><span class="p">(),</span><span class="w"> </span><span class="mi">300</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Millisecond</span><span class="p">)</span>
+<span class="w">    </span><span class="k">defer</span><span class="w"> </span><span class="nx">cancel</span><span class="p">()</span>
+
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="mi">3</span><span class="p">;</span><span class="w"> </span><span class="nx">i</span><span class="o">++</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">go</span><span class="w"> </span><span class="nx">worker</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">i</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="o">&lt;-</span><span class="nx">ctx</span><span class="p">.</span><span class="nx">Done</span><span class="p">()</span><span class="w"> </span><span class="c1">// 主 goroutine 也等哨声</span>
+<span class="w">    </span><span class="nx">time</span><span class="p">.</span><span class="nx">Sleep</span><span class="p">(</span><span class="mi">50</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nx">time</span><span class="p">.</span><span class="nx">Millisecond</span><span class="p">)</span><span class="w"> </span><span class="c1">// 给 worker 一点收尾时间</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>我的经验:<strong>会起 goroutine、会做 I/O、会等待的函数,第一个参数就该是 <code>ctx context.Context</code>。</strong> 这是防止 goroutine 泄漏最省心的护栏。很多"内存慢慢涨、goroutine 数只增不减"的线上诡异问题,根子就在起了 goroutine 却没给它留取消的退路。</p>
+<h3 id="44-select-channel">4.4 select + 超时:别让任何一个 channel 操作无限期傻等</h3>
+<p><code>select</code> 是 Go 并发的瑞士军刀:它能同时盯着多个 channel,哪个先就绪就走哪个。配上 <code>time.After</code>,就能给任何阻塞操作加个"闹钟":</p>
+<div class="highlight"><pre><span></span><code><span class="k">select</span><span class="w"> </span><span class="p">{</span>
+<span class="k">case</span><span class="w"> </span><span class="nx">res</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="o">&lt;-</span><span class="nx">resultCh</span><span class="p">:</span>
+<span class="w">    </span><span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="s">&quot;拿到结果:&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">res</span><span class="p">)</span>
+<span class="k">case</span><span class="w"> </span><span class="o">&lt;-</span><span class="nx">time</span><span class="p">.</span><span class="nx">After</span><span class="p">(</span><span class="mi">2</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">):</span>
+<span class="w">    </span><span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="s">&quot;等太久了,超时!&quot;</span><span class="p">)</span><span class="w"> </span><span class="c1">// 兜底,别死等</span>
+<span class="k">case</span><span class="w"> </span><span class="o">&lt;-</span><span class="nx">ctx</span><span class="p">.</span><span class="nx">Done</span><span class="p">():</span>
+<span class="w">    </span><span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="s">&quot;被取消了&quot;</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>一句话:<strong>只要有 channel 的读写可能阻塞,就想想"万一对面永远不来,我要等到什么时候"</strong>,然后用 <code>select</code> 加个超时或取消分支兜底。</p>
+<h3 id="45-bugkubernetes-controller-runtime-goroutine">4.5 一个真实的开源 Bug:Kubernetes controller-runtime 的 goroutine 泄漏</h3>
+<p>别以为这种坑只有新手会踩。2025 年,Kubernetes 官方 SIG 的 <code>controller-runtime</code>——几乎所有 K8s Operator/Controller 都依赖的核心库——就修过一个教科书式的 goroutine 泄漏(issue <a href="https://github.com/kubernetes-sigs/controller-runtime/issues/3218">#3218</a>、修复 PR <a href="https://github.com/kubernetes-sigs/controller-runtime/pull/3247">#3247</a>),成因恰好把 context 超时和 channel 阻塞串到了一起:</p>
+<ul>
+<li>manager 关停(shutdown)时有个"优雅退出"超时 <code>gracefulShutdownTimeout</code>;</li>
+<li>超时一到,manager 不再等 runnable,顺手把<strong>负责从 <code>errChan</code> 排空错误的那个 goroutine</strong> 也停了;</li>
+<li>偏偏这时某个"慢半拍"的 runnable 才失败,照常往共享的 <code>errChan</code> 发一个 error;</li>
+<li>结果<strong>接收方已经没了</strong>,<code>errChan &lt;- err</code> 永远阻塞,goroutine 退不出来,泄漏了。</li>
+</ul>
+<p>作者复现时,<code>goleak</code> 打出的泄漏栈状态清清楚楚写着 <code>chan send</code>——就卡在往 channel 发送那一行。修复很干净,把会阻塞的 <code>r.errChan &lt;- err</code> 改成带取消分支的 <code>select</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="k">select</span><span class="w"> </span><span class="p">{</span>
+<span class="k">case</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nx">errChan</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="nx">err</span><span class="p">:</span>
+<span class="w">    </span><span class="c1">// 正常:错误成功送出</span>
+<span class="k">case</span><span class="w"> </span><span class="o">&lt;-</span><span class="nx">r</span><span class="p">.</span><span class="nx">ctx</span><span class="p">.</span><span class="nx">Done</span><span class="p">():</span>
+<span class="w">    </span><span class="c1">// 已在关停,没人接收,记个日志丢掉,让 goroutine 干净退出</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>review 里还有个小插曲:一开始有人建议直接用 <code>default</code> 兜底,作者指出那样在<strong>正常运行</strong>时只要 <code>errChan</code> 偶尔占满就会误丢错误。最终定为"正常时坚持发送、只有 context 取消才走丢弃分支",既堵泄漏又不误伤——<strong>连一个 <code>select</code> 分支怎么写,背后都是权衡。</strong></p>
+<p>这个例子想说的是:<strong>"起了 goroutine、往 channel 发东西,却忘了留取消的退路"——这种坑连 Kubernetes 都会踩,直到 2025 年还在修。</strong> 它不挑人,只挑你有没有"起了 goroutine 就先想好它怎么退"的习惯。</p>
+<hr>
+<h2 id="_4">五、几个把人坑惨的细节</h2>
+<p>模式会用了,还有几个反复咬人的坑,提前打个预防针:</p>
+<ul>
+<li><strong>关 channel 的责任在"发送方",不在接收方。</strong> 而且只能关一次,关两次直接 panic。惯例是:谁发,谁负责关;接收方只管 <code>range</code> 或 <code>&lt;-</code>。</li>
+<li><strong><code>sync.WaitGroup</code> 的 <code>Add</code> 要在起 goroutine 之前调。</strong> 别在 goroutine 内部才 <code>Add</code>,那可能 <code>Wait</code> 已经先跑过去了,计数根本没加上。</li>
+<li><strong><code>defer mu.Unlock()</code> 是好习惯,但小心锁的粒度。</strong> 如果临界区里夹了一个慢 I/O(比如网络请求),整个锁期间别人全在门口排队,并发直接变串行。锁只护数据,别把 I/O 也圈进去。</li>
+<li><strong>读多写少用 <code>sync.RWMutex</code>,但别看到"读"就无脑上。</strong> 它只在<strong>读远多于写、且读临界区有一定耗时</strong>时才划算——RWMutex 内部要维护读者计数和写者标志,比 Mutex 更重。像前面那个计数器,临界区就一行、写还频繁,上 RWMutex 反而是净亏损:<strong>纯计数用 <code>atomic</code>,带复合判断(如 <code>if count&gt;0 then count--</code>)用普通 <code>Mutex</code>,都更快。</strong></li>
+<li><strong>别忘了 <code>-race</code>。</strong> CI 里养成 <code>go test -race</code> 的习惯,数据竞争这种"平时不出事、一上量就诡异"的 bug,靠它能提前抓出一大半。</li>
+</ul>
+<hr>
+<h2 id="_5">六、最后一句</h2>
+<p>回到开头那个选择题。Channel 和 Mutex 不是"新 vs 旧""高级 vs 低级"的对立,而是两种表达方式:<strong>一个擅长"数据在流动",一个擅长"状态被保护"。</strong> 别急着站队,先看清手头的问题属于哪一类。</p>
+<p>分而治之只是把大问题拆小,真正的手艺是拆完之后,让这些小单元既能各干各的、又能在该同步时稳稳握手。工具就那么几样,难的是每次都用对地方。</p>
+<blockquote>
+<p>传数据用 Channel,护状态用锁,该超时就超时,起了 goroutine 就想好它怎么退。</p>
+</blockquote>
+<h3 id="_6">行动清单</h3>
+<p>写并发代码前,拿这几条对一遍:</p>
+<ol>
+<li><strong>先分类</strong>:这个共享数据,是要"传递交接"还是"就地保护"?—— 决定 Channel 还是锁。</li>
+<li><strong>控并发度</strong>:会起大量 goroutine 吗?下游扛得住吗?—— 上 Worker Pool,别裸奔。</li>
+<li><strong>留退路</strong>:每个会阻塞/会 I/O 的函数,第一个参数带上 <code>ctx</code>,想清楚它怎么被取消。</li>
+<li><strong>加闹钟</strong>:每个可能阻塞的 channel 操作,配 <code>select</code> + 超时/取消分支兜底。</li>
+<li><strong>收好尾</strong>:channel 由发送方关且只关一次;<code>WaitGroup.Add</code> 在起 goroutine 之前调。</li>
+<li><strong>锁要瘦</strong>:临界区里别塞 I/O;读多写少换 <code>RWMutex</code>。</li>
+<li><strong>抓竞争</strong>:CI 里跑 <code>go test -race</code>,别等上线才发现。</li>
+</ol>
+<p>你在项目里踩过哪个并发的坑?是 goroutine 泄漏,还是 channel 关早了 panic,还是死锁?欢迎到我的个人网站留言聊聊。</p>
+<h3 id="_7">扩展阅读</h3>
+<p>书:</p>
+<ul>
+<li><strong>《Concurrency in Go》</strong>(Katherine Cox-Buday,O'Reilly)—— 首推,专讲 Go 并发,CSP、Channel、<code>sync</code> 包、pipeline、fan-out/fan-in、context 取消都讲得系统又落地,本文提到的模式书里都有更完整的推导。有中译本《Go 语言并发之道》。</li>
+<li><strong>《The Go Programming Language》</strong>(Donovan &amp; Kernighan)—— Go 圣经,第 8、9 章专讲 goroutine、channel 与共享变量同步,是理解"祖训"由来的一手材料。</li>
+<li><strong>《The Art of Multiprocessor Programming》</strong>(Herlihy &amp; Shavit)—— 跳出语言看并发,锁、无锁、内存模型的理论根基都在这儿。</li>
+</ul>
+<p>一手查证资料:</p>
+<ul>
+<li>controller-runtime <a href="https://github.com/kubernetes-sigs/controller-runtime/issues/3218">issue #3218</a> / <a href="https://github.com/kubernetes-sigs/controller-runtime/pull/3247">PR #3247</a> —— 本文 4.5 节那个真实泄漏 bug 的原始记录。</li>
+<li>Uber Engineering —— <a href="https://www.uber.com/en-US/blog/leakprof-featherlight-in-production-goroutine-leak-detection/">LeakProf</a>(2022)—— 大厂怎么在生产环境批量抓 goroutine 泄漏。</li>
+<li><a href="https://github.com/uber-go/goleak"><code>go.uber.org/goleak</code></a> —— 单元测试里检测 goroutine 泄漏的工具,<code>defer goleak.VerifyNone(t)</code> 一行就能用。</li>
+</ul>
+<h3 id="_8">全文思维导图</h3>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* Go 并发:Channel 还是锁
+** 大背景
+*** 高并发/大流量
+*** 分而治之
+*** 多进程/多线程/多路复用/异步
+** 怎么选
+*** 传数据 → Channel
+*** 护状态 → 锁 / atomic
+*** 别为祖训而祖训
+** 好用的模式
+*** Worker Pool 控并发度
+*** Fan-out / Fan-in
+*** context 超时与取消
+*** select + 超时兜底
+*** 真实 bug:k8s controller-runtime 泄漏
+** 常见坑
+*** channel 发送方负责关
+*** WaitGroup.Add 要提前
+*** 锁里别塞 I/O
+*** 读多写少用 RWMutex
+*** go test -race
+@endmindmap
+</code></pre></div>
+
+<p><img alt="Go 并发:Channel 还是锁 - 思维导图" src="./images/tech_20260707_go-concurrency-channel-vs-mutex_mindmap.png"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/go-concurrency-channel-vs-mutex-patterns.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/go.html">Go</a>
+      <a href="https://www.fanyamin.com/blog/tag/concurrency.html">concurrency</a>
+      <a href="https://www.fanyamin.com/blog/tag/channel.html">channel</a>
+      <a href="https://www.fanyamin.com/blog/tag/mutex.html">mutex</a>
+      <a href="https://www.fanyamin.com/blog/tag/goroutine.html">goroutine</a>
+      <a href="https://www.fanyamin.com/blog/tag/pattern.html">pattern</a>
+      <a href="https://www.fanyamin.com/blog/tag/backend.html">backend</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-07-07-cryptography-learning-roadmap.html" title="关于密码学，我们到底该知道些什么">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/2026-07-09-how-to-cure-indecision.html" title="选择困难症怎么解">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/2026-01-28-go-concurrency.html">悲观锁、乐观锁、无锁：Go 并发控制的三种姿势</a></li>
+      <li><a href="https://www.fanyamin.com/blog/go-interface-friendly-implementation.html">struct 到底实现了哪些接口？让 Go 的隐式接口更友好一点</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2025-03-22-pattern-protocol.html">边车模式的协议设计</a></li>
+      <li><a href="https://www.fanyamin.com/blog/string-design-evolution-c-cpp-java-python-go-rune.html">一个字符串引发的血案：从 C 到 Go 的 rune，字符串是怎么一步步进化的</a></li>
+      <li><a href="https://www.fanyamin.com/blog/golang-ai-harness.html">Go 服务用 AI 写代码：工具链白送了半套 harness，你只是没拧紧</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

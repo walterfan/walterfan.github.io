@@ -1,0 +1,1196 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="今天的 LLM 动辄数十亿参数，其思想源头之一却是十几行代码就能实现的感知机。本文用垃圾邮件打分、门卫和画线的类比，讲清输入、权重、偏置、激活函数、学习规则与收敛边界，并给出一个可运行的 NumPy 最简实现。" />
+<meta name="keywords" content="AI, perceptron, machine-learning, activation-function, linear-classifier">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "风起于青萍之末（上）：感知机如何学会画一条线",
+  "description": "今天的 LLM 动辄数十亿参数，其思想源头之一却是十几行代码就能实现的感知机。本文用垃圾邮件打分、门卫和画线的类比，讲清输入、权重、偏置、激活函数、学习规则与收敛边界，并给出一个可运行的 NumPy 最简实现。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-07-14T20:30:00+08:00",
+  "dateModified": "2026-07-14T23:20:00+08:00",
+  "url": "https://www.fanyamin.com/blog/perceptron-part-1.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/perceptron-part-1.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "AI, perceptron, machine-learning, activation-function, linear-classifier"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="风起于青萍之末（上）：感知机如何学会画一条线"/>
+  <meta property="og:description" content="今天的 LLM 动辄数十亿参数，其思想源头之一却是十几行代码就能实现的感知机。本文用垃圾邮件打分、门卫和画线的类比，讲清输入、权重、偏置、激活函数、学习规则与收敛边界，并给出一个可运行的 NumPy 最简实现。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/perceptron-part-1.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-07-14 20:30:00+08:00"/>
+  <meta property="article:modified_time" content="2026-07-14 23:20:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="AI"/>
+  <meta property="article:tag" content="perceptron"/>
+  <meta property="article:tag" content="machine-learning"/>
+  <meta property="article:tag" content="activation-function"/>
+  <meta property="article:tag" content="linear-classifier"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 风起于青萍之末（上）：感知机如何学会画一条线</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="perceptron-part-1">风起于青萍之末（上）：感知机如何学会画一条线</h1>
+    <p>
+      Posted on 二 14 7月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>风起于青萍之末（上）：感知机如何学会画一条线</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-07-14</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="llm">那么大的 LLM，起点居然这么小</h2>
+<p>第一次看到大语言模型的结构图，很多人都会有点发怵：几十层甚至上百层 Transformer，数十亿参数，一堆矩阵乘法，再加上 Attention、Softmax、LayerNorm、残差连接。图还没看完，信心先掉了一半。</p>
+<p>可如果一路往回拆，拆掉 Transformer，拆掉深层网络，拆掉反向传播，最后会碰到一个极其朴素的东西：<strong>感知机（Perceptron）</strong>。</p>
+<p>它做的事说出来甚至有点寒酸：接收几个数字，分别乘上权重，加起来，再看结果有没有超过一条线。超过就判为一类，否则判为另一类。代码十几行，公式两三条，连一杯咖啡都未必喝得完。</p>
+<p>然而，风起于青萍之末。Rosenblatt 的感知机把一个要紧的想法落到了明确的学习算法上：<strong>我们不必手写所有判断规则，可以给机器一些样本，让它自己调权重。</strong> 从这个意义上说，感知机不是 LLM 的微缩模型，却是现代神经网络的一位直系祖先。</p>
+<p>这个系列分成上下两篇。上篇先把脚步放慢，只讲清三件事：</p>
+<ul>
+<li>感知机到底在算什么，又是怎样学会分类的；</li>
+<li>阶跃函数和激活函数有什么区别；</li>
+<li>它为什么能学会画一条分界线，又有哪些边界。</li>
+</ul>
+<p>下篇再让 XOR 出场，沿着隐藏层、反向传播一路走到 Transformer 和 LLM。先把地基踩实，后面的高楼才不会看着像魔法。</p>
+<h3 id="_1">这篇文章怎么读</h3>
+<p>这篇稍微有点长，但不用从第一条公式硬啃到最后。按自己的兴趣选一条路线即可：</p>
+<table>
+<thead>
+<tr>
+<th>你想带走什么</th>
+<th>建议路线</th>
+<th>可以放心跳过</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>只想听懂感知机</td>
+<td>第 1、2、3、6 节</td>
+<td>第 4 节代码、第 5 节证明和所有“数学加餐”</td>
+</tr>
+<tr>
+<td>想亲手跑起来</td>
+<td>第 1 至 4 节</td>
+<td>第 5 节收敛证明</td>
+</tr>
+<tr>
+<td>想弄懂数学骨架</td>
+<td>从头阅读，重点看损失函数与收敛定理</td>
+<td>无</td>
+</tr>
+</tbody>
+</table>
+<p>正文中的公式不是考试题。每个关键公式前后都会给一句大白话；看到“数学加餐”时，若不感兴趣，略过公式和推导，从加餐后的第一段正文继续，主线不会断。</p>
+<hr>
+<h2 id="1">1. 先认识这个最简单的“神经元”</h2>
+<p>假设我们要判断一封邮件是不是垃圾邮件。先别急着看公式，把感知机想成一个拿着计分表的门卫。</p>
+<p>门卫不懂邮件内容，只检查三件事：有没有“免费”，有没有可疑链接，发件人是否在通讯录里。每条证据都有一个分值，支持“垃圾邮件”就加分，支持“正常邮件”就减分。</p>
+<table>
+<thead>
+<tr>
+<th>证据</th>
+<th style="text-align: right;">输入值 <span class="math">\(x\)</span></th>
+<th style="text-align: right;">权重 <span class="math">\(w\)</span></th>
+<th style="text-align: right;">对总分的贡献 <span class="math">\(x\times w\)</span></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>包含“免费”</td>
+<td style="text-align: right;">1（有）</td>
+<td style="text-align: right;">+2</td>
+<td style="text-align: right;">+2</td>
+</tr>
+<tr>
+<td>包含可疑链接</td>
+<td style="text-align: right;">1（有）</td>
+<td style="text-align: right;">+3</td>
+<td style="text-align: right;">+3</td>
+</tr>
+<tr>
+<td>发件人在通讯录</td>
+<td style="text-align: right;">1（有）</td>
+<td style="text-align: right;">-4</td>
+<td style="text-align: right;">-4</td>
+</tr>
+<tr>
+<td>默认偏置</td>
+<td style="text-align: right;">-</td>
+<td style="text-align: right;">-1</td>
+<td style="text-align: right;">-1</td>
+</tr>
+<tr>
+<td><strong>合计</strong></td>
+<td style="text-align: right;"></td>
+<td style="text-align: right;"></td>
+<td style="text-align: right;"><strong>0</strong></td>
+</tr>
+</tbody>
+</table>
+<p>这个例子里，“免费”和可疑链接是可疑证据，所以权重为正；通讯录是可信证据，所以权重为负。最后再减去 1，表示门卫默认不会随便冤枉一封邮件。总分是 0，若规则规定“达到 0 就拦截”，它会被判为垃圾邮件。</p>
+<p>感知机干的就是这件事：<strong>收集证据，按重要程度打分，加起来，再和门槛比较。</strong></p>
+<p><img alt="感知机把输入乘以权重、加上偏置，再通过阶跃函数输出类别" src="../images/tech_20260714_perceptron-calculation-flow.svg"></p>
+<p>现在再来看数学写法。三个检查结果叫作输入特征：</p>
+<ul>
+<li><span class="math">\(x_1\)</span>：是否包含“免费”；</li>
+<li><span class="math">\(x_2\)</span>：是否包含可疑链接；</li>
+<li><span class="math">\(x_3\)</span>：发件人是否在通讯录里。</li>
+</ul>
+<p>三个权重分别记作 <span class="math">\(w_1,w_2,w_3\)</span>，默认分记作偏置 <span class="math">\(b\)</span>。于是上面整张计分表可以压缩成一行：</p>
+<div class="math">$$
+z = \mathbf{w}^{\mathsf T}\mathbf{x} + b
+  = w_1x_1 + w_2x_2 + w_3x_3 + b
+$$</div>
+<p>第一次见到 <span class="math">\(\mathbf{w}^{\mathsf T}\mathbf{x}\)</span>，容易以为是什么高深操作。其实它只是后面那串乘法加法的简写：</p>
+<div class="math">$$
+\mathbf{w}^{\mathsf T}\mathbf{x}
+=w_1x_1+w_2x_2+w_3x_3
+$$</div>
+<ul>
+<li>粗体 <span class="math">\(\mathbf{x}\)</span> 表示把所有输入排成一组；</li>
+<li>粗体 <span class="math">\(\mathbf{w}\)</span> 表示把所有权重也排成一组；</li>
+<li>右上角的 <span class="math">\(\mathsf T\)</span> 表示转置，目的是让两组数字能按位置相乘；</li>
+<li><span class="math">\(z\)</span> 只是总分的名字，没有别的玄机。</li>
+</ul>
+<p>套回刚才的邮件：</p>
+<div class="math">$$
+z=2\times1+3\times1+(-4)\times1+(-1)=0
+$$</div>
+<p>若不关心矩阵运算，记住一句“每项证据乘以分值，然后全部相加”就够了。</p>
+<p>总分算出来以后，还要把它变成“垃圾邮件”或“正常邮件”这两个类别。感知机采用最干脆的办法：以 0 为线，一刀切开。</p>
+<div class="math">$$
+\hat y =
+\begin{cases}
++1, &amp; z \ge 0 \\
+-1, &amp; z &lt; 0
+\end{cases}
+$$</div>
+<p><span class="math">\(\hat y\)</span> 读作“y hat”，表示模型给出的预测，而不是训练数据里的标准答案。<span class="math">\(+1\)</span> 和 <span class="math">\(-1\)</span> 只是两个类别的代号，可以理解为“拦截”和“放行”。</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: right;">总分 <span class="math">\(z\)</span></th>
+<th style="text-align: right;">阶跃函数输出</th>
+<th>门卫的决定</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: right;">-3.2</td>
+<td style="text-align: right;">-1</td>
+<td>放行</td>
+</tr>
+<tr>
+<td style="text-align: right;">-0.01</td>
+<td style="text-align: right;">-1</td>
+<td>放行</td>
+</tr>
+<tr>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">+1</td>
+<td>拦截</td>
+</tr>
+<tr>
+<td style="text-align: right;">5.7</td>
+<td style="text-align: right;">+1</td>
+<td>拦截</td>
+</tr>
+</tbody>
+</table>
+<p>可以看到，阶跃函数不关心总分是 0.01 还是 100，只关心有没有跨过 0。这也是“一刀切”三个字的来历。</p>
+<p>这里每个角色都很朴素：</p>
+<table>
+<thead>
+<tr>
+<th>元素</th>
+<th>数学含义</th>
+<th>大白话</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>输入 <span class="math">\(x_i\)</span></td>
+<td>样本的特征</td>
+<td>这条证据有没有出现、强度多大</td>
+</tr>
+<tr>
+<td>权重 <span class="math">\(w_i\)</span></td>
+<td>特征的重要程度和方向</td>
+<td>这条证据加几分，还是减几分</td>
+</tr>
+<tr>
+<td>偏置 <span class="math">\(b\)</span></td>
+<td>不依赖具体输入的基础分</td>
+<td>默认更怀疑，还是更宽松</td>
+</tr>
+<tr>
+<td>加权和 <span class="math">\(z\)</span></td>
+<td>所有证据的总分</td>
+<td>支持和反对意见加总</td>
+</tr>
+<tr>
+<td>阶跃函数</td>
+<td>把分数变成类别</td>
+<td>过线还是没过线</td>
+</tr>
+</tbody>
+</table>
+<p>所以感知机既不“感知”，也不神秘。它就是一个<strong>会从数据中调整参数的线性二分类器</strong>。</p>
+<p>若把输入限制成 0 和 1，它还能表示一些逻辑门。例如 AND 逻辑可以写成：</p>
+<div class="math">$$
+\hat y = \operatorname{step}(x_1+x_2-1.5)
+$$</div>
+<p>只有当 <span class="math">\(x_1=x_2=1\)</span> 时，加权和才大于零。换句话说，一个感知机就能学会一条简单的逻辑规则。</p>
+<h3 id="_2">阶跃函数和激活函数，到底是什么关系</h3>
+<p>这两个词经常挨着出现，很容易让人以为它们是两套东西。其实关系很简单：</p>
+<blockquote>
+<p><strong>激活函数是一个大类，阶跃函数是激活函数的一种。</strong></p>
+</blockquote>
+<p>一个人工神经元通常分两步计算。第一步，把输入加权求和：</p>
+<div class="math">$$
+z=\mathbf{w}^{\mathsf T}\mathbf{x}+b
+$$</div>
+<p>第二步，把 <span class="math">\(z\)</span> 交给函数 <span class="math">\(\phi\)</span>，得到神经元的输出：</p>
+<div class="math">$$
+a=\phi(z)
+$$</div>
+<p>这个 <span class="math">\(\phi\)</span> 就叫<strong>激活函数（Activation Function）</strong>。你可以把它理解成装在总分后面的“处理器”：总分还是那个总分，但经过不同处理器，会产生不同形状、不同范围的输出。</p>
+<p>这个名字来自早期神经元的类比：输入信号积累到一定程度，神经元就“激活”并发出信号。不过在现代网络里，它的作用早已不只是模拟神经元放电，更重要的是给网络加入非线性。</p>
+<p>感知机采用的是<strong>阶跃函数（Step Function）</strong>。若使用 0 和 1 作为输出，它可以写成：</p>
+<div class="math">$$
+H(z)=
+\begin{cases}
+1, &amp; z\ge 0\\
+0, &amp; z&lt;0
+\end{cases}
+$$</div>
+<p>它像一个很干脆的门卫：分数达到门槛就放行，否则拒绝，没有“差一点”和“很有把握”的区别。有些教材把输出写成 <span class="math">\(-1\)</span> 和 <span class="math">\(+1\)</span>，也有些教材规定 <span class="math">\(H(0)=0\)</span>，只是记号约定不同，核心都是用阈值作硬切分。</p>
+<p>阶跃函数像电灯开关，只有关和开。Sigmoid 更像调光旋钮，会在 0 到 1 之间平滑变化；ReLU 则像一扇单向门，负数挡在门外，正数原样通过。</p>
+<p><img alt="Step、Sigmoid 和 ReLU 三种激活函数的形状" src="../images/tech_20260714_perceptron-activation-functions.svg"></p>
+<p>图中横轴是输入 <span class="math">\(z\)</span>，纵轴是激活函数的输出。它揭示了一个差别：如果输入稍微变化，Step 的输出通常纹丝不动，Sigmoid 和 ReLU 的输出则能跟着变化。</p>
+<p>阶跃函数适合感知机，因为感知机只需要给出二元决定；可到了多层网络，它有一个致命麻烦。训练多层网络时，我们不只想知道答案错没错，还想知道：<strong>把某个权重稍微拨大一点，最终误差会改变多少？</strong> 数学上用导数，也就是曲线在当前位置的斜率，回答这个问题。</p>
+<div class="math">$$
+H'(z)=0 \quad (z\ne 0)
+$$</div>
+<p>它在 <span class="math">\(z=0\)</span> 处是个悬崖，无法定义唯一斜率；在其他位置又全是平地，斜率为 0。若把这种导数沿多层网络往回传，前面的权重收到的信号几乎都是“别动”。这就像年终复盘只给员工“合格”或“不合格”，却不告诉他差在哪儿、该改多少，下一轮很难精确进步。</p>
+<p>所以，现代神经网络通常改用更适合梯度优化的激活函数：</p>
+<table>
+<thead>
+<tr>
+<th>函数</th>
+<th>生活类比</th>
+<th>输出特点</th>
+<th>常见位置</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Step</td>
+<td>电灯开关</td>
+<td>只有两档，硬切分</td>
+<td>经典感知机</td>
+</tr>
+<tr>
+<td>Sigmoid</td>
+<td>调光旋钮</td>
+<td>平滑压到 <span class="math">\((0,1)\)</span></td>
+<td>二分类输出层</td>
+</tr>
+<tr>
+<td>Tanh</td>
+<td>可正转也可反转的旋钮</td>
+<td>平滑压到 <span class="math">\((-1,1)\)</span></td>
+<td>早期网络、部分循环网络</td>
+</tr>
+<tr>
+<td>ReLU</td>
+<td>单向门</td>
+<td>负数归零，正数通过</td>
+<td>许多网络的隐藏层</td>
+</tr>
+<tr>
+<td>GELU / SiLU</td>
+<td>带缓冲的智能阀门</td>
+<td>平滑保留或抑制输入</td>
+<td>现代 Transformer</td>
+</tr>
+</tbody>
+</table>
+<p>公式并不需要全背。理解它们的输出形状，以及能否把“该改多少”传回前一层，比记住名字更重要。</p>
+<h4 id="_3">数学加餐：为什么多层网络偏爱可导激活函数</h4>
+<p>不想看推导，可以直接跳到本节最后一句。以 Sigmoid 为例，它的公式和导数是：</p>
+<div class="math">$$
+\sigma(z)=\frac{1}{1+e^{-z}},\qquad
+\sigma'(z)=\sigma(z)(1-\sigma(z))
+$$</div>
+<p>只要没有落入两端的饱和区，梯度就能告诉网络参数该往哪个方向调整。ReLU 虽然在 0 点也不可导，但它在正半轴的导数为 1；优化时通常取一个约定的次梯度即可，并不妨碍实际训练。</p>
+<p>激活函数还有一个更根本的作用。若完全不用激活函数，或者每层都只用线性函数，那么两层线性变换仍可合并成一层：</p>
+<div class="math">$$
+W_2(W_1x+b_1)+b_2=(W_2W_1)x+(W_2b_1+b_2)
+$$</div>
+<p>堆十层也还是一条线性边界。正是 Sigmoid、ReLU、GELU 这类<strong>非线性激活</strong>，让后一层能够组合前一层学到的特征，逐步画出弯曲而复杂的决策边界。</p>
+<p>一句话记忆：<strong>加权求和负责收集证据，激活函数负责改变表达；阶跃函数负责一刀切，可导激活函数负责让多层网络学得动。</strong></p>
+<hr>
+<h2 id="2">2. 从几何上看，它只会画一刀</h2>
+<p>如果只有两个输入特征，我们可以把每封邮件画成平面上的一个点：横轴是特征 <span class="math">\(x_1\)</span>，纵轴是特征 <span class="math">\(x_2\)</span>。感知机的任务，就是在这张图上画一条直线。</p>
+<p><img alt="感知机用一条直线分开正常邮件和垃圾邮件" src="../images/tech_20260714_perceptron-decision-boundary.svg"></p>
+<p>图中红色叉号代表更像垃圾邮件的样本，蓝色圆点代表更像正常邮件的样本。紫色直线就是感知机学到的决策边界。</p>
+<p>落在直线一侧的点总分大于 0，判为正类；另一侧总分小于 0，判为负类；刚好落在线上的点总分等于 0。公式里的</p>
+<div class="math">$$
+\mathbf{w}^{\mathsf T}\mathbf{x}+b=0
+$$</div>
+<p>在二维空间是一条直线，在三维空间是一个平面，在更高维空间则叫<strong>超平面（Hyperplane）</strong>。这个名字听起来有点吓人，其实就是一把高维世界里的刀：刀的一边判为正类，另一边判为负类。</p>
+<table>
+<thead>
+<tr>
+<th>参数变化</th>
+<th>图上发生什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>改变 <span class="math">\(w_1,w_2\)</span> 的比例</td>
+<td>直线旋转，表示两条证据的重要程度变了</td>
+</tr>
+<tr>
+<td>改变偏置 <span class="math">\(b\)</span></td>
+<td>直线整体平移，表示判定尺度变严或变松</td>
+</tr>
+<tr>
+<td>给模型增加新特征</td>
+<td>图从二维升到更高维，但“用一个平面切开”不变</td>
+</tr>
+</tbody>
+</table>
+<p>权重向量 <span class="math">\(\mathbf{w}\)</span> 决定这把刀朝哪个方向，偏置 <span class="math">\(b\)</span> 决定它放在哪里。训练感知机，本质上就是不断挪动和转动这把刀，直到把两类样本分开。</p>
+<p>这也立刻说出了它的能力边界：<strong>一刀能分开的，它有机会学会；一刀分不开的，它无论练多少轮都学不会。</strong></p>
+<p>有些模型名字很大，干的活却不一定复杂；感知机正好相反，名字像一台机器，内核只是一条线。老程序员看到这里应该会安心一点：不过是 <code>if</code> 前面加了几个可以学习的参数。</p>
+<hr>
+<h2 id="3">3. 它怎样从错误中学习</h2>
+<p>先不写公式。感知机的学习过程，很像老师批改一套只有判断题的作业：</p>
+<table>
+<thead>
+<tr>
+<th>步骤</th>
+<th>感知机做什么</th>
+<th>老师批作业的类比</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>根据当前权重计算总分</td>
+<td>学生先写答案</td>
+</tr>
+<tr>
+<td>2</td>
+<td>将预测与标准答案比较</td>
+<td>老师判断对错</td>
+</tr>
+<tr>
+<td>3</td>
+<td>答错时调整相关权重</td>
+<td>找出错误方向，订正一次</td>
+</tr>
+<tr>
+<td>4</td>
+<td>继续看下一条样本</td>
+<td>做下一道题</td>
+</tr>
+</tbody>
+</table>
+<p>例如，一封明显的垃圾邮件被模型放行，说明可疑证据加分不够。算法就把这些证据对应的权重往上调一点。反过来，一封正常邮件被误杀，就把相关权重往下调一点。</p>
+<p>“一点”到底是多少，由<strong>学习率</strong>决定。学习率像每次拨动旋钮的幅度：太小，改得慢；太大，又可能一步迈过头。原始感知机的策略相当朴素：答对而且没有刚好压线，就不动；答错或压线，才调整。</p>
+<p>只想理解原理，记住下面这句话就够了：</p>
+<blockquote>
+<p><strong>预测、对答案、错了或刚好压线，就沿正确方向推一下权重，然后继续。</strong></p>
+</blockquote>
+<h3 id="_4">数学加餐：把“订正”写成公式</h3>
+<p>这一小节把上面的过程压缩成数学语言。跳过它，不影响后面的代码、XOR 和神经网络主线。</p>
+<p>给定训练集</p>
+<div class="math">$$
+\mathcal D=\{(\mathbf{x}_i,y_i)\}_{i=1}^{n}, \qquad y_i\in\{-1,+1\}
+$$</div>
+<p>为了让两类样本真正落在分界线两侧，训练时要求：</p>
+<div class="math">$$
+y_i(\mathbf{w}^{\mathsf T}\mathbf{x}_i+b)&gt;0
+$$</div>
+<p>为什么？若 <span class="math">\(y_i=+1\)</span>，我们希望括号里的分数为正；若 <span class="math">\(y_i=-1\)</span>，则希望分数为负。两种情况乘起来都应当大于零。这是一个很漂亮的小技巧，把两个分支收进了同一条公式。</p>
+<p>前面的预测规则把 <span class="math">\(z=0\)</span> 约定为正类，但训练规则更严格：样本刚好压在线上时仍然更新。也就是说，一个正样本即使按约定暂时猜对，只要还贴着边界，算法仍会把它往正类一侧推。不同教材对零点可能采用不同约定，关键是代码前后一致。</p>
+<p>若某个样本被分错，或者刚好压在线上，即</p>
+<div class="math">$$
+y_i(\mathbf{w}^{\mathsf T}\mathbf{x}_i+b)\le 0
+$$</div>
+<p>感知机就这样更新：</p>
+<div class="math">$$
+\mathbf{w}\leftarrow\mathbf{w}+\eta y_i\mathbf{x}_i
+$$</div>
+<div class="math">$$
+b\leftarrow b+\eta y_i
+$$</div>
+<p><span class="math">\(\eta&gt;0\)</span> 是学习率。若一个正样本被错判或压线，就沿着 <span class="math">\(\mathbf{x}_i\)</span> 的方向推权重；若一个负样本被错判或压线，就往反方向推。推一下，再看下一题。</p>
+<h3 id="_5">再深一步：这条更新公式从哪里来</h3>
+<p>可以定义单个样本的感知机损失：</p>
+<div class="math">$$
+L_i(\mathbf{w},b)=\max\left(0,-y_i(\mathbf{w}^{\mathsf T}\mathbf{x}_i+b)\right)
+$$</div>
+<p>分类正确时，损失为 0；分类错误时，损失就是“错得有多远”。在误分类区域内，它对参数的梯度为：</p>
+<div class="math">$$
+\frac{\partial L_i}{\partial \mathbf{w}}=-y_i\mathbf{x}_i,
+\qquad
+\frac{\partial L_i}{\partial b}=-y_i
+$$</div>
+<p>做一次梯度下降：</p>
+<div class="math">$$
+\mathbf{w}\leftarrow\mathbf{w}-\eta\frac{\partial L_i}{\partial \mathbf{w}}
+=\mathbf{w}+\eta y_i\mathbf{x}_i
+$$</div>
+<p>刚好就是上面的学习规则。</p>
+<p>这里要补一句边界：阶跃函数本身几乎处处导数为零，在跳变点还不可导，所以我们不是“穿过阶跃函数做反向传播”，而是在优化感知机损失。这个区别到了多层网络那里，会变得很要紧。</p>
+<hr>
+<h2 id="30">30 秒复盘：先把脑子从公式里捞出来</h2>
+<p>读到这里，若已经有点累，先别急着往下冲。关掉公式，只留三句话：</p>
+<table>
+<thead>
+<tr>
+<th>已经讲过什么</th>
+<th>一句话版本</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>感知机怎样判断</td>
+<td>每条证据乘以权重，加上偏置，再看是否过线</td>
+</tr>
+<tr>
+<td>感知机怎样分类</td>
+<td>它在特征空间里画一条直线，把两类样本分开</td>
+</tr>
+<tr>
+<td>感知机怎样学习</td>
+<td>预测错了或刚好压线，就把权重往正确方向推一下</td>
+</tr>
+</tbody>
+</table>
+<p>这三句话已经构成一个完整模型。下面的代码和收敛证明，是给想继续下潜的读者准备的。只想听懂主线，可以跳过第 4、5 节，直接去第 6 节看典型用途。此刻停下来喝口水也行，文章不会跑。</p>
+<hr>
+<h2 id="4-numpy">4. 十几行 NumPy，写出一个感知机</h2>
+<p>不写代码的读者可以跳过代码块，只看下面这条流程：</p>
+<p><img alt="感知机逐条预测、检查错误并更新参数的训练循环" src="../images/tech_20260714_perceptron-training-loop.svg"></p>
+<p>这已经是许多机器学习训练过程的雏形。下面的代码只是把它逐字翻译给计算机。</p>
+<p>下面这份代码没有框架，没有自动求导，也没有把核心逻辑藏进 <code>fit()</code>。它训练一个 AND 分类器，标签采用 <span class="math">\(-1\)</span> 和 <span class="math">\(+1\)</span>：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+
+
+<span class="k">def</span> <span class="nf">fit_perceptron</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">learning_rate</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">epochs</span><span class="o">=</span><span class="mi">100</span><span class="p">):</span>
+    <span class="n">w</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="n">b</span> <span class="o">=</span> <span class="mf">0.0</span>
+
+    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">epochs</span><span class="p">):</span>
+        <span class="n">mistakes</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">xi</span><span class="p">,</span> <span class="n">yi</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">yi</span> <span class="o">*</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">xi</span><span class="p">)</span> <span class="o">+</span> <span class="n">b</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">w</span> <span class="o">+=</span> <span class="n">learning_rate</span> <span class="o">*</span> <span class="n">yi</span> <span class="o">*</span> <span class="n">xi</span>
+                <span class="n">b</span> <span class="o">+=</span> <span class="n">learning_rate</span> <span class="o">*</span> <span class="n">yi</span>
+                <span class="n">mistakes</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">if</span> <span class="n">mistakes</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">break</span>
+
+    <span class="k">return</span> <span class="n">w</span><span class="p">,</span> <span class="n">b</span>
+
+
+<span class="k">def</span> <span class="nf">predict</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">X</span> <span class="o">@</span> <span class="n">w</span> <span class="o">+</span> <span class="n">b</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+
+
+<span class="n">X</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span>
+<span class="p">])</span>
+<span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+
+<span class="n">w</span><span class="p">,</span> <span class="n">b</span> <span class="o">=</span> <span class="n">fit_perceptron</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;w =&quot;</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="s2">&quot;b =&quot;</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;prediction =&quot;</span><span class="p">,</span> <span class="n">predict</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">b</span><span class="p">))</span>
+</code></pre></div>
+
+<p>输出的具体权重可能受样本顺序影响，但预测应当是：</p>
+<div class="highlight"><pre><span></span><code><span class="go">prediction = [-1 -1 -1  1]</span>
+</code></pre></div>
+
+<p>这十几行代码里，已经有了上图所示的机器学习训练骨架：初始化参数、遍历样本、计算预测、衡量错误、更新参数，再重复到收敛或达到训练轮数上限。</p>
+<p>今天训练 LLM，外面包了分布式集群、混合精度、梯度累积、检查点和海量数据，骨架依然眼熟。自行车和高铁当然不是一回事，可“轮子负责滚动”这条基本逻辑并没有变。</p>
+<hr>
+<h2 id="5">5. 数学加餐：它为什么会收敛</h2>
+<p>感知机有一个很讨人喜欢的性质：如果训练数据真的线性可分，它不会永远瞎撞，有限次犯错后一定能找到一条分界线。这就是<strong>感知机收敛定理</strong>。</p>
+<p>普通读者读到这里，知道结论和边界即可：</p>
+<table>
+<thead>
+<tr>
+<th>情况</th>
+<th>结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>两类样本能被一条直线完全分开</td>
+<td>感知机有限次犯错后能够找到分界线</td>
+</tr>
+<tr>
+<td>两类之间空隙较宽</td>
+<td>通常更容易找到分界线</td>
+</tr>
+<tr>
+<td>两类互相混杂，根本分不开</td>
+<td>原始感知机可能反复修改，无法稳定收敛</td>
+</tr>
+</tbody>
+</table>
+<p>下面证明“为什么”。若不想看，可以直接跳到第 6 节“典型用途”。</p>
+<p>更具体一点，假设存在一个单位向量 <span class="math">\(\mathbf{w}^{*}\)</span>，能以间隔 <span class="math">\(\gamma&gt;0\)</span> 分开所有样本：</p>
+<div class="math">$$
+y_i\left((\mathbf{w}^{*})^{\mathsf T}\mathbf{x}_i\right)\ge\gamma
+$$</div>
+<p>并且所有输入向量的长度不超过 <span class="math">\(R\)</span>：</p>
+<div class="math">$$
+\|\mathbf{x}_i\|\le R
+$$</div>
+<p>那么感知机犯错次数 <span class="math">\(M\)</span> 有一个上界：</p>
+<div class="math">$$
+M\le\left(\frac{R}{\gamma}\right)^2
+$$</div>
+<p>为简化书写，这里把偏置并入扩展后的输入向量。证明的骨架并不长。</p>
+<p>每次犯错更新后，当前权重朝正确方向至少前进 <span class="math">\(\gamma\)</span>：</p>
+<div class="math">$$
+\mathbf{w}_{t+1}^{\mathsf T}\mathbf{w}^{*}
+=\mathbf{w}_{t}^{\mathsf T}\mathbf{w}^{*}
++y_i\mathbf{x}_i^{\mathsf T}\mathbf{w}^{*}
+\ge\mathbf{w}_{t}^{\mathsf T}\mathbf{w}^{*}+\gamma
+$$</div>
+<p>犯错 <span class="math">\(M\)</span> 次后：</p>
+<div class="math">$$
+\mathbf{w}_{M}^{\mathsf T}\mathbf{w}^{*}\ge M\gamma
+$$</div>
+<p>另一方面，每次更新使权重长度的平方最多增加 <span class="math">\(R^2\)</span>，所以：</p>
+<div class="math">$$
+\|\mathbf{w}_M\|^2\le MR^2
+$$</div>
+<p>再由柯西-施瓦茨不等式：</p>
+<div class="math">$$
+M\gamma
+\le\mathbf{w}_{M}^{\mathsf T}\mathbf{w}^{*}
+\le\|\mathbf{w}_{M}\|\|\mathbf{w}^{*}\|
+\le\sqrt{M}R
+$$</div>
+<p>整理一下，就得到 <span class="math">\(M\le(R/\gamma)^2\)</span>。</p>
+<p>这个定理告诉我们两件事。第一，数据分得开，算法就有保证；第二，间隔 <span class="math">\(\gamma\)</span> 越大，也就是两类离得越开，学起来越省事。可它没有承诺找到“最好”的那条线，也没有承诺数据分不开时会怎样。现实数据里若有噪声，原始感知机可能在几条分界线之间来回折腾，像开会时碰到两个互相打架的需求，谁最后发言就先听谁的。</p>
+<hr>
+<h2 id="6">6. 感知机的典型用途</h2>
+<p>今天很少有人拿最原始的感知机去和深度模型争榜单，但它并没有进博物馆。它仍有几类朴素而实在的用途。</p>
+<h3 id="_6">在线二分类</h3>
+<p>样本一条条到达，模型看一条、改一次，不必保存全部数据。这适合流式场景，也适合做在线学习的入门算法。</p>
+<h3 id="_7">线性分类基线</h3>
+<p>做复杂模型之前，先跑一个感知机或逻辑回归。如果简单线性模型已经够用，就别急着搬 GPU。工程上最贵的毛病之一，就是问题还没看清，基础设施先修成了机场。</p>
+<h3 id="_8">逻辑门与教学演示</h3>
+<p>AND、OR 以及简单模式分类，正好用来理解权重、偏置、决策边界和训练循环。它是机器学习世界的 Hello World，但比只打印一句话多展示了一个完整学习过程。</p>
+<h3 id="_9">多分类的组成单元</h3>
+<p>可以训练多个二分类器，用 one-vs-rest 的方式处理多分类：每个感知机负责回答“是不是我这一类”，最后选得分最高者。</p>
+<h3 id="_10">资源受限场景的轻量判断</h3>
+<p>推理只需一次点积和一次阈值判断，计算成本很低。如果任务边界清楚、数据近似线性可分，它可以成为嵌入式设备或简单规则学习的候选方案。</p>
+<p>不过别把便宜理解成万能。原始感知机不输出概率，对噪声敏感，无法直接解决非线性问题；用于高风险决策时，还要考虑数据偏差、可解释性、误判代价和人工兜底。算法能跑，只说明第一步走通，不代表可以直接拿去决定贷款、招聘或医疗诊断。</p>
+<hr>
+<h2 id="_11">上篇小结：会画线，也只能画线</h2>
+<p>感知机的本领可以压缩成四步：</p>
+<p><strong>收集特征 → 加权打分 → 阈值分类 → 根据错误调整权重。</strong></p>
+<p>它足够简单，所以我们能把每个零件拆开看；它也足够重要，因为“让数据决定权重”这件事，后来成了神经网络的基本训练方式。</p>
+<p>不过，感知机也留下一个大问题：如果两类数据无法被一条直线分开，继续训练有用吗？答案是不行。最经典的拦路虎叫 XOR，它只有四条数据，却能让单个感知机彻底没招。</p>
+<p>下篇就从这次失败讲起：<strong>一刀分不开，能不能先换一个空间，再画一刀？</strong></p>
+<p>下一篇：<a href="https://www.fanyamin.com/blog/perceptron-part-2.html">风起于青萍之末（下）：从 XOR 到神经网络与 LLM</a></p>
+<h3 id="_12">上篇动手清单</h3>
+<ul>
+<li>[ ] 不调用机器学习框架，手写一次感知机训练循环；</li>
+<li>[ ] 分别训练 AND、OR，观察学到的权重和偏置；</li>
+<li>[ ] 改变学习率和样本顺序，观察训练过程；</li>
+<li>[ ] 把输入画在二维平面上，亲手画出决策边界；</li>
+<li>[ ] 用一句话解释权重、偏置和激活函数。</li>
+</ul>
+<h2 id="_13">术语小抄</h2>
+<table>
+<thead>
+<tr>
+<th>术语</th>
+<th>一句话解释</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>特征</td>
+<td>模型拿来作判断的证据</td>
+</tr>
+<tr>
+<td>权重</td>
+<td>每条证据该加几分、减几分</td>
+</tr>
+<tr>
+<td>偏置</td>
+<td>不看具体证据时的默认分数</td>
+</tr>
+<tr>
+<td>激活函数</td>
+<td>对加权总分做进一步变换的函数</td>
+</tr>
+<tr>
+<td>决策边界</td>
+<td>模型划分不同类别的那条线或那个面</td>
+</tr>
+<tr>
+<td>损失函数</td>
+<td>衡量模型错了多少</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_14">参考资料</h2>
+<ul>
+<li>Warren S. McCulloch, Walter Pitts, <a href="https://doi.org/10.1007/BF02478259">A Logical Calculus of the Ideas Immanent in Nervous Activity</a>, 1943.</li>
+<li>Frank Rosenblatt, <a href="https://homepages.math.uic.edu/~lreyzin/papers/rosenblatt58.pdf">The Perceptron: A Probabilistic Model for Information Storage and Organization in the Brain</a>, 1958.</li>
+</ul>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。</p>
+<script type="text/javascript">if (!document.getElementById('mathjaxscript_pelican_#%@#$@#')) {
+    var align = "center",
+        indent = "0em",
+        linebreak = "false";
+
+    if (false) {
+        align = (screen.width < 768) ? "left" : align;
+        indent = (screen.width < 768) ? "0em" : indent;
+        linebreak = (screen.width < 768) ? 'true' : linebreak;
+    }
+
+    var mathjaxscript = document.createElement('script');
+    mathjaxscript.id = 'mathjaxscript_pelican_#%@#$@#';
+    mathjaxscript.type = 'text/javascript';
+    mathjaxscript.src = 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.3/latest.js?config=TeX-AMS-MML_HTMLorMML';
+
+    var configscript = document.createElement('script');
+    configscript.type = 'text/x-mathjax-config';
+    configscript[(window.opera ? "innerHTML" : "text")] =
+        "MathJax.Hub.Config({" +
+        "    config: ['MMLorHTML.js']," +
+        "    TeX: { extensions: ['AMSmath.js','AMSsymbols.js','noErrors.js','noUndefined.js'], equationNumbers: { autoNumber: 'none' } }," +
+        "    jax: ['input/TeX','input/MathML','output/HTML-CSS']," +
+        "    extensions: ['tex2jax.js','mml2jax.js','MathMenu.js','MathZoom.js']," +
+        "    displayAlign: '"+ align +"'," +
+        "    displayIndent: '"+ indent +"'," +
+        "    showMathMenu: true," +
+        "    messageStyle: 'normal'," +
+        "    tex2jax: { " +
+        "        inlineMath: [ ['\\\\(','\\\\)'] ], " +
+        "        displayMath: [ ['$$','$$'] ]," +
+        "        processEscapes: true," +
+        "        preview: 'TeX'," +
+        "    }, " +
+        "    'HTML-CSS': { " +
+        "        availableFonts: ['STIX', 'TeX']," +
+        "        preferredFont: 'STIX'," +
+        "        styles: { '.MathJax_Display, .MathJax .mo, .MathJax .mi, .MathJax .mn': {color: 'inherit ! important'} }," +
+        "        linebreaks: { automatic: "+ linebreak +", width: '90% container' }," +
+        "    }, " +
+        "}); " +
+        "if ('default' !== 'default') {" +
+            "MathJax.Hub.Register.StartupHook('HTML-CSS Jax Ready',function () {" +
+                "var VARIANT = MathJax.OutputJax['HTML-CSS'].FONTDATA.VARIANT;" +
+                "VARIANT['normal'].fonts.unshift('MathJax_default');" +
+                "VARIANT['bold'].fonts.unshift('MathJax_default-bold');" +
+                "VARIANT['italic'].fonts.unshift('MathJax_default-italic');" +
+                "VARIANT['-tex-mathit'].fonts.unshift('MathJax_default-italic');" +
+            "});" +
+            "MathJax.Hub.Register.StartupHook('SVG Jax Ready',function () {" +
+                "var VARIANT = MathJax.OutputJax.SVG.FONTDATA.VARIANT;" +
+                "VARIANT['normal'].fonts.unshift('MathJax_default');" +
+                "VARIANT['bold'].fonts.unshift('MathJax_default-bold');" +
+                "VARIANT['italic'].fonts.unshift('MathJax_default-italic');" +
+                "VARIANT['-tex-mathit'].fonts.unshift('MathJax_default-italic');" +
+            "});" +
+        "}";
+
+    (document.body || document.getElementsByTagName('head')[0]).appendChild(configscript);
+    (document.body || document.getElementsByTagName('head')[0]).appendChild(mathjaxscript);
+}
+</script>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/perceptron-part-1.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/ai.html">AI</a>
+      <a href="https://www.fanyamin.com/blog/tag/perceptron.html">perceptron</a>
+      <a href="https://www.fanyamin.com/blog/tag/machine-learning.html">machine-learning</a>
+      <a href="https://www.fanyamin.com/blog/tag/activation-function.html">activation-function</a>
+      <a href="https://www.fanyamin.com/blog/tag/linear-classifier.html">linear-classifier</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/aead-aes-gcm-explained.html" title="详解 AEAD 与 AES-GCM：不只加密，还要防篡改">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/perceptron-part-2.html" title="风起于青萍之末（下）：从 XOR 到神经网络与 LLM">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/sigmoid-vs-relu.html">调光旋钮为什么输给了单向门：Sigmoid 是怎样被 ReLU 取代的</a></li>
+      <li><a href="https://www.fanyamin.com/blog/perceptron-part-2.html">风起于青萍之末（下）：从 XOR 到神经网络与 LLM</a></li>
+      <li><a href="https://www.fanyamin.com/blog/ai-beyond-llm-and-nlp.html">AI 不只是 LLM 和 NLP</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-07-17-mcp-or-cli.html">MCP 还是 CLI：AI Agent 到底怎么跟已有服务打通</a></li>
+      <li><a href="https://www.fanyamin.com/blog/notebooklm-second-brain.html">怎么给自己搭一个第二大脑</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

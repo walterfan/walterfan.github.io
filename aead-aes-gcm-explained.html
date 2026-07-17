@@ -1,0 +1,1054 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="加密只能隐藏内容，不能证明数据与业务上下文没有被调包。本文用加密信封的类比讲清 AEAD、AAD、nonce、CTR 与 GHASH，并给出可运行的 Python 示例和上线检查清单。" />
+<meta name="keywords" content="security, cryptography, aead, aes-gcm">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "详解 AEAD 与 AES-GCM：不只加密，还要防篡改",
+  "description": "加密只能隐藏内容，不能证明数据与业务上下文没有被调包。本文用加密信封的类比讲清 AEAD、AAD、nonce、CTR 与 GHASH，并给出可运行的 Python 示例和上线检查清单。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-07-13T14:35:00+08:00",
+  "dateModified": "2026-07-15T00:05:00+08:00",
+  "url": "https://www.fanyamin.com/blog/aead-aes-gcm-explained.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/aead-aes-gcm-explained.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "security, cryptography, aead, aes-gcm"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="详解 AEAD 与 AES-GCM：不只加密，还要防篡改"/>
+  <meta property="og:description" content="加密只能隐藏内容，不能证明数据与业务上下文没有被调包。本文用加密信封的类比讲清 AEAD、AAD、nonce、CTR 与 GHASH，并给出可运行的 Python 示例和上线检查清单。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/aead-aes-gcm-explained.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-07-13 14:35:00+08:00"/>
+  <meta property="article:modified_time" content="2026-07-15 00:05:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="security"/>
+  <meta property="article:tag" content="cryptography"/>
+  <meta property="article:tag" content="aead"/>
+  <meta property="article:tag" content="aes-gcm"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 详解 AEAD 与 AES-GCM：不只加密，还要防篡改</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="aead-aes-gcm-explained">详解 AEAD 与 AES-GCM：不只加密，还要防篡改</h1>
+    <p>
+      Posted on 一 13 7月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>详解 AEAD 与 AES-GCM：不只加密，还要防篡改</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-07-15</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">锁没被撬，快递标签却被换了</h2>
+<p>假设数据库里有两条加密记录，一条属于租户 A，一条属于租户 B。它们由同一个服务、同一套密钥体系管理。攻击者虽然看不懂密文，却把两条记录的位置调换了。如果系统只做“能解密就算成功”，又没有把租户和记录上下文绑定进去，租户 A 就可能读到本不属于它的数据。</p>
+<p>锁没有被撬，快递标签却被换了。</p>
+<p>这正是“只加密”容易漏掉的问题：<strong>机密性只能让别人看不懂，不能保证数据没被篡改，更不能保证这份密文仍待在正确的业务位置。</strong> AEAD（Authenticated Encryption with Associated Data，带关联数据的认证加密）解决的，就是“既要藏住正文，又要给整个包裹贴上防拆封条”。AES-GCM 则是最常见的 AEAD 方案之一。</p>
+<p>读完本文，你应该能看懂 AEAD API 里的 key、nonce、plaintext 和 AAD，知道 AES-GCM 的 CTR 与 GHASH 各干什么，也能审查代码里最容易出事的三个地方：</p>
+<blockquote>
+<p><strong>nonce 不重复，AAD 不含糊，认证失败不放行。</strong></p>
+</blockquote>
+<h3 id="_2">这篇文章怎么读</h3>
+<table>
+<thead>
+<tr>
+<th>你想带走什么</th>
+<th>建议路线</th>
+<th>可以跳过</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>只想安全地调用 AES-GCM</td>
+<td>第 1、2、3、6、7、9 节</td>
+<td>第 5 节原理加餐</td>
+</tr>
+<tr>
+<td>想理解 nonce 为什么危险</td>
+<td>第 2、4、5 节</td>
+<td>Python 示例</td>
+</tr>
+<tr>
+<td>想做工程评审</td>
+<td>从头阅读，重点看第 7、8、9 节</td>
+<td>无</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="1">1. 只加密，为什么还不够</h2>
+<p>保护一份数据，至少要回答三个问题， 也就是著名的 CIA 问题：</p>
+<table>
+<thead>
+<tr>
+<th>问题</th>
+<th>安全属性</th>
+<th>大白话</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>别人能不能看懂？</td>
+<td>机密性（confidentiality）</td>
+<td>正文有没有藏起来</td>
+</tr>
+<tr>
+<td>数据有没有被改过？</td>
+<td>完整性（integrity）</td>
+<td>封条有没有破</td>
+</tr>
+<tr>
+<td>数据是否由持有正确密钥的一方生成？</td>
+<td>消息认证（authentication）</td>
+<td>封条是不是用正确印章盖的</td>
+</tr>
+</tbody>
+</table>
+<p>传统加密主要回答第一个问题。某些加密方式具有“可塑性”：攻击者不知道原文，也可能通过修改密文，让解密结果发生可预测的变化。</p>
+<p>当然，可以自己组合加密与 MAC。例如正确实现的 Encrypt-then-MAC 也能很安全。麻烦在于，工程师要亲自处理密钥分离、操作顺序、认证范围和错误返回。密码学给了足够多的自由以后，程序员往往会回赠一个意想不到的事故。</p>
+<p>AEAD 把机密性、完整性和消息认证收进一个经过分析的接口，减少自由发挥的空间。</p>
+<p>这里的“认证”不是用户登录，也不是数字签名。它只能说明消息由<strong>某个持有共享密钥的参与方</strong>生成，不能区分共享同一把 key 的几个人，更不提供不可否认性。</p>
+<hr>
+<h2 id="2-aead">2. AEAD：带防拆封条的加密信封</h2>
+<p>先别急着背缩写。把 AEAD 想成一个加密信封：</p>
+<ul>
+<li><code>Plaintext</code> 是要藏起来的正文；</li>
+<li><code>AAD</code> 是信封外面的收件人、订单号和用途，不保密，但不能被改；</li>
+<li><code>Nonce</code> 是本次封装使用的唯一编号；</li>
+<li><code>Tag</code> 是防拆封条，负责把编号、上下文和密文绑在一起。</li>
+</ul>
+<p><img alt="AEAD 把明文、nonce 和业务上下文封装成带认证标签的密文信封" src="../images/tech_20260713_aead-aes-gcm-envelope.svg"></p>
+<p>按照 RFC 5116 的抽象，加密和解密可以写成：</p>
+<div class="math">$$
+C_{\text{aead}}=\operatorname{Encrypt}(K,N,P,A)
+$$</div>
+<div class="math">$$
+P\ \text{or}\ \operatorname{FAIL}=\operatorname{Decrypt}(K,N,C_{\text{aead}},A)
+$$</div>
+<table>
+<thead>
+<tr>
+<th>符号</th>
+<th>含义</th>
+<th>是否保密</th>
+<th>关键要求</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><span class="math">\(K\)</span></td>
+<td>Key，密钥</td>
+<td>是</td>
+<td>由安全随机源生成，交给 KMS/HSM/Vault 管理</td>
+</tr>
+<tr>
+<td><span class="math">\(N\)</span></td>
+<td>Nonce，一次性编号</td>
+<td>否</td>
+<td>同一把 key 下不得重复用于加密</td>
+</tr>
+<tr>
+<td><span class="math">\(P\)</span></td>
+<td>Plaintext，明文</td>
+<td>是</td>
+<td>要加密并认证的正文</td>
+</tr>
+<tr>
+<td><span class="math">\(A\)</span></td>
+<td>AAD，关联数据</td>
+<td>否</td>
+<td>不加密，但必须以完全相同的字节参与解密</td>
+</tr>
+<tr>
+<td><span class="math">\(C\)</span></td>
+<td>Ciphertext，密文</td>
+<td>否</td>
+<td>由明文加密得到</td>
+</tr>
+<tr>
+<td><span class="math">\(T\)</span></td>
+<td>Tag，认证标签</td>
+<td>否</td>
+<td>验证 key、nonce、AAD 和密文是否匹配</td>
+</tr>
+</tbody>
+</table>
+<p>最反直觉的地方是：nonce、AAD、ciphertext 和 tag 都可以公开保存。<strong>公开不等于可以随便改。</strong> 攻击者可以看到快递单，却不能换掉门牌号后还伪造出有效封条。</p>
+<p>很多高层库直接返回 <code>ciphertext || tag</code>，也有协议把二者分开保存。接口长相不同，安全语义相同：解密只应返回完整明文或 <code>FAIL</code>，不能把“解到一半的内容”先交给业务试吃。</p>
+<hr>
+<h2 id="3-aad">3. AAD：把密文钉在正确的位置</h2>
+<p>回到开头的跨租户调包问题。假设明文是一条 API Token：</p>
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Plaintext</td>
+<td><code>sk_live_xxx</code></td>
+</tr>
+<tr>
+<td>AAD</td>
+<td><code>tenant=acme, record=42, purpose=api-token, schema=v1</code></td>
+</tr>
+</tbody>
+</table>
+<p>当密文被复制到 <code>record=99</code> 时，解密端应从<strong>当前可信的租户和记录上下文</strong>重新构造 AAD。它与加密时不同，认证自然失败。攻击者看得见 <code>record=42</code>，但没有 key，做不出与新位置匹配的 tag。</p>
+<p>适合放进 AAD 的通常是：</p>
+<ul>
+<li>租户、记录或资源 ID；</li>
+<li>数据用途，例如 API Token、会话票据或私钥；</li>
+<li>schema、协议或算法版本；</li>
+<li>序列号、消息类型等必须明文传输的头部。</li>
+</ul>
+<h3 id="aad">AAD 不是秘密口袋</h3>
+<p>不要把密码、Token、身份证号放进 AAD，然后期待算法替你保密。AAD 是明文，只提供完整性和消息认证。它还可能泄露“谁在什么时间处理了哪类业务”等元数据。</p>
+<h3 id="aad_1">AAD 必须稳定且无歧义</h3>
+<p>直接拼接 <code>tenant_id + record_id</code> 很危险：<code>("ab", "c")</code> 和 <code>("a", "bc")</code> 都可能变成 <code>"abc"</code>。使用固定宽度、长度前缀，或者一份明确、稳定、跨语言一致的结构化编码规范。</p>
+<p>若用 JSON，就必须规定 UTF-8、字段集合、数字格式、字段顺序和 Unicode 处理。人眼觉得下面两段 JSON “意思一样”，AEAD 看到的却是两串不同字节。密码学不负责体谅格式化工具的心情。</p>
+<h3 id="aad_2">AAD 不是授权，也不自动防重放</h3>
+<p>把 <code>tenant_id</code> 放进 AAD，可以发现密文被搬到另一个租户；系统仍要先检查调用方是否有权访问这个租户。</p>
+<p>把序列号放进 AAD，可以防止序列号被修改；攻击者仍可能把<strong>整份合法消息</strong>原样重发。防重放还需要接收方维护窗口、计数器或已处理状态。</p>
+<blockquote>
+<p><strong>AAD 能证明“上下文没被改”，不能替业务决定“这个上下文是否允许”。</strong></p>
+</blockquote>
+<hr>
+<h2 id="4-nonce-12">4. Nonce：最不能重复的 12 字节</h2>
+<p>Nonce 可以理解为“只使用一次的编号”。它不需要保密；对 AES-GCM 来说，核心要求只有一句：</p>
+<blockquote>
+<p><strong>同一把 key 与 nonce 的组合，只能用于一次加密。</strong></p>
+</blockquote>
+<p>解密、重试读取当然可以再次使用原 nonce，这里的“一次”说的是加密调用。</p>
+<p>NIST 推荐 GCM 使用 96-bit，也就是 12-byte nonce。这个长度可以直接构造内部初始块，互操作和性能也最好。其他长度并非一概不安全，但没有协议要求时，别主动给未来的自己增加考题。</p>
+<h3 id="_3">为什么重用会出大事</h3>
+<p>CTR 模式会根据 key 和 nonce 产生密钥流 <span class="math">\(KS\)</span>。相同的 key 与 nonce 会产生相同的 <span class="math">\(KS\)</span>：</p>
+<div class="math">$$
+C_1=P_1\oplus KS,\qquad C_2=P_2\oplus KS
+$$</div>
+<p>两份密文一异或，密钥流被消掉：</p>
+<div class="math">$$
+C_1\oplus C_2=P_1\oplus P_2
+$$</div>
+<p><img alt="AES-GCM 重用同一个 key 和 nonce 会产生相同密钥流" src="../images/tech_20260713_aead-aes-gcm-nonce-reuse.svg"></p>
+<p>攻击者还没直接拿到两份明文，却已经得到它们的关系。若其中一份内容已知或格式可猜，另一份就可能被逐步推出。更糟的是，GCM 的认证关系也会受损，RFC 5116 直接警告：nonce 重用会破坏这把 key 提供的机密性、完整性和真实性保护。</p>
+<p>一旦确认发生 nonce 重用，不要只删掉两条坏记录。应停止继续使用该 key，轮换密钥，评估受影响数据，并排查多节点分配、持久化、崩溃恢复和虚拟机快照回滚。</p>
+<h3 id="_4">随机数还是计数器</h3>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>优点</th>
+<th>必须承担的责任</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>96-bit CSPRNG 随机 nonce</td>
+<td>无状态、实现简单</td>
+<td>唯一性是概率保证；要限制单 key 使用量并按策略轮换</td>
+</tr>
+<tr>
+<td>固定设备前缀 + 单调计数器</td>
+<td>唯一性容易证明</td>
+<td>多节点前缀不能冲突；计数器必须安全持久化并防回滚</td>
+</tr>
+<tr>
+<td>直接截断业务 ID</td>
+<td>写起来很快</td>
+<td>很难证明跨租户、环境和版本后仍唯一，不建议拍脑袋使用</td>
+</tr>
+</tbody>
+</table>
+<p><code>os.urandom(12)</code> 是常见的随机策略，但“随机”不等于数学上的“绝不重复”。抽取 <span class="math">\(q\)</span> 个 96-bit 随机 nonce，碰撞概率近似为：</p>
+<div class="math">$$
+\Pr[\text{collision}]\approx\frac{q(q-1)}{2^{97}}
+$$</div>
+<p>普通业务在合理的单 key 使用范围内可以把这个概率压得很低，但设计仍要有消息上限、监控和轮换，而不是让一把 key 从项目成立陪到公司上市。</p>
+<hr>
+<h2 id="5-ctr-ghash">5. 原理加餐：CTR 藏正文，GHASH 验封条</h2>
+<p>不想看内部机制，可以跳到“30 秒复盘”。安全调用 AES-GCM 不要求手写有限域乘法，正如开车不要求先造发动机。</p>
+<p>AES 是分组密码：它使用 128、192 或 256-bit key，处理固定的 128-bit 数据块。GCM（Galois/Counter Mode）给 AES 接上两条流水线：</p>
+<ol>
+<li><strong>CTR 负责加密</strong>，让别人看不懂正文；</li>
+<li><strong>GHASH 参与认证</strong>，把 AAD、密文和长度纳入验封依据。</li>
+</ol>
+<p><img alt="AES-GCM 中 CTR 负责加密，GHASH 参与生成认证标签" src="../images/tech_20260713_aead-aes-gcm-gcm-flow.svg"></p>
+<h3 id="ctr-aes">CTR：把 AES 变成密钥流</h3>
+<p>96-bit nonce 会直接构造：</p>
+<div class="math">$$
+J_0=N\parallel 0^{31}\parallel 1
+$$</div>
+<p>这里容易混淆一个细节：<code>AES_K(J0)</code> 用于遮蔽认证结果；真正加密第一块明文的计数器从 <span class="math">\(\operatorname{inc32}(J_0)\)</span> 开始。后续计数器不断递增，经过 AES 形成密钥流，再与明文异或得到密文。</p>
+<p>CTR 不需要 padding，纯密文长度与明文相同，而且不同块可以并行处理。它快，也正因为如此，nonce 重用时会干脆利落地重放同一条密钥流。</p>
+<h3 id="ghash-mac">GHASH：不是普通哈希，也不是独立 MAC</h3>
+<p>GCM 先计算哈希子密钥：</p>
+<div class="math">$$
+H=\operatorname{AES}_K(0^{128})
+$$</div>
+<p>然后把 AAD、密文和二者的 bit 长度编码成 128-bit 数据块，在有限域 <span class="math">\(GF(2^{128})\)</span> 上累积，得到 GHASH 结果 <span class="math">\(S\)</span>。长度块负责固定 AAD 与密文的边界，避免补零带来歧义。</p>
+<p>最后生成认证标签：</p>
+<div class="math">$$
+T=\operatorname{MSB}_t\left(\operatorname{AES}_K(J_0)\oplus S\right)
+$$</div>
+<p>GHASH 是通用哈希，不应单独当作 MAC。它与秘密的 <span class="math">\(\operatorname{AES}_K(J_0)\)</span> 结合，才形成 GCM 的认证标签。常见高层 API 使用完整的 128-bit，也就是 16-byte tag；没有协议硬约束时，不要为了省几个字节自行截短。</p>
+<p>Tag 依赖 key、nonce、AAD 和 ciphertext。攻击者在不知道 key 的情况下篡改其中任何一项，验证应以极高概率返回 <code>FAIL</code>，而不是数学上绝无可能被猜中。系统还应限制失败尝试，别给攻击者无限次碰运气。</p>
+<h2 id="30">30 秒复盘</h2>
+<table>
+<thead>
+<tr>
+<th>角色</th>
+<th>一句话</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CTR</td>
+<td>产生密钥流，把明文变成密文</td>
+</tr>
+<tr>
+<td>GHASH</td>
+<td>汇总 AAD、密文和长度，参与生成 tag</td>
+</tr>
+<tr>
+<td>Nonce</td>
+<td>确保同一把 key 的每次加密走不同路径</td>
+</tr>
+<tr>
+<td>Tag</td>
+<td>验证整套输入是否匹配；失败就不放明文</td>
+</tr>
+</tbody>
+</table>
+<p>CTR 藏正文，GHASH 验封条。两条流水线都依赖同一个前提：nonce 不能重用。</p>
+<hr>
+<h2 id="6-python">6. Python 最小示例：把上下文也绑进去</h2>
+<p>下面只展示高层 <code>AESGCM</code> API 的核心边界，不再把参数解析、文件权限和终端输入混进来。先安装：</p>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>cryptography
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">import</span> <span class="nn">os</span>
+
+<span class="kn">from</span> <span class="nn">cryptography.exceptions</span> <span class="kn">import</span> <span class="n">InvalidTag</span>
+<span class="kn">from</span> <span class="nn">cryptography.hazmat.primitives.ciphers.aead</span> <span class="kn">import</span> <span class="n">AESGCM</span>
+
+
+<span class="n">NONCE_SIZE</span> <span class="o">=</span> <span class="mi">12</span>
+
+
+<span class="k">def</span> <span class="nf">encode_aad</span><span class="p">(</span><span class="n">tenant_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">record_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">purpose</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bytes</span><span class="p">:</span>
+    <span class="n">context</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;purpose&quot;</span><span class="p">:</span> <span class="n">purpose</span><span class="p">,</span>
+        <span class="s2">&quot;record_id&quot;</span><span class="p">:</span> <span class="n">record_id</span><span class="p">,</span>
+        <span class="s2">&quot;schema&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="s2">&quot;tenant_id&quot;</span><span class="p">:</span> <span class="n">tenant_id</span><span class="p">,</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span>
+        <span class="n">context</span><span class="p">,</span>
+        <span class="n">sort_keys</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">separators</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">,</span> <span class="s2">&quot;:&quot;</span><span class="p">),</span>
+        <span class="n">ensure_ascii</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">encrypt</span><span class="p">(</span><span class="n">key</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">,</span> <span class="n">plaintext</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">,</span> <span class="n">aad</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bytes</span><span class="p">:</span>
+    <span class="n">nonce</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">urandom</span><span class="p">(</span><span class="n">NONCE_SIZE</span><span class="p">)</span>
+    <span class="n">ciphertext_and_tag</span> <span class="o">=</span> <span class="n">AESGCM</span><span class="p">(</span><span class="n">key</span><span class="p">)</span><span class="o">.</span><span class="n">encrypt</span><span class="p">(</span><span class="n">nonce</span><span class="p">,</span> <span class="n">plaintext</span><span class="p">,</span> <span class="n">aad</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">nonce</span> <span class="o">+</span> <span class="n">ciphertext_and_tag</span>
+
+
+<span class="k">def</span> <span class="nf">decrypt</span><span class="p">(</span><span class="n">key</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">,</span> <span class="n">payload</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">,</span> <span class="n">aad</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bytes</span><span class="p">:</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">NONCE_SIZE</span> <span class="o">+</span> <span class="mi">16</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;invalid encrypted payload&quot;</span><span class="p">)</span>
+    <span class="n">nonce</span> <span class="o">=</span> <span class="n">payload</span><span class="p">[:</span><span class="n">NONCE_SIZE</span><span class="p">]</span>
+    <span class="n">ciphertext_and_tag</span> <span class="o">=</span> <span class="n">payload</span><span class="p">[</span><span class="n">NONCE_SIZE</span><span class="p">:]</span>
+    <span class="k">return</span> <span class="n">AESGCM</span><span class="p">(</span><span class="n">key</span><span class="p">)</span><span class="o">.</span><span class="n">decrypt</span><span class="p">(</span><span class="n">nonce</span><span class="p">,</span> <span class="n">ciphertext_and_tag</span><span class="p">,</span> <span class="n">aad</span><span class="p">)</span>
+
+
+<span class="n">key</span> <span class="o">=</span> <span class="n">AESGCM</span><span class="o">.</span><span class="n">generate_key</span><span class="p">(</span><span class="n">bit_length</span><span class="o">=</span><span class="mi">256</span><span class="p">)</span>
+<span class="n">aad</span> <span class="o">=</span> <span class="n">encode_aad</span><span class="p">(</span><span class="s2">&quot;acme&quot;</span><span class="p">,</span> <span class="mi">42</span><span class="p">,</span> <span class="s2">&quot;api-token&quot;</span><span class="p">)</span>
+<span class="n">payload</span> <span class="o">=</span> <span class="n">encrypt</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="sa">b</span><span class="s2">&quot;sk_live_xxx&quot;</span><span class="p">,</span> <span class="n">aad</span><span class="p">)</span>
+<span class="k">assert</span> <span class="n">decrypt</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">payload</span><span class="p">,</span> <span class="n">aad</span><span class="p">)</span> <span class="o">==</span> <span class="sa">b</span><span class="s2">&quot;sk_live_xxx&quot;</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">wrong_aad</span> <span class="o">=</span> <span class="n">encode_aad</span><span class="p">(</span><span class="s2">&quot;acme&quot;</span><span class="p">,</span> <span class="mi">99</span><span class="p">,</span> <span class="s2">&quot;api-token&quot;</span><span class="p">)</span>
+    <span class="n">decrypt</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">payload</span><span class="p">,</span> <span class="n">wrong_aad</span><span class="p">)</span>
+<span class="k">except</span> <span class="n">InvalidTag</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;record substitution rejected&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<p>这段代码刻意做了四件事：</p>
+<ul>
+<li>使用高层 <code>AESGCM</code>，不手写 CTR、GHASH 或 tag 比较；</li>
+<li>每次加密抽取新的 12-byte 随机 nonce；</li>
+<li>把租户、记录、用途和 schema 编成稳定 AAD；</li>
+<li>解密失败时不返回任何明文。</li>
+</ul>
+<p>生产代码还要明确跨语言的 AAD 字节规范。上面的 JSON 只适合受控示例；一旦涉及浮点数、Unicode 归一化、可选字段或多语言实现，就应采用经过约定的 canonical encoding 或长度前缀格式，并用测试向量固定下来。</p>
+<p>还要注意：绑定 <code>record_id=42</code> 可以阻止密文被搬到 99，却不能阻止攻击者把 42 的<strong>旧版本合法密文</strong>放回来。防回滚需要可信、经过认证，而且不能与密文一起回滚的版本状态，例如锚定在密文存储回滚域之外的单调计数或审计系统。若版本号和密文放在同一个可整体恢复的数据库里，它们只会一起回到过去，AEAD 不会凭空记住历史。</p>
+<p>用户登录密码也不该用 AES-GCM 保存。密码校验需要 Argon2、scrypt 或 bcrypt 这类专门的密码哈希；可逆加密解决的是另一类问题。</p>
+<hr>
+<h2 id="7">7. 生产系统怎样收口</h2>
+<p>数据库里只放一个名叫 <code>encrypted_value</code> 的 Base64 字符串，短期很清爽，半年后通常会变成考古现场：它用什么算法？哪版 key？nonce 在哪里？tag 是前置还是后置？AAD 又怎样重建？</p>
+<p>一个可演进的密文信封至少要说明：</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;version&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;algorithm&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;AES-256-GCM&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;key_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;customer-secret-key&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;key_version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;v3&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;nonce_b64&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;ciphertext_and_tag_b64&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;aad_schema&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;tenant-record-purpose-v1&quot;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>Base64 只是把二进制编码成文本，不是加密，也不会增加安全性。</p>
+<h3 id="_5">密文信封本身也是不可信输入</h3>
+<p>在 tag 验证前，<code>algorithm</code>、<code>key_id</code>、长度和版本都可能被攻击者修改。解密端要先做边界检查和 allowlist 限制，再按受约束的 key version 取密钥。不要让一条畸形记录指挥系统加载任意算法或任意 key。</p>
+<p>AAD 最好从当前可信的租户、记录和用途上下文重建。仅仅把 AAD 与密文放在一起还不够：攻击者若把整套信封搬走，内部认证仍可能通过，业务仍要核对信封属于当前请求。</p>
+<h3 id="_6">认证失败只做一件事：失败</h3>
+<p><code>InvalidTag</code> 可能意味着 key、nonce、AAD、ciphertext 或 tag 中任一项不匹配。工程上应统一处理：</p>
+<ol>
+<li>不返回未经认证的明文；</li>
+<li>不回退到明文、固定 key、旧算法或“忽略 tag 再试一次”；</li>
+<li>对外返回统一错误，避免提供探测信息；</li>
+<li>日志只记录脱敏的 record id、key version、算法和错误类型；</li>
+<li>监控失败率，持续上升可能意味着配置错误、数据损坏或攻击探测。</li>
+</ol>
+<h3 id="_7">大文件要防的不只是调包</h3>
+<p>大文件通常需要分块 AEAD。每块要使用唯一 nonce，并在 AAD 中绑定 file id、chunk index、总块数和版本。但这些字段只保证“收到的块没有被改”：如果攻击者直接删掉最后一块，系统还要检查索引是否完整，并验证一份经过认证、且锚定在同一回滚域之外的可信 manifest 或完成状态。验证完成之前，不能把不完整文件交给业务。AEAD 不会替接收方发现一个从未送到的包裹。</p>
+<hr>
+<h2 id="8-aes-gcm">8. AES-GCM 解决不了什么，什么时候选别的</h2>
+<p>AES-GCM 很能干，但不是安全瑞士军刀。它不负责：</p>
+<ul>
+<li><strong>密钥管理</strong>：生成、授权、轮换、备份和销毁仍要靠 KMS/HSM/Vault；</li>
+<li><strong>访问控制</strong>：能解密不代表应该解密；</li>
+<li><strong>防重放和防回滚</strong>：合法密文可以原样重发或恢复旧版本；</li>
+<li><strong>流量分析</strong>：长度、时间、频率和公开 AAD 仍可能泄露信息；</li>
+<li><strong>终端安全</strong>：攻击者若控制了解密进程或拿到 key，算法无能为力；</li>
+<li><strong>数字签名</strong>：共享 key 的参与方都能生成 tag，无法证明具体是谁创建消息。</li>
+</ul>
+<p>AEAD 也不只有 AES-GCM：</p>
+<table>
+<thead>
+<tr>
+<th>算法</th>
+<th>适合场景</th>
+<th>主要边界</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>AES-GCM</td>
+<td>有成熟库和 AES 硬件加速的通用场景</td>
+<td>同一 key 下 nonce 必须唯一</td>
+</tr>
+<tr>
+<td>ChaCha20-Poly1305</td>
+<td>缺少 AES 加速、移动端或跨平台性能敏感场景</td>
+<td>同样不能重用 key/nonce</td>
+</tr>
+<tr>
+<td>AES-GCM-SIV</td>
+<td>很难可靠协调 nonce，希望降低误用损失</td>
+<td>重复仍会泄露消息是否相同；加密需要两遍处理，不能像 GCM 那样边算边输出</td>
+</tr>
+</tbody>
+</table>
+<p>AES-GCM-SIV 的“misuse-resistant”不是“欢迎重用 nonce”。它只是把灾难从“机密性和完整性一起塌”降到较可控的泄露。实际选择仍应服从协议标准、平台能力、合规要求和成熟库支持。</p>
+<hr>
+<h2 id="9">9. 上线前八问</h2>
+<table>
+<thead>
+<tr>
+<th>检查项</th>
+<th>应该能给出的答案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>是否使用高层 AEAD API</td>
+<td>使用成熟库，不手写 GCM</td>
+</tr>
+<tr>
+<td>key 从哪里来</td>
+<td>CSPRNG 生成，由 KMS/HSM/Vault 管理，不硬编码、不进日志</td>
+</tr>
+<tr>
+<td>nonce 如何保证不重复</td>
+<td>明确随机或计数器策略、单 key 上限、多节点和崩溃恢复</td>
+</tr>
+<tr>
+<td>AAD 绑定什么</td>
+<td>租户、记录、用途、schema 等可信上下文</td>
+</tr>
+<tr>
+<td>AAD 字节怎样确定</td>
+<td>编码、顺序、版本和跨语言测试向量都有规范</td>
+</tr>
+<tr>
+<td>密文怎样演进</td>
+<td>保存受约束的算法、key version、nonce、ciphertext/tag 和 AAD schema</td>
+</tr>
+<tr>
+<td>认证失败怎么办</td>
+<td>不释放明文，统一报错，脱敏记录并监控</td>
+</tr>
+<tr>
+<td>是否测试过失败路径</td>
+<td>wrong key、nonce、AAD、篡改密文和截断 tag 全部失败</td>
+</tr>
+</tbody>
+</table>
+<p>不要只测试“加密再解密等于原文”这一条快乐路径。拿现有调用分别改 nonce、AAD、ciphertext 和 tag，一个字节也行；四次都必须坚定地失败。安全代码的价值，很多时候不在正确输入能成功，而在错误输入不能蒙混过关。</p>
+<hr>
+<h2 id="_8">最后一句</h2>
+<p>AEAD 的思路并不复杂：秘密正文放进密文，不能隐藏的上下文放进 AAD，再用 tag 把 nonce、上下文和密文绑成不可随意拆换的整体。</p>
+<p>AES-GCM 真正难的地方也不在 AES，更不在 Galois Field 的公式，而在三个工程习惯：<strong>nonce 不重复，AAD 不含糊，认证失败不放行。</strong></p>
+<p>密码学算法通常比我们的业务代码严谨。最怕的不是公式太难，而是调用成功以后，我们顺手绕开了它辛苦守住的边界。</p>
+<h2 id="_9">参考资料</h2>
+<ol>
+<li><a href="https://www.rfc-editor.org/rfc/rfc5116">RFC 5116: An Interface and Algorithms for Authenticated Encryption</a></li>
+<li><a href="https://csrc.nist.gov/pubs/sp/800/38/d/final">NIST SP 800-38D: Galois/Counter Mode (GCM) and GMAC</a></li>
+<li><a href="https://cryptography.io/en/latest/hazmat/primitives/aead/">cryptography: Authenticated encryption</a></li>
+<li><a href="https://www.rfc-editor.org/rfc/rfc8452">RFC 8452: AES-GCM-SIV</a></li>
+</ol>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+<script type="text/javascript">if (!document.getElementById('mathjaxscript_pelican_#%@#$@#')) {
+    var align = "center",
+        indent = "0em",
+        linebreak = "false";
+
+    if (false) {
+        align = (screen.width < 768) ? "left" : align;
+        indent = (screen.width < 768) ? "0em" : indent;
+        linebreak = (screen.width < 768) ? 'true' : linebreak;
+    }
+
+    var mathjaxscript = document.createElement('script');
+    mathjaxscript.id = 'mathjaxscript_pelican_#%@#$@#';
+    mathjaxscript.type = 'text/javascript';
+    mathjaxscript.src = 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.3/latest.js?config=TeX-AMS-MML_HTMLorMML';
+
+    var configscript = document.createElement('script');
+    configscript.type = 'text/x-mathjax-config';
+    configscript[(window.opera ? "innerHTML" : "text")] =
+        "MathJax.Hub.Config({" +
+        "    config: ['MMLorHTML.js']," +
+        "    TeX: { extensions: ['AMSmath.js','AMSsymbols.js','noErrors.js','noUndefined.js'], equationNumbers: { autoNumber: 'none' } }," +
+        "    jax: ['input/TeX','input/MathML','output/HTML-CSS']," +
+        "    extensions: ['tex2jax.js','mml2jax.js','MathMenu.js','MathZoom.js']," +
+        "    displayAlign: '"+ align +"'," +
+        "    displayIndent: '"+ indent +"'," +
+        "    showMathMenu: true," +
+        "    messageStyle: 'normal'," +
+        "    tex2jax: { " +
+        "        inlineMath: [ ['\\\\(','\\\\)'] ], " +
+        "        displayMath: [ ['$$','$$'] ]," +
+        "        processEscapes: true," +
+        "        preview: 'TeX'," +
+        "    }, " +
+        "    'HTML-CSS': { " +
+        "        availableFonts: ['STIX', 'TeX']," +
+        "        preferredFont: 'STIX'," +
+        "        styles: { '.MathJax_Display, .MathJax .mo, .MathJax .mi, .MathJax .mn': {color: 'inherit ! important'} }," +
+        "        linebreaks: { automatic: "+ linebreak +", width: '90% container' }," +
+        "    }, " +
+        "}); " +
+        "if ('default' !== 'default') {" +
+            "MathJax.Hub.Register.StartupHook('HTML-CSS Jax Ready',function () {" +
+                "var VARIANT = MathJax.OutputJax['HTML-CSS'].FONTDATA.VARIANT;" +
+                "VARIANT['normal'].fonts.unshift('MathJax_default');" +
+                "VARIANT['bold'].fonts.unshift('MathJax_default-bold');" +
+                "VARIANT['italic'].fonts.unshift('MathJax_default-italic');" +
+                "VARIANT['-tex-mathit'].fonts.unshift('MathJax_default-italic');" +
+            "});" +
+            "MathJax.Hub.Register.StartupHook('SVG Jax Ready',function () {" +
+                "var VARIANT = MathJax.OutputJax.SVG.FONTDATA.VARIANT;" +
+                "VARIANT['normal'].fonts.unshift('MathJax_default');" +
+                "VARIANT['bold'].fonts.unshift('MathJax_default-bold');" +
+                "VARIANT['italic'].fonts.unshift('MathJax_default-italic');" +
+                "VARIANT['-tex-mathit'].fonts.unshift('MathJax_default-italic');" +
+            "});" +
+        "}";
+
+    (document.body || document.getElementsByTagName('head')[0]).appendChild(configscript);
+    (document.body || document.getElementsByTagName('head')[0]).appendChild(mathjaxscript);
+}
+</script>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/aead-aes-gcm-explained.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/security.html">security</a>
+      <a href="https://www.fanyamin.com/blog/tag/cryptography.html">cryptography</a>
+      <a href="https://www.fanyamin.com/blog/tag/aead.html">aead</a>
+      <a href="https://www.fanyamin.com/blog/tag/aes-gcm.html">aes-gcm</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-07-10-service-governance-engineering.html" title="服务治理是工程问题，不是纪律问题">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/perceptron-part-1.html" title="风起于青萍之末（上）：感知机如何学会画一条线">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/2026-07-07-cryptography-learning-roadmap.html">关于密码学，我们到底该知道些什么</a></li>
+      <li><a href="https://www.fanyamin.com/blog/why-kms-envelope-encryption.html">为什么需要 KMS 和信封加密</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2025-09-14-journal.html">密码存储的艺术</a></li>
+      <li><a href="https://www.fanyamin.com/blog/deepfake-fraud.html">一通视频会议骗走 2500 万：当 CFO 的脸也能伪造</a></li>
+      <li><a href="https://www.fanyamin.com/blog/llm-agent-security-checklist.html">给 AI Agent 上把锁：LLM 应用的安全清单</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

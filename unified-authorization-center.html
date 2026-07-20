@@ -1,0 +1,1104 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="微服务各管一套权限，最后往往没人说得清谁能调用谁。本文给出统一授权中心的分层架构、协议选择、典型实例与演进路线，重点讲清身份、决策和执行如何分工。" />
+<meta name="keywords" content="authorization, microservice, oauth2, opa, openfga, spiffe, keycloak, zero-trust, security, architecture">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "如何为你的服务创建统一的授权中心",
+  "description": "微服务各管一套权限，最后往往没人说得清谁能调用谁。本文给出统一授权中心的分层架构、协议选择、典型实例与演进路线，重点讲清身份、决策和执行如何分工。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-07-20T10:00:00+08:00",
+  "dateModified": "2026-07-20T22:30:00+08:00",
+  "url": "https://www.fanyamin.com/blog/unified-authorization-center.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/unified-authorization-center.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "authorization, microservice, oauth2, opa, openfga, spiffe, keycloak, zero-trust, security, architecture"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="如何为你的服务创建统一的授权中心"/>
+  <meta property="og:description" content="微服务各管一套权限，最后往往没人说得清谁能调用谁。本文给出统一授权中心的分层架构、协议选择、典型实例与演进路线，重点讲清身份、决策和执行如何分工。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/unified-authorization-center.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-07-20 10:00:00+08:00"/>
+  <meta property="article:modified_time" content="2026-07-20 22:30:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="authorization"/>
+  <meta property="article:tag" content="microservice"/>
+  <meta property="article:tag" content="oauth2"/>
+  <meta property="article:tag" content="opa"/>
+  <meta property="article:tag" content="openfga"/>
+  <meta property="article:tag" content="spiffe"/>
+  <meta property="article:tag" content="keycloak"/>
+  <meta property="article:tag" content="zero-trust"/>
+  <meta property="article:tag" content="security"/>
+  <meta property="article:tag" content="architecture"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 如何为你的服务创建统一的授权中心</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="unified-authorization-center">如何为你的服务创建统一的授权中心</h1>
+    <p>
+      Posted on 一 20 7月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>如何为你的服务创建统一的授权中心</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Cloud / Security</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-07-20</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">为什么需要授权中心</h2>
+<p>服务少时，一句 <code>if user.is_admin</code> 很省事。服务多起来，权限会散落在代码、配置和网关里：改一条规则要发几个服务，查一次越权要翻半天日志，最后没人能准确回答“谁能调用谁”。</p>
+<p>问题不在于少装了一个工具，而在于没有统一的策略来源。<strong>授权中心的价值，是集中管理策略，并让网关、Sidecar 或服务在合适的位置执行它。</strong></p>
+<p>下面先拆清身份、决策和执行，再讨论协议、实例与演进路线。</p>
+<hr>
+<h2 id="_2">一、先拆清三个系统</h2>
+<p>微服务里的访问控制最好拆成三个关注点：</p>
+<table>
+<thead>
+<tr>
+<th>系统</th>
+<th>回答的问题</th>
+<th>典型实现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Identity Provider</td>
+<td>你是谁？</td>
+<td>Keycloak, Entra ID, Auth0, Okta</td>
+</tr>
+<tr>
+<td>Authorization Center</td>
+<td>你是否有权限？</td>
+<td>OPA, OpenFGA, Cedar, Casbin</td>
+</tr>
+<tr>
+<td>Policy Enforcement Point（PEP）</td>
+<td>是否放行这次调用？</td>
+<td>服务中间件、Envoy、Istio、Kong</td>
+</tr>
+</tbody>
+</table>
+<p>Keycloak 也有授权能力，小系统完全可以先用；但当策略包含跨服务属性、动态条件或对象关系时，通常会把决策独立为 PDP（Policy Decision Point），由 OPA、OpenFGA 等组件承担。</p>
+<hr>
+<h2 id="_3">二、调用流程：授权发生在哪一层？</h2>
+<p>以 Order Service 调用 Payment Service 退款为例：</p>
+<div class="highlight"><pre><span></span><code>User
+ │
+ │ Login (OIDC)
+ v
+Keycloak ───► 签发 JWT Access Token
+ │
+ │ Token 随请求传递
+ v
+Order Service
+ │
+ │ 发起退款请求（携带自身 Service Token）
+ v
+Payment Sidecar ──► 拦截入站请求
+ │
+ │ 调用本地 OPA
+ │ 传入: subject=order-service, action=POST,
+ │       resource=/payment/refund, scope=payment.refund
+ v
+OPA ──► 策略判定: Allow / Deny
+ │
+ ├── Allow ──► Payment Service 正常处理
+ │
+ └── Deny ──► 返回 403，记录审计日志
+</code></pre></div>
+
+<p>网关和 Sidecar 适合检查身份、<code>audience</code>、Scope、路径等通用规则。涉及订单归属、余额或审批状态的判断仍要由业务服务提供属性，甚至留在业务层执行。把所有授权都塞进 Sidecar，只是把散落的 <code>if</code> 换了一个藏身之处。</p>
+<hr>
+<h2 id="_4">三、授权中心应该管什么？</h2>
+<p>授权中心不能只管 Role。完整决策至少要能表达：</p>
+<table>
+<thead>
+<tr>
+<th>要素</th>
+<th>含义</th>
+<th>示例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Subject</strong></td>
+<td>谁在发起请求</td>
+<td><code>order-service</code>, <code>user:walter</code></td>
+</tr>
+<tr>
+<td><strong>Action</strong></td>
+<td>要做什么操作</td>
+<td><code>POST</code>, <code>READ</code>, <code>DELETE</code></td>
+</tr>
+<tr>
+<td><strong>Resource</strong></td>
+<td>操作的对象</td>
+<td><code>/payment/refund</code>, <code>doc:12345</code></td>
+</tr>
+<tr>
+<td><strong>Condition</strong></td>
+<td>附加条件</td>
+<td><code>region == us-west</code>, <code>time &lt; 18:00</code></td>
+</tr>
+<tr>
+<td><strong>Scope</strong></td>
+<td>OAuth2 作用域</td>
+<td><code>payment.write</code>, <code>payment.refund</code></td>
+</tr>
+<tr>
+<td><strong>Tenant</strong></td>
+<td>租户隔离</td>
+<td><code>companyA</code>, <code>tenant-xyz</code></td>
+</tr>
+<tr>
+<td><strong>Environment</strong></td>
+<td>环境限制</td>
+<td><code>production</code>, <code>staging</code></td>
+</tr>
+<tr>
+<td><strong>Attributes</strong></td>
+<td>扩展属性</td>
+<td><code>risk_level: high</code>, <code>department: finance</code></td>
+</tr>
+</tbody>
+</table>
+<p>例如：</p>
+<div class="highlight"><pre><span></span><code><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">subject</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">order-service</span>
+<span class="w">  </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">POST</span>
+<span class="w">  </span><span class="nt">resource</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/payment/refund</span>
+<span class="w">  </span><span class="nt">condition</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">region</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">us-west</span>
+<span class="w">    </span><span class="nt">amount_usd</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> lte</span><span class="p">:</span><span class="w"> </span><span class="nv">10000</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">  </span><span class="nt">scope</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">payment.write</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">payment.refund</span>
+<span class="w">  </span><span class="nt">tenant</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">companyA</span>
+<span class="w">  </span><span class="nt">environment</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">production</span>
+<span class="w">  </span><span class="nt">effect</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">allow</span>
+</code></pre></div>
+
+<p>这已经不是简单的 RBAC，而是基于属性的 ABAC。若还要表达“项目成员可以编辑项目下的文档”，则需要 ReBAC（关系型访问控制）。</p>
+<hr>
+<h2 id="oauth2-scope">四、OAuth2 Scope：微服务间授权的常用载体</h2>
+<p>Role 适合表达人的职责，如 Admin、Developer、Operator；服务身份更适合用 Scope 表达被授予的操作：</p>
+<div class="highlight"><pre><span></span><code>payment.read      -- 读取支付信息
+payment.write     -- 创建支付
+payment.refund    -- 发起退款
+</code></pre></div>
+
+<p>JWT Access Token 里这样携带：</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;iss&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;https://auth.example.com&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;sub&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;order-service&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;aud&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;payment-service&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;exp&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1721473200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;payment.read payment.write payment.refund&quot;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>Payment Service 同时验证签名、<code>iss</code>、<code>aud</code>、<code>exp</code>，再确认 Token 包含 <code>payment.refund</code>。只检查 Scope 不够。</p>
+<h3 id="scope">Scope 命名最佳实践</h3>
+<div class="highlight"><pre><span></span><code>{resource}.{action}
+
+Examples:
+  payment.read
+  payment.write
+  inventory.query
+  order.cancel
+  user.profile.read     -- 嵌套资源用 . 分隔
+</code></pre></div>
+
+<p>避免 <code>admin</code>、<code>*</code> 这类万能 Scope，也不要把多个动作绑成 <code>read-write</code>。</p>
+<hr>
+<h2 id="_5">五、协议和组件怎么分工</h2>
+<p>不要把这些名字堆成“全家桶”。它们解决的是不同问题，按需选择即可。</p>
+<table>
+<thead>
+<tr>
+<th>层次</th>
+<th>解决什么问题</th>
+<th>常见选择</th>
+<th>何时需要</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>用户认证</td>
+<td>用户是谁</td>
+<td>OIDC；Keycloak、Entra ID、Auth0、Okta</td>
+<td>有用户登录时</td>
+</tr>
+<tr>
+<td>服务取证</td>
+<td>服务如何获得受限令牌</td>
+<td>OAuth2 Client Credentials</td>
+<td>服务间使用 Access Token 时</td>
+</tr>
+<tr>
+<td>令牌格式</td>
+<td>如何携带 <code>sub</code>、<code>aud</code>、<code>exp</code>、<code>scope</code></td>
+<td>JWT（RFC 7519）或 opaque token</td>
+<td>需要跨组件传递授权上下文时</td>
+</tr>
+<tr>
+<td>工作负载身份</td>
+<td>当前 Pod/进程是否可信</td>
+<td>SPIFFE/SPIRE、X.509-SVID、mTLS</td>
+<td>Kubernetes、多集群或零信任网络</td>
+</tr>
+<tr>
+<td>属性策略</td>
+<td>条件满足时是否允许</td>
+<td>OPA/Rego、Cedar、Casbin</td>
+<td>出现金额、地域、环境等条件时</td>
+</tr>
+<tr>
+<td>关系授权</td>
+<td>谁与哪个对象有什么关系</td>
+<td>OpenFGA</td>
+<td>文档共享、组织层级、对象级权限</td>
+</tr>
+<tr>
+<td>策略执行</td>
+<td>在哪里拦截请求</td>
+<td>业务中间件、Gateway、Envoy/Istio</td>
+<td>所有系统都需要</td>
+</tr>
+</tbody>
+</table>
+<p>几个边界要守住：</p>
+<ul>
+<li>ID Token 用来向客户端证明登录身份；调用 API 应使用 Access Token。</li>
+<li>JWT 不等于 OAuth2，也不是唯一 Token 格式。选择 JWT 意味着接受短期内难以即时撤销的权衡。</li>
+<li>SPIFFE 证明工作负载身份，不替代用户授权或业务权限。</li>
+<li>OPA 与 OpenFGA 不是必选组合。只有同时存在复杂条件和资源关系时，才值得一起上。</li>
+</ul>
+<hr>
+<h2 id="_6">六、别让授权中心进入单点热路径</h2>
+<p>每次 RPC 都远程查询授权中心，中心一慢，所有服务跟着慢。对于 Scope 和属性策略，可以把 OPA Bundle 下发到本地执行：</p>
+<div class="highlight"><pre><span></span><code>Authorization Center (策略存储)
+        │
+        │ Bundle pull / periodic refresh
+        v
+Envoy Sidecar (本地 OPA)
+        │
+        │ 本地策略评估
+        v
+Business Logic
+</code></pre></div>
+
+<p>这种“中心管理、就近执行”能降低延迟，也能在控制面短暂故障时继续使用最后一版有效策略。具体延迟必须在真实策略和硬件上测试，不应拿“低于 1ms”当承诺。</p>
+<p>关系授权不同。OpenFGA 的关系数据变化频繁，通常仍要查询服务端；缓存必须明确一致性窗口、失效方式和高风险操作的 fail-closed 策略。授权系统不可用时究竟拒绝、降级还是使用旧策略，也要按接口风险预先定义，不能临时拍脑袋。</p>
+<hr>
+<h2 id="policy-store">七、Policy Store：策略也要走工程流程</h2>
+<p>策略可以是 YAML/JSON，也可以是 Rego。形式不重要，关键是可审查、可测试、可回滚。例如：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># 声明式格式（适合简单场景）</span>
+<span class="nt">policies</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">order-can-refund</span>
+<span class="w">    </span><span class="nt">subject</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">order-service</span>
+<span class="w">    </span><span class="nt">resource</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">payment-service</span>
+<span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">POST</span>
+<span class="w">    </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/payment/refund</span>
+<span class="w">    </span><span class="nt">scopes</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">payment.refund</span>
+<span class="w">    </span><span class="nt">conditions</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">environment</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">production</span>
+<span class="w">      </span><span class="nt">amount_usd</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> lte</span><span class="p">:</span><span class="w"> </span><span class="nv">10000</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="nt">effect</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">allow</span>
+</code></pre></div>
+
+<table>
+<thead>
+<tr>
+<th>能力</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>版本管理</td>
+<td>每次策略变更有版本号和变更人</td>
+</tr>
+<tr>
+<td>审计日志</td>
+<td>谁在什么时候改了什么策略</td>
+</tr>
+<tr>
+<td>灰度发布</td>
+<td>先 shadow，再 canary，最后全量</td>
+</tr>
+<tr>
+<td>回滚</td>
+<td>一键回到上个版本</td>
+</tr>
+<tr>
+<td>测试</td>
+<td>策略变更前可以跑单测和集成测试</td>
+</tr>
+<tr>
+<td>影响分析</td>
+<td>用历史请求回放，估算新增 allow/deny</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="_7">八、七个常见陷阱</h2>
+<table>
+<thead>
+<tr>
+<th>陷阱</th>
+<th>后果</th>
+<th>改法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>认证等于授权</td>
+<td>登录成功就能访问过多资源</td>
+<td>分开 AuthN 与 AuthZ</td>
+</tr>
+<tr>
+<td>服务拿 <code>Admin</code> Role</td>
+<td>一个凭证泄露即可横向移动</td>
+<td>使用最小 Scope，并校验 <code>aud</code></td>
+</tr>
+<tr>
+<td><code>admin</code>、<code>*</code> 万能 Scope</td>
+<td>名义上有授权，实际上全放开</td>
+<td>按 <code>{resource}.{action}</code> 拆分</td>
+</tr>
+<tr>
+<td>每次远程鉴权</td>
+<td>PDP 故障拖垮业务链路</td>
+<td>静态策略本地执行；远程决策设超时与降级规则</td>
+</tr>
+<tr>
+<td>只记 allow，不记 deny</td>
+<td>无法发现探测和越权尝试</td>
+<td>记录决策、原因、策略版本和 trace ID</td>
+</tr>
+<tr>
+<td>策略直接全量发布</td>
+<td>一处拼写错误造成大面积 403</td>
+<td>lint → test → shadow → canary → rollout</td>
+</tr>
+<tr>
+<td>JWT 活得太久</td>
+<td>权限收回后 Token 仍有效</td>
+<td>短期 Token；高风险操作使用实时决策或撤销机制</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="_8">九、主流开源方案速查表</h2>
+<table>
+<thead>
+<tr>
+<th>层次</th>
+<th>推荐项目</th>
+<th>核心能力</th>
+<th>适用场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>身份认证 (IdP)</td>
+<td>Keycloak</td>
+<td>OAuth2, OIDC, SAML, User Federation</td>
+<td>统一用户/服务身份管理</td>
+</tr>
+<tr>
+<td>策略授权 (ABAC)</td>
+<td>Open Policy Agent (OPA)</td>
+<td>Rego 语言, Bundle 分发, 可嵌入</td>
+<td>API 授权、K8s Admission、基础设施策略</td>
+</tr>
+<tr>
+<td>关系授权 (ReBAC)</td>
+<td>OpenFGA</td>
+<td>Zanzibar 模型, 关系图, Check/ListObjects API</td>
+<td>文档共享、组织层级、多租户资源</td>
+</tr>
+<tr>
+<td>通用策略引擎</td>
+<td>Cedar (AWS)</td>
+<td>类型化策略、Schema 和自动化分析工具</td>
+<td>需要严格策略建模的场景</td>
+</tr>
+<tr>
+<td>服务身份</td>
+<td>SPIFFE / SPIRE</td>
+<td>X.509-SVID, JWT-SVID, Workload Attestation</td>
+<td>K8s 环境下的 Zero Trust 服务身份</td>
+</tr>
+<tr>
+<td>Service Mesh</td>
+<td>Istio</td>
+<td>Envoy + mTLS + AuthorizationPolicy</td>
+<td>服务间通信的统一安全层</td>
+</tr>
+<tr>
+<td>API Gateway</td>
+<td>Kong / APISIX</td>
+<td>认证插件 + Rate Limit + ACL</td>
+<td>南北向流量管控</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_9">十、一个典型实例：电商平台退款</h2>
+<p>用一个电商场景把前面的设计串起来。</p>
+<h3 id="_10">业务场景</h3>
+<p>客服通过 API Gateway 发起退款，Order Service 再调用 Payment Service。规则只有四条：</p>
+<ol>
+<li>只有 Order Service 能调用 Payment Service 的退款接口</li>
+<li>单笔退款金额不能超过 10000 美元</li>
+<li>只允许在生产环境的工作时间（9:00-18:00 UTC）内执行大额退款（&gt;1000 美元）</li>
+<li>所有退款操作必须有审计记录</li>
+</ol>
+<h3 id="_11">架构图</h3>
+<p><img alt="电商平台统一授权中心 - 部署架构图" src="../images/tech_20260720_unified_authorization_center_arch.png"></p>
+<h3 id="_12">时序图：退款请求的完整授权流程</h3>
+<p><img alt="退款请求授权时序图" src="../images/tech_20260720_unified_authorization_center_sequence.png"></p>
+<h3 id="opa">对应的 OPA 策略（完整版）</h3>
+<div class="highlight"><pre><span></span><code>package ecommerce.payment.authz
+
+import rego.v1
+
+default allow := false
+
+# 公共条件只写一次，避免规则漂移。
+valid_refund_request if {
+    input.subject == &quot;order-service&quot;
+    input.action == &quot;POST&quot;
+    input.resource == &quot;/payment/refund&quot;
+    input.audience == &quot;payment-service&quot;
+    &quot;payment.refund&quot; in input.scopes
+    input.attributes.amount_usd &gt; 0
+}
+
+# 小额退款不受工作时间限制。
+allow if {
+    valid_refund_request
+    input.attributes.amount_usd &lt;= 1000
+}
+
+# 大额退款只能在生产环境的工作时间执行。
+allow if {
+    valid_refund_request
+    input.attributes.amount_usd &gt; 1000
+    input.attributes.amount_usd &lt;= 10000
+    input.environment == &quot;production&quot;
+    input.context.hour_utc &gt;= 9
+    input.context.hour_utc &lt; 18
+}
+
+allow if {
+    input.subject == &quot;order-service&quot;
+    input.action == &quot;GET&quot;
+    startswith(input.resource, &quot;/payment/&quot;)
+    input.audience == &quot;payment-service&quot;
+    &quot;payment.read&quot; in input.scopes
+}
+</code></pre></div>
+
+<p>这段策略默认拒绝，只开放两条明确路径。时间由请求上下文传入，便于测试和回放；PEP 还应独立验证 Token 签名、<code>iss</code>、<code>exp</code>，不要把所有责任都压给 Rego。</p>
+<h3 id="_13">审计日志格式</h3>
+<p>每次授权决策产生一条结构化日志：</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;timestamp&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-07-20T14:30:05.123Z&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;decision&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;allow&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;subject&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;order-service&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;action&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;POST&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;resource&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/payment/refund&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;scopes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;payment.refund&quot;</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;attributes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;amount_usd&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3000</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;order_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;12345&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;triggered_by&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;user:cs-agent-01&quot;</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;environment&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;production&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;policy_version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;v2.3.1&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;evaluation_time_ms&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.4</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;spiffe_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;spiffe://example.com/ns/production/sa/order-service&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;trace_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;abc123def456&quot;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这条日志能串起操作人、调用服务、业务对象、策略版本和 Trace。注意不要记录 Token、密钥或不必要的个人数据。</p>
+<hr>
+<h2 id="_14">十一、技术演进路线图：按问题升级，不按名词堆料</h2>
+<p>下面的人数和服务数只是参照，不是门槛。真正的升级信号，是现有方案已经无法控制风险和变更成本。</p>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>典型组织</th>
+<th>够用的方案</th>
+<th>升级信号</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Level 0</td>
+<td>创业团队；单体或 1-3 个服务</td>
+<td>框架中间件 + 简单 RBAC</td>
+<td>出现部门、资源归属等条件</td>
+</tr>
+<tr>
+<td>Level 1</td>
+<td>成长团队；约 5-15 个服务</td>
+<td>统一 IdP + JWT Scope + API Gateway</td>
+<td>策略变更频繁、需要集中审计</td>
+</tr>
+<tr>
+<td>Level 2</td>
+<td>平台团队；约 15-50 个服务</td>
+<td>OPA + Policy-as-Code + 集中审计；按需引入 SPIFFE/Istio</td>
+<td>出现多租户、共享关系和对象级权限</td>
+</tr>
+<tr>
+<td>Level 3</td>
+<td>大型平台；多团队、多地域</td>
+<td>OPA + OpenFGA + 多集群身份 + 完整治理</td>
+<td>已进入持续治理阶段</td>
+</tr>
+</tbody>
+</table>
+<h3 id="level-0">Level 0：先把权限收口</h3>
+<p>使用 Spring Security、Django permission 等框架能力即可。认证和授权分开，权限判断集中在 middleware 或 decorator，避免散落在业务函数里。两三个角色能解决问题，就不要提前建设“平台”。</p>
+<p>当规则开始出现“只能看自己部门的数据”或“只能修改自己创建的资源”，简单 RBAC 已经吃力，应进入下一阶段。</p>
+<hr>
+<h3 id="level-1-scope">Level 1：统一身份和 Scope</h3>
+<p>引入统一 IdP。服务通过 Client Credentials 获取短期 Access Token，并验证签名、<code>iss</code>、<code>aud</code>、<code>exp</code> 和 Scope。公共验证逻辑做成中间件；Gateway 负责外部流量的粗粒度检查，服务仍对自己的资源负责。</p>
+<p>这一阶段最重要的产物不是 Keycloak 集群，而是一套稳定的 Scope 命名和最小权限规则。若改策略必须发布多个服务，或安全团队已无法回答“谁能访问什么”，再进入 Level 2。</p>
+<hr>
+<h3 id="level-2">Level 2：把策略从服务中拿出来</h3>
+<p>用 OPA 等 PDP 承载跨服务的属性策略，策略进入 Git，变更经过测试、shadow、canary 和回滚。决策日志集中保存。Kubernetes 环境若确实需要统一工作负载身份和 mTLS，再引入 SPIFFE/SPIRE；只有已经具备平台团队时，才考虑 Istio。</p>
+<p>这一级的关键变化，是授权从业务代码变成平台能力，但资源属性仍由业务服务负责。出现文档共享、组织继承、多租户对象关系时，再引入 ReBAC。</p>
+<hr>
+<h3 id="level-3">Level 3：治理复杂关系和跨地域风险</h3>
+<p>在 OPA 处理条件策略的基础上，用 OpenFGA 管对象关系；用多集群身份体系解决跨地域信任。平台还应提供策略影响分析、租户隔离、限时 Break-Glass、权限矩阵和 SIEM 对接。</p>
+<p>到了这一级，难点已不是“选 OPA 还是 OpenFGA”，而是数据一致性、策略所有权和跨团队治理。</p>
+<h3 id="_15">演进原则</h3>
+<ol>
+<li><strong>按痛点升级</strong>：没有复杂关系，就不要上 OpenFGA；没有平台团队，就慎上 Istio。</li>
+<li><strong>先统一语义</strong>：Subject、Resource、Action、Scope 和 Tenant 的定义，比工具选型更早。</li>
+<li><strong>默认拒绝</strong>：新增资源必须显式授权；高风险接口故障时 fail closed。</li>
+<li><strong>保留退出路径</strong>：策略、关系数据和审计格式不要被某个产品私有模型锁死。</li>
+<li><strong>把撤权当主流程</strong>：授予容易，及时回收、Token 失效和权限盘点更重要。</li>
+</ol>
+<hr>
+<h2 id="_16">十二、参考资料</h2>
+<h3 id="_17">核心协议和标准</h3>
+<ul>
+<li><a href="https://datatracker.ietf.org/doc/html/rfc6749">RFC 6749 - OAuth 2.0 Authorization Framework</a></li>
+<li><a href="https://datatracker.ietf.org/doc/html/rfc7519">RFC 7519 - JSON Web Token (JWT)</a></li>
+<li><a href="https://datatracker.ietf.org/doc/html/rfc8725">RFC 8725 - JWT Best Current Practices</a></li>
+<li><a href="https://datatracker.ietf.org/doc/html/rfc6750">RFC 6750 - Bearer Token Usage</a></li>
+<li><a href="https://openid.net/specs/openid-connect-core-1_0.html">OpenID Connect Core 1.0</a></li>
+<li><a href="https://spiffe.io/docs/latest/spiffe-about/overview/">SPIFFE Specification</a></li>
+<li><a href="https://research.google/pubs/pub48190/">Google Zanzibar Paper (2019)</a></li>
+</ul>
+<h3 id="_18">开源项目</h3>
+<ul>
+<li><a href="https://www.openpolicyagent.org/">Open Policy Agent (OPA)</a> — 通用策略引擎</li>
+<li><a href="https://openfga.dev/">OpenFGA</a> — 关系型授权引擎（Zanzibar 实现）</li>
+<li><a href="https://www.keycloak.org/">Keycloak</a> — 开源 Identity &amp; Access Management</li>
+<li><a href="https://spiffe.io/docs/latest/spire-about/">SPIRE</a> — SPIFFE 运行时实现</li>
+<li><a href="https://www.cedarpolicy.com/">Cedar</a> — AWS 开源的策略语言，支持形式化验证</li>
+<li><a href="https://casbin.org/">Casbin</a> — 轻量级通用授权库</li>
+</ul>
+<h3 id="_19">相关架构模式</h3>
+<ul>
+<li><a href="https://csrc.nist.gov/publications/detail/sp/800-207/final">NIST Zero Trust Architecture (SP 800-207)</a></li>
+<li><a href="https://istio.io/latest/docs/reference/config/security/authorization-policy/">Istio Authorization Policy</a></li>
+<li><a href="https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/ext_authz_filter">Envoy External Authorization</a></li>
+</ul>
+<hr>
+<h2 id="_20">最后一句</h2>
+<p>授权这件事，本质上是在回答一个组织治理问题：<strong>谁应该信任谁，到什么程度。</strong> 技术只是把这个问题的答案编码成可执行的策略。</p>
+<p>统一授权中心不是让你写一个"万能的权限网关"，而是建立一套"策略管理的单一事实源"——策略在哪里定义、谁能修改、怎么分发、出了问题怎么回滚，这些流程清楚了，技术选型反而是最简单的那一步。</p>
+<blockquote>
+<p>本文是授权系列的第三篇，前两篇：
+- <a href="https://www.fanyamin.com/blog/authz-domain-model.html">授权的领域模型：从 RBAC、ABAC 到 Keycloak、Vault 的一张全景图</a>
+- <a href="https://www.fanyamin.com/blog/2026-04-29-oss-iam-authorization-system.html">用开源组件搭一个 AWS IAM 风格的授权系统</a></p>
+</blockquote>
+<hr>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/unified-authorization-center.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/authorization.html">authorization</a>
+      <a href="https://www.fanyamin.com/blog/tag/microservice.html">microservice</a>
+      <a href="https://www.fanyamin.com/blog/tag/oauth2.html">oauth2</a>
+      <a href="https://www.fanyamin.com/blog/tag/opa.html">opa</a>
+      <a href="https://www.fanyamin.com/blog/tag/openfga.html">openfga</a>
+      <a href="https://www.fanyamin.com/blog/tag/spiffe.html">spiffe</a>
+      <a href="https://www.fanyamin.com/blog/tag/keycloak.html">keycloak</a>
+      <a href="https://www.fanyamin.com/blog/tag/zero-trust.html">zero-trust</a>
+      <a href="https://www.fanyamin.com/blog/tag/security.html">security</a>
+      <a href="https://www.fanyamin.com/blog/tag/architecture.html">architecture</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-07-19-philosophy-software-design-ai.html" title="重读软件设计的哲学：AI 能替我们把复杂性消灭掉吗">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/2026-04-29-oss-iam-authorization-system.html">用开源组件搭一个 AWS IAM 风格的授权系统</a></li>
+      <li><a href="https://www.fanyamin.com/blog/authz-domain-model.html">授权的领域模型：从 RBAC、ABAC 到 Keycloak、Vault 的一张全景图</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-03-05-rbac-openfga-authorization.html">从 RBAC 到 OpenFGA：细粒度授权的架构、落地与取舍</a></li>
+      <li><a href="https://www.fanyamin.com/blog/spire-03-security-analysis.html">SPIRE 系列之三：安全性分析与加固清单</a></li>
+      <li><a href="https://www.fanyamin.com/blog/spire-02-architecture.html">SPIRE 系列之二：架构深度解析</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

@@ -389,9 +389,10 @@
 <h2 id="rbac">一、RBAC：老黄牛的能力边界</h2>
 <h3 id="11-rbac">1.1 RBAC 的核心模型</h3>
 <p>RBAC 的思路很直白：<strong>用户 → 角色 → 权限</strong>。</p>
-<div class="highlight"><pre><span></span><code>User ──── Role ──── Permission
-                      │
-                   Action × Resource
+<p><img alt="RBAC 核心模型：用户→角色→权限" src="../images/tech_20260305_rbac_openfga_core-model.png"></p>
+<div class="highlight"><pre><span></span><code>flowchart LR
+    User[&quot;User 用户&quot;] --&gt; Role[&quot;Role 角色&quot;] --&gt; Permission[&quot;Permission 权限&quot;]
+    Permission --&gt; AR[&quot;Action × Resource&lt;br/&gt;(操作 × 资源)&quot;]
 </code></pre></div>
 
 <p>一个典型的 RBAC 表结构：</p>
@@ -453,12 +454,16 @@ RBAC 回答不了的问题：
 <h2 id="google-zanzibar">二、Google Zanzibar：巨人的答案</h2>
 <p>2019 年，Google 发表了 <a href="https://research.google/pubs/pub48190/">Zanzibar 论文</a>，揭示了 Google Drive、YouTube、Google Cloud 等产品背后的统一授权系统。</p>
 <p>Zanzibar 的核心思想只有一个：<strong>一切权限都是关系（Relationship）</strong>。</p>
-<div class="highlight"><pre><span></span><code>传统 RBAC：
-  User → Role → Permission → Resource
-
-Zanzibar / ReBAC：
-  Subject ──relation──▶ Object
-  (谁)     (什么关系)    (什么东西)
+<p><img alt="RBAC 与 Zanzibar/ReBAC 模型对比" src="../images/tech_20260305_rbac_openfga_rbac-vs-rebac.png"></p>
+<div class="highlight"><pre><span></span><code>flowchart LR
+    subgraph RBAC[&quot;传统 RBAC&quot;]
+        direction LR
+        U[User] --&gt; R[Role] --&gt; P[Permission] --&gt; Res[Resource]
+    end
+    subgraph ReBAC[&quot;Zanzibar / ReBAC&quot;]
+        direction LR
+        S[&quot;Subject (谁)&quot;] --&gt;|&quot;relation (什么关系)&quot;| O[&quot;Object (什么东西)&quot;]
+    end
 </code></pre></div>
 
 <p>一条关系元组（Relationship Tuple）长这样：</p>
@@ -481,14 +486,11 @@ type document
 </code></pre></div>
 
 <p>现在问"Alice 能编辑 readme 吗？"，Zanzibar 会沿着关系图遍历：</p>
-<div class="highlight"><pre><span></span><code>Alice ──editor──▶ folder:engineering
-                        │
-                     parent of
-                        │
-                        ▼
-                  document:readme
-
-结论：Alice 是 readme 的 editor ✅
+<p><img alt="Zanzibar 关系图遍历：Alice→文件夹→文档" src="../images/tech_20260305_rbac_openfga_zanzibar-traversal.png"></p>
+<div class="highlight"><pre><span></span><code>flowchart LR
+    Alice[&quot;user:alice&quot;] --&gt;|editor| Folder[&quot;folder:engineering&quot;]
+    Folder --&gt;|&quot;parent of&quot;| Doc[&quot;document:readme&quot;]
+    Doc -.-&gt;|&quot;沿关系推导&quot;| Result[&quot;结论：Alice 是 readme 的 editor ✅&quot;]
 </code></pre></div>
 
 <p>这就是 <strong>ReBAC（Relationship-Based Access Control）</strong> 的核心——权限不是静态分配的，而是通过关系图动态推导的。</p>
@@ -496,33 +498,29 @@ type document
 <h2 id="openfga">三、OpenFGA 架构深度剖析</h2>
 <p><a href="https://openfga.dev/">OpenFGA</a> 是 Auth0/Okta 开源的 Zanzibar 实现，现为 CNCF Sandbox 项目。已被 <strong>Grafana Labs、Canonical（Ubuntu）、Docker、Agicap、Read.AI</strong> 等公司采用。</p>
 <h3 id="31">3.1 整体架构</h3>
-<div class="highlight"><pre><span></span><code>┌─────────────────────────────────────────────────────────┐
-│                      应用层                              │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐              │
-│  │ Service A │  │ Service B │  │ Service C │              │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘              │
-│       │              │              │                    │
-│       ▼              ▼              ▼                    │
-│  ┌──────────────────────────────────────────┐           │
-│  │           OpenFGA SDK (gRPC/HTTP)         │           │
-│  └────────────────────┬─────────────────────┘           │
-└───────────────────────┼─────────────────────────────────┘
-                        │
-                        ▼
-┌───────────────────────────────────────────────────────────┐
-│                   OpenFGA Server                          │
-│                                                           │
-│  ┌─────────────┐  ┌──────────────┐  ┌─────────────────┐ │
-│  │ API Layer    │  │ Query Engine │  │ Change Tracker   │ │
-│  │ (HTTP/gRPC)  │  │ (图遍历)     │  │ (变更日志)       │ │
-│  └──────┬──────┘  └──────┬───────┘  └────────┬────────┘ │
-│         │                │                    │          │
-│         ▼                ▼                    ▼          │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │              Storage Adapter                      │   │
-│  │   PostgreSQL │ MySQL │ SQLite(beta) │ In-Memory   │   │
-│  └──────────────────────────────────────────────────┘   │
-└───────────────────────────────────────────────────────────┘
+<p><img alt="OpenFGA 整体架构" src="../images/tech_20260305_rbac_openfga_openfga-arch.png"></p>
+<div class="highlight"><pre><span></span><code>flowchart TB
+    subgraph App[&quot;应用层&quot;]
+        SA[Service A]
+        SB[Service B]
+        SC[Service C]
+        SDK[&quot;OpenFGA SDK (gRPC/HTTP)&quot;]
+        SA --&gt; SDK
+        SB --&gt; SDK
+        SC --&gt; SDK
+    end
+    subgraph Server[&quot;OpenFGA Server&quot;]
+        API[&quot;API Layer&lt;br/&gt;(HTTP/gRPC)&quot;]
+        QE[&quot;Query Engine&lt;br/&gt;(图遍历)&quot;]
+        CT[&quot;Change Tracker&lt;br/&gt;(变更日志)&quot;]
+        Storage[&quot;Storage Adapter&lt;br/&gt;PostgreSQL / MySQL / SQLite(beta) / In-Memory&quot;]
+        API --&gt; Storage
+        QE --&gt; Storage
+        CT --&gt; Storage
+    end
+    SDK --&gt; API
+    SDK --&gt; QE
+    SDK --&gt; CT
 </code></pre></div>
 
 <h3 id="32">3.2 核心概念</h3>
@@ -568,26 +566,21 @@ type document
 </tbody>
 </table>
 <h3 id="33-api">3.3 核心 API</h3>
-<p>OpenFGA 只有 <strong>6 个核心 API</strong>，设计极其克制：</p>
-<div class="highlight"><pre><span></span><code>┌─────────────────────────────────────────────────────┐
-│                    OpenFGA API                       │
-├─────────────────────────────────────────────────────┤
-│                                                     │
-│  写入类：                                            │
-│    Write()        - 写入/删除关系元组                  │
-│    WriteModel()   - 更新授权模型                      │
-│                                                     │
-│  查询类：                                            │
-│    Check()        - 检查某用户是否有某权限 → bool      │
-│    ListObjects()  - 列出用户有权访问的所有对象          │
-│    ListUsers()    - 列出对某对象有权限的所有用户        │
-│    Expand()       - 展开权限的推导路径（调试用）        │
-│                                                     │
-│  管理类：                                            │
-│    CreateStore()  - 创建 Store                       │
-│    ReadChanges()  - 读取变更日志（审计/同步）          │
-│                                                     │
-└─────────────────────────────────────────────────────┘
+<p>OpenFGA 只有 <strong>6 个核心 API</strong>，设计极其克制（另有 CreateStore、ReadChanges 等管理接口）：</p>
+<p><img alt="OpenFGA 核心 API 分类" src="../images/tech_20260305_rbac_openfga_openfga-api.png"></p>
+<div class="highlight"><pre><span></span><code>mindmap
+  root((OpenFGA API))
+    写入类
+      Write 写入/删除关系元组
+      WriteModel 更新授权模型
+    查询类
+      Check 检查某用户是否有某权限
+      ListObjects 列出用户有权访问的对象
+      ListUsers 列出对某对象有权限的用户
+      Expand 展开权限推导路径 调试用
+    管理类
+      CreateStore 创建 Store
+      ReadChanges 读取变更日志 审计/同步
 </code></pre></div>
 
 <p>其中最关键的是 <strong>Check()</strong> — 它是所有授权决策的入口：</p>
@@ -649,25 +642,20 @@ type document
 <li><strong>分享控制</strong>：只有 owner 能分享文档</li>
 </ol>
 <h3 id="35">3.5 图遍历引擎</h3>
-<p>Check() 的核心是一个 <strong>有向图遍历</strong> 算法。当你问"Alice 能编辑 document:readme 吗？"，引擎会：</p>
-<div class="highlight"><pre><span></span><code>1. 查找 document:readme 的 editor 关系定义
-   → editor: [user] or owner or editor from parent
-
-2. 分支搜索：
-   ├── 直接关系：有没有 document:readme#editor@user:alice 元组？
-   ├── owner 关系：Alice 是 readme 的 owner 吗？
-   └── 继承关系：readme 的 parent folder 的 editor 包含 Alice 吗？
-       ├── 查找 document:readme#parent@folder:* 元组
-       │   → 找到 folder:engineering
-       └── 递归检查 folder:engineering#editor@user:alice
-           ├── 直接关系？
-           ├── owner 关系？
-           └── org admin 关系？
-               → 继续遍历...
-
-3. 任一分支返回 true → 最终结果 true
+<p>Check() 的核心是一个 <strong>有向图遍历</strong> 算法。当你问"Alice 能编辑 document:readme 吗？"，引擎会沿 <code>editor: [user] or owner or editor from parent</code> 分支搜索：</p>
+<p><img alt="Check() 图遍历分支搜索" src="../images/tech_20260305_rbac_openfga_check-traversal.png"></p>
+<div class="highlight"><pre><span></span><code>flowchart TB
+    Q[&quot;Alice 能编辑 document:readme 吗？&quot;] --&gt; D1{&quot;直接关系？&lt;br/&gt;document:readme#editor@user:alice&quot;}
+    Q --&gt; O1{&quot;owner 关系？&lt;br/&gt;Alice 是 readme 的 owner？&quot;}
+    Q --&gt; P1{&quot;继承关系？&lt;br/&gt;parent folder 的 editor 含 Alice？&quot;}
+    P1 --&gt; F[&quot;找到 folder:engineering&quot;]
+    F --&gt; D2{&quot;直接关系？&quot;}
+    F --&gt; O2{&quot;owner 关系？&quot;}
+    F --&gt; A2{&quot;org admin 关系？&lt;br/&gt;→ 递归继续遍历&quot;}
+    D1 &amp; O1 &amp; D2 &amp; O2 &amp; A2 -.-&gt;|&quot;任一分支 true&quot;| R[&quot;最终结果 true ✅&quot;]
 </code></pre></div>
 
+<p>（任一分支返回 true 即短路返回，最终结果为 true。）</p>
 <p>这个遍历有几个关键优化：</p>
 <ul>
 <li><strong>并发遍历</strong>：多个分支并行检查，任一成功即短路返回</li>
@@ -678,17 +666,14 @@ type document
 <hr>
 <h2 id="rbac-vs-rebac">四、RBAC vs ReBAC：不是替代，是演进</h2>
 <p>很多人问：用了 OpenFGA 是不是就不需要 RBAC 了？<strong>不是</strong>。</p>
-<div class="highlight"><pre><span></span><code>┌──────────────────────────────────────────────────────────┐
-│                    授权模型演进                            │
-│                                                          │
-│  ACL ──▶ RBAC ──▶ ABAC ──▶ ReBAC                        │
-│  (列表)   (角色)   (属性)   (关系)                         │
-│                                                          │
-│  简单 ◀──────────────────────────────────────▶ 灵活       │
-│  粗粒度 ◀────────────────────────────────────▶ 细粒度     │
-└──────────────────────────────────────────────────────────┘
+<p><img alt="授权模型演进：ACL→RBAC→ABAC→ReBAC" src="../images/tech_20260305_rbac_openfga_authz-evolution.png"></p>
+<div class="highlight"><pre><span></span><code>flowchart LR
+    Left[&quot;简单 / 粗粒度&quot;] --- ACL[&quot;ACL&lt;br/&gt;(列表)&quot;] --&gt; RBAC[&quot;RBAC&lt;br/&gt;(角色)&quot;] --&gt; ABAC[&quot;ABAC&lt;br/&gt;(属性)&quot;] --&gt; ReBAC[&quot;ReBAC&lt;br/&gt;(关系)&quot;] --- Right[&quot;灵活 / 细粒度&quot;]
+    style Left fill:#fff,stroke-dasharray:5 5
+    style Right fill:#fff,stroke-dasharray:5 5
 </code></pre></div>
 
+<p>一条轴线看懂：从左到右，<strong>由简单、粗粒度走向灵活、细粒度</strong>。</p>
 <table>
 <thead>
 <tr>
@@ -764,16 +749,13 @@ type document
 <h2 id="_1">五、商业公司落地路径</h2>
 <h3 id="51">5.1 渐进式迁移策略</h3>
 <p>不要试图一步到位。我建议分四个阶段：</p>
-<div class="highlight"><pre><span></span><code>Phase 1          Phase 2          Phase 3          Phase 4
-评估与 PoC        影子模式          逐步切换          全面迁移
-(2-4 周)         (4-8 周)         (8-16 周)        (持续)
-   │                │                │                │
-   ▼                ▼                ▼                ▼
-┌────────┐    ┌────────────┐   ┌────────────┐   ┌──────────┐
-│建模     │    │双写双读     │   │新功能用 FGA │   │旧功能迁移 │
-│原型验证  │    │对比结果     │   │旧功能保持   │   │下线旧系统 │
-│性能测试  │    │不影响线上   │   │逐步切换     │   │          │
-└────────┘    └────────────┘   └────────────┘   └──────────┘
+<p><img alt="四阶段渐进式迁移" src="../images/tech_20260305_rbac_openfga_migration-phases.png"></p>
+<div class="highlight"><pre><span></span><code>flowchart LR
+    P1[&quot;Phase 1 · 评估与 PoC (2-4 周)&lt;br/&gt;建模 / 原型验证 / 性能测试&quot;]
+    P2[&quot;Phase 2 · 影子模式 (4-8 周)&lt;br/&gt;双写双读 / 对比结果 / 不影响线上&quot;]
+    P3[&quot;Phase 3 · 逐步切换 (8-16 周)&lt;br/&gt;新功能用 FGA / 旧功能保持 / 逐步切换&quot;]
+    P4[&quot;Phase 4 · 全面迁移 (持续)&lt;br/&gt;旧功能迁移 / 下线旧系统&quot;]
+    P1 --&gt; P2 --&gt; P3 --&gt; P4
 </code></pre></div>
 
 <p><strong>Phase 1：评估与 PoC（2-4 周）</strong></p>
@@ -815,13 +797,12 @@ type document
 </ul>
 <h3 id="52">5.2 数据同步：最容易踩的坑</h3>
 <p>OpenFGA 的关系元组需要和业务数据保持一致。这是落地中 <strong>最容易出问题</strong> 的地方。</p>
-<div class="highlight"><pre><span></span><code>业务事件                    OpenFGA 操作
-─────────                  ──────────────
-用户加入团队     ──────▶    Write(team:X#member@user:alice)
-用户离开团队     ──────▶    Delete(team:X#member@user:alice)
-文档移动到新文件夹 ──────▶   Delete(doc:Y#parent@folder:old)
-                           Write(doc:Y#parent@folder:new)
-文档被删除       ──────▶    Delete(doc:Y 相关的所有元组)
+<p><img alt="业务事件到 OpenFGA 操作的映射" src="../images/tech_20260305_rbac_openfga_data-sync.png"></p>
+<div class="highlight"><pre><span></span><code>flowchart LR
+    E1[&quot;用户加入团队&quot;] --&gt; W1[&quot;Write(team:X#member@user:alice)&quot;]
+    E2[&quot;用户离开团队&quot;] --&gt; D2[&quot;Delete(team:X#member@user:alice)&quot;]
+    E3[&quot;文档移动到新文件夹&quot;] --&gt; M3[&quot;Delete(doc:Y#parent@folder:old)&lt;br/&gt;Write(doc:Y#parent@folder:new)&quot;]
+    E4[&quot;文档被删除&quot;] --&gt; D4[&quot;Delete(doc:Y 相关的所有元组)&quot;]
 </code></pre></div>
 
 <p><strong>三种同步方案</strong>：</p>
@@ -1064,55 +1045,34 @@ type document
 <li>"我们有能力自己做，而且可以完全掌控"</li>
 </ul>
 <p>这些理由都有道理，但自研的代价往往被低估：</p>
-<div class="highlight"><pre><span></span><code>自研授权系统的隐性成本：
-
-┌─────────────────────────────────────────────────┐
-│  显性成本（大家都能看到的）                        │
-│  ├── 开发：3-6 个月，2-3 个高级工程师              │
-│  └── 测试：权限组合爆炸，测试用例指数增长           │
-│                                                   │
-│  隐性成本（容易被忽略的）                          │
-│  ├── 性能优化：图遍历算法、缓存策略、并发控制       │
-│  ├── 一致性保证：分布式环境下的数据同步             │
-│  ├── 模型演进：业务变化时的 schema migration       │
-│  ├── 安全审计：权限变更的审计日志和合规报告         │
-│  ├── 运维监控：延迟、错误率、元组数量的监控告警     │
-│  ├── 文档培训：新人上手成本                        │
-│  └── 持续维护：Bug 修复、安全补丁、版本升级         │
-│                                                   │
-│  机会成本（最容易被忽略的）                        │
-│  └── 这些工程师本可以做什么业务功能？               │
-└─────────────────────────────────────────────────┘
+<p><img alt="自研授权系统的隐性成本" src="../images/tech_20260305_rbac_openfga_selfbuild-cost.png"></p>
+<div class="highlight"><pre><span></span><code>mindmap
+  root((自研授权系统的成本))
+    显性成本（大家都能看到）
+      &quot;开发：3-6 个月，2-3 个高级工程师&quot;
+      &quot;测试：权限组合爆炸，用例指数增长&quot;
+    隐性成本（容易被忽略）
+      &quot;性能优化：图遍历 / 缓存 / 并发控制&quot;
+      &quot;一致性保证：分布式数据同步&quot;
+      &quot;模型演进：schema migration&quot;
+      &quot;安全审计：变更日志 / 合规报告&quot;
+      &quot;运维监控：延迟 / 错误率 / 元组数量&quot;
+      &quot;文档培训：新人上手成本&quot;
+      &quot;持续维护：Bug / 安全补丁 / 升级&quot;
+    机会成本（最容易被忽略）
+      &quot;这些工程师本可以做什么业务功能？&quot;
 </code></pre></div>
 
 <h3 id="73">7.3 我的决策框架</h3>
-<div class="highlight"><pre><span></span><code>                    ┌──────────────────┐
-                    │ 你的授权需求是？  │
-                    └────────┬─────────┘
-                             │
-                    ┌────────▼─────────┐
-                    │ 只需要角色级控制？ │
-                    └────────┬─────────┘
-                        是 /     \ 否
-                         /         \
-              ┌─────────▼┐    ┌────▼──────────┐
-              │ 用 RBAC   │    │ 需要资源级     │
-              │ (框架自带) │    │ 细粒度控制？   │
-              └──────────┘    └────┬──────────┘
-                              是 /     \ 否
-                               /         \
-                    ┌─────────▼┐    ┌────▼──────────┐
-                    │ 团队 &gt; 50 │    │ 用 RBAC + ACL │
-                    │ 人？有 SRE │    │ (Casbin/OPA)  │
-                    │ 支持？     │    └───────────────┘
-                    └─────┬────┘
-                     是 /     \ 否
-                      /         \
-           ┌─────────▼┐    ┌────▼──────────┐
-           │ 用 OpenFGA │    │ 用 OpenFGA    │
-           │ 或 SpiceDB │    │ 但从小处开始  │
-           │ 全面部署   │    │ 先 PoC 再扩展 │
-           └───────────┘    └───────────────┘
+<p><img alt="授权方案决策树" src="../images/tech_20260305_rbac_openfga_decision-tree.png"></p>
+<div class="highlight"><pre><span></span><code>flowchart TB
+    Q{&quot;只需要角色级控制？&quot;}
+    Q --&gt;|是| RBAC[&quot;用 RBAC&lt;br/&gt;(框架自带)&quot;]
+    Q --&gt;|否| Q2{&quot;需要资源级&lt;br/&gt;细粒度控制？&quot;}
+    Q2 --&gt;|否| ACL[&quot;用 RBAC + ACL&lt;br/&gt;(Casbin / OPA)&quot;]
+    Q2 --&gt;|是| Q3{&quot;团队 &gt; 50 人？&lt;br/&gt;有 SRE 支持？&quot;}
+    Q3 --&gt;|是| Full[&quot;用 OpenFGA 或 SpiceDB&lt;br/&gt;全面部署&quot;]
+    Q3 --&gt;|否| Small[&quot;用 OpenFGA&lt;br/&gt;但从小处开始&lt;br/&gt;先 PoC 再扩展&quot;]
 </code></pre></div>
 
 <p><strong>什么时候该自研？</strong></p>
@@ -1153,21 +1113,37 @@ type document
 </code></pre></div>
 
 <h3 id="82">8.2 监控指标</h3>
-<p>上线后必须监控的指标：</p>
-<div class="highlight"><pre><span></span><code>授权系统健康度仪表盘：
-
-┌─────────────────────────────────────────────┐
-│  Check() P50 延迟    │  Check() P99 延迟     │
-│  ████████ 3ms        │  ████████████ 45ms    │
-├──────────────────────┼──────────────────────┤
-│  Check() 错误率      │  Write() 吞吐量       │
-│  ██ 0.01%            │  ████████ 1.2K/s      │
-├──────────────────────┼──────────────────────┤
-│  关系元组总数         │  降级触发次数          │
-│  ████████ 2.3M       │  █ 0                  │
-└──────────────────────┴──────────────────────┘
-</code></pre></div>
-
+<p>上线后必须监控的指标（括号内为健康时的参考值）：</p>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>参考值</th>
+<th>指标</th>
+<th>参考值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Check() P50 延迟</td>
+<td>3ms</td>
+<td>Check() P99 延迟</td>
+<td>45ms</td>
+</tr>
+<tr>
+<td>Check() 错误率</td>
+<td>0.01%</td>
+<td>Write() 吞吐量</td>
+<td>1.2K/s</td>
+</tr>
+<tr>
+<td>关系元组总数</td>
+<td>2.3M</td>
+<td>降级触发次数</td>
+<td>0</td>
+</tr>
+</tbody>
+</table>
 <h3 id="83">8.3 常见陷阱</h3>
 <ol>
 <li><strong>不要把 OpenFGA 当数据库用</strong>。它是授权引擎，不是通用存储。不要把业务数据塞进元组。</li>
@@ -1350,9 +1326,9 @@ function copyArticleLink(url) {
     <ul class="related-posts">
       <li><a href="https://www.fanyamin.com/blog/authz-domain-model.html">授权的领域模型：从 RBAC、ABAC 到 Keycloak、Vault 的一张全景图</a></li>
       <li><a href="https://www.fanyamin.com/blog/2026-04-29-oss-iam-authorization-system.html">用开源组件搭一个 AWS IAM 风格的授权系统</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-07-20-zanzibar-deep-dive.html">Zanzibar 精读：Google 如何在十毫秒内回答“你能看这份文档吗”</a></li>
       <li><a href="https://www.fanyamin.com/blog/unified-authorization-center.html">如何为你的服务创建统一的授权中心</a></li>
       <li><a href="https://www.fanyamin.com/blog/perm-casbin.html">PERM 模型与 Casbin：把云端授权从代码里抠出去</a></li>
-      <li><a href="https://www.fanyamin.com/blog/agent-box-chu-tan-cong-openclaw-xiao-long-xia-an-quan-wen-ti-tan-agent-sandbox.html">Agent Box 初探：从 OpenClaw 小龙虾安全问题谈 Agent Sandbox</a></li>
     </ul>
   </div>
 

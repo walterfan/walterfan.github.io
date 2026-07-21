@@ -79,7 +79,7 @@
     "name": "Walter Fan"
   },
   "datePublished": "2026-07-20T10:00:00+08:00",
-  "dateModified": "2026-07-20T22:30:00+08:00",
+  "dateModified": "2026-07-21T10:00:00+08:00",
   "url": "https://www.fanyamin.com/blog/unified-authorization-center.html",
   "mainEntityOfPage": {
     "@type": "WebPage",
@@ -106,7 +106,7 @@
   <meta property="og:url" content="https://www.fanyamin.com/blog/unified-authorization-center.html"/>
   <meta property="og:type" content="article"/>
   <meta property="article:published_time" content="2026-07-20 10:00:00+08:00"/>
-  <meta property="article:modified_time" content="2026-07-20 22:30:00+08:00"/>
+  <meta property="article:modified_time" content="2026-07-21 10:00:00+08:00"/>
   <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
   <meta property="article:section" content="Tech"/>
   <meta property="article:tag" content="authorization"/>
@@ -783,9 +783,89 @@ Business Logic
 </tr>
 </tbody>
 </table>
-<h2 id="_9">十、一个典型实例：电商平台退款</h2>
+<hr>
+<h2 id="openfga">十、以 OpenFGA 为核心做二次开发</h2>
+<p>OpenFGA 于 2025 年 10 月 28 日进入 CNCF Incubating。截至 2026 年 7 月，最新版本是 v1.18.0。它提供 HTTP 和 gRPC API，生产存储支持 PostgreSQL 14+ 与 MySQL 8，SQLite 仍标为 beta。它以 ReBAC 为核心，通过 Conditions 和 Contextual Tuples 覆盖部分 ABAC 场景。</p>
+<p>版本号会过期，更重要的是这个判断：</p>
+<blockquote>
+<p><strong>OpenFGA 是授权决策引擎，不是完整的企业授权中心。</strong></p>
+</blockquote>
+<p>它擅长回答“用户 U 是否能对对象 O 执行关系 R”，但不替你完成业务建模、身份接入、关系同步、租户治理、审批发布和合规审计。二次开发的主要工作在引擎周围，而不在修改引擎。</p>
+<p><img alt="围绕 OpenFGA 建设企业授权中心" src="../images/tech_20260720_openfga_authorization_center.png"></p>
+<h3 id="_9">两条开发路线</h3>
+<p><strong>路线 A：环绕式开发，默认选择。</strong> 使用官方镜像或 Helm Chart 部署 OpenFGA，在外面建设 Authorization API、控制台、同步任务、审计和 SDK。这样可以跟随上游安全更新，不必长期维护 fork。</p>
+<p><strong>路线 B：嵌入或扩展核心。</strong> OpenFGA 可以作为 Go library 嵌入，但只适合确有自定义存储、进程内部署或拦截器需求的团队。优先包一层服务或中间件，最后才考虑 fork 主仓库。</p>
+<p>多数企业会以路线 A 为主，只在少数集成点采用路线 B。</p>
+<h3 id="_10">真正要建设的六个模块</h3>
+<table>
+<thead>
+<tr>
+<th>模块</th>
+<th>要解决的问题</th>
+<th>关键做法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>建模抽象层（PAP）</td>
+<td>业务方看不懂底层 DSL</td>
+<td>把角色、权限集、资源组编译成 model 和 tuples</td>
+</tr>
+<tr>
+<td>数据同步（PIP）</td>
+<td>FGA 关系与真实组织、资源漂移</td>
+<td>事件增量同步 + 定期对账；写入必须幂等</td>
+</tr>
+<tr>
+<td>多租户治理</td>
+<td>tenant 如何映射到 store 和 model</td>
+<td>维护映射、配额、生命周期与隔离策略</td>
+</tr>
+<tr>
+<td>鉴权集成（PEP）</td>
+<td>应用在哪里调用决策</td>
+<td>SDK、Gateway 插件或 Sidecar；监控 p99，批量场景用 BatchCheck</td>
+</tr>
+<tr>
+<td>模型生命周期</td>
+<td>模型如何评审、灰度和回滚</td>
+<td>固定 <code>authorization_model_id</code>，经测试后切换版本</td>
+</tr>
+<tr>
+<td>审计与合规</td>
+<td>谁改了权限、谁能访问什么</td>
+<td>记录写操作和必要的决策；生成访问审阅报表</td>
+</tr>
+</tbody>
+</table>
+<p>其中最容易被低估的是 PIP。OpenFGA 中的 tuple 只是关系事实的副本，权威数据仍在 HR、组织系统和业务数据库。消息可能重复、乱序或丢失，所以同步链路既要幂等，也要有 reconciliation 任务定期纠偏。</p>
+<h3 id="_11">多租户：先选隔离边界</h3>
+<p>OpenFGA 的 store 隔离 model 和 tuples，store 之间不能共享关系。常见选择是：</p>
+<ul>
+<li><strong>一租户一 store</strong>：隔离强，可以独立演进；代价是 store、model 和迁移数量快速增长。</li>
+<li><strong>共享 store，ID 带 tenant 前缀</strong>：管理简单；隔离依赖应用约束，一次漏前缀就可能越权。</li>
+<li><strong>分级混合</strong>：高风险或大型租户独立 store，普通租户按业务域共享。</li>
+</ul>
+<p>不要只按租户数量决定。合规边界、跨租户关系、模型演进速度和运维能力更重要。无论选哪种，都应由授权中心维护 <code>tenant -&gt; store_id -&gt; model_id</code> 映射，业务应用不要自己拼。</p>
+<h3 id="_12">四个必须提前定的技术决策</h3>
+<p><strong>1. 一致性还是延迟。</strong> OpenFGA 的查询支持 <code>MINIMIZE_LATENCY</code> 和 <code>HIGHER_CONSISTENCY</code>。启用缓存或只读副本后，刚写入的关系可能暂时读不到。写后立即鉴权时，可以按请求选择更高一致性，或用 Contextual Tuples 将尚未持久化的关系带入本次判断。不要全局强制高一致性，它会把压力直接推给主库。</p>
+<p><strong>2. 反向查询的成本。</strong> <code>Check</code> 只判断一个关系；<code>ListObjects</code>、<code>ListUsers</code> 要遍历更大的关系图，复杂模型下更容易碰到超时和结果上限。设计 model 时就要测试正向与反向查询，不能只验证 Check。</p>
+<p><strong>3. 高可用的重心。</strong> Authorization API 与 OpenFGA 节点都应按无状态计算层水平扩展，真正持久化的状态在数据库。生产 HA 要优先处理数据库备份、复制、迁移和连接池，再考虑增加多少 Pod。</p>
+<p><strong>4. 安全边界。</strong> OpenFGA 支持 pre-shared key 或 OIDC 认证；生产环境还应通过反向代理或 Service Mesh 建立 TLS/mTLS、网络隔离和限流。关闭 Playground，不把 PDP 直接暴露给终端或不受信任的业务网络，并及时跟随安全版本。</p>
+<p>OpenFGA 曾出现过影响授权结果的安全公告。对一个 PDP 来说，“偶尔算错一次”也不可接受，因此升级和回归测试必须进入日常运维，而不是年底再说。</p>
+<h3 id="_13">推荐落地顺序</h3>
+<ol>
+<li>用 CLI 和 Docker 建模一个边界清晰的核心场景，写出 allow 与 deny 断言。</li>
+<li>验证 <code>Check</code>、<code>BatchCheck</code>、<code>ListObjects</code> 的语义、延迟和一致性。</li>
+<li>建立模型仓库，固定并发布 <code>authorization_model_id</code>。</li>
+<li>接入一个业务的事件同步与定期对账。</li>
+<li>最后再做控制台、审批、访问审阅和多租户自动化。</li>
+</ol>
+<p>先做灯塔项目，别一上来迁移全公司的权限。授权模型选错一次，后面的控制台做得再漂亮，也只是给返工加了个皮肤。</p>
+<hr>
+<h2 id="_14">十一、一个典型实例：电商平台退款</h2>
 <p>用一个电商场景把前面的设计串起来。</p>
-<h3 id="_10">业务场景</h3>
+<h3 id="_15">业务场景</h3>
 <p>客服通过 API Gateway 发起退款，Order Service 再调用 Payment Service。规则只有四条：</p>
 <ol>
 <li>只有 Order Service 能调用 Payment Service 的退款接口</li>
@@ -793,9 +873,9 @@ Business Logic
 <li>只允许在生产环境的工作时间（9:00-18:00 UTC）内执行大额退款（&gt;1000 美元）</li>
 <li>所有退款操作必须有审计记录</li>
 </ol>
-<h3 id="_11">架构图</h3>
+<h3 id="_16">架构图</h3>
 <p><img alt="电商平台统一授权中心 - 部署架构图" src="../images/tech_20260720_unified_authorization_center_arch.png"></p>
-<h3 id="_12">时序图：退款请求的完整授权流程</h3>
+<h3 id="_17">时序图：退款请求的完整授权流程</h3>
 <p><img alt="退款请求授权时序图" src="../images/tech_20260720_unified_authorization_center_sequence.png"></p>
 <h3 id="opa">对应的 OPA 策略（完整版）</h3>
 <div class="highlight"><pre><span></span><code>package ecommerce.payment.authz
@@ -840,7 +920,7 @@ allow if {
 </code></pre></div>
 
 <p>这段策略默认拒绝，只开放两条明确路径。时间由请求上下文传入，便于测试和回放；PEP 还应独立验证 Token 签名、<code>iss</code>、<code>exp</code>，不要把所有责任都压给 Rego。</p>
-<h3 id="_13">审计日志格式</h3>
+<h3 id="_18">审计日志格式</h3>
 <p>每次授权决策产生一条结构化日志：</p>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
 <span class="w">  </span><span class="nt">&quot;timestamp&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-07-20T14:30:05.123Z&quot;</span><span class="p">,</span>
@@ -864,7 +944,7 @@ allow if {
 
 <p>这条日志能串起操作人、调用服务、业务对象、策略版本和 Trace。注意不要记录 Token、密钥或不必要的个人数据。</p>
 <hr>
-<h2 id="_14">十一、技术演进路线图：按问题升级，不按名词堆料</h2>
+<h2 id="_19">十二、技术演进路线图：按问题升级，不按名词堆料</h2>
 <p>下面的人数和服务数只是参照，不是门槛。真正的升级信号，是现有方案已经无法控制风险和变更成本。</p>
 <table>
 <thead>
@@ -917,7 +997,7 @@ allow if {
 <h3 id="level-3">Level 3：治理复杂关系和跨地域风险</h3>
 <p>在 OPA 处理条件策略的基础上，用 OpenFGA 管对象关系；用多集群身份体系解决跨地域信任。平台还应提供策略影响分析、租户隔离、限时 Break-Glass、权限矩阵和 SIEM 对接。</p>
 <p>到了这一级，难点已不是“选 OPA 还是 OpenFGA”，而是数据一致性、策略所有权和跨团队治理。</p>
-<h3 id="_15">演进原则</h3>
+<h3 id="_20">演进原则</h3>
 <ol>
 <li><strong>按痛点升级</strong>：没有复杂关系，就不要上 OpenFGA；没有平台团队，就慎上 Istio。</li>
 <li><strong>先统一语义</strong>：Subject、Resource、Action、Scope 和 Tenant 的定义，比工具选型更早。</li>
@@ -926,8 +1006,8 @@ allow if {
 <li><strong>把撤权当主流程</strong>：授予容易，及时回收、Token 失效和权限盘点更重要。</li>
 </ol>
 <hr>
-<h2 id="_16">十二、参考资料</h2>
-<h3 id="_17">核心协议和标准</h3>
+<h2 id="_21">十三、参考资料</h2>
+<h3 id="_22">核心协议和标准</h3>
 <ul>
 <li><a href="https://datatracker.ietf.org/doc/html/rfc6749">RFC 6749 - OAuth 2.0 Authorization Framework</a></li>
 <li><a href="https://datatracker.ietf.org/doc/html/rfc7519">RFC 7519 - JSON Web Token (JWT)</a></li>
@@ -937,7 +1017,7 @@ allow if {
 <li><a href="https://spiffe.io/docs/latest/spiffe-about/overview/">SPIFFE Specification</a></li>
 <li><a href="https://research.google/pubs/pub48190/">Google Zanzibar Paper (2019)</a></li>
 </ul>
-<h3 id="_18">开源项目</h3>
+<h3 id="_23">开源项目</h3>
 <ul>
 <li><a href="https://www.openpolicyagent.org/">Open Policy Agent (OPA)</a> — 通用策略引擎</li>
 <li><a href="https://openfga.dev/">OpenFGA</a> — 关系型授权引擎（Zanzibar 实现）</li>
@@ -946,14 +1026,26 @@ allow if {
 <li><a href="https://www.cedarpolicy.com/">Cedar</a> — AWS 开源的策略语言，支持形式化验证</li>
 <li><a href="https://casbin.org/">Casbin</a> — 轻量级通用授权库</li>
 </ul>
-<h3 id="_19">相关架构模式</h3>
+<h3 id="openfga_1">OpenFGA 深入资料</h3>
+<ul>
+<li><a href="https://www.cncf.io/projects/openfga/">OpenFGA | CNCF</a> — 项目成熟度与 CNCF 状态</li>
+<li><a href="https://github.com/openfga/openfga/releases">OpenFGA Releases</a> — 版本和安全修复</li>
+<li><a href="https://openfga.dev/docs/getting-started/setup-openfga/configure-openfga">Configuring OpenFGA</a> — 存储、认证与部署参数</li>
+<li><a href="https://openfga.dev/docs/getting-started/immutable-models">Immutable Authorization Models</a> — 模型版本和 model ID</li>
+<li><a href="https://openfga.dev/docs/interacting/consistency">Query Consistency Modes</a> — 一致性与缓存权衡</li>
+<li><a href="https://openfga.dev/docs/interacting/contextual-tuples">Contextual Tuples</a> — 请求内临时关系</li>
+<li><a href="https://openfga.dev/docs/concepts">OpenFGA Concepts</a> — store、model 与 tuple 的边界</li>
+<li><a href="https://github.com/openfga/helm-charts">Official OpenFGA Helm Charts</a> — Kubernetes 部署</li>
+<li><a href="https://github.com/openfga/openfga/security/advisories">OpenFGA Security Advisories</a> — 安全公告</li>
+</ul>
+<h3 id="_24">相关架构模式</h3>
 <ul>
 <li><a href="https://csrc.nist.gov/publications/detail/sp/800-207/final">NIST Zero Trust Architecture (SP 800-207)</a></li>
 <li><a href="https://istio.io/latest/docs/reference/config/security/authorization-policy/">Istio Authorization Policy</a></li>
 <li><a href="https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/ext_authz_filter">Envoy External Authorization</a></li>
 </ul>
 <hr>
-<h2 id="_20">最后一句</h2>
+<h2 id="_25">最后一句</h2>
 <p>授权这件事，本质上是在回答一个组织治理问题：<strong>谁应该信任谁，到什么程度。</strong> 技术只是把这个问题的答案编码成可执行的策略。</p>
 <p>统一授权中心不是让你写一个"万能的权限网关"，而是建立一套"策略管理的单一事实源"——策略在哪里定义、谁能修改、怎么分发、出了问题怎么回滚，这些流程清楚了，技术选型反而是最简单的那一步。</p>
 <blockquote>
@@ -1027,6 +1119,9 @@ function copyArticleLink(url) {
   <div class="neighbors">
     <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-07-19-philosophy-software-design-ai.html" title="重读软件设计的哲学：AI 能替我们把复杂性消灭掉吗">
       <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/quarto-notebook-tech-book.html" title="用 Quarto + Notebook 写一本"能跑起来"的技术书">
+      Next Post <i class="fa fa-angle-right"></i>
     </a>
   </div>
 

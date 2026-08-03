@@ -1,0 +1,1145 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="mTLS + 证书绑定令牌很安全,但浏览器和 App 里没法优雅地管客户端证书。DPoP(RFC 9449)就是为公网客户端准备的那把锁:客户端自己生成一对公私钥,每次请求都附上一个用私钥签名的 DPoP proof。本文把 DPoP 的每个字段、两段流程、防重放机制和常见坑一次讲透,并回答“服务间调用要不要用 DPoP”,顺带讲清 SPIFFE JWT-SVID 的定位。" />
+<meta name="keywords" content="journal, blog, security, oauth, jwt, dpop, zero-trust">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "DPoP 详解:给浏览器里的令牌也上一把“偷不走”的锁",
+  "description": "mTLS + 证书绑定令牌很安全,但浏览器和 App 里没法优雅地管客户端证书。DPoP(RFC 9449)就是为公网客户端准备的那把锁:客户端自己生成一对公私钥,每次请求都附上一个用私钥签名的 DPoP proof。本文把 DPoP 的每个字段、两段流程、防重放机制和常见坑一次讲透,并回答“服务间调用要不要用 DPoP”,顺带讲清 SPIFFE JWT-SVID 的定位。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-08-01T23:50:00+08:00",
+  "dateModified": "2026-08-02T00:40:00+08:00",
+  "url": "https://www.fanyamin.com/blog/2026-08-01-dpop-deep-dive.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/2026-08-01-dpop-deep-dive.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "journal, blog, security, oauth, jwt, dpop, zero-trust"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="DPoP 详解:给浏览器里的令牌也上一把“偷不走”的锁"/>
+  <meta property="og:description" content="mTLS + 证书绑定令牌很安全,但浏览器和 App 里没法优雅地管客户端证书。DPoP(RFC 9449)就是为公网客户端准备的那把锁:客户端自己生成一对公私钥,每次请求都附上一个用私钥签名的 DPoP proof。本文把 DPoP 的每个字段、两段流程、防重放机制和常见坑一次讲透,并回答“服务间调用要不要用 DPoP”,顺带讲清 SPIFFE JWT-SVID 的定位。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/2026-08-01-dpop-deep-dive.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-08-01 23:50:00+08:00"/>
+  <meta property="article:modified_time" content="2026-08-02 00:40:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="journal"/>
+  <meta property="article:tag" content="blog"/>
+  <meta property="article:tag" content="security"/>
+  <meta property="article:tag" content="oauth"/>
+  <meta property="article:tag" content="jwt"/>
+  <meta property="article:tag" content="dpop"/>
+  <meta property="article:tag" content="zero-trust"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; DPoP 详解:给浏览器里的令牌也上一把“偷不走”的锁</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="2026-08-01-dpop-deep-dive">DPoP 详解:给浏览器里的令牌也上一把“偷不走”的锁</h1>
+    <p>
+      Posted on 六 01 8月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>DPoP 详解:给浏览器里的令牌也上一把“偷不走”的锁</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>learning note</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-08-01</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<p>上一篇聊 PoP 和证书绑定令牌时,我留了个尾巴:服务间通信用 <strong>mTLS + 证书绑定</strong>很香,但<strong>浏览器和手机 App 怎么办?</strong></p>
+<p>这不是抬杠。mTLS 要求客户端持有一张 X.509 证书和对应私钥。你让一个跑在别人浏览器里的单页应用(SPA)去管理客户端证书试试?给每个用户签发、安装、轮换证书,光是想想运维就头皮发麻。移动 App 稍好一点,但也远谈不上优雅。</p>
+<p>于是就有了 <strong>DPoP(Demonstrating Proof of Possession,持有证明演示)</strong>,RFC 9449 在 2023 年正式定稿。一句话:</p>
+<blockquote>
+<p><strong>DPoP = 不需要 mTLS 的 PoP。客户端自己生成一对公私钥,每次请求都用私钥签一张“临时证明”,证明“这令牌是我的”。</strong></p>
+</blockquote>
+<p>这篇文章想把 DPoP 拆到你能照着动手的程度:它到底往请求里塞了什么、服务端怎么验、防重放怎么做、以及实际接的时候会踩哪些坑。</p>
+<blockquote>
+<p>提示:文中的 JWT、JWS、JWK、指纹这些词,第一次出现我都会用一句大白话解释。没接过 OAuth 的读者也能顺下来,代码/JSON 块可以跳过。</p>
+</blockquote>
+<hr>
+<h2 id="1-dpop">1. 一分钟看懂 DPoP 在解决什么</h2>
+<p>先把上一篇的结论接上。防令牌盗用,核心就一句:<strong>让令牌绑上一把“只有客户端自己有、偷不走”的私钥。</strong></p>
+<ul>
+<li><strong>mTLS + 证书绑定</strong>:私钥藏在 X.509 证书里,走 TLS 层面证明。适合机房里的服务。</li>
+<li><strong>DPoP</strong>:私钥是客户端自己临时生成的一对密钥,走<strong>应用层</strong>(HTTP header)证明。适合浏览器、App、SPA。</li>
+</ul>
+<p>关键差别在这一行:<strong>DPoP 把“持有证明”从 TLS 层挪到了应用层。</strong> 它不碰 TLS 握手,只是在每个 HTTP 请求里<strong>多加两个头</strong>。这就是它能在浏览器里跑起来的原因——JavaScript 摸不到 TLS 层,但完全可以用 Web Crypto API 生成密钥、签 JWT。</p>
+<div class="highlight"><pre><span></span><code>flowchart LR
+    subgraph 服务间
+      A[服务 A] --&gt;|mTLS 层| B[服务 B]
+    end
+    subgraph 公网客户端
+      C[浏览器/App] --&gt;|DPoP: 应用层 header| D[API]
+    end
+</code></pre></div>
+
+<hr>
+<h2 id="2-dpop-proof">2. 核心概念:DPoP proof 是什么</h2>
+<p>DPoP 引入的唯一新东西,叫 <strong>DPoP proof(DPoP 证明)</strong>。</p>
+<p>它本质上是一个<strong>由客户端现场生成、用客户端私钥签名的小 JWT</strong>,放在 HTTP 请求的 <code>DPoP</code> 头里。每次请求都要新签一个。</p>
+<p>拿人话打比方:令牌是你的门禁卡,DPoP proof 是你<strong>每次刷卡时当场按下的一个指纹</strong>。卡可以被复制,但指纹是活体的、一次性的、别人按不出来。攻击者就算偷走了你的卡(令牌),没有你的手指(私钥),也按不出配套的指纹(proof)。</p>
+<p>一个 DPoP proof 大致长这样,分头部和载荷两段:</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// header</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;typ&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;dpop+jwt&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;alg&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ES256&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;jwk&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;kty&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;EC&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;crv&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;P-256&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;x&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;y&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="w"> </span><span class="p">}</span>
+<span class="p">}</span>
+<span class="c1">// payload</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;jti&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;e1j3V_bK...&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;htm&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;GET&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;htu&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;https://api.example.com/orders&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;iat&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1705123456</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;ath&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;fUHyO2r2Z3DZ53Es...&quot;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>先记住两个头部字段:</p>
+<ul>
+<li><code>typ</code> 固定是 <code>dpop+jwt</code>,让服务端一眼认出“这是个 DPoP proof,别当普通 JWT 处理”。</li>
+<li><code>jwk</code> 是<strong>客户端的公钥</strong>(JWK = JSON Web Key,公钥的 JSON 表示)。注意:<strong>只放公钥,绝不能放私钥。</strong> 服务端就靠这个公钥来验签,并算出它的指纹。</li>
+</ul>
+<p>载荷里的字段我们下一节逐个拆。</p>
+<hr>
+<h2 id="3-dpop-proof">3. DPoP proof 里的字段,逐个拆</h2>
+<p>RFC 9449 规定 payload 里<strong>至少</strong>要有这几个:</p>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>含义</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>jti</code></td>
+<td>本次 proof 的唯一 ID</td>
+<td>防重放(服务端记下用过的,不许再用)</td>
+</tr>
+<tr>
+<td><code>htm</code></td>
+<td>本次请求的 HTTP 方法(GET/POST…)</td>
+<td>把 proof 钉死在这个方法上</td>
+</tr>
+<tr>
+<td><code>htu</code></td>
+<td>本次请求的目标 URI(去掉 query 和 fragment)</td>
+<td>把 proof 钉死在这个地址上</td>
+</tr>
+<tr>
+<td><code>iat</code></td>
+<td>签发时间戳</td>
+<td>判断 proof 是不是太老了</td>
+</tr>
+</tbody>
+</table>
+<p>在<strong>带着访问令牌去访问受保护资源</strong>时,还必须多一个:</p>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>含义</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ath</code></td>
+<td>访问令牌的 SHA-256 哈希(base64url 编码)</td>
+<td>把 proof 和<strong>具体这个令牌</strong>绑在一起</td>
+</tr>
+</tbody>
+</table>
+<p>如果服务端要求用 nonce(下面第 6 节讲),还得再加:</p>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>nonce</code></td>
+<td>服务端通过 <code>DPoP-Nonce</code> 响应头下发的一次性随机值</td>
+</tr>
+</tbody>
+</table>
+<p><code>htm</code> + <code>htu</code> 这一对是 DPoP 的精髓:proof 里写死了“我这张证明只对 <code>GET https://api.example.com/orders</code> 有效”。攻击者就算截获了整个请求,也没法把这张 proof 挪到别的接口或别的方法上用——<strong>换个动作、换个地址,签名就对不上了。</strong></p>
+<p><code>ath</code> 则把 proof 和令牌本身拴死:proof 里存着令牌的哈希,服务端会核对“你这张 proof 里说的令牌哈希,是不是就是你这次带来的令牌”。这样连“拿 A 令牌配 B proof”的错配都堵死了。</p>
+<blockquote>
+<p><code>jti</code>(唯一 ID)按规范建议至少 96 位伪随机数据,或直接用一个 v4 UUID。它是防重放的钥匙。</p>
+</blockquote>
+<hr>
+<h2 id="4">4. 完整流程:两段式</h2>
+<p>RFC 9449 把 DPoP 拆成<strong>两个可分开的部分</strong>,理解这一点特别重要:</p>
+<ul>
+<li><strong>第一段(取令牌)</strong>:客户端向授权服务器换一个 <strong>DPoP-bound(DPoP 绑定)的访问令牌</strong>。</li>
+<li><strong>第二段(用令牌)</strong>:客户端拿着这个令牌访问资源服务器,并证明自己控制那把私钥。</li>
+</ul>
+<h3 id="dpop">第一段:换一个 DPoP 绑定的令牌</h3>
+<div class="highlight"><pre><span></span><code>sequenceDiagram
+    participant C as 客户端(浏览器)
+    participant AS as 授权服务器
+    C-&gt;&gt;C: 生成一对公私钥(ES256)
+    C-&gt;&gt;C: 签 DPoP proof(htm=POST, htu=token端点)
+    C-&gt;&gt;AS: POST /token + DPoP: &lt;proof&gt;
+    AS-&gt;&gt;AS: 验 proof, 取出公钥算指纹 jkt
+    AS--&gt;&gt;C: 访问令牌(cnf.jkt = 公钥指纹)
+</code></pre></div>
+
+<p>关键在最后一步:授权服务器把<strong>客户端公钥的 SHA-256 指纹</strong>记进令牌的 <code>cnf</code>(确认声明)里,字段名叫 <code>jkt</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;sub&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;alice&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;cnf&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;jkt&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;0ZcOCORZNYy-...&quot;</span><span class="w"> </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><code>jkt</code> = JWK SHA-256 Thumbprint(JWK 的 SHA-256 指纹,算法见 RFC 7638)。这一步就完成了“绑定”:<strong>这令牌从此只认指纹为 <code>0ZcOCORZNYy-...</code> 的那把公钥。</strong></p>
+<p>对照上一篇:证书绑定用的是 <code>cnf.x5t#S256</code>(证书指纹),DPoP 用的是 <code>cnf.jkt</code>(公钥指纹)。骨架都是 <code>cnf</code>,区别只在绑证书还是绑公钥。</p>
+<h3 id="_1">第二段:拿令牌访问资源</h3>
+<div class="highlight"><pre><span></span><code>sequenceDiagram
+    participant C as 客户端
+    participant RS as 资源服务器
+    C-&gt;&gt;C: 新签一个 DPoP proof(htm=GET, htu=/orders, ath=令牌哈希)
+    C-&gt;&gt;RS: GET /orders&lt;br/&gt;Authorization: DPoP &lt;token&gt;&lt;br/&gt;DPoP: &lt;proof&gt;
+    RS-&gt;&gt;RS: ① 验 proof 签名(用 proof 里的 jwk)
+    RS-&gt;&gt;RS: ② 算 jwk 指纹, 比对令牌里的 cnf.jkt
+    RS-&gt;&gt;RS: ③ 核对 htm/htu 是否匹配本次请求
+    RS-&gt;&gt;RS: ④ 核对 ath 是否等于本次令牌的哈希
+    RS-&gt;&gt;RS: ⑤ 检查 jti 没被用过、iat 没过期
+    RS--&gt;&gt;C: 全过 → 放行 ✅
+</code></pre></div>
+
+<p>注意这里有个容易忽略的细节:访问资源时,请求头的 <strong>认证方案从 <code>Bearer</code> 换成了 <code>DPoP</code></strong>:</p>
+<div class="highlight"><pre><span></span><code>Authorization: DPoP eyJhbGci...   ← 令牌本身
+DPoP: eyJ0eXAi...                  ← 本次的 proof
+</code></pre></div>
+
+<p>一个头放令牌,一个头放 proof。服务端两个都要验。</p>
+<hr>
+<h2 id="5">5. 服务端到底验哪几步</h2>
+<p>把第二段那五步展开说清楚,这是接 DPoP 时最容易漏的地方。资源服务器收到请求后:</p>
+<ol>
+<li><strong>验 proof 是个合法 JWT</strong>:<code>typ</code> 是 <code>dpop+jwt</code>,<code>alg</code> 是允许的非对称算法(别接受 <code>none</code>,也别接受对称算法)。</li>
+<li><strong>用 proof 头里的 <code>jwk</code> 验签名</strong>:签名对,说明这张 proof 确实是这把私钥签的。</li>
+<li><strong>算 <code>jwk</code> 的指纹,和令牌里的 <code>cnf.jkt</code> 比对</strong>:一致,才说明“签 proof 的私钥”和“令牌绑定的公钥”是一对。<strong>这一步是防盗用的核心。</strong></li>
+<li><strong>核对 <code>htm</code> / <code>htu</code></strong>:和本次请求的实际方法、URI 一致。防止 proof 被挪用到别的接口。</li>
+<li><strong>核对 <code>ath</code></strong>:等于本次带来的访问令牌的 SHA-256 哈希。防止令牌和 proof 错配。</li>
+<li><strong>检查 <code>iat</code> 在可接受的时间窗内</strong>(比如几秒到几分钟),<code>jti</code> 没在窗口内出现过。防重放。</li>
+<li><strong>(若启用 nonce)核对 <code>nonce</code></strong> 是不是服务端最近下发的那个。</li>
+</ol>
+<p>漏掉第 3 步,DPoP 就退化成了普通 Bearer——proof 签得再漂亮,不和令牌指纹比对,等于白签。这是我见过最常见的实现错误。</p>
+<hr>
+<h2 id="6-jti-dpop-nonce">6. 防重放:<code>jti</code>、时间窗与 <code>DPoP-Nonce</code></h2>
+<p>DPoP proof 是明文放在 HTTP 头里的,理论上会被中间人看到。所以“别人录下一个 proof、原样再发一次”这种<strong>重放攻击</strong>必须防住。RFC 9449 给了三层防线:</p>
+<p><strong>第一层:<code>htm</code> + <code>htu</code>。</strong> proof 钉死了方法和地址,重放只能重放到<strong>同一个接口的同一个动作</strong>上,先砍掉一大片攻击面。</p>
+<p><strong>第二层:<code>jti</code> + 时间窗。</strong> 服务端在一个短时间窗(比如 60 秒)内,记住见过的 <code>jti</code>;重复出现就拒绝。窗口一过,<code>iat</code> 太老的 proof 本身也失效了,记录可以清掉,不至于让服务端无限存 <code>jti</code>。</p>
+<p><strong>第三层:<code>DPoP-Nonce</code>(可选,但推荐)。</strong> 前两层依赖服务端存状态(记 <code>jti</code>)。如果服务端是无状态的、或者水平扩展了好多台,记 <code>jti</code> 就变麻烦。这时可以让服务端<strong>主动下发一个 nonce</strong>:</p>
+<div class="highlight"><pre><span></span><code>sequenceDiagram
+    participant C as 客户端
+    participant S as 服务端
+    C-&gt;&gt;S: 请求(proof 里没 nonce)
+    S--&gt;&gt;C: 401 + DPoP-Nonce: abc123
+    C-&gt;&gt;C: 重签 proof, 加上 nonce=abc123
+    C-&gt;&gt;S: 重新请求(proof 带 nonce)
+    S--&gt;&gt;S: nonce 是我发的且新鲜 → 放行 ✅
+</code></pre></div>
+
+<p>nonce 由服务端掌控、可自带时效,相当于服务端说“这张 proof 必须用我刚给你的这个暗号”,把“proof 何时有效”的主动权收回到服务端手里。代价是每次可能多一轮 401 往返(客户端可以缓存 nonce 复用一段时间来摊薄)。</p>
+<hr>
+<h2 id="7-dpop-vs">7. DPoP vs 证书绑定,到底怎么选</h2>
+<p>放一张对比表收口:</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>Certificate-Bound(mTLS)</th>
+<th>DPoP</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>绑定对象</td>
+<td>X.509 客户端证书</td>
+<td>客户端自生成的公钥</td>
+</tr>
+<tr>
+<td><code>cnf</code> 字段</td>
+<td><code>x5t#S256</code>(证书指纹)</td>
+<td><code>jkt</code>(公钥指纹)</td>
+</tr>
+<tr>
+<td>证明发生在</td>
+<td>TLS 层(握手)</td>
+<td>应用层(HTTP 头)</td>
+</tr>
+<tr>
+<td>需要客户端证书吗</td>
+<td>需要</td>
+<td>不需要</td>
+</tr>
+<tr>
+<td>适合谁</td>
+<td>机房里的服务、服务间通信</td>
+<td>浏览器、SPA、移动 App</td>
+</tr>
+<tr>
+<td>运维负担</td>
+<td>证书签发/分发/轮换</td>
+<td>客户端自己生成密钥,几乎无运维</td>
+</tr>
+<tr>
+<td>每次请求开销</td>
+<td>TLS 层承担,应用无感</td>
+<td>每请求多签一个 JWT + 多两个头</td>
+</tr>
+</tbody>
+</table>
+<p>一句话决策:</p>
+<blockquote>
+<p><strong>客户端能优雅地管 X.509 证书吗?能——上 mTLS + 证书绑定;不能(浏览器/App)——上 DPoP。</strong></p>
+</blockquote>
+<p>两者不是对立的,大型系统里常常并存:南北向(用户到网关)走 DPoP,东西向(服务到服务)走 mTLS。</p>
+<hr>
+<h2 id="8-dpop">8. 后台服务之间调用,适合用 DPoP 吗?</h2>
+<p>这是我被追问最多的一个问题:“DPoP 就是一对公私钥 + 签个 JWT,后台服务之间也能生成密钥、也能签 JWT,那服务间调用干脆全上 DPoP 不就完了,还省得折腾证书?”</p>
+<p>技术上<strong>完全可行</strong>,DPoP 并没有规定“只准浏览器用”。但<strong>在标准的、南北向的服务间通信里,它通常不是首选</strong>。原因得掰开看。</p>
+<h3 id="dpop_1">为什么服务间通常不首选 DPoP</h3>
+<p>DPoP 是为“<strong>摸不到 TLS 层</strong>”的客户端设计的——浏览器里的 JS 没法要求用某张客户端证书握手,只能退而求其次,在应用层自己签证明。而后台服务之间,恰恰<strong>能</strong>优雅地控制 TLS 层:配一张客户端证书对服务来说是常规操作,Kubernetes、服务网格更是把这事自动化了。既然能在更底层、更省事地解决,就没必要绕到应用层。</p>
+<p>具体差在这几点:</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>服务间用 mTLS + 证书绑定</th>
+<th>服务间用 DPoP</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>证明发生在</td>
+<td>TLS 握手,一次连接谈一次</td>
+<td><strong>每个请求</strong>都要现签一个 proof JWT</td>
+</tr>
+<tr>
+<td>每请求开销</td>
+<td>复用 TLS 连接,应用几乎无感</td>
+<td>每请求多一次签名 + 多两个头</td>
+</tr>
+<tr>
+<td>连接安全</td>
+<td>天然要求加密通道(mTLS)</td>
+<td>DPoP 本身不管传输,仍需另配 TLS</td>
+</tr>
+<tr>
+<td>生态适配</td>
+<td>服务网格/K8s 原生支持</td>
+<td>要自己实现 proof 生成与校验</td>
+</tr>
+<tr>
+<td>运维</td>
+<td>证书签发/轮换,但已有成熟工具</td>
+<td>密钥管理要自己扛</td>
+</tr>
+</tbody>
+</table>
+<p>一句话:<strong>服务能管好证书的场合,mTLS 在更低的层把事办了,还顺带保证了通道加密;DPoP 在这里等于“用应用层的力气,去做 TLS 层本可以做的事”,每个请求还多一份签名开销。</strong></p>
+<h3 id="dpop_2">那什么时候服务间也值得用 DPoP?</h3>
+<p>也别一棍子打死。下面几种情况,服务间用 DPoP 反而合理:</p>
+<ul>
+<li><strong>中间有 TLS 终止(TLS termination)。</strong> 如果流量在负载均衡、API 网关、CDN 处就把 TLS 卸载了,后端拿到的是明文 HTTP,mTLS 的客户端证书信息在这一跳就“断了”。这时应用层的 DPoP 能穿透这些中间层,因为它绑在 HTTP 消息里,不依赖端到端的 TLS。</li>
+<li><strong>调用方本身就是个“类浏览器”客户端。</strong> 比如一个 BFF(Backend for Frontend)、或某些 Serverless 函数,拿不到稳定的客户端证书身份,那它对下游的角色更接近公网客户端,用 DPoP 顺理成章。</li>
+<li><strong>想要“每请求级”的绑定粒度。</strong> mTLS 绑的是<strong>连接</strong>,DPoP 绑的是<strong>每一个请求</strong>(<code>htm</code>/<code>htu</code>/<code>ath</code> 都在 proof 里)。如果你的威胁模型里,连接建立后单个请求被篡改/挪用也是要防的,DPoP 的粒度更细。</li>
+<li><strong>统一栈,减少两套机制。</strong> 如果南北向已经全量铺了 DPoP,团队又不想再维护一套 mTLS 证书体系,东西向复用 DPoP 能降低认知和运维成本——这是工程权衡,不是安全最优。</li>
+</ul>
+<div class="highlight"><pre><span></span><code>flowchart TD
+    Q{服务间调用} --&gt; A{能稳定持有&lt;br/&gt;客户端证书?}
+    A -- 能 --&gt; B{中间有 TLS 终止&lt;br/&gt;导致证书身份丢失?}
+    A -- 不能&lt;br/&gt;类浏览器角色 --&gt; D[用 DPoP]
+    B -- 否 --&gt; C[首选 mTLS + 证书绑定]
+    B -- 是 --&gt; D
+    C --&gt; E{需要每请求级绑定?}
+    E -- 需要 --&gt; F[mTLS 之上再叠 DPoP]
+    E -- 不需要 --&gt; C
+</code></pre></div>
+
+<p>如果你在云原生环境里,除了 mTLS 和 DPoP,还有第三条路——<strong>JWT-SVID</strong>,下一节专门说它。先记住结论:</p>
+<blockquote>
+<p><strong>服务能握住证书,就让 mTLS 在 TLS 层把认证和加密一起办了;一旦证书身份在中间层断掉、或调用方本就拿不到证书,DPoP(或 JWT-SVID)这种应用层的持有证明才真正派上用场。</strong></p>
+</blockquote>
+<hr>
+<h2 id="9-jwt-svid">9. 顺带说说 JWT-SVID</h2>
+<p>上面几次提到 JWT-SVID,这里单独讲清楚,因为它和 DPoP 的思路很近,但定位不同,容易混。</p>
+<h3 id="_2">它是什么</h3>
+<p>先补两个 SPIFFE 的概念(SPIFFE 是一套给<strong>工作负载</strong>发身份的开放标准,workload 可以理解成"一个跑着的服务实例"):</p>
+<ul>
+<li><strong>SPIFFE ID</strong>:工作负载的身份,长得像一个 URI,比如 <code>spiffe://prod.acme.com/billing/api</code>。它回答"我是谁"。</li>
+<li><strong>SVID(SPIFFE Verifiable Identity Document)</strong>:把 SPIFFE ID 装进一个<strong>可密码学验证</strong>的凭证。有两种格式:</li>
+<li><strong>X.509-SVID</strong>:一张短生命周期证书,天生配 mTLS。</li>
+<li><strong>JWT-SVID</strong>:一个 JWT,把身份装进令牌里。</li>
+</ul>
+<p>所以 <strong>JWT-SVID 就是"用 JWT 承载工作负载身份"</strong>。工作负载通过 <strong>SPIFFE Workload API</strong>(通常由 SPIRE 这类实现提供)去领它——领的时候不用自己填账号密码,SPIRE Agent 靠检查进程的内核元数据(比如是哪个 Unix 进程、哪个 K8s Pod)来确认"你确实是那个工作负载",再签发对应的 JWT-SVID。</p>
+<h3 id="_3">它长什么样</h3>
+<p>JWT-SVID 没有发明新字段,就是一个受约束的普通 JWT(遵循 RFC 7519)。关键就两个 claim:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;sub&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;spiffe://prod.acme.com/billing/api&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;aud&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;spiffe://prod.acme.com/reports&quot;</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;exp&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1705127056</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<ul>
+<li><strong><code>sub</code> 必须是签发对象的 SPIFFE ID</strong>——这是断言身份的主战场,"我是 billing/api 这个服务"。</li>
+<li><strong><code>aud</code>(受众)必填,且验证方必须拒绝没有 <code>aud</code> 或 <code>aud</code> 不含自己的令牌。</strong> 这一条是 JWT-SVID 防滥用的命门(下面展开)。</li>
+<li><strong><code>exp</code>(过期)必填</strong>,验证方必须拒收过期令牌(允许一点点时钟余量)。</li>
+</ul>
+<p>验证方拿到令牌后,用<strong>信任域(trust domain)的公钥集</strong>(trust bundle)验签,再检查 <code>aud</code> 里有没有自己、<code>exp</code> 有没有过。SPIRE 还贴心地提供了 <code>ValidateJWTSVID</code> 接口,让你把验证逻辑甩给 Workload API,自己少写容易出错的校验代码。</p>
+<h3 id="dpop_3">和 DPoP 的关键区别:绑没绑私钥</h3>
+<p>这是最容易混、也最要紧的一点:</p>
+<blockquote>
+<p><strong>DPoP 是"持有证明"——绑定客户端私钥,偷走令牌没私钥就用不了。JWT-SVID 默认是"身份断言"——它本身更接近一个 Bearer 型的身份令牌,靠短生命周期 + <code>aud</code> 收窄来控制风险,而不是靠请求级签名。</strong></p>
+</blockquote>
+<p>换句话说,JWT-SVID 回答的是"<strong>我是谁</strong>"(认证),DPoP 回答的是"<strong>这令牌是不是我的</strong>"(持有证明)。JWT-SVID 一旦泄露,在有效期内、且面向匹配 <code>aud</code> 的那个服务,是可以被冒用的——所以 SPIFFE 反复强调两件事:</p>
+<ol>
+<li><strong><code>aud</code> 要收得尽量窄</strong>,scope 到具体的目标服务。用 <code>spiffe://example.org/reports</code> 这种精确值,别用 <code>production</code> 或整个信任域这种大范围值——因为 <code>aud</code> 越宽,一旦某个服务被攻破,拿着这个令牌就能横向冒充越多下游。</li>
+<li><strong>有效期要短</strong>,把泄露窗口压到最小。</li>
+</ol>
+<p>X.509-SVID 因为走 mTLS,私钥不出工作负载,天然带持有证明;JWT-SVID 图的是"能穿透中间层、跨信任边界、不依赖 TLS 通道"的灵活,代价就是把安全重心放在了 <code>aud</code> 和 <code>exp</code> 上。</p>
+<h3 id="_4">三者放一起对照</h3>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>X.509-SVID (mTLS)</th>
+<th>JWT-SVID</th>
+<th>DPoP</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>载体</td>
+<td>短命证书</td>
+<td>JWT</td>
+<td>Bearer 令牌 + 每请求 proof</td>
+</tr>
+<tr>
+<td>身份放在</td>
+<td>证书 SAN(SPIFFE ID)</td>
+<td><code>sub</code>(SPIFFE ID)</td>
+<td>令牌 <code>sub</code></td>
+</tr>
+<tr>
+<td>防盗用靠</td>
+<td>私钥不出工作负载(TLS 层)</td>
+<td><strong>短 <code>exp</code> + 窄 <code>aud</code></strong></td>
+<td><strong>每请求私钥签名</strong></td>
+</tr>
+<tr>
+<td>能穿透 TLS 终止吗</td>
+<td>不能</td>
+<td>能</td>
+<td>能</td>
+</tr>
+<tr>
+<td>典型场景</td>
+<td>服务网格东西向</td>
+<td>跨边界/经网关传身份</td>
+<td>浏览器、App、公网客户端</td>
+</tr>
+</tbody>
+</table>
+<h3 id="jwt-svid">什么时候用 JWT-SVID</h3>
+<ul>
+<li><strong>流量要经过 L7 网关、消息队列、或跨信任域</strong>,mTLS 的端到端证书身份在中间断了,但你又想把"我是谁"可验证地传下去。</li>
+<li><strong>对端只想验证一个 JWT</strong>,不想为你单独配 mTLS。</li>
+<li>想要它更安全,就在外面<strong>再套一层 mTLS</strong>(通道加密 + 传输层持有证明),或按需给它叠 PoP 语义——这也是 SPIFFE 和前面 PoP 那套能接上的地方。</li>
+</ul>
+<p>一句话记住它:</p>
+<blockquote>
+<p><strong>JWT-SVID = 给工作负载的、以 SPIFFE ID 为身份、用 <code>aud</code> 收窄、靠短命兜底的身份令牌。它管"我是谁",持有证明得靠 mTLS 或 DPoP 另配。</strong></p>
+</blockquote>
+<hr>
+<h2 id="10-dpop">10. 接 DPoP 时的几个坑</h2>
+<p>我把容易翻车的地方列成清单,接的时候对着看:</p>
+<ul>
+<li><strong>私钥别持久化到能被 XSS 读到的地方。</strong> 浏览器里最好用 Web Crypto 生成<strong>不可导出(non-extractable)</strong>的密钥,存进 IndexedDB。私钥一旦能被 JS 读出来,DPoP 的意义就打了折扣——虽然仍比裸 Bearer 强(攻击者得实时在你的页面里签,没法把令牌带走离线用)。</li>
+<li><strong><code>htu</code> 要规范化再比对。</strong> 大小写、默认端口、结尾斜杠、query/fragment……客户端和服务端对 URI 的理解要一致,否则会莫名其妙验不过。规范要求 <code>htu</code> 去掉 query 和 fragment。</li>
+<li><strong>时钟别差太多。</strong> <code>iat</code> 的时间窗校验依赖两端时钟接近。服务器集群记得对时(NTP),时间窗留一点余量。</li>
+<li><strong><code>ath</code> 别忘了。</strong> 访问资源时缺 <code>ath</code>,或者 <code>ath</code> 算错(比如对令牌做了额外编码),都会被拒。它是对<strong>令牌原始字符串</strong>做 SHA-256 再 base64url。</li>
+<li><strong>算法钉死。</strong> 只接受你明确支持的非对称算法(如 <code>ES256</code>),显式拒绝 <code>none</code> 和对称算法,防算法混淆攻击。</li>
+<li><strong>别忘了刷新令牌也能绑。</strong> DPoP 不只绑访问令牌,刷新令牌(refresh token)同样可以绑,这样刷新令牌泄露也用不了。</li>
+</ul>
+<hr>
+<h2 id="_5">最后一句</h2>
+<p>回到开头那个问题:浏览器里的令牌怎么防盗?DPoP 给的答案很聪明——<strong>不去改 TLS,而是让客户端每次请求都当场“按个指纹”。</strong></p>
+<p>它把安全的重心从“保护一串会到处乱跑的令牌”,挪到了“保护一把待在客户端、签完就完的私钥”。令牌可以被日志、被抓包、被 XSS 看到,但只要私钥不出客户端,偷走的令牌就是一张按不出指纹的废卡。</p>
+<h3 id="_6">行动清单</h3>
+<p>想在自己的公网客户端上 DPoP,按这个顺序:</p>
+<ol>
+<li><strong>客户端生成密钥</strong>:优先 <code>ES256</code>,浏览器用 Web Crypto 生成不可导出密钥,存 IndexedDB。</li>
+<li><strong>取令牌时带 proof</strong>:换令牌那步就附上 DPoP proof,让 AS 把 <code>cnf.jkt</code> 写进令牌。</li>
+<li><strong>每次请求现签 proof</strong>:填对 <code>htm</code>/<code>htu</code>/<code>iat</code>/<code>jti</code>,访问资源时别忘 <code>ath</code>。</li>
+<li><strong>认证头用 <code>DPoP</code> 而非 <code>Bearer</code></strong>:令牌放 <code>Authorization: DPoP</code>,proof 放 <code>DPoP</code> 头。</li>
+<li><strong>服务端七步全做</strong>:尤其别漏“算 <code>jwk</code> 指纹比对 <code>cnf.jkt</code>”这步。</li>
+<li><strong>加防重放</strong>:短时间窗 + <code>jti</code> 去重;无状态服务上 <code>DPoP-Nonce</code>。</li>
+<li><strong>考虑绑刷新令牌</strong>:把 refresh token 也 DPoP 绑定,收益很大。</li>
+</ol>
+<p>一句话收尾:</p>
+<blockquote>
+<p><strong>Bearer 是不记名的票,证书绑定是给机房服务记名,DPoP 是给浏览器里的用户记名——同一把锁,换了个能塞进浏览器的锁芯。</strong></p>
+</blockquote>
+<h2 id="_7">参考资料</h2>
+<ul>
+<li><a href="https://datatracker.ietf.org/doc/html/rfc9449">RFC 9449 - OAuth 2.0 Demonstrating Proof of Possession (DPoP)</a> —— DPoP 的完整规范。DPoP proof 字段(§4.2)、<code>jkt</code> 确认方法、<code>DPoP-Nonce</code>(§8/§9)、服务端校验步骤(§4.3/§7)、重放防护(§11.1)都在这里。</li>
+<li><a href="https://datatracker.ietf.org/doc/html/rfc7638">RFC 7638 - JSON Web Key (JWK) Thumbprint</a> —— <code>jkt</code> 用的公钥指纹算法。</li>
+<li><a href="https://datatracker.ietf.org/doc/html/rfc7800">RFC 7800 - Proof-of-Possession Key Semantics for JWTs</a> —— <code>cnf</code> 确认声明的定义,<code>jkt</code> 在其 IANA 注册表里登记。</li>
+<li><a href="https://datatracker.ietf.org/doc/html/rfc7515">RFC 7515 - JSON Web Signature (JWS)</a> / <a href="https://datatracker.ietf.org/doc/html/rfc7517">RFC 7517 - JSON Web Key (JWK)</a> / <a href="https://datatracker.ietf.org/doc/html/rfc7519">RFC 7519 - JSON Web Token (JWT)</a> —— DPoP proof 是用 JWS 签名的 JWT,公钥用 JWK 表示。</li>
+<li><a href="https://datatracker.ietf.org/doc/html/rfc8705">RFC 8705 - OAuth 2.0 Mutual-TLS ... and Certificate-Bound Access Tokens</a> —— 对照阅读:证书绑定那条路线,用 <code>cnf.x5t#S256</code>。</li>
+<li><a href="https://spiffe.io/docs/latest/spiffe-specs/jwt-svid/">SPIFFE JWT-SVID 规范</a> —— JWT-SVID 的 <code>sub</code>/<code>aud</code>/<code>exp</code> 约束(第 9 节的依据)。</li>
+<li><a href="https://spiffe.io/docs/latest/spiffe-specs/spiffe_workload_api/">SPIFFE Workload API 规范</a> —— 领取与验证 JWT-SVID 的接口(<code>FetchJWTSVID</code> / <code>ValidateJWTSVID</code> / trust bundle)。</li>
+<li><a href="https://spiffe.io/docs/latest/spiffe-about/spiffe-concepts/">SPIFFE 概念总览</a> —— SPIFFE ID、SVID、trust domain 的定义。</li>
+<li>姊妹篇:<a href="2026-08-01-pop-and-certificate-bound-token.html">令牌被偷了也白搭:说清楚 PoP 与证书绑定令牌</a> —— 先建立 PoP 的整体图景,再看本文的 DPoP 细节会更顺。</li>
+</ul>
+<h2 id="_8">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* DPoP 详解
+** 解决什么
+*** 浏览器/App 管不了 mTLS 证书
+*** 把持有证明挪到应用层
+*** 每请求多两个 HTTP 头
+** DPoP proof
+*** 客户端私钥签的小 JWT
+*** typ=dpop+jwt
+*** jwk 只放公钥
+*** 每次请求现签
+** 关键字段
+*** htm/htu:钉死方法和地址
+*** jti:防重放唯一ID
+*** iat:时间戳
+*** ath:令牌哈希,绑住令牌
+*** nonce:服务端下发
+** 两段流程
+*** 取令牌:AS 写 cnf.jkt
+*** 用令牌:Authorization: DPoP
+*** 令牌+proof 两个头
+** 服务端校验
+*** 验签名(用 proof 的 jwk)
+*** 算 jwk 指纹比对 cnf.jkt
+*** 核对 htm/htu/ath
+*** 查 jti/iat 防重放
+** 防重放三层
+*** htm+htu 限定
+*** jti+时间窗去重
+*** DPoP-Nonce 服务端主控
+** vs 证书绑定
+*** 证书绑定:x5t#S256,TLS层,服务间
+*** DPoP:jkt,应用层,公网客户端
+*** 大系统常并存
+** 服务间要用吗
+*** 能握证书:首选 mTLS
+*** mTLS 顺带加密通道
+*** 例外:TLS 终止致证书身份丢失
+*** 例外:BFF/Serverless 类浏览器角色
+*** 例外:要每请求级绑定
+** JWT-SVID
+*** SPIFFE 工作负载身份
+*** sub=SPIFFE ID
+*** aud 必填且收窄
+*** exp 必填,短命兜底
+*** 管&quot;我是谁&quot;,非持有证明
+*** 能穿透 TLS 终止
+*** 更安全再套 mTLS/DPoP
+@endmindmap
+</code></pre></div>
+
+<p><img alt="DPoP 详解 思维导图" src="./images/tech_20260801_dpop_mindmap.png"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/2026-08-01-dpop-deep-dive.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/journal.html">journal</a>
+      <a href="https://www.fanyamin.com/blog/tag/blog.html">blog</a>
+      <a href="https://www.fanyamin.com/blog/tag/security.html">security</a>
+      <a href="https://www.fanyamin.com/blog/tag/oauth.html">oauth</a>
+      <a href="https://www.fanyamin.com/blog/tag/jwt.html">jwt</a>
+      <a href="https://www.fanyamin.com/blog/tag/dpop.html">dpop</a>
+      <a href="https://www.fanyamin.com/blog/tag/zero-trust.html">zero-trust</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-08-01-pop-and-certificate-bound-token.html" title="令牌被偷了也白搭：说清楚 PoP 与证书绑定令牌">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/2026-08-02-sidecar-ipc-protocol.html" title="边车和服务之间怎么说话最快：HTTP、gRPC、UDS 的一场同机较量">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/2026-08-01-pop-and-certificate-bound-token.html">令牌被偷了也白搭：说清楚 PoP 与证书绑定令牌</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-01-build-your-own-sts.html">给微服务造一个 STS：像 AWS 一样发放临时凭证</a></li>
+      <li><a href="https://www.fanyamin.com/blog/workload-identitybie-zai-ba-yun-shang-shen-fen-sai-jin-secret-li-liao.html">Workload Identity：别再把云上身份塞进 Secret 里了</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2025-09-14-journal.html">密码存储的艺术</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-07-07-cryptography-learning-roadmap.html">关于密码学，我们到底该知道些什么</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,806 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="服务有了身份证之后,拿它做服务间认证有两条路:走 TLS 层的 mTLS(证书),还是走应用层的 JWT?这不是技术优劣题,是架构取舍题。本文把 mTLS 与 JWT、L4 与 L7 的权衡摊开讲透,重点拆解一个容易被忽略的“非线性 rollout 陷阱”:为什么 mTLS 明明更“正统”,很多工程主导的团队却先选了 JWT。" />
+<meta name="keywords" content="journal, blog, security, identity, mtls, jwt, zero-trust, workload-identity">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "证书还是 JWT?服务间认证的 L4 与 L7 之争——工作负载身份入门(中)",
+  "description": "服务有了身份证之后,拿它做服务间认证有两条路:走 TLS 层的 mTLS(证书),还是走应用层的 JWT?这不是技术优劣题,是架构取舍题。本文把 mTLS 与 JWT、L4 与 L7 的权衡摊开讲透,重点拆解一个容易被忽略的“非线性 rollout 陷阱”:为什么 mTLS 明明更“正统”,很多工程主导的团队却先选了 JWT。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-08-02T22:50:00+08:00",
+  "dateModified": "2026-08-02T22:50:00+08:00",
+  "url": "https://www.fanyamin.com/blog/drafts/2026-08-02-workload-identity-part-2.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/drafts/2026-08-02-workload-identity-part-2.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "journal, blog, security, identity, mtls, jwt, zero-trust, workload-identity"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="证书还是 JWT?服务间认证的 L4 与 L7 之争——工作负载身份入门(中)"/>
+  <meta property="og:description" content="服务有了身份证之后,拿它做服务间认证有两条路:走 TLS 层的 mTLS(证书),还是走应用层的 JWT?这不是技术优劣题,是架构取舍题。本文把 mTLS 与 JWT、L4 与 L7 的权衡摊开讲透,重点拆解一个容易被忽略的“非线性 rollout 陷阱”:为什么 mTLS 明明更“正统”,很多工程主导的团队却先选了 JWT。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/drafts/2026-08-02-workload-identity-part-2.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-08-02 22:50:00+08:00"/>
+  <meta property="article:modified_time" content="2026-08-02 22:50:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="journal"/>
+  <meta property="article:tag" content="blog"/>
+  <meta property="article:tag" content="security"/>
+  <meta property="article:tag" content="identity"/>
+  <meta property="article:tag" content="mtls"/>
+  <meta property="article:tag" content="jwt"/>
+  <meta property="article:tag" content="zero-trust"/>
+  <meta property="article:tag" content="workload-identity"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 证书还是 JWT?服务间认证的 L4 与 L7 之争——工作负载身份入门(中)</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="2026-08-02-workload-identity-part-2">证书还是 JWT?服务间认证的 L4 与 L7 之争——工作负载身份入门(中)</h1>
+    <p>
+      Posted on 日 02 8月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>证书还是 JWT?服务间认证的 L4 与 L7 之争——工作负载身份入门(中)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>learning note</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-08-02</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<p>上一篇咱们把地基打好了:每个服务都能拿到一张短命的、可自证真伪的<strong>身份证</strong>(SPIFFE 里叫 SVID)。文章结尾我留了个尾巴——身份证有了,拿它给服务间通信做认证,几乎是顺手的事。</p>
+<p>但“顺手”不代表“只有一条路”。恰恰相反,这里有一个<strong>很容易站队、也很容易站错队</strong>的选择:</p>
+<blockquote>
+<p><strong>拿到身份之后,服务 A 向服务 B 证明自己,是走 TLS 层的 mTLS(靠证书),还是走应用层的 JWT(靠令牌)?</strong></p>
+</blockquote>
+<p>我见过不少团队在这上面吵得面红耳赤,一方觉得“mTLS 才是零信任正统,不上就是不安全”,另一方觉得“JWT 我们熟得很,别折腾”。吵到最后往往是谁嗓门大谁赢——这是最糟的决策方式。</p>
+<p>这篇想说清楚:<strong>这不是一道技术优劣题,是一道架构取舍题。</strong> mTLS 更“正统”,但正统不等于此时此地更划算。我会重点拆一个特别容易被忽略的坑——<strong>非线性 rollout 陷阱</strong>,它是很多工程主导的团队最终先选 JWT 的真正原因。</p>
+<blockquote>
+<p>提示:L4、L7、mTLS、bearer token 这些词第一次出现我都会用大白话解释。不熟网络分层的读者也能顺下来。</p>
+</blockquote>
+<hr>
+<h2 id="1">1. 先分清楚:你在哪一层证明身份</h2>
+<p>要理解这场争论,得先有个坐标。网络世界习惯用“L几”来说“在哪一层干活”,咱们只需要记住两层:</p>
+<ul>
+<li><strong>L4(传输层)</strong>:大致对应 TCP/TLS 这一层。<strong>mTLS 就在这里。</strong> 它在“建立连接、握手”的时候就把身份验了,验完之后这条管道里流的所有数据都自带信任。</li>
+<li><strong>L7(应用层)</strong>:HTTP 这一层。<strong>JWT 就在这里。</strong> 连接怎么建的它不管,它是在每个 HTTP 请求里塞一个令牌来证明身份。</li>
+</ul>
+<p>打个生活里的比方:</p>
+<ul>
+<li><strong>mTLS 像进门时刷工牌。</strong> 你和保安互相验证(你验保安是真保安,保安验你是真员工——这就是“互相”,mutual 的意思),门一开,进去之后楼里随便走,没人再拦你。</li>
+<li><strong>JWT 像每递一份文件都附一张签名条。</strong> 门可能是虚掩的,但你每次办事都得出示一张“我是谁、这事我经手”的凭条。</li>
+</ul>
+<p>一个在<strong>连接层面</strong>一次性把关,一个在<strong>每次请求</strong>上反复证明。记住这个画面,下面就好懂了。</p>
+<hr>
+<h2 id="2-mtls">2. mTLS:更“正统”,好在哪</h2>
+<p>先说 mTLS(mutual TLS,双向 TLS)。普通 HTTPS 只有服务器出示证书、客户端验证;mTLS 是<strong>双方都出示证书、互相验证</strong>。上一篇说的那张身份证,如果是 X.509 证书形态,天生就能插进 mTLS。</p>
+<p>它的好处很实在:</p>
+<ul>
+<li><strong>极其标准,生态成熟。</strong> TLS 是几十年的老技术,工具、库、云服务开箱即用,不用你造轮子。比如你可以用证书去换云上的 IAM 工牌(AWS 的 IAM Roles Anywhere 就是干这个的),整条链路都是现成的。</li>
+<li><strong>证书是“对公钥的可信签名”。</strong> 这句话有点抽象,我拆开说:Alice 有一对公私钥,她的证书就是一个权威机构盖章说“这把公钥确实是 Alice 的”。于是 Bob 验过证书后,Alice 就能用私钥给 Bob 发<strong>可验证是本人发的</strong>消息。这是个很强的密码学原语,能玩出很多花样。</li>
+<li><strong>网络层安全,一步到位。</strong> 这是 mTLS 最诱人的地方。如果全公司所有服务之间都强制走 mTLS,那网络层面的安全水位会<strong>整体抬升一大截</strong>——理想状态下,内部服务之间只用 mTLS 说话,谁都别想在网络里冒充别人、偷听别人。很多公司的内网安全恰恰是短板,mTLS 是补这块短板的正解。</li>
+</ul>
+<p>听起来近乎完美,对吧?那为什么不是所有人都上?</p>
+<hr>
+<h2 id="3-mtls">3. mTLS 的现实阻力:那个致命的“非线性”</h2>
+<p>问题不在 mTLS 本身,在<strong>落地</strong>。我先把话撂这:</p>
+<blockquote>
+<p><strong>mTLS 的价值,只有当“接收方强制要求所有人都用 mTLS”时才真正兑现。</strong></p>
+</blockquote>
+<p>这句话是整篇文章的题眼,值得嚼一嚼。</p>
+<p>假设 Alice 想用 mTLS 和 Bob 通信。Alice 单方面把 mTLS 配好了——然后呢?<strong>只要 Bob 还允许别人用普通方式连它</strong>(为了兼容那些还没改造的老服务),那攻击者照样能绕过 mTLS 直接敲 Bob 的门。Alice 那边的 mTLS,安全收益基本是零。</p>
+<p>真正的收益,发生在 <strong>Bob 硬起心肠、拒绝一切非 mTLS 连接</strong>的那一刻。可 Bob 敢这么做的前提是——<strong>所有会调用 Bob 的服务都已经改造完了</strong>。哪怕漏一个,Bob 一硬,那个服务当场就挂。</p>
+<p>于是你就撞上了这个陷阱:</p>
+<blockquote>
+<p><strong>mTLS 的 rollout 不是线性的。</strong> 你得先把绝大部分服务都改造完(前期投入巨大、期间<strong>没有任何安全收益</strong>),直到某个临界点接收方敢强制开启,收益才“啪”地一下出现。</p>
+</blockquote>
+<p>这跟修桥一个道理:桥修到 99%,通车收益还是<strong>零</strong>,因为没人能过河;非得等最后 1% 合龙,价值才一次性释放。</p>
+<p>对网络拓扑本身就统一、干净的公司(比如生来就全跑在 k8s、部署高度一致),这个坎没那么高。但对<strong>网络异构</strong>的公司——服务散落在机房、多云、各种历史部署形态里——想让所有服务都强制 mTLS,难到几乎无从下手。这也正是很多公司内网安全一直是短板的<strong>根本原因</strong>:不是不想上 mTLS,是这条非线性的路太长、太贵、中途看不到回报,没人扛得住。</p>
+<hr>
+<h2 id="4-jwt">4. 那 JWT 呢?工程主导的团队为什么偏爱它</h2>
+<p>再看 JWT(JSON Web Token,一种带签名、能自证真伪的应用层令牌)。它走 L7,在每个 HTTP 请求里带令牌。相比 mTLS,它有几个特别“接地气”的优点:</p>
+<ul>
+<li><strong>可以渐进式上,收益是线性的。</strong> 这是和 mTLS 最本质的区别。你不需要“所有人都改完才有收益”——两个服务今天想加认证,今天就能加,立刻见效,不用等全公司合龙。<strong>能一点点上、每一步都有回报</strong>,对工程团队太重要了。</li>
+<li><strong>人能直接读、能 debug。</strong> JWT 解开就是一段 JSON,谁是谁、什么时候过期、带了哪些信息,肉眼可见。半夜排障时,这种“看得见摸得着”省下的时间,谁排过谁知道。</li>
+<li><strong>团队熟、心智负担低。</strong> 很多团队本来就在大量用 JWT(登录令牌、API 鉴权),它的安全边界、常见坑、库支持都是老熟人。引入一个大家都懂的东西,比推一个全新体系阻力小得多。</li>
+<li><strong>它的安全取舍是“已知的”。</strong> JWT 有它的毛病(比如 bearer token“谁拿到谁就能用”的先天问题),但这些毛病业界研究得透透的,该怎么防有成熟答案。已知的魔鬼,好过未知的天使。</li>
+</ul>
+<p>这里插一句我的观察:一个团队选 mTLS 还是 JWT,常常暴露它的<strong>基因</strong>。</p>
+<p>有些公司是 <strong>devops/平台主导</strong>的:复杂度沉在平台和基础设施里,像服务间认证这种事,理想状态是从应用代码里彻底抽走、下沉到 service mesh(服务网格)去自动搞定,应用根本不用管。这种基因,天然亲近 mTLS。</p>
+<p>另一些公司是 <strong>工程主导</strong>的:复杂度活在应用代码、SDK、库里。对它们来说,在应用层用一个熟悉的 JWT 库把认证做掉,比推动整个基础设施转型现实得多。<strong>技术选型从来不只是技术问题,它得贴着组织的形状走。</strong></p>
+<hr>
+<h2 id="5">5. 一张表,把取舍摊开</h2>
+<p>吵架没用,把牌摊桌上一条条比:</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>mTLS(L4 / 证书)</th>
+<th>JWT(L7 / 令牌)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>工作层次</td>
+<td>传输层,连接握手时验</td>
+<td>应用层,每个请求带令牌</td>
+</tr>
+<tr>
+<td>标准与生态</td>
+<td>极成熟,直接插云服务</td>
+<td>极成熟,团队普遍在用</td>
+</tr>
+<tr>
+<td>rollout 曲线</td>
+<td><strong>非线性</strong>,合龙前收益为零</td>
+<td><strong>线性</strong>,加一对就赚一对</td>
+</tr>
+<tr>
+<td>网络层安全</td>
+<td>强(理想态可堵住内网冒充/偷听)</td>
+<td>弱(不碰网络层)</td>
+</tr>
+<tr>
+<td>对异构网络</td>
+<td>极难落地</td>
+<td>容易落地</td>
+</tr>
+<tr>
+<td>可读性/可 debug</td>
+<td>差(TLS 层,不透明)</td>
+<td>好(解开就是 JSON)</td>
+</tr>
+<tr>
+<td>双向认证</td>
+<td>天生支持</td>
+<td>需要额外机制</td>
+</tr>
+<tr>
+<td>适合的组织基因</td>
+<td>devops / 平台 / 已统一到 k8s</td>
+<td>工程主导 / 网络异构 / 渐进改造</td>
+</tr>
+</tbody>
+</table>
+<p>看完这张表,结论其实不难下:</p>
+<ul>
+<li>如果你司<strong>网络已经很统一</strong>(比如全在 k8s、部署高度一致),又想<strong>一步到位</strong>把内网安全拉满,mTLS 值得咬牙推。</li>
+<li>如果你司<strong>网络异构</strong>、想<strong>先拿到收益再慢慢演进</strong>、团队又对 JWT 很熟,那<strong>先在 L7 用 JWT 把认证收敛起来</strong>,是更务实的第一步。</li>
+</ul>
+<hr>
+<h2 id="6">6. 我的建议:别把最大的收益,押在最难的那一步上</h2>
+<p>到这我想给个明确的立场,而不是和稀泥。</p>
+<p>服务间认证最大的一块收益,其实是<strong>“收敛”</strong>——把原来七零八落、各写各的认证方式,统一成一套。这块收益,<strong>在 L7 用 JWT 就能拿到</strong>,不需要等 mTLS 合龙。</p>
+<p>而 mTLS 那块额外的网络层收益,固然诱人,但它被锁在“非线性 rollout”这道最难的关卡后面。<strong>把最大的、唾手可得的收益,押注在最难、最慢、中途没回报的那一步上,是不划算的。</strong></p>
+<p>所以我倾向于:</p>
+<blockquote>
+<p><strong>先在 L7 用统一的令牌方案把服务间认证收敛掉,尽快兑现收益;把 L4 的 mTLS 留到基础设施足够统一(比如一切都跑在 k8s、走一致的部署管道)之后,再作为“下沉”动作去做。</strong></p>
+</blockquote>
+<p>这不是说 mTLS 不好——它很好,是终局。只是<strong>路要一步步走,先摘够得着的果子。</strong> 认证方式的选择,不该被“哪个更正统”绑架,而该被“此刻哪条路能让我持续拿到回报”牵引。</p>
+<p>顺带说一句:这条路和上一篇的地基是咬合的——只要每个服务都握着一张带公钥的身份证,那么无论你最终选 mTLS 还是 JWT,底层都是同一套身份。<strong>先统一身份,再谈认证方式</strong>,你就有了随时切换、逐步演进的自由。</p>
+<hr>
+<h2 id="_1">最后一句</h2>
+<p>mTLS 和 JWT 之争,表面是技术,里子是取舍;取舍的关键,又藏在一个反直觉的地方——<strong>rollout 是线性的还是非线性的。</strong></p>
+<p>能一步步上、每步都有回报的方案(JWT / L7),往往比一步到位却要死磕到合龙才见效的方案(mTLS / L4),更适合作为<strong>第一步</strong>。这不是保守,是尊重现实。</p>
+<p>下一篇是这个系列的收官:咱们把 L7 这条路走到底,看看一个具体的协议——<strong>WIMSE</strong>,用 <strong>WIT + WPT</strong> 两个令牌,怎么把“任何服务都能确切知道是谁在跟它说话”这件事,干净利落地实现出来。</p>
+<h4 id="_2">行动清单(可抄)</h4>
+<ul>
+<li>[ ] 先问自己:你司网络是统一(全 k8s)还是异构(机房/多云/历史部署混杂)?</li>
+<li>[ ] 别只比“哪个更安全”,把 rollout 曲线(线性 vs 非线性)加进决策。</li>
+<li>[ ] 若走 mTLS,先算清“合龙”前的投入期有多长、期间零收益能不能扛。</li>
+<li>[ ] 若走 JWT,先把散落各处的认证方式<strong>收敛成一套</strong>——这是最大的一块收益。</li>
+<li>[ ] 无论选哪条,先保证底层是<strong>统一的服务身份</strong>,给自己留下切换与演进的余地。</li>
+</ul>
+<h2 id="_3">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* L4 与 L7 之争
+** 两层坐标
+*** L4/mTLS:进门刷工牌
+*** L7/JWT:每份文件附签名条
+** mTLS 的好
+*** 标准成熟插云服务
+*** 证书=对公钥的可信签名
+*** 网络层安全一步到位
+** mTLS 的坑
+*** 非线性 rollout
+*** 接收方强制才兑现收益
+*** 修桥合龙前收益为零
+*** 异构网络极难落地
+** JWT 的好
+*** 渐进式/收益线性
+*** 可读可 debug
+*** 团队熟成本低
+*** 取舍已知
+** 组织基因
+*** devops/平台主导亲近 mTLS
+*** 工程主导偏爱 JWT
+** 我的建议
+*** 最大收益在收敛
+*** L7 先兑现
+*** L4 留到基础设施统一后
+*** 先统一身份再谈方式
+@endmindmap
+</code></pre></div>
+
+<p><img alt="L4 与 L7 之争 - 思维导图" src="./images/tech_20260802_workload_identity_part2_mindmap.png"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/drafts/2026-08-02-workload-identity-part-2.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/journal.html">journal</a>
+      <a href="https://www.fanyamin.com/blog/tag/blog.html">blog</a>
+      <a href="https://www.fanyamin.com/blog/tag/security.html">security</a>
+      <a href="https://www.fanyamin.com/blog/tag/identity.html">identity</a>
+      <a href="https://www.fanyamin.com/blog/tag/mtls.html">mtls</a>
+      <a href="https://www.fanyamin.com/blog/tag/jwt.html">jwt</a>
+      <a href="https://www.fanyamin.com/blog/tag/zero-trust.html">zero-trust</a>
+      <a href="https://www.fanyamin.com/blog/tag/workload-identity.html">workload-identity</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/2026-08-01-pop-and-certificate-bound-token.html">令牌被偷了也白搭：说清楚 PoP 与证书绑定令牌</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-01-dpop-deep-dive.html">DPoP 详解:给浏览器里的令牌也上一把“偷不走”的锁</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-01-build-your-own-sts.html">给微服务造一个 STS：像 AWS 一样发放临时凭证</a></li>
+      <li><a href="https://www.fanyamin.com/blog/workload-identitybie-zai-ba-yun-shang-shen-fen-sai-jin-secret-li-liao.html">Workload Identity：别再把云上身份塞进 Secret 里了</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2025-09-14-journal.html">密码存储的艺术</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,1346 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="边车（sidecar）和主服务跑在同一个 Pod 里，只隔着一层内核，却常常还在用 localhost:8080 这种&#34;绕远路&#34;的方式通信。这篇把同机通信的三条主流路子——HTTP over TCP、gRPC、以及走 Unix Domain Socket（UDS）——的技术细节、延迟、吞吐、序列化开销和运维成本摊开对比；并专门讨论迁移成本最低的 HTTP over UDS 及其双向通信短板，给出 SSE / WebSocket / gRPC over UDS 三档解法。最后附一张选型表和落地清单，帮你在真实场景里选对那条最短的路。" />
+<meta name="keywords" content="journal, sidecar, grpc, http, uds, service-mesh">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "边车和服务之间怎么说话最快：HTTP、gRPC、UDS 的一场同机较量",
+  "description": "边车（sidecar）和主服务跑在同一个 Pod 里，只隔着一层内核，却常常还在用 localhost:8080 这种&#34;绕远路&#34;的方式通信。这篇把同机通信的三条主流路子——HTTP over TCP、gRPC、以及走 Unix Domain Socket（UDS）——的技术细节、延迟、吞吐、序列化开销和运维成本摊开对比；并专门讨论迁移成本最低的 HTTP over UDS 及其双向通信短板，给出 SSE / WebSocket / gRPC over UDS 三档解法。最后附一张选型表和落地清单，帮你在真实场景里选对那条最短的路。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-08-02T21:00:00+08:00",
+  "dateModified": "2026-08-03T22:00:00+08:00",
+  "url": "https://www.fanyamin.com/blog/2026-08-02-sidecar-ipc-protocol.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/2026-08-02-sidecar-ipc-protocol.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "journal, sidecar, grpc, http, uds, service-mesh"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="边车和服务之间怎么说话最快：HTTP、gRPC、UDS 的一场同机较量"/>
+  <meta property="og:description" content="边车（sidecar）和主服务跑在同一个 Pod 里，只隔着一层内核，却常常还在用 localhost:8080 这种&#34;绕远路&#34;的方式通信。这篇把同机通信的三条主流路子——HTTP over TCP、gRPC、以及走 Unix Domain Socket（UDS）——的技术细节、延迟、吞吐、序列化开销和运维成本摊开对比；并专门讨论迁移成本最低的 HTTP over UDS 及其双向通信短板，给出 SSE / WebSocket / gRPC over UDS 三档解法。最后附一张选型表和落地清单，帮你在真实场景里选对那条最短的路。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/2026-08-02-sidecar-ipc-protocol.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-08-02 21:00:00+08:00"/>
+  <meta property="article:modified_time" content="2026-08-03 22:00:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="journal"/>
+  <meta property="article:tag" content="sidecar"/>
+  <meta property="article:tag" content="grpc"/>
+  <meta property="article:tag" content="http"/>
+  <meta property="article:tag" content="uds"/>
+  <meta property="article:tag" content="service-mesh"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 边车和服务之间怎么说话最快：HTTP、gRPC、UDS 的一场同机较量</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="2026-08-02-sidecar-ipc-protocol">边车和服务之间怎么说话最快：HTTP、gRPC、UDS 的一场同机较量</h1>
+    <p>
+      Posted on 日 02 8月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>边车和服务之间怎么说话最快：HTTP、gRPC、UDS 的一场同机较量</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Version</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-08-02</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h1 id="httpgrpcuds">边车和服务之间怎么说话最快：HTTP、gRPC、UDS 的一场同机较量</h1>
+<p>先说个画面。一个 Kubernetes Pod 里挤着两个容器：一个是你的业务服务，另一个是边车（sidecar）——可能是 Envoy 代理，可能是日志收集器，也可能是个鉴权/加密的旁挂进程。它俩共享网络命名空间，物理上就贴在一起，中间只隔着一层操作系统内核。</p>
+<p>可就是这么近的两个邻居，绝大多数时候还在用 <code>http://127.0.0.1:8080</code> 这种方式说话——把请求打包成 HTTP 报文，塞进 TCP 协议栈，走一遍三次握手、拥塞控制、Nagle 算法……然后在同一台机器上兜一圈再回来。<strong>这就好比你要跟隔壁工位的同事说句话，非得先写封邮件、经过公司邮件服务器转发一圈。能通，但绕。</strong></p>
+<p>这篇文章想把"边车和服务之间到底怎么通信最高效、最便捷"这件事讲清楚。我会对比三条主流路子：<strong>HTTP over TCP</strong>、<strong>gRPC</strong>、以及<strong>走 Unix Domain Socket（UDS）</strong>（TCP-over-UDS 或 HTTP-over-UDS）。急的读者先记这一句：</p>
+<blockquote>
+<p><strong>同机通信，"协议选型"和"传输通道选型"是两件事。协议决定序列化和语义（HTTP 还是 gRPC），通道决定数据怎么跨进程（TCP 环回还是 UDS）。真正的性能杠杆，往往在通道那一侧。</strong></p>
+</blockquote>
+<ul>
+<li><strong>不是什么</strong>：这不是"gRPC 一定比 HTTP 快"的口水战。同机场景下，很多性能差异来自传输层，不是应用层协议本身。</li>
+<li><strong>是什么</strong>：这是一次"同一台机器上，两个进程怎么把字节搬得又快又省心"的工程权衡。</li>
+</ul>
+<blockquote>
+<p>术语先垫两句。<strong>边车（Sidecar）</strong>：和主服务部署在一起、分担某类横切职责（代理、鉴权、日志、加密）的辅助进程，典型如 Service Mesh 里的 Envoy。<strong>UDS（Unix Domain Socket）</strong>：一种只在同一台机器内部用的进程间通信（IPC）通道，用文件路径当地址（比如 <code>/tmp/app.sock</code>），不走网卡、不走 IP 协议栈。下面会反复用到。</p>
+</blockquote>
+<hr>
+<h2 id="vs">一、先分清两层：协议 vs 通道</h2>
+<p>聊性能之前，得先把两个常被混为一谈的东西拆开，否则永远是鸡同鸭讲。</p>
+<p><strong>第一层是应用协议</strong>——你的两个进程"用什么语言、什么格式"交换信息：</p>
+<ul>
+<li><strong>HTTP/1.1 + JSON</strong>：最通用。人能读、工具遍地、调试方便。代价是 JSON 序列化慢、报文冗长（字段名重复出现）。</li>
+<li><strong>gRPC（HTTP/2 + Protobuf）</strong>：二进制序列化紧凑，天生支持多路复用和流式，跨语言有强类型契约（<code>.proto</code> 文件）。代价是不能拿浏览器直接看，得有工具链。</li>
+</ul>
+<p><strong>第二层是传输通道</strong>——字节到底"从哪条路"跨过进程边界：</p>
+<ul>
+<li><strong>TCP 环回（loopback，即 127.0.0.1）</strong>：数据在本机 TCP/IP 协议栈里走一遭。虽然不出网卡，但该有的 TCP 状态机、校验、缓冲区管理一样不少。</li>
+<li><strong>UDS（Unix Domain Socket）</strong>：内核直接在两个进程间搬数据，跳过整个 IP 协议栈——没有 IP 头、没有 TCP 三次握手（连接建立是本地的）、没有拥塞控制、没有校验和计算。</li>
+</ul>
+<p>关键在于：<strong>这两层可以自由组合。</strong> HTTP 可以走 TCP，也可以走 UDS；gRPC 默认走 TCP，同样可以配成走 UDS。</p>
+<table>
+<thead>
+<tr>
+<th>组合</th>
+<th>应用协议</th>
+<th>传输通道</th>
+<th>常见场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>HTTP over TCP</td>
+<td>HTTP/1.1 + JSON</td>
+<td>127.0.0.1</td>
+<td>最传统的边车通信，Envoy 早期默认</td>
+</tr>
+<tr>
+<td>gRPC over TCP</td>
+<td>HTTP/2 + Protobuf</td>
+<td>127.0.0.1</td>
+<td>内部服务高性能调用</td>
+</tr>
+<tr>
+<td>HTTP over UDS</td>
+<td>HTTP/1.1</td>
+<td><code>/run/app.sock</code></td>
+<td>Docker daemon、部分 Web Server</td>
+</tr>
+<tr>
+<td>gRPC over UDS</td>
+<td>HTTP/2 + Protobuf</td>
+<td><code>/run/xds.sock</code></td>
+<td>Envoy ↔ 控制面 xDS、高性能同机代理</td>
+</tr>
+</tbody>
+</table>
+<p>所以"HTTP 还是 gRPC"是在第一层选，"TCP 还是 UDS"是在第二层选。<strong>同机场景下，换通道（TCP → UDS）往往比换协议（HTTP → gRPC）带来的收益更直接、改动更小。</strong> 这是全文最想让你记住的一点。</p>
+<hr>
+<h2 id="uds">二、UDS 到底省在哪：把内核那条捷径讲透</h2>
+<p>很多人对 UDS 的印象停留在"听说更快"，但快在哪说不清楚。咱们把 loopback 和 UDS 两条路径的差别摆出来。</p>
+<p>一个请求从进程 A 到进程 B，走 <strong>TCP 环回</strong>时，内核大致要做这些事：</p>
+<ol>
+<li>应用层把数据交给 socket；</li>
+<li>走 TCP 层：分段、加序号、维护滑动窗口、算校验和、跑拥塞控制状态机；</li>
+<li>走 IP 层：加 IP 头、查路由表（发现目标是 127.0.0.1，回环）；</li>
+<li>数据在协议栈里"发出去又收回来"，B 那边再把 IP 头、TCP 头一层层剥掉。</li>
+</ol>
+<p>走 <strong>UDS</strong> 时，这条链子被砍掉一大半：</p>
+<ol>
+<li>应用层把数据交给 socket；</li>
+<li>内核直接把数据从 A 的发送缓冲区拷到 B 的接收缓冲区——<strong>没有 IP 头、没有 TCP 分段、没有校验和、没有拥塞控制</strong>；</li>
+<li>B 直接读。</li>
+</ol>
+<p>一句话：<strong>UDS 是"内核内部的一次内存搬运"，loopback 是"让数据假装出趟门再回来"。</strong></p>
+<p>省下来的具体是什么？</p>
+<ul>
+<li><strong>省协议栈开销</strong>：没有 TCP/IP 头的封装解封装，没有校验和计算。同机数据本来就不会丢，这些保障纯属多余。</li>
+<li><strong>省系统调用与上下文</strong>：连接建立是纯本地的，没有三次握手的网络往返（虽然 loopback 的握手也在本机，但状态机维护成本仍在）。</li>
+<li><strong>天然的访问控制</strong>：UDS 是文件系统里的一个 socket 文件，可以用文件权限（<code>chmod</code>/<code>chown</code>）控制谁能连——<code>0700</code> 加上专属用户，比"监听 127.0.0.1 但同机任意进程都能连"安全得多。</li>
+<li><strong>不占端口</strong>：不用担心端口冲突、端口被扫、端口耗尽。</li>
+</ul>
+<blockquote>
+<p><strong>同机通信里，TCP 的可靠性机制大多是为"数据要跨网络"设计的。数据根本不出机器时，这些机制就成了纯开销。UDS 的价值，就是把这份"为远方准备的保险"退掉。</strong>
+这也是为什么 Envoy、Docker、PostgreSQL、MySQL 这些老牌软件，同机通信默认或推荐走 UDS。</p>
+</blockquote>
+<p>那 UDS 到底快多少？这里我要诚实：<strong>具体数字高度依赖负载、报文大小、内核版本和机器</strong>，网上流传的"快 30%~50%"之类的说法没有一个统一答案。可以确定的定性结论是：</p>
+<ul>
+<li><strong>小报文、高频调用</strong>（边车最典型的场景）下，UDS 的相对优势最明显——因为固定开销（协议栈、系统调用）占比高。</li>
+<li><strong>大报文、低频</strong>时，两者差距会被数据拷贝本身摊薄，UDS 优势变小。</li>
+<li><strong>延迟（latency）比吞吐（throughput）更能体现 UDS 的好处</strong>，尤其是尾延迟（P99）。</li>
+</ul>
+<h3 id="qps">怎么做压力测试：不要只测一个 QPS</h3>
+<p>这里不直接引用网上的“快了 30%”或“快了 50%”。同一台机器、不同内核版本、不同报文大小，结果都可能不一样。更稳妥的办法是做一组可复现的压力测试，把“UDS 更快”拆成可以验证的假设。</p>
+<p>先划清安全边界：压力测试只对隔离的测试环境或明确授权的灰度环境执行；并发数、到达率和报文大小要设置上限，不能把下面的场景直接打到生产服务。UDS socket 文件也要使用测试路径和最小权限，测试结束后清理连接和临时文件。</p>
+<h4 id="1">1. 先固定比较边界</h4>
+<p>至少准备两条完全等价的链路：</p>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>服务端监听</th>
+<th>客户端连接</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TCP loopback</td>
+<td><code>127.0.0.1:18080</code></td>
+<td>TCP dialer</td>
+</tr>
+<tr>
+<td>UDS</td>
+<td><code>/run/sidecar/bench.sock</code></td>
+<td>Unix socket dialer</td>
+</tr>
+</tbody>
+</table>
+<p>两条链路必须使用同一个 handler、同一套序列化方式、同样的响应内容。否则一边测 HTTP+JSON，另一边测 gRPC+Protobuf，测出来的不是 TCP 和 UDS 的差异，而是协议、序列化和连接池的混合差异。</p>
+<p>压测客户端也要尽量复用同一套代码，只替换 dialer。不要拿 <code>wrk</code> 测 TCP，再拿一条单线程的 <code>curl</code> 测 UDS，然后宣布 UDS 更快——这属于把实验变量和实验工具一起换了。</p>
+<h4 id="2">2. 用四个维度组织压力场景</h4>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>建议档位</th>
+<th>想回答的问题</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>并发数</td>
+<td>1、8、32、128、512</td>
+<td>低并发和高并发下，差距是否扩大？</td>
+</tr>
+<tr>
+<td>报文大小</td>
+<td>64B、1KB、64KB</td>
+<td>固定协议开销在总耗时中的占比有多大？</td>
+</tr>
+<tr>
+<td>连接方式</td>
+<td>短连接、长连接、连接池复用</td>
+<td>性能差异来自建连，还是来自每次请求？</td>
+</tr>
+<tr>
+<td>运行模式</td>
+<td>固定并发、固定到达率</td>
+<td>系统在排队前和饱和后的表现分别怎样？</td>
+</tr>
+</tbody>
+</table>
+<p>其中，固定并发适合观察“并发加上去以后延迟如何变化”；固定到达率适合观察“给定 QPS 下系统能否稳定承载”。只测一种模式，容易漏掉排队和饱和点。</p>
+<h4 id="3">3. 每组测试按“预热—施压—冷却”执行</h4>
+<p>建议每组测试遵循同一套节奏：</p>
+<ol>
+<li><strong>预热</strong>：先运行一段时间，让连接池、JIT、文件页缓存和 CPU 频率进入稳定状态；预热数据不计入结果。</li>
+<li><strong>施压</strong>：逐级增加并发或到达率，每个档位保持足够长的时间，直到延迟稳定或错误率开始上升。</li>
+<li><strong>冷却</strong>：停止流量，确认进程、socket 文件和连接都恢复正常，再开始下一组。</li>
+<li><strong>重复</strong>：每个场景至少重复 3 次，并打乱 TCP 和 UDS 的测试顺序，避免机器温度、邻居进程和缓存状态造成固定偏差。</li>
+</ol>
+<p>不要只测“跑通的最高 QPS”。压力测试更重要的是找到拐点：从哪个并发档位开始，P99 明显上升；从哪个到达率开始，错误、超时或连接排队出现。</p>
+<h4 id="4">4. 同时采集四类指标</h4>
+<p>只看 QPS，往往会把系统“忙到排队”误判成性能好。每组至少记录：</p>
+<ul>
+<li><strong>吞吐</strong>：完成请求数、成功率、错误率、超时率；</li>
+<li><strong>延迟</strong>：P50、P95、P99，条件允许时再看 P99.9；</li>
+<li><strong>资源</strong>：客户端和服务端 CPU（user/system）、内存、RSS、网络字节数；</li>
+<li><strong>内核开销</strong>：上下文切换、系统调用、CPU migration，以及 socket 连接排队情况。</li>
+</ul>
+<p>Linux 上可以用 <code>pidstat</code> 观察进程级 CPU 和上下文切换，用 <code>perf stat</code> 在测试窗口内采集 cycles、instructions、context-switches 等计数。工具不是重点，重点是 TCP 和 UDS 必须使用同样的采集窗口、同样的进程范围和同样的过滤条件。</p>
+<p>结果表可以先按这个模板记录，数字等真实压测后再填：</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th style="text-align: right;">并发</th>
+<th style="text-align: right;">报文</th>
+<th>方案</th>
+<th style="text-align: right;">QPS</th>
+<th style="text-align: right;">P50</th>
+<th style="text-align: right;">P99</th>
+<th style="text-align: right;">错误率</th>
+<th style="text-align: right;">服务端 CPU</th>
+<th style="text-align: right;">上下文切换</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>小报文高频</td>
+<td style="text-align: right;">128</td>
+<td style="text-align: right;">64B</td>
+<td>TCP</td>
+<td style="text-align: right;">待测</td>
+<td style="text-align: right;">待测</td>
+<td style="text-align: right;">待测</td>
+<td style="text-align: right;">待测</td>
+<td style="text-align: right;">待测</td>
+<td style="text-align: right;">待测</td>
+</tr>
+<tr>
+<td>小报文高频</td>
+<td style="text-align: right;">128</td>
+<td style="text-align: right;">64B</td>
+<td>UDS</td>
+<td style="text-align: right;">待测</td>
+<td style="text-align: right;">待测</td>
+<td style="text-align: right;">待测</td>
+<td style="text-align: right;">待测</td>
+<td style="text-align: right;">待测</td>
+<td style="text-align: right;">待测</td>
+</tr>
+<tr>
+<td>大报文</td>
+<td style="text-align: right;">32</td>
+<td style="text-align: right;">64KB</td>
+<td>TCP</td>
+<td style="text-align: right;">待测</td>
+<td style="text-align: right;">待测</td>
+<td style="text-align: right;">待测</td>
+<td style="text-align: right;">待测</td>
+<td style="text-align: right;">待测</td>
+<td style="text-align: right;">待测</td>
+</tr>
+<tr>
+<td>大报文</td>
+<td style="text-align: right;">32</td>
+<td style="text-align: right;">64KB</td>
+<td>UDS</td>
+<td style="text-align: right;">待测</td>
+<td style="text-align: right;">待测</td>
+<td style="text-align: right;">待测</td>
+<td style="text-align: right;">待测</td>
+<td style="text-align: right;">待测</td>
+<td style="text-align: right;">待测</td>
+</tr>
+</tbody>
+</table>
+<h4 id="5">5. 预先写好验收标准</h4>
+<p>压力测试不是为了证明 UDS 必须赢，而是验证它是否值得引入。验收标准可以这样写：</p>
+<blockquote>
+<p>在相同报文、相同并发和相同连接复用策略下，UDS 的 P99 延迟比 TCP loopback 低至少 X%，错误率不增加，服务端 CPU 不超过基线 Y%；如果优势只在 64B 小报文和高并发场景出现，就只把 UDS 用在这些热点路径。</p>
+</blockquote>
+<p>这里的 <code>X</code> 和 <code>Y</code> 应该由业务 SLO、容量余量和实测基线决定，不要凭经验硬填。最终要回答的也不只是“谁更快”，而是：<strong>快在什么场景、快了多少、付出了什么运维成本，是否足以抵消迁移和排障复杂度。</strong></p>
+<hr>
+<h2 id="grpc">三、那 gRPC 的优势又在哪：别把功劳记错账</h2>
+<p>那 gRPC 不就没用了？并非如此。gRPC 的优势和 UDS 的优势是<strong>两个维度</strong>上的事，别混在一起算账。</p>
+<p>gRPC 真正值钱的地方，同机、跨机都成立：</p>
+<ul>
+<li><strong>强类型契约</strong>：<code>.proto</code> 文件就是接口文档，改字段编译器会报错，跨语言（Go 服务 ↔ Java 边车）不用手写对接协议。这一点 HTTP+JSON 天生弱。</li>
+<li><strong>序列化又小又快</strong>：Protobuf 二进制编码，比 JSON 省字节、省 CPU。报文越复杂、字段越多，优势越大。</li>
+<li><strong>HTTP/2 多路复用与流式</strong>：一条连接跑多个并发请求不互相阻塞，还支持 Server Streaming / Bidirectional Streaming（比如边车持续推送配置、上报指标）。HTTP/1.1 想干这个很别扭。</li>
+</ul>
+<p>但要注意两个"账别记错"的地方：</p>
+<ol>
+<li><strong>HTTP/2 多路复用在同机场景收益打折</strong>。多路复用主要解决"网络连接昂贵、建连有往返延迟"的问题——而同机 loopback/UDS 建连几乎不要钱，你完全可以开一堆连接。所以 gRPC 在同机的性能优势，<strong>主要来自 Protobuf 序列化，而不是 HTTP/2 传输</strong>。</li>
+<li><strong>gRPC 一样能走 UDS</strong>。别以为"要快就得上 gRPC"，也别以为"gRPC 就得走 TCP"。Envoy 和它的控制面之间跑 xDS 协议，就是 <strong>gRPC over UDS</strong>——序列化用 Protobuf 的紧凑，通道用 UDS 的低开销，两头的好处都占了。</li>
+</ol>
+<p>所以真正的性能"全家桶"其实是：<strong>gRPC（拿 Protobuf 的序列化）+ UDS（拿传输通道的低开销）</strong>。协议和通道各取所长，而不是二选一。</p>
+<hr>
+<h2 id="http-over-uds">四、HTTP over UDS：迁移最省心，可双向通信是个坎</h2>
+<p>同机场景"换通道比换协议更划算"，最省事的一条路就是 <strong>HTTP over UDS</strong>——应用层代码几乎不动，只把监听/连接地址从 <code>host:port</code> 换成一个 socket 文件路径。</p>
+<p>为什么这条路迁移成本最低？因为<strong>你的 HTTP 语义一个字都没变</strong>：还是 <code>GET /health</code>、<code>POST /v1/verify</code>，还是那套 header、status code、body。变的只是"底下那根管子"。主流库都原生支持：</p>
+<div class="highlight"><pre><span></span><code><span class="gp"># </span>服务端（以<span class="w"> </span>Go<span class="w"> </span>为例，核心就是把<span class="w"> </span>net.Listen<span class="w"> </span>从<span class="w"> </span>tcp<span class="w"> </span>换成<span class="w"> </span>unix）
+<span class="go">ln, _ := net.Listen(&quot;unix&quot;, &quot;/run/app/app.sock&quot;)</span>
+<span class="go">http.Serve(ln, handler)</span>
+
+<span class="gp"># </span>客户端调试，curl<span class="w"> </span>直接用<span class="w"> </span>--unix-socket
+<span class="gp">$ </span>curl<span class="w"> </span>--unix-socket<span class="w"> </span>/run/app/app.sock<span class="w"> </span>http://localhost/health
+</code></pre></div>
+
+<p>Python 的 <code>requests</code>（配 <code>requests-unixsocket</code>）、Node 的 <code>http.request({ socketPath })</code>、Nginx 的 <code>upstream { server unix:/run/app.sock; }</code>——都支持。<strong>一句话：HTTP over UDS 是"零学习成本地拿到 UDS 的传输红利"。</strong> 对一个已经跑在 HTTP over TCP 上的边车，这是投入产出比最高的第一步。</p>
+<h3 id="http11">坎在哪：HTTP/1.1 是"半双工"的问答机</h3>
+<p>HTTP over UDS 的软肋是<strong>双向通信不好办</strong>，但根子不在 UDS——UDS 本身是<strong>全双工</strong>的字节流，两个方向随时都能写。坎在<strong>上层的 HTTP/1.1</strong>：严格的"请求-响应"模型，一问一答，客户端不发问，服务端就没法主动开口。</p>
+<p>具体到边车场景，这些需求 HTTP/1.1 就很别扭：</p>
+<ul>
+<li>边车想<strong>主动推</strong>一条配置变更给主服务（服务端主动发起）；</li>
+<li>主服务想和边车<strong>持续对话</strong>（一次握手后来回交换多条消息）；</li>
+<li>双方想在<strong>同一条连接</strong>上并发跑多个请求还互不阻塞。</li>
+</ul>
+<p>HTTP/1.1 硬凑双向，历史上有三种老办法，各有各的难受：</p>
+<table>
+<thead>
+<tr>
+<th>做法</th>
+<th>原理</th>
+<th>难受在哪</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>轮询 / 长轮询</td>
+<td>客户端反复问"有更新没"</td>
+<td>延迟高、空转浪费；长轮询还占着连接</td>
+</tr>
+<tr>
+<td>SSE（Server-Sent Events）</td>
+<td>服务端单向推事件流</td>
+<td><strong>只能服务端→客户端</strong>，反方向还得另开请求</td>
+</tr>
+<tr>
+<td>分块传输（chunked）</td>
+<td>复用 chunked 编码做流</td>
+<td>半吊子，方向和边界都要自己硬约定</td>
+</tr>
+</tbody>
+</table>
+<p>SSE 其实挺适合"边车单向推配置"这种场景，而且它就是普通 HTTP，走 UDS 毫无障碍。<strong>但只要你需要真·双向（两头都能主动说话），HTTP/1.1 就到头了。</strong></p>
+<h3 id="_1">按"双向到什么程度"分三档</h3>
+<p>先分清到底需要哪种双向，按需求强度从轻到重：</p>
+<p><strong>第一档：只要服务端单向推 → SSE over UDS。</strong>
+边车单向推送（配置下发、事件通知），<strong>SSE 就够</strong>。它是纯 HTTP，迁移成本和 HTTP over UDS 一样低，客户端挂一条长连接收事件即可，反方向的少量请求照旧走普通 HTTP。<strong>能用 SSE 解决就别上 WebSocket——少一层协议就少一份运维。</strong></p>
+<p><strong>第二档：要真双向、又想少改架构 → WebSocket over UDS。</strong>
+WebSocket 经一次 HTTP <code>Upgrade</code> 握手把连接升级成<strong>全双工</strong>，两头随时收发。它复用 HTTP 握手，<strong>照样跑在 UDS 上</strong>——现有的 HTTP over UDS 监听器加个 upgrade 处理就行。适合"双方持续对话、消息不那么结构化"的场景，代价是消息格式得自己定（它只搬字节，不管内容）。</p>
+<p><strong>第三档：要双向 + 强类型 + 高性能 → gRPC over UDS。</strong>
+gRPC 的 <strong>Bidirectional Streaming（双向流）</strong>天生就是干这个的：一条流上两头都能持续发消息，Protobuf 管类型契约，HTTP/2 管多路复用，<strong>同样跑在 UDS 上</strong>（第三节说过，Envoy 的 xDS 就是这个组合）。</p>
+<p>一个容易被忽略的账：<strong>迟早要双向的话，与其在 HTTP/1.1 上用"SSE + 反向请求"硬拼伪双向，不如直接上 gRPC over UDS。</strong> 前者迁移成本看着低，但双向逻辑全是手写胶水，越往后越难维护；后者前期要引 Protobuf 工具链，但双向是协议原生能力，逻辑干净。</p>
+<blockquote>
+<p><strong>基本单向 → HTTP over UDS（配 SSE 推送）；"真双向"成硬需求 → 别在 HTTP/1.1 上打补丁，要么 WebSocket over UDS 保迁移平滑，要么 gRPC over UDS 一步到位拿下双向、契约、性能。</strong> 若已预感双向躲不掉，起点就直接选 gRPC over UDS，省得中途换赛道。</p>
+</blockquote>
+<h3 id="chatgpt-sse-sse-over-uds">一个常见误区：ChatGPT 用的就是 SSE，那全改成 SSE over UDS 行不行</h3>
+<p><strong>ChatGPT / OpenAI 的流式接口（<code>stream=true</code>）用的正是 SSE</strong>：发一个 prompt，模型花几十秒逐字吐 token，那种"一个字一个字冒出来"的效果，底层就是服务端把 response body 当成事件流慢慢写。于是有人会想：把边车通信从 HTTP over TCP 全迁到 SSE over UDS，是不是更好？</p>
+<p>先纠正一个概念错位：<strong>SSE 不是 HTTP 的替代品，它就是 HTTP 的一种用法</strong>——一次普通请求，服务端把响应做成长连接的事件流。ChatGPT 的例子也一样：<strong>"发 prompt"那一下还是普通 HTTP POST，SSE 只负责"答案怎么流回来"</strong>，是"普通请求 + SSE 响应"，不是"纯 SSE 双向通道"。</p>
+<p>想清楚这点就会发现，所谓"迁移"其实是<strong>两件独立的事叠在一起</strong>：</p>
+<ol>
+<li><strong>换通道</strong>：TCP → UDS。<strong>纯收益</strong>，同机场景就该做，跟用不用 SSE 无关。</li>
+<li><strong>换交互模式</strong>：请求-响应 → 服务端流式推送。这<strong>改变了通信语义</strong>，不是无损平移。</li>
+</ol>
+<p>第一件尽管做。第二件不是"能不能"的问题，而是"值不值"的问题——得看这条路径的<strong>交互形态</strong>，别一刀切。</p>
+<p>两件事的优缺点先摊平：</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>优点</th>
+<th>缺点 / 代价</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>换通道 TCP→UDS</strong></td>
+<td>省协议栈开销、不占端口、文件权限做访问控制；仍是纯 HTTP，<code>curl --unix-socket</code> 照样调</td>
+<td>只在同机有效（第七节的坑）；<code>tcpdump</code> 抓不到</td>
+</tr>
+<tr>
+<td><strong>换模式 →SSE</strong></td>
+<td>服务端能主动持续推（配置热更新、进度、事件流），普通 HTTP 做不到；比 WebSocket 简单（纯文本、无需 Upgrade 握手，自带断线重连）</td>
+<td>下行单向，上行得另开请求；只能传文本，二进制要 base64；长连接的连接数/内存/超时得自己盯</td>
+</tr>
+</tbody>
+</table>
+<h3 id="http-sse">"有来有回，用 HTTP + SSE 不也挺好"——对，但要看清它是"两条腿走路"</h3>
+<p>这里得替 SSE 说句公道话。有人会问：服务和边车明明有来有回，用 HTTP + SSE 感觉挺顺的呀？</p>
+<p>没错，这方案确实能做"有来有回"，ChatGPT 网页版就是活例子——你打字提问是上行的普通 HTTP，它逐字回答是下行的 SSE。但要看清它的<strong>真实形态</strong>：</p>
+<div class="highlight"><pre><span></span><code>边车 ──普通 HTTP 请求──▶ 主服务     上行：一次一次地问
+边车 ◀──SSE 长连接──── 主服务     下行：持续地推
+</code></pre></div>
+
+<p><strong>它是两条独立的连接在配合</strong>：一条 SSE 长连接管服务端往下推，另一条（或每次新开的）普通 HTTP 请求管客户端往上说。合起来效果上"有来有回"，但底层是<strong>两个方向、两套连接</strong>，不是 WebSocket 那种"一条连接上双向随便发"。</p>
+<p>看清这点，什么时候用它就清楚了——<strong>关键看"上行有多重"</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>交互形态</th>
+<th>举例</th>
+<th>推荐</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>纯问答（无下行推送）</td>
+<td><code>/health</code>、<code>/verify</code></td>
+<td><strong>普通 HTTP over UDS</strong>，套 SSE 是过度设计</td>
+</tr>
+<tr>
+<td>下行为主、上行零星</td>
+<td>边车持续推配置/指标，主服务偶尔回 ack、改订阅</td>
+<td><strong>HTTP + SSE over UDS</strong>，简单够用，全程纯 HTTP</td>
+</tr>
+<tr>
+<td>上行也高频 / 要低延迟 / 上下行要严格关联</td>
+<td>双方对等地来回交换消息</td>
+<td><strong>WebSocket over UDS</strong>，一条连接双向，省掉关联胶水</td>
+</tr>
+<tr>
+<td>上述 + 强类型 + 高性能</td>
+<td>跨语言、结构复杂的双向流</td>
+<td><strong>gRPC over UDS</strong></td>
+</tr>
+</tbody>
+</table>
+<p>"有来有回"不是一个点，是一条<strong>光谱</strong>：越靠"下行为主"，HTTP + SSE 越舒服；越靠"上行也重、要严格交错"，它那"两条腿"就越吃力——每个上行新开连接的开销、上下行怎么关联、跨连接没有顺序保证，这些胶水都得自己兜，这时候 WebSocket / gRPC 双向流更顺。</p>
+<blockquote>
+<p><strong>换通道（TCP→UDS）是纯赚，放心换；换模式（→SSE）看上行有多重——下行为主就大胆用 HTTP + SSE，上行也变重再抬到 WebSocket / gRPC。</strong> 别把所有接口一股脑全流式化，也别一见"有来有回"就急着上 WebSocket。</p>
+</blockquote>
+<h3 id="http-sse_1">深挖：HTTP + SSE 到底有哪些坑</h3>
+<p>前面说它是"甜区"，但甜区不等于没坑。HTTP + SSE 的问题大多不是 SSE 自己的 bug，而是"两条腿走路"这个架构、加上 HTTP/1.1 的底子带来的<strong>结构性代价</strong>——平时压测风平浪静，一上量、一上生产就咬人。分三层看。</p>
+<p><strong>协议层的三个硬伤</strong></p>
+<ul>
+<li>
+<p><strong>HTTP/1.1 下，一条 SSE 就占死一条 TCP 连接。</strong> SSE 是一个"永不结束的响应"，只要流开着，这条连接就被独占，干不了别的。HTTP/1.1 的连接是"一条一次只能跑一个请求"，于是每多一路 SSE，连接池就少一个坑。浏览器对此有个著名的<strong>每域名 6 连接上限</strong>（MDN 明确警告过，超了新请求排队），边车通信不走浏览器、没有这个 UA 硬限制，但<strong>底层机制一模一样</strong>：你的 HTTP client 连接池会被长连接吃光，短请求排队饿死。<strong>解药是走 HTTP/2</strong>——多路复用让一条 TCP 连接跑上百路 stream，SSE 才算真正好用。但这又绕回来了：既然都上 HTTP/2 了，双向流本是 HTTP/2 的原生能力，此时 gRPC 往往比"HTTP/2 + SSE + 反向请求"更顺。</p>
+</li>
+<li>
+<p><strong>上行、下行是两条独立连接，天生没有关联和顺序保证。</strong> "边车发一个上行请求"和"主服务在 SSE 流里推的响应"，是两条腿上发生的两件事，内核不会帮你把它们对应起来。想知道"这段下行是回应哪个上行的"，得自己塞关联 ID、自己维护 session、自己处理"上行到了但下行还没来"的时序。<strong>这层胶水，就是 WebSocket / gRPC 双向流帮你省掉的东西。</strong> 上行越频繁、交错越密，这层胶水越厚越易出 bug。</p>
+</li>
+<li>
+<p><strong>SSE 只能传 UTF-8 文本。</strong> 规范如此。要传二进制（Protobuf、图片、压缩块），得 base64，白白涨 33% 体积还多两次编解码。下行是结构化二进制数据的场景，SSE 天然不趁手。</p>
+</li>
+</ul>
+<p><strong>架构层的两个陷阱</strong></p>
+<ul>
+<li>
+<p><strong>半打开连接（half-open）最阴。</strong> SSE 是长连接，最怕"连接其实已经断了，但两头都以为还活着"。客户端傻等永远不来的事件，服务端对着一个已死的 socket 继续写。TCP 的 keepalive 默认以小时计，根本指望不上。<strong>标准做法是应用层心跳</strong>：服务端每隔十几秒推一个注释行（<code>: heartbeat\n\n</code>）当探活，客户端设读超时，超时没收到就主动重连。这套东西 SSE 不会白送，得自己搭。</p>
+</li>
+<li>
+<p><strong>断线重连要"接得上"，得靠你配合。</strong> SSE 协议自带 <code>Last-Event-ID</code>（客户端重连时带上最后收到的事件 ID）和 <code>retry:</code>（服务端建议的重连间隔），这是它比裸 WebSocket 贴心的地方。但<strong>能不能续上，取决于服务端认不认这个 ID、补不补发断连期间漏掉的事件</strong>。不实现这套，"自动重连"就只是"重新连上"，中间丢的消息照丢。</p>
+</li>
+</ul>
+<p><strong>运维层的两个暗礁</strong></p>
+<ul>
+<li>
+<p><strong>中间的代理/负载均衡会"帮倒忙"。</strong> Nginx 这类反向代理默认会<strong>缓冲响应</strong>——它想凑一批数据再转发，可这正好把 SSE"实时推"的命根子掐了：事件卡在代理的 buffer 里，客户端半天收不到。必须显式关掉缓冲（Nginx 要设 <code>proxy_buffering off</code>、<code>X-Accel-Buffering: no</code>），还要调大读超时，否则代理会把"长时间没数据"的 SSE 连接当成超时给掐了。走 UDS 少一层网络代理，这个坑轻些，但只要链路上有代理就得防。</p>
+</li>
+<li>
+<p><strong>长连接的资源账要自己算。</strong> 每条 SSE 都是一条常驻连接，占着 fd、占着内存缓冲、占着服务端一个处理协程/线程。同机边车通常连接数不多还好，可一旦是"一个主服务对多个边车实例"或连接数上规模，fd 上限、内存、超时清理就得盯着。<strong>短请求用完即走，长连接是养着的——养着的东西都有成本。</strong></p>
+</li>
+</ul>
+<p>一句话收口：</p>
+<blockquote>
+<p><strong>HTTP + SSE 的坑，几乎都长在"长连接"和"两条腿"这两个词上：连接被独占、上下行要自己关联、要自己做心跳与重连、要防代理缓冲、要算资源账。</strong> 下行为主、上行零星时，这些代价可控，值得用；一旦上行变重、连接上规模，与其把这些胶水全手写一遍，不如换 WebSocket / gRPC 一步到位。</p>
+</blockquote>
+<h3 id="sse-websocket-over-uds-python">上手：SSE / WebSocket over UDS 的 Python 最小示例</h3>
+<p>前两档各给一个能直接跑的 Python demo。这里用 <code>aiohttp</code>，因为它对 UDS <strong>两头都原生支持</strong>——服务端 <code>web.UnixSite</code>，客户端 <code>aiohttp.UnixConnector</code>，SSE 和 WebSocket 都不用额外装适配库。</p>
+<p>先装依赖：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>pip<span class="w"> </span>install<span class="w"> </span>aiohttp
+</code></pre></div>
+
+<p><strong>第一档：SSE over UDS（服务端单向推）</strong></p>
+<p>服务端把响应保持成 <code>text/event-stream</code> 的长连接，按 SSE 格式（<code>event:</code> + <code>data:</code> + 空行）不断往外写；客户端挂着一条连接收事件。整段就是普通 HTTP，只是监听在 socket 文件上：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># sse_server.py —— 服务端单向推配置</span>
+<span class="kn">import</span> <span class="nn">asyncio</span><span class="o">,</span> <span class="nn">os</span>
+<span class="kn">from</span> <span class="nn">aiohttp</span> <span class="kn">import</span> <span class="n">web</span>
+
+<span class="n">SOCK</span> <span class="o">=</span> <span class="s2">&quot;/tmp/sse_demo.sock&quot;</span>
+
+<span class="k">async</span> <span class="k">def</span> <span class="nf">events</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="n">resp</span> <span class="o">=</span> <span class="n">web</span><span class="o">.</span><span class="n">StreamResponse</span><span class="p">(</span>
+        <span class="n">status</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span>
+        <span class="n">headers</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;Content-Type&quot;</span><span class="p">:</span> <span class="s2">&quot;text/event-stream&quot;</span><span class="p">,</span>
+                 <span class="s2">&quot;Cache-Control&quot;</span><span class="p">:</span> <span class="s2">&quot;no-cache&quot;</span><span class="p">},</span>
+    <span class="p">)</span>
+    <span class="k">await</span> <span class="n">resp</span><span class="o">.</span><span class="n">prepare</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">):</span>                       <span class="c1"># 真实场景里这里是&quot;配置变了就推&quot;</span>
+        <span class="k">await</span> <span class="n">resp</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;event: config</span><span class="se">\n</span><span class="s2">data: version=</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="se">\n\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">encode</span><span class="p">())</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">resp</span>
+
+<span class="k">async</span> <span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+    <span class="n">app</span> <span class="o">=</span> <span class="n">web</span><span class="o">.</span><span class="n">Application</span><span class="p">()</span>
+    <span class="n">app</span><span class="o">.</span><span class="n">router</span><span class="o">.</span><span class="n">add_get</span><span class="p">(</span><span class="s2">&quot;/events&quot;</span><span class="p">,</span> <span class="n">events</span><span class="p">)</span>
+    <span class="n">runner</span> <span class="o">=</span> <span class="n">web</span><span class="o">.</span><span class="n">AppRunner</span><span class="p">(</span><span class="n">app</span><span class="p">)</span>
+    <span class="k">await</span> <span class="n">runner</span><span class="o">.</span><span class="n">setup</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">SOCK</span><span class="p">):</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">SOCK</span><span class="p">)</span>                      <span class="c1"># 清理残留的 socket 文件（第七节的坑）</span>
+    <span class="k">await</span> <span class="n">web</span><span class="o">.</span><span class="n">UnixSite</span><span class="p">(</span><span class="n">runner</span><span class="p">,</span> <span class="n">SOCK</span><span class="p">)</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Event</span><span class="p">()</span><span class="o">.</span><span class="n">wait</span><span class="p">()</span>             <span class="c1"># 挂住别退出</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="c1"># sse_client.py —— 客户端挂着收事件</span>
+<span class="kn">import</span> <span class="nn">asyncio</span><span class="o">,</span> <span class="nn">aiohttp</span>
+
+<span class="n">SOCK</span> <span class="o">=</span> <span class="s2">&quot;/tmp/sse_demo.sock&quot;</span>
+
+<span class="k">async</span> <span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+    <span class="n">conn</span> <span class="o">=</span> <span class="n">aiohttp</span><span class="o">.</span><span class="n">UnixConnector</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="n">SOCK</span><span class="p">)</span>  <span class="c1"># 关键：走 UDS，不是 host:port</span>
+    <span class="k">async</span> <span class="k">with</span> <span class="n">aiohttp</span><span class="o">.</span><span class="n">ClientSession</span><span class="p">(</span><span class="n">connector</span><span class="o">=</span><span class="n">conn</span><span class="p">)</span> <span class="k">as</span> <span class="n">session</span><span class="p">:</span>
+        <span class="k">async</span> <span class="k">with</span> <span class="n">session</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;http://localhost/events&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">resp</span><span class="p">:</span>
+            <span class="k">async</span> <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">resp</span><span class="o">.</span><span class="n">content</span><span class="p">:</span>
+                <span class="n">s</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span><span class="o">.</span><span class="n">rstrip</span><span class="p">()</span>
+                <span class="k">if</span> <span class="n">s</span><span class="p">:</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;收到:&quot;</span><span class="p">,</span> <span class="n">s</span><span class="p">)</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<p>先跑 server 再跑 client，客户端会陆续打印出服务端推来的 <code>event: config</code> / <code>data: version=0..2</code>。想用 <code>curl</code> 验一下也行：<code>curl --unix-socket /tmp/sse_demo.sock http://localhost/events</code>。<strong>注意 SSE 是单向的</strong>——反方向要给服务端发东西，还得另开一个普通 HTTP 请求。</p>
+<p><strong>第二档：WebSocket over UDS（真双向）</strong></p>
+<p>WebSocket 靠一次 HTTP <code>Upgrade</code> 握手把连接升级成全双工，之后两头随时收发。<code>aiohttp</code> 的服务端和客户端都自带 WS 支持，同样跑在 socket 文件上：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># ws_server.py —— 双向：收到什么回什么（真实场景可主动 push）</span>
+<span class="kn">import</span> <span class="nn">asyncio</span><span class="o">,</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">aiohttp</span>
+<span class="kn">from</span> <span class="nn">aiohttp</span> <span class="kn">import</span> <span class="n">web</span>
+
+<span class="n">SOCK</span> <span class="o">=</span> <span class="s2">&quot;/tmp/ws_demo.sock&quot;</span>
+
+<span class="k">async</span> <span class="k">def</span> <span class="nf">ws_handler</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="n">ws</span> <span class="o">=</span> <span class="n">web</span><span class="o">.</span><span class="n">WebSocketResponse</span><span class="p">()</span>
+    <span class="k">await</span> <span class="n">ws</span><span class="o">.</span><span class="n">prepare</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>                <span class="c1"># 完成 Upgrade 握手</span>
+    <span class="k">async</span> <span class="k">for</span> <span class="n">msg</span> <span class="ow">in</span> <span class="n">ws</span><span class="p">:</span>                     <span class="c1"># 持续收客户端消息</span>
+        <span class="k">if</span> <span class="n">msg</span><span class="o">.</span><span class="n">type</span> <span class="o">==</span> <span class="n">aiohttp</span><span class="o">.</span><span class="n">WSMsgType</span><span class="o">.</span><span class="n">TEXT</span><span class="p">:</span>
+            <span class="k">await</span> <span class="n">ws</span><span class="o">.</span><span class="n">send_str</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;echo: </span><span class="si">{</span><span class="n">msg</span><span class="o">.</span><span class="n">data</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>   <span class="c1"># 也能随时主动 send</span>
+            <span class="k">if</span> <span class="n">msg</span><span class="o">.</span><span class="n">data</span> <span class="o">==</span> <span class="s2">&quot;bye&quot;</span><span class="p">:</span>
+                <span class="k">await</span> <span class="n">ws</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">ws</span>
+
+<span class="k">async</span> <span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+    <span class="n">app</span> <span class="o">=</span> <span class="n">web</span><span class="o">.</span><span class="n">Application</span><span class="p">()</span>
+    <span class="n">app</span><span class="o">.</span><span class="n">router</span><span class="o">.</span><span class="n">add_get</span><span class="p">(</span><span class="s2">&quot;/ws&quot;</span><span class="p">,</span> <span class="n">ws_handler</span><span class="p">)</span>
+    <span class="n">runner</span> <span class="o">=</span> <span class="n">web</span><span class="o">.</span><span class="n">AppRunner</span><span class="p">(</span><span class="n">app</span><span class="p">)</span>
+    <span class="k">await</span> <span class="n">runner</span><span class="o">.</span><span class="n">setup</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">SOCK</span><span class="p">):</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">SOCK</span><span class="p">)</span>
+    <span class="k">await</span> <span class="n">web</span><span class="o">.</span><span class="n">UnixSite</span><span class="p">(</span><span class="n">runner</span><span class="p">,</span> <span class="n">SOCK</span><span class="p">)</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Event</span><span class="p">()</span><span class="o">.</span><span class="n">wait</span><span class="p">()</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="c1"># ws_client.py —— 双向：能发也能收</span>
+<span class="kn">import</span> <span class="nn">asyncio</span><span class="o">,</span> <span class="nn">aiohttp</span>
+
+<span class="n">SOCK</span> <span class="o">=</span> <span class="s2">&quot;/tmp/ws_demo.sock&quot;</span>
+
+<span class="k">async</span> <span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+    <span class="n">conn</span> <span class="o">=</span> <span class="n">aiohttp</span><span class="o">.</span><span class="n">UnixConnector</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="n">SOCK</span><span class="p">)</span>
+    <span class="k">async</span> <span class="k">with</span> <span class="n">aiohttp</span><span class="o">.</span><span class="n">ClientSession</span><span class="p">(</span><span class="n">connector</span><span class="o">=</span><span class="n">conn</span><span class="p">)</span> <span class="k">as</span> <span class="n">session</span><span class="p">:</span>
+        <span class="k">async</span> <span class="k">with</span> <span class="n">session</span><span class="o">.</span><span class="n">ws_connect</span><span class="p">(</span><span class="s2">&quot;http://localhost/ws&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">ws</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">text</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;hello&quot;</span><span class="p">,</span> <span class="s2">&quot;world&quot;</span><span class="p">,</span> <span class="s2">&quot;bye&quot;</span><span class="p">):</span>
+                <span class="k">await</span> <span class="n">ws</span><span class="o">.</span><span class="n">send_str</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+                <span class="n">reply</span> <span class="o">=</span> <span class="k">await</span> <span class="n">ws</span><span class="o">.</span><span class="n">receive</span><span class="p">()</span>
+                <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;收到:&quot;</span><span class="p">,</span> <span class="n">reply</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<p>跑起来客户端会打印 <code>echo: hello</code> / <code>echo: world</code> / <code>echo: bye</code>。对比一下就能体会差别：<strong>SSE 里客户端只能收，WebSocket 里 <code>send_str</code> 和 <code>receive</code> 两个方向都有</strong>——这就是"半双工问答"和"全双工对话"的实感差距。</p>
+<p>两段代码都只有一个地方跟"跑在 TCP 上"不同：服务端用 <code>UnixSite(runner, SOCK)</code>、客户端用 <code>UnixConnector(path=SOCK)</code>。<strong>这也再次印证前面那句——UDS 是全双工的，双向能不能做，取决于你在它上面铺的是 SSE 还是 WebSocket，跟 UDS 本身无关。</strong></p>
+<hr>
+<h2 id="_2">五、四种组合，横向拉平了比</h2>
+<p>把前面的分析收进一张表，维度按边车场景最关心的几项排。</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>HTTP/JSON over TCP</th>
+<th>gRPC over TCP</th>
+<th>HTTP over UDS</th>
+<th>gRPC over UDS</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>序列化开销</td>
+<td>高（JSON）</td>
+<td>低（Protobuf）</td>
+<td>高（JSON）</td>
+<td>低（Protobuf）</td>
+</tr>
+<tr>
+<td>传输通道开销</td>
+<td>高（IP 栈）</td>
+<td>高（IP 栈）</td>
+<td>低（无 IP 栈）</td>
+<td>低（无 IP 栈）</td>
+</tr>
+<tr>
+<td>同机延迟</td>
+<td>一般</td>
+<td>较好</td>
+<td>好</td>
+<td>最好</td>
+</tr>
+<tr>
+<td>可调试性</td>
+<td>最好（curl 直连）</td>
+<td>差（要工具）</td>
+<td>一般（curl 需 --unix-socket）</td>
+<td>差（要工具）</td>
+</tr>
+<tr>
+<td>跨语言契约</td>
+<td>弱（靠约定）</td>
+<td>强（.proto）</td>
+<td>弱</td>
+<td>强</td>
+</tr>
+<tr>
+<td>流式支持</td>
+<td>单向可（SSE）；真双向需 WebSocket</td>
+<td>强</td>
+<td>单向可（SSE）；真双向需 WebSocket</td>
+<td>强</td>
+</tr>
+<tr>
+<td>运维复杂度</td>
+<td>最低</td>
+<td>中</td>
+<td>中（socket 文件管理）</td>
+<td>中偏高</td>
+</tr>
+<tr>
+<td>访问控制</td>
+<td>端口，同机可连</td>
+<td>端口，同机可连</td>
+<td>文件权限，可精细</td>
+<td>文件权限，可精细</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>别把表里的 "HTTP over UDS" 看窄了</strong>：它是<strong>一整列</strong>，已经把第四节的 <strong>SSE over UDS 和 WebSocket over UDS 都算在内</strong>——SSE 是 HTTP 的流式响应，WebSocket 是 HTTP <code>Upgrade</code> 后的全双工，通道都是 UDS。所以这一列不是"只能一问一答的 HTTP"，而是"跑在 UDS 上的 HTTP 家族"：默认请求-响应，要单向推用 SSE，要真双向用 WebSocket。gRPC 两列同理，普通调用和双向流都在内。</p>
+</blockquote>
+<p>读表的窍门：<strong>从右往左看是"性能优先"，从左往右看是"省心优先"。</strong> 大多数团队的起点在最左，终点很少需要到最右——多数场景，往中间挪一格（换通道 or 换协议）就够了。</p>
+<p>用做饭打个比方：<strong>HTTP over TCP 是外卖</strong>——通用、谁都会点、出问题好排查，但每次都要经过平台、骑手绕一圈。<strong>gRPC over UDS 是自家厨房现炒</strong>——最快最省，但你得先把厨房建好、把食材备齐（工具链、socket 管理）。中间两种，是"点了外卖但让骑手抄近道"或"在楼下便利店热个饭"。<strong>没有哪种绝对好，看你饿到什么程度、有没有精力开火。</strong></p>
+<hr>
+<h2 id="_3">六、真实场景该怎么选：给几条能直接用的判断</h2>
+<p>落到具体场景，按"从省心到极致性能"排开。</p>
+<p><strong>场景 A：边车只是偶尔调一下主服务（低频、报文不大）</strong>
+→ <strong>HTTP/JSON over TCP，别折腾。</strong> 比如边车做个偶发的健康检查、拉个配置。这点流量，UDS 省下的那点开销你根本感知不到，而 <code>curl http://127.0.0.1:8080</code> 能直接调试的便利，是实打实的生产力。<strong>过早优化通信通道，是给自己挖坑。</strong></p>
+<p><strong>场景 B：边车和主服务高频通信（每请求都要过一遍，比如 Mesh 数据面代理、旁挂鉴权/加密）</strong>
+→ <strong>优先把通道换成 UDS，协议先不动。</strong> 这是投入产出比最高的一步：改动小（多数框架就是把监听地址从 <code>host:port</code> 换成 <code>unix:/path/to.sock</code>），收益直接（省掉每次请求的协议栈开销），尾延迟改善明显。<strong>Envoy、Istio 在数据面就是这么做的。</strong></p>
+<p><strong>场景 C：跨语言、接口复杂、字段多、还要流式</strong>
+→ <strong>上 gRPC。</strong> 强类型契约省下的联调和维护成本，比性能更值钱。同机部署的话，<strong>再把通道配成 UDS</strong>，一步到位。Envoy ↔ 控制面的 xDS 就是这个组合的经典案例。</p>
+<p><strong>场景 D：需要双向通信（边车主动推、双方持续对话）</strong>
+→ <strong>看双向的强度选（详见第四节）。</strong> 只是服务端单向推 → 现有 HTTP over UDS 加个 <strong>SSE</strong> 就够；要真双向又想少改架构 → <strong>WebSocket over UDS</strong>；要双向 + 强类型 + 高性能 → <strong>gRPC over UDS 一步到位</strong>。<strong>别在 HTTP/1.1 上用长轮询硬凑双向，那是给未来的自己埋雷。</strong></p>
+<p><strong>场景 E：既要高性能，又要方便运维/开发插进去看一眼</strong>
+→ 折中：主链路走 gRPC/UDS 保性能，另外暴露一个 HTTP/TCP 调试端口（只读、按需开）。<strong>别为了极致性能把可观测性和可调试性全砍掉——半夜排障时你会哭。</strong></p>
+<p>一条压过所有场景的原则：</p>
+<blockquote>
+<p><strong>先问这条通信路径"热不热"。冷路径（低频）怎么省心怎么来，HTTP/TCP 就行；热路径（高频）先换 UDS 通道拿最大收益，报文复杂再叠加 gRPC。</strong>
+反过来做——上来就为一条冷路径上 gRPC over UDS——纯属自找麻烦。</p>
+</blockquote>
+<hr>
+<h2 id="uds_1">七、选 UDS 之前，先知道这几个坑</h2>
+<p>UDS 好归好，不是白捡的。下面几个是真实会绊倒人的地方：</p>
+<ul>
+<li><strong>socket 文件的生命周期</strong>：进程崩溃后，<code>.sock</code> 文件可能残留，导致下次启动 <code>bind</code> 报 "address already in use"。启动前要清理，或用 <code>SO_REUSEADDR</code> 之类的处理。</li>
+<li><strong>权限与属主</strong>：两个容器共享 socket 文件，得保证挂载的 volume 权限对得上（同一个 uid/gid 或合适的 group），否则连不上。容器场景这里最容易踩。</li>
+<li><strong>共享卷的挂载</strong>：同 Pod 两容器要走 UDS，得把 socket 所在目录挂成 <code>emptyDir</code> 共享卷，两边都挂上。</li>
+<li><strong>不能跨机器</strong>：这是废话但常有人忘——UDS 只在同一台机器内有效。哪天你把边车和主服务拆到两台机器，代码里写死的 UDS 路径就得改回 TCP。<strong>所以最好把"用 TCP 还是 UDS"做成配置项，别硬编码。</strong></li>
+<li><strong>可观测性变难</strong>：<code>tcpdump</code> 抓不到 UDS 流量（它不走网络栈），得用 <code>strace</code>、<code>socat</code> 或专门工具。调试心智成本会上升。</li>
+</ul>
+<p>一句话：</p>
+<blockquote>
+<p><strong>UDS 用文件权限换来了安全和性能，也用文件的麻烦换走了网络的通用。把通道做成可配置的，是给未来的自己留后路。</strong></p>
+</blockquote>
+<hr>
+<h2 id="_4">最后一句</h2>
+<p>回到开头那个画面：隔壁工位的同事，别再给他发邮件了。</p>
+<p>同机通信这件事，说到底就一句话——<strong>数据不出机器，就别让它假装出趟门。</strong> HTTP over TCP 通用省心，是不错的起点；真到了高频热路径，把通道换成 UDS 是性价比最高的一招；跨语言、结构复杂再叠加 gRPC 的契约与序列化优势；两头好处都想要，就是 gRPC over UDS。</p>
+<p>但请记住：<strong>最快的方案，不一定是你现在最该选的方案。</strong> 先量清楚你的路径热不热，再决定要不要为它开火下厨。</p>
+<h4 id="_5">行动清单</h4>
+<ul>
+<li>[ ] 先分清两层：你要改的是<strong>协议</strong>（HTTP/gRPC）还是<strong>通道</strong>（TCP/UDS）？</li>
+<li>[ ] 给关键通信路径打上"冷/热"标签，只优化热路径。</li>
+<li>[ ] 热路径优先尝试<strong>把 TCP 换成 UDS</strong>——改动小、收益直接。</li>
+<li>[ ] 迁移图省事、又基本单向 → <strong>HTTP over UDS + SSE</strong>；预感到"真双向"躲不掉 → 起点直接选 <strong>gRPC over UDS</strong>，别中途换赛道。</li>
+<li>[ ] 压测用真实报文大小和频率，重点看 <strong>P99 尾延迟</strong>，别只看平均 QPS。</li>
+<li>[ ] 通道（TCP/UDS）做成<strong>配置项</strong>，别硬编码，给未来跨机部署留路。</li>
+<li>[ ] UDS 场景检查：socket 文件清理、共享卷挂载、容器间权限、属主。</li>
+<li>[ ] 无论走哪条路，<strong>保留一个可开关的调试入口</strong>，别把可观测性优化没了。</li>
+</ul>
+<h2 id="_6">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* 边车通信怎么选
+** 分两层
+*** 协议：HTTP vs gRPC（序列化+语义）
+*** 通道：TCP 环回 vs UDS（字节怎么跨进程）
+*** 可自由组合，通道收益更直接
+** UDS 省在哪
+*** 无 IP 头、无 TCP 分段、无校验和、无拥塞控制
+*** 内核内存搬运，不占端口
+*** 文件权限做访问控制
+*** 小报文高频最占便宜，看 P99
+** gRPC 值钱在哪
+*** .proto 强类型契约、跨语言
+*** Protobuf 序列化又小又快
+*** 同机优势主要来自序列化，非 HTTP/2
+*** 一样能走 UDS
+** HTTP over UDS
+*** 迁移最省心，只换地址不改语义
+*** 坎：HTTP/1.1 半双工，双向难
+*** SSE=HTTP 的一种用法，ChatGPT 流式就是它
+*** 有来有回=两条腿：SSE 下行 + HTTP 上行
+*** HTTP+SSE 的坑：长连接独占、上下行要自己关联
+*** 还要自己做心跳/重连、防代理缓冲、算资源账
+*** HTTP/1.1 占死连接，要好用得上 HTTP/2
+*** 纯问答 → 普通 HTTP；下行为主 → HTTP+SSE
+*** 上行也重/要严格关联 → WebSocket
+*** 双向+契约+性能 → gRPC over UDS
+** 怎么选
+*** 冷路径 → HTTP over TCP
+*** 热路径 → 先换 UDS 通道
+*** 跨语言复杂流式 → gRPC
+*** 极致 → gRPC over UDS
+** UDS 的坑
+*** socket 文件残留
+*** 容器权限与共享卷
+*** 不能跨机，做成配置
+*** tcpdump 抓不到，调试变难
+@endmindmap
+</code></pre></div>
+
+<p><img alt="边车通信怎么选 - 思维导图" src="./images/tech_20260802_sidecar-ipc-protocol_mindmap.png"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/2026-08-02-sidecar-ipc-protocol.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/journal.html">journal</a>
+      <a href="https://www.fanyamin.com/blog/tag/sidecar.html">sidecar</a>
+      <a href="https://www.fanyamin.com/blog/tag/grpc.html">grpc</a>
+      <a href="https://www.fanyamin.com/blog/tag/http.html">http</a>
+      <a href="https://www.fanyamin.com/blog/tag/uds.html">uds</a>
+      <a href="https://www.fanyamin.com/blog/tag/service-mesh.html">service-mesh</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-08-01-dpop-deep-dive.html" title="DPoP 详解:给浏览器里的令牌也上一把“偷不走”的锁">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/2026-08-02-mcp-2026-stateless-spec.html" title="MCP 大改版：从"打电话"变成"发快递"，附一个高德天气 MCP Server">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/2026-08-02-building-effective-agents.html">重读《Building Effective Agents》：怎么才算构建了一个"高效"的 AI Agent</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-02-mcp-2026-stateless-spec.html">MCP 大改版：从"打电话"变成"发快递"，附一个高德天气 MCP Server</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-01-dpop-deep-dive.html">DPoP 详解:给浏览器里的令牌也上一把“偷不走”的锁</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-01-pop-and-certificate-bound-token.html">令牌被偷了也白搭：说清楚 PoP 与证书绑定令牌</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-01-build-your-own-sts.html">给微服务造一个 STS：像 AWS 一样发放临时凭证</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,849 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="把 K8s 集群想成一座城：apiserver 是市政大厅，etcd 是档案馆存着所有户口和钥匙，kubelet 是每个街区的物业管家。攻击者很少一步登天，更多是从一个不起眼的 Pod 开始，一格一格往上爬，直到拿到&#34;城主令牌&#34; cluster-admin。这篇借 ControlPlane 与 Kubernetes 官方安全审计的威胁模型，用 STRIDE 逐个拆解核心组件的风险，再画一棵&#34;从一个 Pod 打到集群管理员&#34;的攻击树，最后给一份能照着做的加固清单。" />
+<meta name="keywords" content="kubernetes, security, threat-modeling, attack-tree, k8s, cloud-native, STRIDE">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "K8s 是怎么被攻破的：威胁模型与攻击树入门",
+  "description": "把 K8s 集群想成一座城：apiserver 是市政大厅，etcd 是档案馆存着所有户口和钥匙，kubelet 是每个街区的物业管家。攻击者很少一步登天，更多是从一个不起眼的 Pod 开始，一格一格往上爬，直到拿到&#34;城主令牌&#34; cluster-admin。这篇借 ControlPlane 与 Kubernetes 官方安全审计的威胁模型，用 STRIDE 逐个拆解核心组件的风险，再画一棵&#34;从一个 Pod 打到集群管理员&#34;的攻击树，最后给一份能照着做的加固清单。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-07-29T16:20:00+08:00",
+  "dateModified": "2026-07-29T16:20:00+08:00",
+  "url": "https://www.fanyamin.com/blog/k8s-threat-model-attack-tree.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/k8s-threat-model-attack-tree.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "kubernetes, security, threat-modeling, attack-tree, k8s, cloud-native, STRIDE"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="K8s 是怎么被攻破的：威胁模型与攻击树入门"/>
+  <meta property="og:description" content="把 K8s 集群想成一座城：apiserver 是市政大厅，etcd 是档案馆存着所有户口和钥匙，kubelet 是每个街区的物业管家。攻击者很少一步登天，更多是从一个不起眼的 Pod 开始，一格一格往上爬，直到拿到&#34;城主令牌&#34; cluster-admin。这篇借 ControlPlane 与 Kubernetes 官方安全审计的威胁模型，用 STRIDE 逐个拆解核心组件的风险，再画一棵&#34;从一个 Pod 打到集群管理员&#34;的攻击树，最后给一份能照着做的加固清单。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/k8s-threat-model-attack-tree.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-07-29 16:20:00+08:00"/>
+  <meta property="article:modified_time" content="2026-07-29 16:20:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="kubernetes"/>
+  <meta property="article:tag" content="security"/>
+  <meta property="article:tag" content="threat-modeling"/>
+  <meta property="article:tag" content="attack-tree"/>
+  <meta property="article:tag" content="k8s"/>
+  <meta property="article:tag" content="cloud-native"/>
+  <meta property="article:tag" content="STRIDE"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; K8s 是怎么被攻破的：威胁模型与攻击树入门</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="k8s-threat-model-attack-tree">K8s 是怎么被攻破的：威胁模型与攻击树入门</h1>
+    <p>
+      Posted on 三 29 7月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>K8s 是怎么被攻破的：威胁模型与攻击树入门</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Cloud Native Security</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-07-29</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h1 id="k8s">K8s 是怎么被攻破的：威胁模型与攻击树入门</h1>
+<p>前阵子帮团队看一个 K8s 集群的安全，我发现一个有意思的现象：大家都在装各种扫描器、连各种告警，可要是问一句"攻击者到底会怎么打进来、一步步走到哪一步"，多半答不上来。</p>
+<p>这就有点像家里装了一屋子摄像头，却没想过"小偷最可能从哪扇窗户进"。<strong>工具是"术"，威胁模型才是"道"。</strong> 你得先知道对手会怎么想，才知道该把钱花在哪把锁上。</p>
+<p>这篇咱们不堆工具，就聊两件事：<strong>K8s 的威胁模型</strong>（这座"城"有哪些门、哪些墙、哪些值钱东西），以及<strong>攻击树</strong>（攻击者从一个小 Pod 出发，怎么一格一格爬到"城主"）。内容主要参考 <a href="https://control-plane.io/threat-modelling/">ControlPlane 为 CNCF 做的 Kubernetes 威胁模型</a>，以及 <a href="https://github.com/kubernetes/sig-security/tree/main/sig-security-external-audit/security-audit-2019/findings">Kubernetes 官方 2019 年的安全审计</a>（含官方的《Attacking Kubernetes》攻击树和威胁模型报告）——都是公开、权威的资料，我尽量翻成大白话。</p>
+<blockquote>
+<p>提醒：本文是<strong>防御视角</strong>的科普，讲清"攻击者会怎么想"是为了知道"我该怎么守"。所有内容用于加固自己的系统，别拿去干坏事。</p>
+</blockquote>
+<hr>
+<h2 id="_1">先把这座"城"画出来</h2>
+<p>要谈威胁，先得知道保护的是什么。K8s 的核心组件，我用一座城来打比方：</p>
+<div class="highlight"><pre><span></span><code>flowchart TB
+  subgraph CP[&quot;控制平面 Control Plane（市中心）&quot;]
+    API[&quot;kube-apiserver&lt;br/&gt;市政大厅：所有请求的唯一入口&quot;]
+    ETCD[&quot;etcd&lt;br/&gt;档案馆：存着全部配置和 Secrets&quot;]
+    SCHED[&quot;scheduler&lt;br/&gt;调度局：决定 Pod 去哪个节点&quot;]
+    CM[&quot;controller-manager&lt;br/&gt;执法队：让现状逼近期望状态&quot;]
+    API &lt;--&gt; ETCD
+    API &lt;--&gt; SCHED
+    API &lt;--&gt; CM
+  end
+
+  subgraph N1[&quot;工作节点 Node（一个街区）&quot;]
+    KUBELET[&quot;kubelet&lt;br/&gt;物业管家：管本街区的 Pod&quot;]
+    PROXY[&quot;kube-proxy&lt;br/&gt;门卫：管网络转发&quot;]
+    CRI[&quot;容器运行时 containerd&lt;br/&gt;包工头：真正把容器跑起来&quot;]
+    POD1[&quot;Pod&lt;br/&gt;租户：你的业务容器&quot;]
+    KUBELET --&gt; CRI --&gt; POD1
+    KUBELET --&gt; PROXY
+  end
+
+  USER[&quot;开发者 / CI&lt;br/&gt;（拿 kubeconfig 的人）&quot;] --&gt;|kubectl / HTTPS| API
+  API --&gt;|下发指令| KUBELET
+
+  classDef cp fill:#1E3A5F,stroke:#12263a,color:#fff;
+  classDef node fill:#E8F4EA,stroke:#2C7A3F,color:#1a1a1a;
+  classDef ext fill:#FCF3CF,stroke:#B7950B,color:#1a1a1a;
+  class API,ETCD,SCHED,CM cp;
+  class KUBELET,PROXY,CRI,POD1 node;
+  class USER ext;
+</code></pre></div>
+
+<p>几个关键角色，记住它们的"身份"，后面攻击树全靠它们：</p>
+<ul>
+<li><strong>kube-apiserver（市政大厅）</strong>：整个集群唯一的正门。所有人——开发者、其他组件、每个节点——都得通过它办事。它管三件事：<strong>认证</strong>（你是谁）、<strong>鉴权</strong>（你能干啥）、<strong>准入控制</strong>（这事合不合规矩）。攻破它，基本等于拿下全城。</li>
+<li><strong>etcd（档案馆）</strong>：一个键值数据库，存着集群的全部状态——包括<strong>所有的 Secrets</strong>（数据库密码、Token、证书）。注意：K8s 里的 Secret 默认只是 <strong>base64 编码</strong>，不是加密。谁能直接读 etcd，谁就拿到了全城的钥匙串。</li>
+<li><strong>kubelet（物业管家）</strong>：每个节点上都有一个，负责按 apiserver 的指令把 Pod 跑起来。它有个要命的接口，后面会讲。</li>
+<li><strong>容器运行时（包工头）</strong>：真正干活的，比如 containerd。容器"逃逸"到宿主机，逃的就是它这一层。</li>
+<li><strong>kubeconfig / ServiceAccount Token（通行证）</strong>：人用 kubeconfig，Pod 用 ServiceAccount Token。这些"通行证"一旦泄露，攻击者就能冒充你办事。</li>
+</ul>
+<p>一句话：<strong>K8s 安全的核心，就是守住 apiserver 这道正门、看住 etcd 这本账、别让通行证乱跑。</strong></p>
+<hr>
+<h2 id="stride">威胁模型：用 STRIDE 给每个组件"过筛子"</h2>
+<p>知道有哪些资产后，怎么系统地想"它们会遭什么罪"？业界常用一个叫 <strong>STRIDE</strong> 的清单——它是六类威胁的首字母，你可以理解成给每个组件挨个问六个问题：</p>
+<table>
+<thead>
+<tr>
+<th>字母</th>
+<th>威胁</th>
+<th>一句话理解</th>
+<th>K8s 里的典型例子</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>S</strong></td>
+<td>Spoofing 假冒</td>
+<td>有人冒充别人</td>
+<td>伪造 ServiceAccount Token 冒充某个 Pod</td>
+</tr>
+<tr>
+<td><strong>T</strong></td>
+<td>Tampering 篡改</td>
+<td>数据被偷改</td>
+<td>直接改 etcd 里的对象；篡改镜像</td>
+</tr>
+<tr>
+<td><strong>R</strong></td>
+<td>Repudiation 抵赖</td>
+<td>干了坏事不认账</td>
+<td>关掉审计日志，事后查无对证</td>
+</tr>
+<tr>
+<td><strong>I</strong></td>
+<td>Information Disclosure 泄露</td>
+<td>该保密的看见了</td>
+<td>从 etcd / 环境变量里读出 Secrets</td>
+</tr>
+<tr>
+<td><strong>D</strong></td>
+<td>Denial of Service 拒绝服务</td>
+<td>把服务打瘫</td>
+<td>一个 Pod 吃光节点资源，拖垮 kubelet</td>
+</tr>
+<tr>
+<td><strong>E</strong></td>
+<td>Elevation of Privilege 提权</td>
+<td>小权限变大权限</td>
+<td>从普通 Pod 一路爬到 cluster-admin</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>STRIDE 不是让你背首字母，而是给你一副"防御眼镜"</strong>：看到任何一个组件，就挨个问"它会不会被假冒、被篡改、被抵赖、被泄露、被打瘫、被提权"。</p>
+</blockquote>
+<p>下面挑三个最要害的组件，戴上这副眼镜看看。</p>
+<h3 id="apiserver">apiserver：守好正门这一关</h3>
+<p>apiserver 是唯一入口，所以它的<strong>认证 → 鉴权 → 准入</strong>三道关，任何一道松了都出大事：</p>
+<ul>
+<li><strong>Spoofing / Elevation</strong>：如果 RBAC（基于角色的权限控制）配得太松——比如给某个 ServiceAccount 绑了 <code>cluster-admin</code>——那这个身份被偷了就等于全盘皆输。<strong>最常见的翻车不是被"攻破"，而是权限本来就给大了。</strong></li>
+<li><strong>Information Disclosure</strong>：早期集群允许<strong>匿名访问</strong>（<code>--anonymous-auth=true</code>）或开放未授权的只读端口，等于正门虚掩。</li>
+<li><strong>Denial of Service</strong>：apiserver 被海量请求打满，整个集群就"失联"了——所有组件都靠它协调。</li>
+</ul>
+<h3 id="etcd">etcd：这本账最值钱</h3>
+<p>官方审计里反复强调：<strong>etcd 的数据分类是 Critical。</strong> 因为它存着一切，尤其是 Secrets。</p>
+<ul>
+<li><strong>Information Disclosure</strong>：如果 etcd 没开加密（<code>--encryption-provider-config</code>），或者备份文件随手扔在某个没人管的对象存储里，那<strong>一份 etcd 快照 = 全城钥匙</strong>。</li>
+<li><strong>Tampering</strong>：能直接写 etcd，就能凭空造出一个 cluster-admin 绑定，绕过 apiserver 所有的准入检查。</li>
+<li>所以 etcd 必须：<strong>只让 apiserver 访问、双向 TLS、静态加密、备份也要加密。</strong></li>
+</ul>
+<h3 id="kubelet">kubelet：那个"要命的接口"</h3>
+<p>kubelet 有个历史包袱：它自带一个 API（默认 10250 端口），能执行 <code>exec</code>（进容器执行命令）、读日志、列 Pod。官方审计里明确写了，kubelet 到 apiserver 之间<strong>默认可以不校验证书</strong>——配置不当时，这个端口若开放了未授权访问，攻击者就能直接命令 kubelet 去任意 Pod 里执行命令。</p>
+<ul>
+<li><strong>Elevation</strong>：拿下 kubelet ≈ 拿下这个节点上所有 Pod，包括别人的、可能权限更高的 Pod。</li>
+<li>防御要点：<strong>kubelet 开启鉴权与认证</strong>（<code>--authorization-mode=Webhook</code>、<code>--anonymous-auth=false</code>），关掉不必要的只读端口。</li>
+</ul>
+<hr>
+<h2 id="pod">攻击树：从一个 Pod 爬到"城主"</h2>
+<p>威胁模型告诉你"哪里有风险"，<strong>攻击树</strong>告诉你"攻击者会怎么把这些风险串成一条路"。</p>
+<p>攻击树的读法很简单：<strong>根节点是攻击者的终极目标，往下是达成它的各种途径，一层层拆到具体手法。</strong> 我们设一个最经典的目标——<strong>拿到 cluster-admin（当上城主）</strong>，看攻击者有哪些爬法：</p>
+<div class="highlight"><pre><span></span><code>flowchart TD
+  GOAL[&quot;🎯 终极目标&lt;br/&gt;拿到 cluster-admin&quot;]
+
+  GOAL --&gt; A[&quot;路径 A&lt;br/&gt;偷通行证&quot;]
+  GOAL --&gt; B[&quot;路径 B&lt;br/&gt;从 Pod 里往外爬&quot;]
+  GOAL --&gt; C[&quot;路径 C&lt;br/&gt;直捣档案馆 etcd&quot;]
+  GOAL --&gt; D[&quot;路径 D&lt;br/&gt;供应链下毒&quot;]
+
+  A --&gt; A1[&quot;翻到泄露的&lt;br/&gt;kubeconfig / Token&lt;br/&gt;（Git、日志、CI 变量）&quot;]
+  A --&gt; A2[&quot;RBAC 配太松&lt;br/&gt;普通身份能建高权绑定&quot;]
+
+  B --&gt; B1[&quot;攻破一个业务 Pod&lt;br/&gt;（Web 漏洞 / RCE）&quot;]
+  B1 --&gt; B2[&quot;读挂载的&lt;br/&gt;ServiceAccount Token&quot;]
+  B1 --&gt; B3[&quot;容器逃逸到宿主机&lt;br/&gt;（特权容器 / 挂了&lt;br/&gt;docker.sock / 内核漏洞）&quot;]
+  B2 --&gt; B4[&quot;Token 权限过大&lt;br/&gt;直接调 apiserver 提权&quot;]
+  B3 --&gt; B5[&quot;拿到节点&lt;br/&gt;= 拿到本节点所有 Pod&quot;]
+  B5 --&gt; B6[&quot;攻击 kubelet 10250&lt;br/&gt;横向到其他 Pod&quot;]
+
+  C --&gt; C1[&quot;etcd 未加认证 / 暴露&quot;]
+  C --&gt; C2[&quot;拿到 etcd 快照备份&quot;]
+  C1 --&gt; C3[&quot;直接读 / 写全部 Secrets&quot;]
+  C2 --&gt; C3
+
+  D --&gt; D1[&quot;恶意镜像 / 依赖&lt;br/&gt;混进流水线&quot;]
+  D --&gt; D2[&quot;被投毒的 Helm Chart&lt;br/&gt;/ Operator&quot;]
+
+  A1 --&gt; WIN[&quot;👑 达成&quot;]
+  A2 --&gt; WIN
+  B4 --&gt; WIN
+  B6 --&gt; WIN
+  C3 --&gt; WIN
+  D1 --&gt; WIN
+  D2 --&gt; WIN
+
+  classDef goal fill:#7B241C,stroke:#511414,color:#fff;
+  classDef win fill:#1E3A5F,stroke:#12263a,color:#fff;
+  class GOAL goal;
+  class WIN win;
+</code></pre></div>
+
+<p>真实世界里，<strong>最常走的是路径 B</strong>——攻击者很少一上来就能碰到 etcd 或偷到 admin 的 kubeconfig，更现实的是：先靠一个 Web 漏洞拿下一个不起眼的业务 Pod，然后：</p>
+<ol>
+<li><strong>读 Token</strong>：Pod 默认会把自己的 ServiceAccount Token 挂在 <code>/var/run/secrets/kubernetes.io/serviceaccount/</code> 里。攻击者第一件事就是读它。</li>
+<li><strong>看这个 Token 能干啥</strong>：如果它权限过大（比如能 <code>list secrets</code>、能 <code>create pod</code>），那基本就赢了一半。</li>
+<li><strong>尝试逃逸</strong>：如果这个 Pod 是<strong>特权容器</strong>（<code>privileged: true</code>）、或者挂载了宿主机的 <code>docker.sock</code>、或者挂了宿主机根目录，那攻击者能直接"逃"到宿主机，拿下整个节点。</li>
+<li><strong>横向移动</strong>：拿下一个节点后，通过 kubelet 去碰这个节点上<strong>别人的</strong> Pod——其中说不定就有个权限大的。</li>
+</ol>
+<p>你看，每一步都不算"高深漏洞"，但<strong>一串小疏忽连起来，就是一条从 Pod 到城主的通天梯</strong>。这正是攻击树的价值：它逼你看清那条"链"，而不是只盯着单个孤立的洞。</p>
+<hr>
+<h2 id="_2">信任边界：真正该设防的那几道"墙"</h2>
+<p>把攻击树倒过来看，就知道钱该花在哪。K8s 里最关键的几道<strong>信任边界</strong>（trust boundary，即"跨过这条线就该重新验明正身"的地方）：</p>
+<div class="highlight"><pre><span></span><code>flowchart LR
+  EXT[&quot;外部世界&lt;br/&gt;用户 / 互联网&quot;]
+  POD[&quot;Pod 内部&quot;]
+  NODE[&quot;宿主机节点&quot;]
+  CP[&quot;控制平面&quot;]
+
+  EXT -.-&gt;|&quot;墙①&lt;br/&gt;认证+RBAC&quot;| CP
+  POD -.-&gt;|&quot;墙②&lt;br/&gt;容器隔离&lt;br/&gt;防逃逸&quot;| NODE
+  NODE -.-&gt;|&quot;墙③&lt;br/&gt;kubelet 鉴权&quot;| CP
+  CP -.-&gt;|&quot;墙④&lt;br/&gt;只有 apiserver&lt;br/&gt;能碰 etcd&quot;| ETCD[&quot;etcd&quot;]
+
+  classDef b fill:#FCF3CF,stroke:#B7950B,color:#1a1a1a;
+  class EXT,POD,NODE,CP,ETCD b;
+</code></pre></div>
+
+<ul>
+<li><strong>墙① 外部 → 控制平面</strong>：靠认证 + RBAC。这是最常被配松的一道。</li>
+<li><strong>墙② Pod → 宿主机</strong>：靠容器隔离，防的就是"逃逸"。别用特权容器、别乱挂 hostPath 和 socket。</li>
+<li><strong>墙③ 节点 → 控制平面</strong>：靠 kubelet 鉴权，防的是"拿下一个节点后进一步渗透控制平面"。</li>
+<li><strong>墙④ 控制平面 → etcd</strong>：这本账只能让 apiserver 碰，且必须加密。</li>
+</ul>
+<hr>
+<h2 id="_3">加固清单：照着做，堵住攻击树上的主要路径</h2>
+<p>不求一步到位，按"性价比"排了个序，从最容易翻车、最好补的开始：</p>
+<p><strong>第一优先级（几乎人人该做）</strong></p>
+<ul>
+<li>[ ] <strong>RBAC 最小权限</strong>：别乱给 <code>cluster-admin</code>；给 ServiceAccount 的权限按需最小化。定期审一遍谁绑了高权角色。</li>
+<li>[ ] <strong>默认不挂 Token</strong>：Pod 用不到 apiserver 就设 <code>automountServiceAccountToken: false</code>，直接砍掉攻击树路径 B 的第一步。</li>
+<li>[ ] <strong>禁掉特权容器</strong>：用准入控制（Pod Security Admission 的 <code>restricted</code> 级别）拦住 <code>privileged</code>、<code>hostPath</code>、<code>hostNetwork</code> 这些危险配置。</li>
+<li>[ ] <strong>别把 kubeconfig / Token 写进 Git、日志、CI 明文变量</strong>——这是路径 A 最常见的入口。</li>
+</ul>
+<p><strong>第二优先级（进阶加固）</strong></p>
+<ul>
+<li>[ ] <strong>etcd 静态加密 + 双向 TLS + 备份加密</strong>：守住那本最值钱的账。</li>
+<li>[ ] <strong>kubelet 关匿名、开鉴权</strong>：<code>--anonymous-auth=false</code>、<code>--authorization-mode=Webhook</code>。</li>
+<li>[ ] <strong>apiserver 关匿名访问、开审计日志</strong>：让攻击者"抵赖不掉"（对付 STRIDE 里的 R）。</li>
+<li>[ ] <strong>NetworkPolicy 做网络分段</strong>：默认 K8s 里 Pod 之间是全通的，加策略限制横向移动。</li>
+</ul>
+<p><strong>第三优先级（纵深防御）</strong></p>
+<ul>
+<li>[ ] <strong>镜像来源可信 + 签名验证</strong>：堵供应链路径 D。</li>
+<li>[ ] <strong>运行时检测</strong>（如 Falco 一类）：Pod 里突然读 Token、起 shell、连外网，能当场告警。</li>
+<li>[ ] <strong>定期跑威胁建模复盘</strong>：集群在变，威胁模型也得跟着更新——参考 ControlPlane 和官方审计，隔段时间重画一次你自己的攻击树。</li>
+</ul>
+<hr>
+<h2 id="_4">收个尾</h2>
+<p>安全这件事，最怕的不是"有漏洞"，而是"不知道自己在守什么、对手会怎么打"。</p>
+<p>威胁模型和攻击树的价值，就是把模糊的"不安全焦虑"，变成一张能指着说话的图：<strong>这是我们的城，这是几道门，这是对手最可能爬的那条梯子，我们先把这几格堵上。</strong></p>
+<p>咱们做工程的，都懂一个道理——<strong>先想清楚,再动手,比闷头装十个工具管用</strong>。K8s 安全也是一样：画出你自己的那棵攻击树，你就知道下一块钱该花在哪把锁上了。</p>
+<blockquote>
+<p>图难于其易，为大于其细。守一座城，从堵住那个不起眼的 Pod 开始。</p>
+</blockquote>
+<hr/>
+<p>参考资料：</p>
+<ul>
+<li>ControlPlane, <a href="https://control-plane.io/threat-modelling/">Kubernetes Threat Modelling</a></li>
+<li>Kubernetes SIG-Security, <a href="https://github.com/kubernetes/sig-security/tree/main/sig-security-external-audit/security-audit-2019/findings">2019 Security Audit（含 Threat Model 与 Attacking Kubernetes 攻击树）</a></li>
+<li>Kubernetes 官方文档, <a href="https://kubernetes.io/docs/tasks/administer-cluster/securing-a-cluster/">Securing a Cluster</a></li>
+</ul>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/k8s-threat-model-attack-tree.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/kubernetes.html">kubernetes</a>
+      <a href="https://www.fanyamin.com/blog/tag/security.html">security</a>
+      <a href="https://www.fanyamin.com/blog/tag/threat-modeling.html">threat-modeling</a>
+      <a href="https://www.fanyamin.com/blog/tag/attack-tree.html">attack-tree</a>
+      <a href="https://www.fanyamin.com/blog/tag/k8s.html">k8s</a>
+      <a href="https://www.fanyamin.com/blog/tag/cloud-native.html">cloud-native</a>
+      <a href="https://www.fanyamin.com/blog/tag/stride.html">STRIDE</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-07-28-acceptance-test-harness.html" title="验收用例，才是驾驭 AI 编码的那根缰绳">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/2026-07-29-ai-agent-incubator.html" title="AI Agent 孵化器：用一个父 Agent，批量造出贴身服务的子 Agent">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/k8s-ddd-domain-model.html">用 DDD 的眼光重看 Kubernetes：一堆 YAML 背后其实是一套领域模型</a></li>
+      <li><a href="https://www.fanyamin.com/blog/agent-box-chu-tan-cong-openclaw-xiao-long-xia-an-quan-wen-ti-tan-agent-sandbox.html">Agent Box 初探：从 OpenClaw 小龙虾安全问题谈 Agent Sandbox</a></li>
+      <li><a href="https://www.fanyamin.com/blog/zai-kubernetes-li-yong-cert-manager-venafi-zi-dong-qian-fa-he-lun-huan-zheng-shu.html">在 Kubernetes 里用 cert-manager + Venafi 自动签发和轮换证书</a></li>
+      <li><a href="https://www.fanyamin.com/blog/workload-identitybie-zai-ba-yun-shang-shen-fen-sai-jin-secret-li-liao.html">Workload Identity：别再把云上身份塞进 Secret 里了</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-01-25-eks-pod-iam-role.html">在 EKS 上给 Pod 绑 IAM Role：IRSA（ServiceAccount + OIDC）到底怎么回事</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

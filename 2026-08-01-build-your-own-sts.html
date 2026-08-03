@@ -1,0 +1,1190 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="微服务之间到底该怎么互相证明“我是谁、我能干什么”？本文借 AWS STS 的思路，拆开临时凭证的门道，对比 JWT+OIDC 与 AWS 式 AssumeRole 两条路线，并给出可以直接跑起来的最小实现。" />
+<meta name="keywords" content="journal, blog, security, microservices, sts, jwt, oauth">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "给微服务造一个 STS：像 AWS 一样发放临时凭证",
+  "description": "微服务之间到底该怎么互相证明“我是谁、我能干什么”？本文借 AWS STS 的思路，拆开临时凭证的门道，对比 JWT+OIDC 与 AWS 式 AssumeRole 两条路线，并给出可以直接跑起来的最小实现。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-08-01T21:20:00+08:00",
+  "dateModified": "2026-08-03T22:00:00+08:00",
+  "url": "https://www.fanyamin.com/blog/2026-08-01-build-your-own-sts.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/2026-08-01-build-your-own-sts.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "journal, blog, security, microservices, sts, jwt, oauth"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="给微服务造一个 STS：像 AWS 一样发放临时凭证"/>
+  <meta property="og:description" content="微服务之间到底该怎么互相证明“我是谁、我能干什么”？本文借 AWS STS 的思路，拆开临时凭证的门道，对比 JWT+OIDC 与 AWS 式 AssumeRole 两条路线，并给出可以直接跑起来的最小实现。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/2026-08-01-build-your-own-sts.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-08-01 21:20:00+08:00"/>
+  <meta property="article:modified_time" content="2026-08-03 22:00:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="journal"/>
+  <meta property="article:tag" content="blog"/>
+  <meta property="article:tag" content="security"/>
+  <meta property="article:tag" content="microservices"/>
+  <meta property="article:tag" content="sts"/>
+  <meta property="article:tag" content="jwt"/>
+  <meta property="article:tag" content="oauth"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 给微服务造一个 STS：像 AWS 一样发放临时凭证</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="2026-08-01-build-your-own-sts">给微服务造一个 STS：像 AWS 一样发放临时凭证</h1>
+    <p>
+      Posted on 六 01 8月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>给微服务造一个 STS：像 AWS 一样发放临时凭证</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>learning note</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-08-02</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<p>先说个我见过太多次的场景。</p>
+<p>两个微服务要互相调用，团队一合计：“简单，配个 API Key 呗。” 于是 A 服务的配置文件里躺着一串 <code>api-key: 8f3c...</code>，B 服务这边硬编码了同一串去做比对。上线那天风平浪静。半年后有人把配置提交进了 Git，又过了三个月这个 key 泄露了——但没人敢删，因为不知道还有哪几个服务在偷偷用它。最后的处理方式往往是：假装没看见。</p>
+<p>这就是<strong>长期静态凭证（long-lived static credential）</strong>的老毛病：发出去容易，收回来要命。它像一把配了无数副的家门钥匙，你既不知道钥匙在谁手里，也不敢随便换锁。</p>
+<p>AWS 早就想通了这件事，给出的答案叫 <strong>STS（Security Token Service，安全令牌服务）</strong>：不发长期钥匙，只发<strong>短命的、带权限范围的、能自动过期的临时凭证</strong>。这篇文章想聊的就是——<strong>咱们能不能给自己的微服务也造一个这样的 STS？造的时候有哪两条主流路线，各自的坑在哪？</strong></p>
+<ul>
+<li>想跳过背景直接看代码的，翻到“最小实现”那一节。</li>
+<li>想搞清楚该选 JWT 还是 AWS 式方案的，重点看“两条路线对比”那张表。</li>
+<li>好奇“服务之间自己商定、自己签发”这种做法行不行的，看第 4 节“去中心化 vs 中心化”。</li>
+</ul>
+<blockquote>
+<p>提示：本文出现的 JWT、OIDC、JWKS、mTLS 这些词，第一次出现时我都会用一句大白话解释。不写后端的读者也能顺下来，代码块可以跳过。</p>
+</blockquote>
+<hr>
+<h2 id="1-sts">1. 先把 STS 是什么讲清楚</h2>
+<p>AWS STS 本质上就干一件事：<strong>你拿一个身份证明来，我给你换一张有时效、有权限边界的临时通行证。</strong></p>
+<p>拿人话打个比方。你去大公司谈事，前台不会把大楼的万能钥匙给你，而是刷了你的身份证以后，打印一张<strong>访客贴纸</strong>：上面写着你的名字、能去的楼层（权限范围）、有效期到今天下班（过期时间）。贴纸丢了也不怕，明天就失效了;你想去没写的楼层，闸机直接拦下。</p>
+<p>STS 发的临时凭证，就是这张访客贴纸。它有三个关键属性，缺一不可：</p>
+<ul>
+<li><strong>短命（short-lived）</strong>：几分钟到几小时就过期。泄露了也只是“这几分钟有风险”，而不是“这辈子都有风险”。</li>
+<li><strong>带范围（scoped）</strong>：明确写清楚“能调哪些服务、能做哪些操作”。不是万能钥匙。</li>
+<li><strong>可验证（verifiable）</strong>：拿到凭证的一方，能独立确认它是真的、没被篡改、没过期——最好还不用每次都去问签发方。</li>
+</ul>
+<p>对照一下静态凭证，差别一目了然：</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>静态凭证（API Key / 密码）</th>
+<th>STS 临时凭证</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>生命周期</td>
+<td>长期有效，直到人工吊销</td>
+<td>分钟级/小时级自动过期</td>
+</tr>
+<tr>
+<td>泄露后果</td>
+<td>长期暴露，且难以定位使用方</td>
+<td>窗口极小，很快自动失效</td>
+</tr>
+<tr>
+<td>权限粒度</td>
+<td>往往一把钥匙走天下</td>
+<td>每次按需授权，最小权限</td>
+</tr>
+<tr>
+<td>轮换成本</td>
+<td>高，牵一发动全身</td>
+<td>天然轮换，无需协调</td>
+</tr>
+<tr>
+<td>审计</td>
+<td>难追踪谁在用</td>
+<td>每次签发都有记录</td>
+</tr>
+</tbody>
+</table>
+<p>一句话：<strong>静态凭证是“信任这把钥匙”，STS 是“信任这个签发中心”。</strong> 信任从“分散的秘密”收敛到了“一个中心 + 一套可验证的规则”。</p>
+<hr>
+<h2 id="2-sts">2. STS 的核心流程：三个角色，一条主线</h2>
+<p>不管用哪条技术路线，STS 的骨架都是同一个：<strong>调用方先证明自己的身份，STS 核实后签发临时凭证，被调用方验证凭证后放行。</strong></p>
+<p>三个角色：</p>
+<ul>
+<li><strong>调用方（Client Service）</strong>：想去调别人的服务，比如订单服务想调库存服务。</li>
+<li><strong>STS（令牌服务）</strong>：中央的“发证机关”。</li>
+<li><strong>被调用方（Resource Service）</strong>：提供资源的服务，负责验证凭证。</li>
+</ul>
+<p>下面这张时序图把主线画清楚了：</p>
+<div class="highlight"><pre><span></span><code>sequenceDiagram
+    participant C as 订单服务&lt;br/&gt;(Client)
+    participant S as STS&lt;br/&gt;(令牌服务)
+    participant R as 库存服务&lt;br/&gt;(Resource)
+
+    C-&gt;&gt;S: 1. 我是订单服务，凭初始身份&lt;br/&gt;请给我一张调库存的临时凭证
+    activate S
+    Note over S: 2. 核实身份 + 检查授权策略&lt;br/&gt;(订单服务能不能调库存？)
+    S--&gt;&gt;C: 3. 返回临时凭证&lt;br/&gt;(短命 + 带范围 + 已签名)
+    deactivate S
+
+    C-&gt;&gt;R: 4. 带上临时凭证，请求库存数据
+    activate R
+    Note over R: 5. 验证凭证&lt;br/&gt;(签名对不对？过期没？范围够不够？)
+    R--&gt;&gt;C: 6. 校验通过，返回数据
+    deactivate R
+</code></pre></div>
+
+<p>真正拉开两条路线差距的，是第 3 步“凭证长什么样”和第 5 步“怎么验证”。这也是接下来对比的重点。</p>
+<hr>
+<h2 id="3-jwtoidc-vs-aws-assumerole">3. 两条路线对比：JWT+OIDC vs AWS 式 AssumeRole</h2>
+<p>造 STS 主要有两条成熟路线。它们目标一样，气质却相当不同。</p>
+<h3 id="ajwt-oidc">路线 A：JWT + OIDC（现代服务间认证的主流）</h3>
+<p>先解词。<strong>JWT（JSON Web Token）</strong> 是一段自带签名的 JSON，里面写着“我是谁、能干啥、什么时候过期”;<strong>OIDC（OpenID Connect）</strong> 是一套围绕 JWT 的标准协议;<strong>JWKS（JSON Web Key Set）</strong> 是签发方公开的一组公钥，验证方用它来核对签名。</p>
+<p>它的精髓在于<strong>自包含 + 离线验证</strong>。凭证本身就带着所有信息和签名，被调用方只要拿到 STS 的公钥（通过 JWKS 端点，一天拉一次缓存起来即可），就能<strong>独立验证</strong>这个 token，完全不需要每次请求都去问 STS。</p>
+<p>一个 JWT 解开来大致长这样（中间是 payload，也就是“声明 claims”）：</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;iss&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;https://sts.internal.mycompany.com&quot;</span><span class="p">,</span><span class="w">  </span><span class="c1">// 签发方</span>
+<span class="w">  </span><span class="nt">&quot;sub&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;svc-order&quot;</span><span class="p">,</span><span class="w">                            </span><span class="c1">// 主体：订单服务</span>
+<span class="w">  </span><span class="nt">&quot;aud&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;svc-inventory&quot;</span><span class="p">,</span><span class="w">                        </span><span class="c1">// 受众：只能给库存服务用</span>
+<span class="w">  </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;inventory:read inventory:reserve&quot;</span><span class="p">,</span><span class="w">   </span><span class="c1">// 权限范围</span>
+<span class="w">  </span><span class="nt">&quot;exp&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1754082000</span><span class="p">,</span><span class="w">                             </span><span class="c1">// 过期时间戳（比如 5 分钟后）</span>
+<span class="w">  </span><span class="nt">&quot;iat&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1754081700</span><span class="p">,</span><span class="w">                             </span><span class="c1">// 签发时间</span>
+<span class="w">  </span><span class="nt">&quot;jti&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;a1b2c3d4&quot;</span><span class="w">                              </span><span class="c1">// 唯一 ID，用于审计/吊销</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<ul>
+<li><strong>优点</strong>：验证是离线的，STS 不会成为每次调用的性能瓶颈;跨语言支持极好;天然适配 API Gateway、Service Mesh。</li>
+<li><strong>代价</strong>：签出去的 token 在过期前<strong>很难提前吊销</strong>（因为验证方根本不问 STS）。所以有效期一定要短。想要能吊销，就得再加一层黑名单，等于牺牲了“离线”的好处。</li>
+</ul>
+<h3 id="baws-assumerole">路线 B：AWS 式 AssumeRole（临时访问密钥）</h3>
+<p>AWS STS 走的是另一条路。它发的不是一个自包含 token，而是<strong>一组临时的访问密钥</strong>：<code>AccessKeyId</code> + <code>SecretAccessKey</code> + <code>SessionToken</code>，外加一个过期时间。调用方拿着这组密钥,用类似 <strong>SigV4</strong> 的方式给每个请求算一个签名。</p>
+<p>关键区别在验证方式：AWS 是<strong>中心化验证</strong>——请求打到 AWS 服务后，服务在后台向 STS/IAM 核对这组密钥的有效性。好处是<strong>能立刻吊销</strong>（中心说了算），代价是验证路径上多了一次中心依赖。</p>
+<ul>
+<li><strong>优点</strong>：可以做到即时吊销;权限模型（Role/Policy）非常成熟精细;请求本身带签名，能防重放、防篡改。</li>
+<li><strong>代价</strong>：验证方对中心有依赖;SigV4 那套签名算法实现起来比“验个 JWT 签名”复杂不少;跨语言实现成本更高。</li>
+</ul>
+<h4 id="sigv4">原理加餐：SigV4 到底怎么签（不想深究可跳过）</h4>
+<p>上面反复提到 SigV4，这里补一段它的原理——它是理解“为什么 AWS 式方案又安全又麻烦”的钥匙。<strong>SigV4（Signature Version 4）不是把密钥塞进请求，而是用密钥给请求算一个指纹（HMAC 签名），两端各算一遍，对得上才放行。密钥本身从不上网。</strong></p>
+<p>它分四步，核心思想是<strong>层层派生、层层收窄</strong>：</p>
+<ol>
+<li>
+<p><strong>构造 Canonical Request（规范请求）</strong>：把 HTTP 方法、URI、query、参与签名的 header、以及<strong>请求体的 SHA256 哈希</strong>按固定格式拼成一个字符串。请求体进签名，意味着 body 被改一个字节，签名立刻对不上——这是防篡改。</p>
+</li>
+<li>
+<p><strong>构造 String to Sign（待签字符串）</strong>：把上一步哈希后，套上算法、<strong>时间戳</strong>、和 Credential Scope（日期/区域/服务）。时间戳是防重放的关键——服务端只接受一个短窗口（默认 15 分钟）内的请求，截获的旧请求重放不了。</p>
+</li>
+<li>
+<p><strong>派生 Signing Key（最精髓的一步）</strong>：不直接用 <code>SecretAccessKey</code> 签，而是拿它当种子逐层 HMAC 派生：</p>
+</li>
+</ol>
+<p><code>text
+   kDate    = HMAC("AWS4" + SecretKey, 日期)
+   kRegion  = HMAC(kDate,   区域)
+   kService = HMAC(kRegion, 服务)
+   kSigning = HMAC(kService, "aws4_request")</code></p>
+<p>这么绕的意义在于：派生出的 <code>kSigning</code> <strong>只对“这一天、这个区域、这个服务”有效</strong>。即使它泄露，攻击者也只能在这个极窄的格子里作案，第二天就废了——和 STS“短命凭证”缩小爆炸半径的思路一脉相承。</p>
+<ol>
+<li><strong>计算签名</strong>：<code>signature = HMAC(kSigning, StringToSign)</code>，连同用哪个 key、签了哪些 header 一起塞进 <code>Authorization</code> 头。</li>
+</ol>
+<p>服务端收到后，<strong>用请求里的原始内容把这四步重算一遍</strong>，自己算出的签名和请求里带的对比，一致才放行，顺带检查时间戳没超窗口。一张表看清 SigV4 每个设计在防什么：</p>
+<table>
+<thead>
+<tr>
+<th>机制</th>
+<th>防的是</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>请求体哈希进签名</td>
+<td>篡改（改 body 签名就变）</td>
+</tr>
+<tr>
+<td>时间戳 + 15 分钟窗口</td>
+<td>重放</td>
+</tr>
+<tr>
+<td>密钥不进请求、只传签名</td>
+<td>密钥泄露</td>
+</tr>
+<tr>
+<td>Signing Key 按日期/区域/服务派生</td>
+<td>缩小泄露后的爆炸半径</td>
+</tr>
+<tr>
+<td>HMAC-SHA256</td>
+<td>伪造（没密钥算不出正确签名）</td>
+</tr>
+</tbody>
+</table>
+<p>这也解释了那句“SigV4 比验个 JWT 签名复杂不少”——光是第 1 步的规范化（header 排序、URL 编码、大小写全要统一），客户端和服务端稍有不一致就签不对，是出了名的容易翻车。JWT 那边呢？调个库验一下公钥签名就完事了。<strong>安全性上 SigV4 更硬（天然绑请求内容、防重放），但工程成本也实打实更高。</strong></p>
+<p>光看文字容易犯迷糊，下面这段 Python 把四步完整跑一遍。为了能验证结果，我直接用了 <strong>AWS 官方文档给出的测试向量</strong>（<code>AKIDEXAMPLE</code> 那把著名的示例密钥），算出来的签名和官方文档里的完全一致——你可以复制下来直接跑：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">hashlib</span>
+<span class="kn">import</span> <span class="nn">hmac</span>
+
+
+<span class="k">def</span> <span class="nf">_hmac</span><span class="p">(</span><span class="n">key</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">,</span> <span class="n">msg</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bytes</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;一次 HMAC-SHA256，返回原始字节。&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">hmac</span><span class="o">.</span><span class="n">new</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">msg</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">),</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">)</span><span class="o">.</span><span class="n">digest</span><span class="p">()</span>
+
+
+<span class="k">def</span> <span class="nf">derive_signing_key</span><span class="p">(</span><span class="n">secret_key</span><span class="p">,</span> <span class="n">date_stamp</span><span class="p">,</span> <span class="n">region</span><span class="p">,</span> <span class="n">service</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Step 3：逐层派生签名 key，把作用域收窄到某天/某区域/某服务。&quot;&quot;&quot;</span>
+    <span class="n">k_date</span> <span class="o">=</span> <span class="n">_hmac</span><span class="p">((</span><span class="s2">&quot;AWS4&quot;</span> <span class="o">+</span> <span class="n">secret_key</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">),</span> <span class="n">date_stamp</span><span class="p">)</span>
+    <span class="n">k_region</span> <span class="o">=</span> <span class="n">_hmac</span><span class="p">(</span><span class="n">k_date</span><span class="p">,</span> <span class="n">region</span><span class="p">)</span>
+    <span class="n">k_service</span> <span class="o">=</span> <span class="n">_hmac</span><span class="p">(</span><span class="n">k_region</span><span class="p">,</span> <span class="n">service</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">_hmac</span><span class="p">(</span><span class="n">k_service</span><span class="p">,</span> <span class="s2">&quot;aws4_request&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">sigv4</span><span class="p">(</span><span class="n">secret_key</span><span class="p">,</span> <span class="n">region</span><span class="p">,</span> <span class="n">service</span><span class="p">,</span> <span class="n">amz_date</span><span class="p">,</span> <span class="n">date_stamp</span><span class="p">):</span>
+    <span class="c1"># Step 1：构造 Canonical Request（请求体也进签名 -&gt; 防篡改）</span>
+    <span class="n">canonical_headers</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="s2">&quot;content-type:application/x-www-form-urlencoded; charset=utf-8</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;host:iam.amazonaws.com</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;x-amz-date:</span><span class="si">{</span><span class="n">amz_date</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span>
+    <span class="p">)</span>
+    <span class="n">signed_headers</span> <span class="o">=</span> <span class="s2">&quot;content-type;host;x-amz-date&quot;</span>
+    <span class="n">payload_hash</span> <span class="o">=</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">(</span><span class="sa">b</span><span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()</span>  <span class="c1"># GET 请求，空 body</span>
+    <span class="n">canonical_request</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span>
+        <span class="s2">&quot;GET&quot;</span><span class="p">,</span>                                  <span class="c1"># HTTP 方法</span>
+        <span class="s2">&quot;/&quot;</span><span class="p">,</span>                                    <span class="c1"># URI</span>
+        <span class="s2">&quot;Action=ListUsers&amp;Version=2010-05-08&quot;</span><span class="p">,</span>  <span class="c1"># query（按字母序）</span>
+        <span class="n">canonical_headers</span><span class="p">,</span>
+        <span class="n">signed_headers</span><span class="p">,</span>
+        <span class="n">payload_hash</span><span class="p">,</span>
+    <span class="p">])</span>
+
+    <span class="c1"># Step 2：构造 String to Sign（amz_date 进签名 -&gt; 防重放）</span>
+    <span class="n">credential_scope</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">date_stamp</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">region</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">service</span><span class="si">}</span><span class="s2">/aws4_request&quot;</span>
+    <span class="n">string_to_sign</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span>
+        <span class="s2">&quot;AWS4-HMAC-SHA256&quot;</span><span class="p">,</span>
+        <span class="n">amz_date</span><span class="p">,</span>
+        <span class="n">credential_scope</span><span class="p">,</span>
+        <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">(</span><span class="n">canonical_request</span><span class="o">.</span><span class="n">encode</span><span class="p">())</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">(),</span>
+    <span class="p">])</span>
+
+    <span class="c1"># Step 3 + 4：派生 key，再用它签</span>
+    <span class="n">signing_key</span> <span class="o">=</span> <span class="n">derive_signing_key</span><span class="p">(</span><span class="n">secret_key</span><span class="p">,</span> <span class="n">date_stamp</span><span class="p">,</span> <span class="n">region</span><span class="p">,</span> <span class="n">service</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">hmac</span><span class="o">.</span><span class="n">new</span><span class="p">(</span><span class="n">signing_key</span><span class="p">,</span> <span class="n">string_to_sign</span><span class="o">.</span><span class="n">encode</span><span class="p">(),</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">)</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()</span>
+
+
+<span class="n">signature</span> <span class="o">=</span> <span class="n">sigv4</span><span class="p">(</span>
+    <span class="n">secret_key</span><span class="o">=</span><span class="s2">&quot;wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY&quot;</span><span class="p">,</span>  <span class="c1"># AWS 官方示例密钥</span>
+    <span class="n">region</span><span class="o">=</span><span class="s2">&quot;us-east-1&quot;</span><span class="p">,</span>
+    <span class="n">service</span><span class="o">=</span><span class="s2">&quot;iam&quot;</span><span class="p">,</span>
+    <span class="n">amz_date</span><span class="o">=</span><span class="s2">&quot;20150830T123600Z&quot;</span><span class="p">,</span>
+    <span class="n">date_stamp</span><span class="o">=</span><span class="s2">&quot;20150830&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">signature</span><span class="p">)</span>
+<span class="c1"># 输出：5d672d79c15b13162d9279b0855cfba6789a8edb4c82c400e06b5924a6f2b5d7</span>
+<span class="c1"># 与 AWS 官方文档给出的签名完全一致</span>
+</code></pre></div>
+
+<p>跑通它你就摸清了 SigV4 的全部骨架。真实项目里当然直接用 <code>botocore</code>/<code>boto3</code> 里成熟的 <code>SigV4Auth</code>，别自己手搓——这段代码是拿来“看懂原理”的，不是拿来上生产的。</p>
+<h3 id="_1">一张表看清怎么选</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>JWT + OIDC</th>
+<th>AWS 式 AssumeRole</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>凭证形态</td>
+<td>自包含的签名 token</td>
+<td>临时密钥 + 每次请求签名</td>
+</tr>
+<tr>
+<td>验证方式</td>
+<td><strong>离线</strong>（用公钥验签）</td>
+<td><strong>中心化</strong>（向 STS/IAM 核对）</td>
+</tr>
+<tr>
+<td>提前吊销</td>
+<td>难（需额外黑名单）</td>
+<td>容易（中心即时生效）</td>
+</tr>
+<tr>
+<td>性能</td>
+<td>STS 不在调用热路径上</td>
+<td>验证依赖中心</td>
+</tr>
+<tr>
+<td>实现复杂度</td>
+<td>低（各语言库成熟）</td>
+<td>高（签名算法 + 中心交互）</td>
+</tr>
+<tr>
+<td>适合场景</td>
+<td>内部微服务、Service Mesh、网关</td>
+<td>需强吊销/强审计的高敏感场景</td>
+</tr>
+</tbody>
+</table>
+<p>我的经验判断，供参考，不是教条：</p>
+<ul>
+<li><strong>绝大多数内部微服务，选 A（JWT+OIDC）。</strong> 把有效期压到 5～15 分钟，吊销这件事基本就不重要了——反正很快自己过期。简单、快、跨语言，收益最高。</li>
+<li><strong>只有当你确实需要“1 秒内让某个凭证立刻失效”</strong>（比如涉及资金、或合规硬要求），才值得为路线 B 的复杂度买单。</li>
+<li>别想着“既要 A 的离线性能，又要 B 的即时吊销”。这俩本质是矛盾的，硬凑就是给自己挖坑。想清楚你到底更怕哪一个：更怕慢，还是更怕收不回来。</li>
+</ul>
+<hr>
+<h2 id="4">4. 一个高频的“聪明做法”：服务之间自己签发、自己商定</h2>
+<p>上面聊的都是“有个中心 STS 发证”。但实践里有一种更省事、看起来也更优雅的做法，很多团队第一反应就是它：</p>
+<blockquote>
+<p><strong>A 服务用自己的私钥签发一个 JWT，B 服务加载 A 的公钥来验证。A 和 B 之间私下商定调用关系和权限，不需要任何中心。</strong></p>
+</blockquote>
+<p>第一眼看，这太香了：没有中心依赖，没有单点，A 想调 B，把公钥给 B 配上就行。省了搭 STS 的活，还避免了“中心挂了全公司瘫痪”的噩梦。</p>
+<p>但这条路走远了会长出一堆刺。咱们把它和中心化 STS 掰开揉碎比一比。</p>
+<h3 id="41">4.1 先看它到底在“签”什么</h3>
+<p>关键要看清一件事：这种模式下，<strong>A 签的 JWT，主体（<code>sub</code>）是 A 自己，而不是“A 被授权去调 B”这件事。</strong></p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;iss&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;svc-order&quot;</span><span class="p">,</span><span class="w">           </span><span class="c1">// 我是订单服务</span>
+<span class="w">  </span><span class="nt">&quot;sub&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;svc-order&quot;</span><span class="p">,</span><span class="w">           </span><span class="c1">// 主体还是我自己</span>
+<span class="w">  </span><span class="nt">&quot;aud&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;svc-inventory&quot;</span><span class="p">,</span><span class="w">       </span><span class="c1">// 想调库存服务</span>
+<span class="w">  </span><span class="nt">&quot;exp&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1754082000</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>换句话说，这张票的含义是 <strong>“我 A 说我是 A”</strong>。B 验证通过，只能证明“对面确实是 A”（因为只有 A 有那把私钥）。<strong>至于 A 到底有没有资格调 B、能调 B 的哪些接口——这张票本身说了不算，得靠 B 那边另外配一套规则。</strong></p>
+<p>而中心化 STS 签的票，主体是“A 被授权做某事”，含义是 <strong>“中心作证：A 可以在 5 分钟内以 read 权限调 B”</strong>。授权信息直接写在票里，B 照着执行即可。</p>
+<p>这个区别是后面所有差异的根源：<strong>点对点模式做的是“身份认证（你是谁）”，中心化 STS 做的是“授权（你能干啥）”。</strong> 很多团队用点对点方案时，误把“认证”当成了“授权”，坑就是从这儿埋下的。</p>
+<h3 id="42">4.2 五个会慢慢发作的问题</h3>
+<p><strong>问题一：授权规则散落在 N 个地方，没人说得清全局。</strong></p>
+<p>A 和 B 商定一套，A 和 C 商定一套，D 和 B 又商定一套……当你有 30 个服务、互相调用一两百条边时，“谁能调谁、能调什么”这张全局授权图，<strong>不存在于任何一个地方</strong>，只散落在各个服务的配置和几个人的脑子里。有人问“支付服务现在被哪些服务调用、各自什么权限”，你答不上来。中心化 STS 天然就是这张图的唯一权威。</p>
+<p><strong>问题二：公钥分发变成 O(N²) 的运维噩梦。</strong></p>
+<p>B 要验 A 的票，就得有 A 的公钥;B 还被 C、D、E 调用，就得存下所有调用方的公钥。每加一个新服务、每轮换一次密钥，都要去挨个通知下游更新公钥。服务少时没感觉，服务一多，光是“谁该拿谁的公钥”就够运维喝一壶。中心化 STS 只有<strong>一个签发方</strong>，B 只需信任一把公钥（或一个 JWKS 端点），复杂度从 N² 降到 N。</p>
+<p><strong>问题三：密钥轮换和吊销几乎做不动。</strong></p>
+<p>A 的私钥要是泄露了，或者到了该轮换的时候，你得协调<strong>所有信任 A 的下游</strong>同步更换公钥——而且你还不一定知道到底有哪些下游信任它（回到问题一）。这个协调过程很容易出现“换到一半，一部分服务验不过 A 的新票”的窗口期。中心化模式下，轮换只发生在 STS 一处，通过 JWKS 同时暴露新旧公钥就能平滑过渡。</p>
+<p><strong>问题四：权限变更要改代码、发版、上线。</strong></p>
+<p>想收回 A 调 B 的某个权限？在点对点模式里，这条规则写在 B（或 A）的代码/配置里，你得改它、测它、发布它。授权和业务代码绑死了。中心化 STS 里，权限是一份<strong>独立的策略（policy）</strong>，改策略不用动业务服务，也不用重新发版。</p>
+<p><strong>问题五：审计是拼图，不是全景。</strong></p>
+<p>“上周谁调用过账户服务？”——点对点模式下，这个答案散在各个调用方和被调方的日志里，得把碎片捞出来拼。中心化 STS 每签发一张票都留一条记录，天然就是一本<strong>统一的授权流水账</strong>，出安全事件时这东西价值千金。</p>
+<h3 id="43">4.3 一张表对照</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>点对点自签自验</th>
+<th>中心化 STS</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>票据的语义</td>
+<td>“我是 A”（<strong>认证</strong>）</td>
+<td>“A 被授权做某事”（<strong>授权</strong>）</td>
+</tr>
+<tr>
+<td>授权规则位置</td>
+<td>散落在各服务，无全局视图</td>
+<td>集中在中心，唯一权威</td>
+</tr>
+<tr>
+<td>信任关系复杂度</td>
+<td>O(N²)，两两商定与配公钥</td>
+<td>O(N)，都只信一个中心</td>
+</tr>
+<tr>
+<td>密钥轮换/吊销</td>
+<td>要协调所有下游，容易出窗口期</td>
+<td>中心一处搞定，JWKS 平滑过渡</td>
+</tr>
+<tr>
+<td>权限变更</td>
+<td>改代码/配置 + 发版</td>
+<td>改策略即可，不动业务服务</td>
+</tr>
+<tr>
+<td>审计</td>
+<td>碎片化，需拼日志</td>
+<td>统一流水账</td>
+</tr>
+<tr>
+<td>单点风险</td>
+<td>无中心（优点）</td>
+<td>中心需高可用（要花力气保障）</td>
+</tr>
+<tr>
+<td>上手成本</td>
+<td>低，几个服务时很爽</td>
+<td>高，要先搭中心</td>
+</tr>
+</tbody>
+</table>
+<h3 id="44">4.4 那到底该怎么选？</h3>
+<p>别把它当成非黑即白。我的判断是：</p>
+<ul>
+<li><strong>服务少（个位数）、团队小、边界清楚</strong>：点对点自签自验完全够用，别为了“架构正确”硬上一个 STS，那是过度设计。这个阶段它的“省事”是真省事。</li>
+<li><strong>服务开始变多、跨团队、有合规/审计要求</strong>：授权必须收敛到中心。<strong>点对点模式的痛苦不是一开始就疼，而是随规模指数级增长</strong>——等你疼到受不了再迁，成本比一开始就上中心高得多。</li>
+<li><strong>一个折中的中间态</strong>：<strong>认证去中心化（用 mTLS 或平台身份确认“你是谁”），授权中心化（用 STS 或统一策略引擎决定“你能干啥”）。</strong> 这恰恰对应 4.1 里那个核心区分——把两件事分开做，各用最合适的方案。SPIFFE/SPIRE + OPA（策略引擎）这类组合走的就是这条路。</li>
+</ul>
+<p>一句话记住它们的分界：</p>
+<blockquote>
+<p><strong>点对点自签，本质是“我们俩私下说好”;中心化 STS，本质是“大家都认同一个裁判”。</strong>
+团队小的时候，私下说好最高效;团队一大，你会开始怀念那个能一锤定音、还留着记录的裁判。</p>
+</blockquote>
+<p>当你发现有异常请求想追踪，当你想检查服务之间的调用关系是否合理合规，当你想替换 private/public key时，你就知道痛在哪里了。</p>
+<hr>
+<h2 id="5-python-jwt-sts">5. 最小实现：用 Python 撸一个 JWT 版 STS</h2>
+<p>光说不练假把式。下面用 Python 实现路线 A 的核心：<strong>STS 签发 token</strong> + <strong>Resource 服务验证 token</strong>。为了聚焦，我把身份认证简化了（真实场景里第一步的“证明你是谁”可以用 mTLS、Kubernetes ServiceAccount Token 等，后面会提），重点展示签发和验证这两块骨头。</p>
+<p>用的是业界常用的 <a href="https://pyjwt.readthedocs.io/"><code>PyJWT</code></a> 库（<code>pip install "pyjwt[crypto]"</code>）。</p>
+<h3 id="51-sts">5.1 STS：签发临时凭证</h3>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">import</span> <span class="nn">uuid</span>
+
+<span class="kn">import</span> <span class="nn">jwt</span>  <span class="c1"># PyJWT</span>
+
+<span class="n">ISSUER</span> <span class="o">=</span> <span class="s2">&quot;https://sts.internal.mycompany.com&quot;</span>
+
+
+<span class="k">def</span> <span class="nf">issue_token</span><span class="p">(</span><span class="n">private_key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">subject</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">audience</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">scope</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;由 STS 调用，为某个调用方签发一张短命凭证。</span>
+
+<span class="sd">    private_key: STS 的私钥（PEM 字符串），全公司只有 STS 持有</span>
+<span class="sd">    subject:     调用方身份，如 &quot;svc-order&quot;</span>
+<span class="sd">    audience:    目标服务，如 &quot;svc-inventory&quot;</span>
+<span class="sd">    scope:       本次授权的权限范围，如 &quot;inventory:read&quot;</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">now</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">())</span>
+    <span class="n">claims</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;iss&quot;</span><span class="p">:</span> <span class="n">ISSUER</span><span class="p">,</span>
+        <span class="s2">&quot;sub&quot;</span><span class="p">:</span> <span class="n">subject</span><span class="p">,</span>
+        <span class="s2">&quot;aud&quot;</span><span class="p">:</span> <span class="n">audience</span><span class="p">,</span>
+        <span class="s2">&quot;scope&quot;</span><span class="p">:</span> <span class="n">scope</span><span class="p">,</span>
+        <span class="s2">&quot;iat&quot;</span><span class="p">:</span> <span class="n">now</span><span class="p">,</span>
+        <span class="c1"># 关键：有效期只有 5 分钟。这是路线 A 安全性的命根子。</span>
+        <span class="s2">&quot;exp&quot;</span><span class="p">:</span> <span class="n">now</span> <span class="o">+</span> <span class="mi">5</span> <span class="o">*</span> <span class="mi">60</span><span class="p">,</span>
+        <span class="s2">&quot;jti&quot;</span><span class="p">:</span> <span class="n">uuid</span><span class="o">.</span><span class="n">uuid4</span><span class="p">()</span><span class="o">.</span><span class="n">hex</span><span class="p">,</span>  <span class="c1"># 唯一 ID，方便审计</span>
+    <span class="p">}</span>
+
+    <span class="c1"># 用 RS256（RSA + SHA256）非对称签名：</span>
+    <span class="c1"># STS 用私钥签，任何人用公钥就能验，不用共享秘密。</span>
+    <span class="k">return</span> <span class="n">jwt</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">claims</span><span class="p">,</span> <span class="n">private_key</span><span class="p">,</span> <span class="n">algorithm</span><span class="o">=</span><span class="s2">&quot;RS256&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<p>这里我特意用了 <strong>RS256（非对称签名）</strong> 而不是 HS256（对称）。原因很实在：对称签名意味着验证方也得拿到那把签名密钥——那验证方岂不是也能伪造 token？非对称的好处是 <strong>STS 用私钥签、大家用公钥验</strong>，私钥永远不出 STS 的门。这就是“信任收敛到中心”能成立的技术前提。</p>
+<h3 id="52-resource">5.2 Resource 服务：离线验证凭证</h3>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">jwt</span>  <span class="c1"># PyJWT</span>
+
+<span class="n">ISSUER</span> <span class="o">=</span> <span class="s2">&quot;https://sts.internal.mycompany.com&quot;</span>
+
+
+<span class="k">class</span> <span class="nc">TokenError</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+    <span class="k">pass</span>
+
+
+<span class="k">def</span> <span class="nf">verify_token</span><span class="p">(</span><span class="n">public_key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">token</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">expected_aud</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">required_scope</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;由库存服务调用，验证收到的凭证。</span>
+
+<span class="sd">    public_key:     STS 的公钥（PEM 字符串，通过 JWKS 端点拉取并缓存，无需每次请求都拉）</span>
+<span class="sd">    token:          HTTP 头里带过来的 token</span>
+<span class="sd">    expected_aud:   本服务的身份，如 &quot;svc-inventory&quot;</span>
+<span class="sd">    required_scope: 本次操作需要的权限，如 &quot;inventory:reserve&quot;</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">claims</span> <span class="o">=</span> <span class="n">jwt</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span>
+            <span class="n">token</span><span class="p">,</span>
+            <span class="n">public_key</span><span class="p">,</span>
+            <span class="c1"># 关键：钉死算法，只接受 RS256，拒绝 alg:none 和对称算法，</span>
+            <span class="c1"># 否则有经典的算法混淆攻击。</span>
+            <span class="n">algorithms</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;RS256&quot;</span><span class="p">],</span>
+            <span class="n">issuer</span><span class="o">=</span><span class="n">ISSUER</span><span class="p">,</span>
+            <span class="n">audience</span><span class="o">=</span><span class="n">expected_aud</span><span class="p">,</span>  <span class="c1"># 确认这张票是发给“我”的</span>
+            <span class="c1"># decode 会自动校验签名、exp 过期、iat、iss、aud</span>
+            <span class="n">options</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;require&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;exp&quot;</span><span class="p">,</span> <span class="s2">&quot;iss&quot;</span><span class="p">,</span> <span class="s2">&quot;aud&quot;</span><span class="p">,</span> <span class="s2">&quot;sub&quot;</span><span class="p">]},</span>
+        <span class="p">)</span>
+    <span class="k">except</span> <span class="n">jwt</span><span class="o">.</span><span class="n">InvalidTokenError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">TokenError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;invalid token: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span> <span class="kn">from</span> <span class="nn">e</span>
+
+    <span class="c1"># 库不会自动校验 scope，得我们手动确认权限范围够不够</span>
+    <span class="n">granted</span> <span class="o">=</span> <span class="n">claims</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;scope&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">required_scope</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">granted</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">TokenError</span><span class="p">(</span><span class="s2">&quot;insufficient scope&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">claims</span>
+</code></pre></div>
+
+<p>请注意验证里做的<strong>四道检查</strong>，一道都不能少，这也是新手最容易漏的地方：</p>
+<ol>
+<li><strong>签名对不对</strong>（用 STS 公钥验）——防伪造、防篡改。</li>
+<li><strong>过期没有</strong>（校验 <code>exp</code>）——短命的意义所在。</li>
+<li><strong>是不是发给我的</strong>（校验 <code>aud</code>）——防止一张发给别人的票被拿来用（叫“令牌重放/串用”）。</li>
+<li><strong>权限够不够</strong>（校验 <code>scope</code>）——最小权限落地。</li>
+</ol>
+<p>我见过不少“验了签名就放行”的实现，第 3、4 步全省了。结果就是：一张发给日志服务的 token，被人拿去调了支付服务，签名还完全合法。<strong>验签只是第一关，不是全部。</strong></p>
+<h3 id="53">5.3 第一步的“身份证明”从哪来？</h3>
+<p>上面我把“调用方怎么向 STS 证明自己”简化了。生产环境里，这一步通常靠平台能力，别自己发明：</p>
+<ul>
+<li><strong>Kubernetes 环境</strong>：用 ServiceAccount 的 Projected Token，STS 校验它就能确认调用方是哪个服务。</li>
+<li><strong>mTLS（双向 TLS）</strong>：调用方和 STS 建立连接时双方都出示证书，STS 从客户端证书里读出身份。这也是 SPIFFE/SPIRE 那套工作负载身份的基础。</li>
+<li><strong>别用</strong>：写死在配置里的静态密钥去换 token——那等于绕了一圈又回到了静态凭证的老问题。</li>
+</ul>
+<hr>
+<h2 id="6">6. 上线前的自查清单（收藏版）</h2>
+<p>真要把自研 STS 推上生产，下面这些坑我替你先踩了：</p>
+<ul>
+<li><strong>有效期务必短</strong>。路线 A 的安全性全押在这上面。5～15 分钟是常见区间，别图省事设成 24 小时。</li>
+<li><strong>私钥单独管理，并支持轮换</strong>。私钥放密钥管理服务（如 Vault、KMS、公司内部的密钥管理服务），别进代码库。JWKS 里同时暴露新旧两把公钥，才能平滑换钥。</li>
+<li><strong>强制校验 <code>aud</code> 和 <code>scope</code></strong>。这是防“票据串用”和落地最小权限的关键，别只验签名。</li>
+<li><strong>算法要钉死</strong>。验证时强制指定 RS256，拒绝 <code>alg: none</code> 和对称算法，否则有经典的算法混淆攻击。</li>
+<li><strong>给 token 加 <code>jti</code> 并记录审计日志</strong>。谁、什么时候、拿到了调哪个服务的票，出事时能查。</li>
+<li><strong>想清楚吊销策略</strong>。如果业务真需要即时吊销，要么上短黑名单，要么老实选路线 B，别指望 JWT 自己能被“召回”。</li>
+<li><strong>别自己发明加密</strong>。签名、密钥、协议都用成熟标准库和方案，STS 的价值在“流程和策略”，不在“自研密码学”。</li>
+</ul>
+<p>一句话总结这套做法：</p>
+<blockquote>
+<p><strong>不发永久钥匙，只发访客贴纸;信任不押在分散的秘密上，而是收敛到一个中心加一套可验证的规则。</strong>
+边界是：JWT 路线换来了性能和简单，代价是放弃了即时吊销——想清楚你更怕慢还是更怕收不回。</p>
+</blockquote>
+<hr>
+<h2 id="_2">最后一句</h2>
+<p>微服务之间的信任，说到底是个“钥匙管理”问题。静态密钥的舒服是当下的，痛苦是未来的——泄露那天你才发现，最难的不是换锁，是搞清楚到底谁还在用这把钥匙。</p>
+<p>STS 的思路，本质上是把“我信任你手里那串秘密”升级成了“我信任那个发证的中心，以及它盖的章”。这不只是安全设计，更像一种做系统的态度：<strong>与其到处埋下将来要还的债，不如从一开始就让每一份授权都自带保质期。</strong></p>
+<p>你们的微服务之间，现在还在传那串永不过期的 key 吗？</p>
+<h2 id="_3">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* 给微服务造 STS
+** 为什么
+*** 静态密钥泄露难吊销
+*** 不知道谁在用
+*** 轮换成本高
+** STS 是什么
+*** 短命
+*** 带权限范围
+*** 可验证
+** 核心流程
+*** 调用方证明身份
+*** STS 核实并签发
+*** 被调用方验证放行
+** 两条路线
+*** JWT+OIDC：离线验证、难吊销
+*** AWS AssumeRole：中心验证、可吊销
+** 去中心化 vs 中心化
+*** 点对点自签：认证=你是谁
+*** 中心化STS：授权=你能干啥
+*** 点对点痛苦随规模指数增长
+*** 折中：认证去中心+授权中心化
+** 落地要点
+*** 有效期要短
+*** 私钥管理与轮换
+*** 强校验 aud 和 scope
+*** 钉死算法、加 jti
+*** 别自研密码学
+@endmindmap
+</code></pre></div>
+
+<p><img alt="给微服务造 STS 思维导图" src="./images/tech_20260801_sts_mindmap.png"></p>
+<h2 id="_4">参考资料</h2>
+<p><strong>AWS STS 与 SigV4</strong></p>
+<ul>
+<li><a href="https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_sigv.html">AWS Signature Version 4 for API requests</a> —— SigV4 签名流程官方说明</li>
+<li><a href="https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_sigv-signing-elements.html">Elements of an AWS API request signature</a> —— 签名各字段（Credential Scope、SignedHeaders 等）详解</li>
+<li><a href="https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-auth-using-authorization-header.html">Authenticating Requests (AWS Signature Version 4)</a> —— 以 S3 为例的完整签名计算示例</li>
+<li><a href="https://docs.aws.amazon.com/STS/latest/APIReference/API_AssumeRole.html">AssumeRole - AWS STS API Reference</a> —— AWS 式临时凭证的核心 API</li>
+</ul>
+<p><strong>JWT / OIDC / JWKS 标准</strong></p>
+<ul>
+<li><a href="https://datatracker.ietf.org/doc/html/rfc7519">RFC 7519 - JSON Web Token (JWT)</a> —— JWT 标准</li>
+<li><a href="https://datatracker.ietf.org/doc/html/rfc7517">RFC 7517 - JSON Web Key (JWK/JWKS)</a> —— 公钥集合（JWKS）标准</li>
+<li><a href="https://openid.net/specs/openid-connect-core-1_0.html">OpenID Connect Core 1.0</a> —— OIDC 规范</li>
+</ul>
+<p><strong>工作负载身份（认证去中心化 + 授权中心化的折中路线）</strong></p>
+<ul>
+<li><a href="https://spiffe.io/docs/latest/spire-about/spire-concepts/">SPIFFE / SPIRE 官方文档</a> —— 用 mTLS 做工作负载身份</li>
+<li><a href="https://aws.amazon.com/blogs/containers/implement-spiffe-spire-authorization-on-amazon-eks/">Implement SPIFFE/SPIRE authorization on Amazon EKS</a> —— SPIFFE/SPIRE 与 AWS 结合的实战</li>
+</ul>
+<p><strong>实现库</strong></p>
+<ul>
+<li><a href="https://pyjwt.readthedocs.io/">PyJWT</a> —— 本文 JWT 示例代码所用的 Python 库</li>
+<li><a href="https://docs.aws.amazon.com/IAM/latest/UserGuide/create-signed-request.html">AWS Signature Version 4 示例代码（含 Python）</a> —— 官方各语言 SigV4 签名示例</li>
+</ul>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/2026-08-01-build-your-own-sts.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/journal.html">journal</a>
+      <a href="https://www.fanyamin.com/blog/tag/blog.html">blog</a>
+      <a href="https://www.fanyamin.com/blog/tag/security.html">security</a>
+      <a href="https://www.fanyamin.com/blog/tag/microservices.html">microservices</a>
+      <a href="https://www.fanyamin.com/blog/tag/sts.html">sts</a>
+      <a href="https://www.fanyamin.com/blog/tag/jwt.html">jwt</a>
+      <a href="https://www.fanyamin.com/blog/tag/oauth.html">oauth</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-07-31-interactive-tutorial.html" title="传统的软件教程，在 AI 时代该与时俱进了">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/2026-08-01-pop-and-certificate-bound-token.html" title="令牌被偷了也白搭：说清楚 PoP 与证书绑定令牌">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/2026-08-01-dpop-deep-dive.html">DPoP 详解:给浏览器里的令牌也上一把“偷不走”的锁</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-01-pop-and-certificate-bound-token.html">令牌被偷了也白搭：说清楚 PoP 与证书绑定令牌</a></li>
+      <li><a href="https://www.fanyamin.com/blog/workload-identitybie-zai-ba-yun-shang-shen-fen-sai-jin-secret-li-liao.html">Workload Identity：别再把云上身份塞进 Secret 里了</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2025-09-14-journal.html">密码存储的艺术</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2025-07-13-go-casbin-microservice.html">Go 微服务访问控制之 Casbin 实践指南</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

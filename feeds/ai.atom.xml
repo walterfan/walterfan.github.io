@@ -1,5 +1,1203 @@
 <?xml version="1.0" encoding="utf-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom"><title>Walter Fan's Blog - AI</title><link href="https://www.fanyamin.com/blog/" rel="alternate"/><link href="https://www.fanyamin.com/blog/feeds/ai.atom.xml" rel="self"/><id>https://www.fanyamin.com/blog/</id><updated>2026-07-30T00:30:00+08:00</updated><subtitle>手握灵珠常奋笔, 心开天籁不吹箫</subtitle><entry><title>AI Agent 孵化器：用一个父 Agent，批量造出贴身服务的子 Agent</title><link href="https://www.fanyamin.com/blog/2026-07-29-ai-agent-incubator.html" rel="alternate"/><published>2026-07-29T20:40:00+08:00</published><updated>2026-07-30T00:30:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-07-29:/blog/2026-07-29-ai-agent-incubator.html</id><summary type="html">&lt;p&gt;与其一个个手搓专业 AI Agent，不如造一台"孵化器"——一个父 Agent，听你一句大白话，就快速孵化出贴身服务某类需求的子 Agent。这篇聊聊这台"AI Agent 制造工厂"的运转机制：父 Agent 怎么把自然语言编译成五份产品图纸（角色/工具/规矩/提示词/验收），照着标准模板批量生产，再让子 Agent 用 ReAct 边想边做。以日程安排专家作为流水线上的第一个样品。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Walter Fan's Blog - AI</title><link href="https://www.fanyamin.com/blog/" rel="alternate"/><link href="https://www.fanyamin.com/blog/feeds/ai.atom.xml" rel="self"/><id>https://www.fanyamin.com/blog/</id><updated>2026-08-03T11:00:00+08:00</updated><subtitle>手握灵珠常奋笔, 心开天籁不吹箫</subtitle><entry><title>重读《Building Effective Agents》：怎么才算构建了一个"高效"的 AI Agent</title><link href="https://www.fanyamin.com/blog/2026-08-02-building-effective-agents.html" rel="alternate"/><published>2026-08-02T21:30:00+08:00</published><updated>2026-08-02T21:30:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-08-02:/blog/2026-08-02-building-effective-agents.html</id><summary type="html">&lt;p&gt;Anthropic 那篇《Building Effective Agents》我隔一阵就翻一遍，每次读都有点新体会。这篇是我第 N 次重读后的笔记：先把 workflow 和 agent 掰扯清楚，再把五种 workflow 模式和真正的 agent 逐个过一遍，重点讲什么时候该用、什么时候别用，最后落到一张选型表和一份落地清单。核心就一句话——别一上来就上 agent，能用简单模式解决的，绝不加复杂度。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;重读《Building Effective Agents》：怎么才算构建了一个"高效"的 AI Agent&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;learning note&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Version&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;v1.0&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;2026-08-02&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h1 id="building-effective-agents-ai-agent"&gt;重读《Building Effective Agents》：怎么才算构建了一个"高效"的 AI Agent&lt;/h1&gt;
+&lt;p&gt;去年年底 Anthropic 发了篇 &lt;a href="https://www.anthropic.com/engineering/building-effective-agents"&gt;Building Effective Agents&lt;/a&gt;，我隔一阵就翻一遍。原因很简单：这一年里"Agent"这个词被炒得越来越玄，什么"自主智能体""多智能体协作""AGI 前夜"，一堆框架也跟着冒出来，动不动就是几十个抽象层。可真到自己动手做一个能上线、能维护的东西时，我发现最管用的，反而是这篇文章里那几个朴素得不能再朴素的模式。&lt;/p&gt;
+&lt;p&gt;程序员大多有个习惯，一件事没弄明白就搁不下。我第一次读只记住了那张"augmented LLM"的图，第二次读才琢磨过味来——这篇文章真正想说的，其实是&lt;strong&gt;一句劝告：别一上来就上 agent&lt;/strong&gt;。大部分号称"我们做了个 Agent"的项目，拆开看要么是几次带工具的 LLM 调用串起来，要么是一段写死的流程，压根不需要那么"智能"。&lt;/p&gt;
+&lt;p&gt;这篇是我重读后的笔记。看完你能带走三样东西：&lt;strong&gt;一套区分 workflow 和 agent 的判断标准、五种常用模式各自的适用场景、以及一份"要不要上 agent"的自查清单&lt;/strong&gt;。&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;不是什么&lt;/strong&gt;：这篇不吹某个框架，也不教你怎么调 API 参数。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;是什么&lt;/strong&gt;：这是一份"选型指南"——面对一个需求，怎么用最小的复杂度把它解决掉。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;blockquote&gt;
+&lt;p&gt;术语先垫一句：&lt;strong&gt;Agent&lt;/strong&gt;（智能体）这词在业界定义很乱。Anthropic 把所有"用 LLM 加工具去干活"的系统统称为 &lt;strong&gt;agentic system（智能体系统）&lt;/strong&gt;，再往下分成两类——&lt;strong&gt;workflow（工作流）&lt;/strong&gt;是流程写死在代码里的，&lt;strong&gt;agent&lt;/strong&gt; 是让模型自己决定下一步怎么走的。下面反复用到这个区分。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;hr&gt;
+&lt;h2 id="workflow-agent"&gt;一、先分清楚：workflow 和 agent 不是一回事&lt;/h2&gt;
+&lt;p&gt;这是全文最值钱的一个区分，我第一次读就是没抓住它，走了不少弯路。&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Workflow（工作流）&lt;/strong&gt;：LLM 和工具的调用路径是&lt;strong&gt;你用代码写死的&lt;/strong&gt;。第一步干什么、第二步干什么、什么条件下走哪个分支，全是预先定好的。模型只是在每一步里干一件具体的小活。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Agent（智能体）&lt;/strong&gt;：模型&lt;strong&gt;自己决定&lt;/strong&gt;接下来调什么工具、走哪条路、什么时候算干完。你给它目标和一套工具，剩下的它自己在一个循环里边看反馈边推进。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;打个不太严谨但好懂的比方：workflow 像一条流水线，每个工位干什么是工程师排好的，工件从头走到尾；agent 更像你雇了个靠谱的实习生，交代清楚要什么、给他一堆权限和工具，然后让他自己想办法搞定，中间遇到坎再来问你。&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;流水线可预测、可控、便宜；实习生灵活、能应付意外，但更贵、也可能把事情搞砸。&lt;/strong&gt;
+这一句基本就决定了后面所有的选型。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;为什么这个区分这么重要？因为&lt;strong&gt;agent 的自主性是有代价的&lt;/strong&gt;——延迟更高、token 烧得更多、还会"错误累积"（第一步判断偏了，后面越走越歪）。文章里反复强调一个原则，我把它抄在这：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;找到最简单的解法，只在确实需要时才增加复杂度。&lt;/strong&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;很多时候，一次优化良好的 LLM 调用，配上检索（RAG）和几个 in-context 示例，就足够了。你可能根本不需要什么"agentic system"。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="llmthe-augmented-llm"&gt;二、地基：被增强的 LLM(The Augmented LLM)&lt;/h2&gt;
+&lt;p&gt;所有 agentic system 的基本积木，是一个"被增强过的 LLM"。所谓增强，就是给光秃秃的模型接上三样东西：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;检索（Retrieval）&lt;/strong&gt;：让模型能自己生成查询、去外部知识库捞资料。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;工具（Tools）&lt;/strong&gt;：让模型能调 API、执行代码、操作外部系统。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;记忆（Memory）&lt;/strong&gt;：让模型能决定哪些信息要留着、跨轮次带着走。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;关键不在于"接了多少"，而在于两点：&lt;strong&gt;一是把这些能力裁剪到贴合你的具体场景，二是给模型一个清晰、文档完善的接口&lt;/strong&gt;。这里可以用 &lt;a href="https://www.anthropic.com/news/model-context-protocol"&gt;MCP（Model Context Protocol）&lt;/a&gt;去对接第三方工具生态——我之前专门写过一篇 &lt;a href="https://www.fanyamin.com/blog/2026-07-17-mcp-or-cli.html"&gt;《MCP 还是 CLI》&lt;/a&gt;掰扯这块，这里不展开。&lt;/p&gt;
+&lt;p&gt;后面讲的所有模式，都默认每次 LLM 调用手里都握着这几样增强能力。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="workflow"&gt;三、五种 workflow 模式：从简单到复杂&lt;/h2&gt;
+&lt;p&gt;Anthropic 把生产环境里常见的模式，按复杂度从低到高排了个序。我用一张表先立住，再逐个讲什么时候用。&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;模式&lt;/th&gt;
+&lt;th&gt;一句话说清&lt;/th&gt;
+&lt;th&gt;什么时候用&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;Prompt Chaining（提示链）&lt;/td&gt;
+&lt;td&gt;把任务拆成固定的几步，一步的输出喂给下一步&lt;/td&gt;
+&lt;td&gt;任务能干净地拆成固定子步骤&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Routing（路由）&lt;/td&gt;
+&lt;td&gt;先分类，再把输入分发给专门的处理分支&lt;/td&gt;
+&lt;td&gt;输入有明显不同的类别，分开处理更好&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Parallelization（并行）&lt;/td&gt;
+&lt;td&gt;同时跑多个子任务，或同一任务跑多遍再聚合&lt;/td&gt;
+&lt;td&gt;子任务互相独立，或需要多视角提高置信度&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Orchestrator-Workers（编排者-工人）&lt;/td&gt;
+&lt;td&gt;一个中枢 LLM 动态拆任务、派给工人、再汇总&lt;/td&gt;
+&lt;td&gt;子任务数量和内容事先无法预测&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Evaluator-Optimizer（评估-优化）&lt;/td&gt;
+&lt;td&gt;一个 LLM 生成，另一个 LLM 打分反馈，循环打磨&lt;/td&gt;
+&lt;td&gt;有清晰评价标准，且迭代确实能提升质量&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h3 id="1-prompt-chaining"&gt;1. Prompt Chaining：把大任务切成流水线&lt;/h3&gt;
+&lt;p&gt;最简单的模式。把一个任务拆成一串固定步骤，每一步的 LLM 调用处理上一步的输出。你还能在中间加"关卡（gate）"——用代码检查一下中间结果对不对，不对就拦下来。&lt;/p&gt;
+&lt;p&gt;它的本质是&lt;strong&gt;拿延迟换准确率&lt;/strong&gt;：把一个难任务切成几个简单任务，每一步模型都干得更稳。&lt;/p&gt;
+&lt;p&gt;典型场景：先写一段营销文案，再翻译成另一种语言；或者先写文档大纲，用代码校验大纲符合要求，再照着大纲写正文。&lt;/p&gt;
+&lt;h3 id="2-routing"&gt;2. Routing：先分诊，再对症下药&lt;/h3&gt;
+&lt;p&gt;先给输入分个类，再分发到专门的下游处理。好处是"分而治之"——每个分支都能用高度专门化的 prompt。要是不分，你为了照顾一种输入去优化 prompt，往往就伤了另一种输入。&lt;/p&gt;
+&lt;p&gt;典型场景：客服系统里，把"普通咨询/退款请求/技术支持"分流到不同的处理流程和工具；或者把简单常见的问题路由给便宜的小模型（比如 Claude Haiku），把疑难杂症留给更强的大模型（比如 Claude Sonnet），省钱又保效果。&lt;/p&gt;
+&lt;h3 id="3-parallelization"&gt;3. Parallelization：并行干活，聚合结果&lt;/h3&gt;
+&lt;p&gt;让多个 LLM 同时干，再用代码把结果汇总。它有两个变体：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Sectioning（切块）&lt;/strong&gt;：把任务切成互相独立的子任务并行跑。比如做内容护栏（guardrail），一个模型实例处理用户请求，另一个专门筛查内容是否违规——分开干，比让同一次调用又管审核又管回答，效果好得多。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Voting（投票）&lt;/strong&gt;：同一个任务跑多遍，拿多份不同的结果。比如让好几个不同的 prompt 去审同一段代码有没有漏洞，谁发现问题就报出来；或者用多个 prompt、不同的票数门槛去判断内容是否违规，平衡误报和漏报。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;一个反直觉但很实用的经验：&lt;strong&gt;任务里有多个考量维度时，让每个维度由单独的 LLM 调用去处理，通常比塞给一次调用一起处理要好&lt;/strong&gt;——模型能把注意力集中在一件事上。&lt;/p&gt;
+&lt;h3 id="4-orchestrator-workers"&gt;4. Orchestrator-Workers：中枢动态派活&lt;/h3&gt;
+&lt;p&gt;一个中枢 LLM（orchestrator）动态地把任务拆开，派给若干工人 LLM（workers），最后再把结果综合起来。&lt;/p&gt;
+&lt;p&gt;它跟并行看着像，关键差别在&lt;strong&gt;灵活性&lt;/strong&gt;：并行的子任务是你事先切好的，而这里的子任务是编排者&lt;strong&gt;根据具体输入临时决定&lt;/strong&gt;的。&lt;/p&gt;
+&lt;p&gt;什么时候用？当你&lt;strong&gt;事先没法预测需要哪些子任务&lt;/strong&gt;的时候。最典型的就是写代码：改一个需求要动几个文件、每个文件怎么改，完全取决于任务本身，写死不了。搜索类任务也一样——要从哪些来源、捞哪些信息，得边看边定。&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;说句题外话，你现在用的 Claude Code、Cursor 这类 AI 编程工具，底层很大程度上就是这个模式的实现。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h3 id="5-evaluator-optimizer-"&gt;5. Evaluator-Optimizer：生成-评审的循环&lt;/h3&gt;
+&lt;p&gt;一个 LLM 负责生成，另一个 LLM 负责评估和给反馈，两者在循环里一来一回，把结果越打磨越好。&lt;/p&gt;
+&lt;p&gt;什么时候用？两个信号对上就适合：&lt;strong&gt;一是人能明确说出"这里该怎么改"从而让结果变好，二是 LLM 自己也能给出这种反馈&lt;/strong&gt;。这特别像人写东西的过程——写一稿、自己挑毛病、再改一稿。&lt;/p&gt;
+&lt;p&gt;典型场景：文学翻译，译者 LLM 第一遍抓不住的语感细节，评审 LLM 能挑出来给建议；或者复杂搜索，评审 LLM 来判断"信息够不够全，要不要再搜一轮"。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="agent"&gt;四、真正的 Agent：让模型自己在循环里跑&lt;/h2&gt;
+&lt;p&gt;前面五种都是 workflow——路径是你写死的。真正的 &lt;strong&gt;agent&lt;/strong&gt;，是把方向盘交给模型。&lt;/p&gt;
+&lt;p&gt;它的工作方式其实不复杂：&lt;strong&gt;接到一个人给的指令或者跟人聊清楚需求后，模型开始自己规划、自己调工具，在一个循环里边执行边看环境反馈，直到干完或者撞到停止条件&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;这里有几个我觉得最关键的点：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;每一步都要拿到"ground truth（真实反馈）"&lt;/strong&gt;：工具调用的结果、代码执行的输出——模型得靠这些实打实的反馈来判断自己走到哪了、走没走偏。这是 agent 能自我纠错的命根子。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;要有 checkpoint 和停止条件&lt;/strong&gt;：该停下来问人的时候要能停（遇到卡点、需要人判断）；为了别失控，还得设个硬性上限（比如最多循环 N 次）。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;工具设计是重中之重&lt;/strong&gt;:agent 说白了就是"一个 LLM 在循环里根据反馈用工具"，所以工具及其文档写得好不好，直接决定成败。文章附录里专门讲了这个，我下面单开一节。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;什么时候才该上 agent?&lt;/strong&gt; 当问题是开放式的、你&lt;strong&gt;没法预测要几步、也没法写死一条固定路径&lt;/strong&gt;，而且你&lt;strong&gt;愿意在一定程度上信任模型的决策&lt;/strong&gt;时。它的自主性让它特别适合在"可信环境"里规模化地干活。&lt;/p&gt;
+&lt;p&gt;代价也很实在：成本更高、错误会累积。所以 Anthropic 的建议是——&lt;strong&gt;在沙箱环境里充分测试，加上合适的护栏&lt;/strong&gt;。别拿生产环境当试验田。&lt;/p&gt;
+&lt;p&gt;典型场景就是 Anthropic 自己的两个实现：解 &lt;a href="https://www.anthropic.com/research/swe-bench-sonnet"&gt;SWE-bench&lt;/a&gt;编程任务的 coding agent（根据一句需求描述，自己去改一堆文件），以及 "computer use"（让模型操作电脑完成任务）。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="aci"&gt;五、别忽略的隐藏主角：工具接口（ACI）&lt;/h2&gt;
+&lt;p&gt;这一节是我第二次读才真正重视起来的。文章里有句话点醒了我：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;你花了多少心思去设计"人机交互界面（HCI）"，就该花同样多的心思去设计"智能体-计算机界面（ACI，Agent-Computer Interface）"。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;意思是：&lt;strong&gt;工具的定义和文档，值得你像写主 prompt 一样认真对待&lt;/strong&gt;。同一个操作往往有好几种表达方式——改文件可以写 diff，也可以整份重写；结构化输出可以用 markdown，也可以用 JSON。在人看来这些只是形式差异，可&lt;strong&gt;对模型来说难易天差地别&lt;/strong&gt;：写 diff 得先数准改了几行才能写对块头，把代码塞进 JSON 得处理一堆转义。&lt;/p&gt;
+&lt;p&gt;几条我记下来的经验：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;给模型留够"思考"的 token&lt;/strong&gt;，别逼它还没想清楚就把自己写进死角。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;格式尽量贴近模型在网上见过的自然形态&lt;/strong&gt;——它见得多的，就写得顺。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;消除格式"开销"&lt;/strong&gt;：别让模型去数几千行代码的行号，别让它给代码做字符串转义。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;把自己代入模型的处境&lt;/strong&gt;：光看工具描述和参数，你能一眼看懂怎么用吗？看不懂，模型多半也懵。好的工具定义会带上用法示例、边界情况、输入格式要求。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;给工具做防呆（Poka-yoke）&lt;/strong&gt;：改改参数设计，让模型天然更难犯错。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;文章里有个特别接地气的例子：他们做 SWE-bench 的 agent 时，发现模型在 agent 切出根目录后，用相对路径老出错。解决办法不是去调 prompt，而是&lt;strong&gt;把工具改成强制要求绝对路径&lt;/strong&gt;——改完之后模型用得零失误。他们说，做这个 agent 时，&lt;strong&gt;优化工具花的时间比优化主 prompt 还多&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;这段我特别有共鸣，因为自己实打实栽过一个跟头。我在给一个个人助理 agent 做天气工具时，图省事把接口设计成了一个 &lt;code&gt;get_weather(city)&lt;/code&gt;，工具描述里就一句"获取某城市的天气"。底层其实调的是高德接口，&lt;code&gt;extensions="base"&lt;/code&gt; 拿实时、&lt;code&gt;extensions="all"&lt;/code&gt; 能多拿三四天的预报——但我图省事，工具里写死了只取实时那一档，&lt;strong&gt;返回结构里压根没有"这是实时还是预报"的字段，工具描述里也只字未提"预报"这回事&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;坑就埋在这儿了。用户问"今天热不热"，没问题；可一旦有人问"明天要不要带伞"，模型照样一本正经地调这个工具，然后拿着&lt;strong&gt;今天&lt;/strong&gt;的数据去回答&lt;strong&gt;明天&lt;/strong&gt;的问题——而且答得特别自信，因为在它看来接口就是这么定义的，它没做错任何事。错的是我：&lt;strong&gt;我脑子里"实时"和"预报"分得清清楚楚，可这个区分从来没写进工具接口里，模型自然无从知晓。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;这就是文章说的那句"把自己代入模型的处境"。我后来的修法也很朴素：给输入加一个明确的 &lt;code&gt;mode&lt;/code&gt;（&lt;code&gt;current&lt;/code&gt; / &lt;code&gt;forecast&lt;/code&gt;），返回结构里带上 &lt;code&gt;data_type&lt;/code&gt; 和对应的日期，工具描述里把"实时天气"和"未来 N 天预报"当成两种不同能力讲清楚。改完之后，模型问"明天"就自己去要预报了。&lt;strong&gt;不是模型变聪明了，是接口终于把我脑子里的那个区分，老老实实地暴露给它了。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;一句话总结这个教训：&lt;strong&gt;你以为不言自明的业务区分，只要没写进工具的参数、返回和文档里，对模型就等于不存在。&lt;/strong&gt;&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="agent_1"&gt;六、落地清单：决定要不要上 Agent&lt;/h2&gt;
+&lt;p&gt;把全文浓缩成一套可执行的自查。面对一个需求，从上往下问：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;一次 LLM 调用能解决吗？&lt;/strong&gt;
+   配上 RAG 和几个示例试试。能，就到此为止，别往下走。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;能拆成固定的几步吗？&lt;/strong&gt;
+   能，用 &lt;strong&gt;Prompt Chaining&lt;/strong&gt;，中间加代码关卡校验。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;输入有明显不同的类别吗？&lt;/strong&gt;
+   有，用 &lt;strong&gt;Routing&lt;/strong&gt; 分流，顺便可以用小模型省钱。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;子任务互相独立、或需要多个视角吗？&lt;/strong&gt;
+   是，用 &lt;strong&gt;Parallelization&lt;/strong&gt;（切块或投票）。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;子任务事先根本预测不了吗？&lt;/strong&gt;
+   是，用 &lt;strong&gt;Orchestrator-Workers&lt;/strong&gt; 让中枢动态派活。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;有清晰的评价标准、且迭代确实能提升质量吗？&lt;/strong&gt;
+   是，用 &lt;strong&gt;Evaluator-Optimizer&lt;/strong&gt; 做生成-评审循环。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;问题开放到连步数都没法预测，而且你愿意信任模型决策吗？&lt;/strong&gt;
+   到这一步，才轮到真正的 &lt;strong&gt;Agent&lt;/strong&gt; 登场——记得先在沙箱里测、加护栏、设停止条件。&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;一句话：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;能用积木搭的，就别造机器人。复杂度只在"确实能改善结果"时才加。&lt;/strong&gt;
+反例：一个客服 FAQ 就能搞定的场景，你非要上多智能体协作，那叫给自己找罪受。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;hr&gt;
+&lt;h2 id="_1"&gt;七、三条核心原则，贴在墙上&lt;/h2&gt;
+&lt;p&gt;文章结尾给了三条实现 agent 的核心原则，我觉得值得单独拎出来，做任何 agentic system 都适用：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;简单（Simplicity）&lt;/strong&gt;：保持设计简单。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;透明（Transparency）&lt;/strong&gt;：明确展示模型的规划步骤，让人看得见它在想什么。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;打磨接口（ACI）&lt;/strong&gt;：通过充分的工具文档和测试，精心设计智能体-计算机界面。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;关于框架，Anthropic 的态度也很实在——&lt;strong&gt;框架能帮你快速起步，但往生产走的时候，别怕砍掉抽象层，回到最基础的组件上来&lt;/strong&gt;。很多模式几行代码就能实现；你要是用框架，起码得搞清楚底下到底在干什么。"对底层的错误假设，是客户最常见的出错来源。"这句话我深有同感。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_2"&gt;最后一句&lt;/h2&gt;
+&lt;p&gt;重读这么多遍，我最大的体会是：&lt;strong&gt;"高效的 Agent"这个说法，重点从来不在"Agent"，而在"高效"&lt;/strong&gt;。真正高效的做法，往往是克制——先问清楚"这事到底需不需要一个 agent"，而不是急着证明"我也做了个 agent"。&lt;/p&gt;
+&lt;p&gt;在 LLM 这个领域，成功不是比谁的系统更花哨，而是比谁给自己的需求搭了&lt;strong&gt;对的&lt;/strong&gt;那个系统。从最简单的 prompt 开始，用扎实的评估去优化它，只有当简单方案确实撑不住时，才一层层往上加复杂度。&lt;/p&gt;
+&lt;p&gt;说到底，这跟写代码、带项目是一个道理：&lt;strong&gt;能把复杂的事情做简单，才是真本事；把简单的事情做复杂，谁都会。&lt;/strong&gt;&lt;/p&gt;
+&lt;h2 id="_3"&gt;全文思维导图&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap
+&amp;lt;style&amp;gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&amp;lt;/style&amp;gt;
+
+* 构建高效 AI Agent
+** 核心原则
+*** 找最简单的解法
+*** 只在需要时加复杂度
+*** 简单/透明/打磨接口
+** workflow vs agent
+*** workflow: 路径写死
+*** agent: 模型自己决定
+*** agent 代价: 贵/错误累积
+** 地基
+*** 被增强的 LLM
+*** 检索/工具/记忆
+** 五种 workflow
+*** Prompt Chaining
+*** Routing
+*** Parallelization
+*** Orchestrator-Workers
+*** Evaluator-Optimizer
+** 真正的 agent
+*** 循环里自主执行
+*** 靠 ground truth 纠错
+*** checkpoint + 停止条件
+** 工具接口 ACI
+*** 像写 prompt 一样认真
+*** 防呆/绝对路径
+*** 优化工具比优化 prompt 更重要
+@endmindmap
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;img alt="构建高效 AI Agent - 思维导图" src="./images/journal_20260802_building-effective-agents_mindmap.png"&gt;&lt;/p&gt;
+&lt;hr/&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。&lt;/p&gt;</content><category term="AI"/><category term="journal"/><category term="AI"/><category term="agent"/><category term="LLM"/><category term="workflow"/></entry><entry><title>MCP 大改版：从"打电话"变成"发快递"，附一个高德天气 MCP Server</title><link href="https://www.fanyamin.com/blog/2026-08-02-mcp-2026-stateless-spec.html" rel="alternate"/><published>2026-08-02T21:00:00+08:00</published><updated>2026-08-03T11:00:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-08-02:/blog/2026-08-02-mcp-2026-stateless-spec.html</id><summary type="html">&lt;p&gt;2026-07-28 版 MCP 规范被官方称为"发布以来最大的一次改动"：协议核心从有状态改成无状态，握手和 Session Header 被砍掉，长任务、UI、鉴权都拆成了扩展。这篇先用大白话讲清楚这次到底改了什么、为什么改，再用一个"高德天气 MCP Server"的 Python 实例带你上手。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;MCP 大改版：从"打电话"变成"发快递"，附一个高德天气 MCP Server&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;learning note&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Version&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;v1.0&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;2026-08-02&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h1 id="mcp-mcp-server"&gt;MCP 大改版：从"打电话"变成"发快递"，附一个高德天气 MCP Server&lt;/h1&gt;
+&lt;p&gt;如果你最近半年没盯着 MCP（Model Context Protocol，一套让 AI 应用去调用外部工具和数据的开放协议），那我先给你提个醒：&lt;strong&gt;2026 年年中出来的这版规范，官方自己说是"发布以来最大的一次改动"（the largest revision since launch）。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;我第一次翻这份 release candidate 的时候，感觉不太像"版本升级"，更像是"推倒重来"。以前那套 &lt;code&gt;initialize&lt;/code&gt; 握手没了，&lt;code&gt;Mcp-Session-Id&lt;/code&gt; 这个 Session 头也没了，连一次工具调用长什么样都变了。对天天写后端、被有状态服务的水平扩展折磨过的人来说，这次改动方向我是举双手赞成的。&lt;/p&gt;
+&lt;p&gt;这篇文章我想干两件事：&lt;strong&gt;先用大白话把这次到底改了什么、为什么这么改讲清楚；再带你写一个能跑的 Python 实例——把高德天气 API 包成一个 MCP Server&lt;/strong&gt;，代码你可以直接抄。&lt;/p&gt;
+&lt;p&gt;先把一句话结论撂这儿：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;这次 MCP 从"打一通电话"（有状态、要先建立连接、全程占线）变成了"发一个快递"（无状态、每个请求自带地址、谁都能签收）。&lt;/strong&gt; 对做云原生、做网关、做 Serverless 的人来说，这是好事。&lt;/p&gt;
+&lt;p&gt;一个小提醒（也是我踩过的坑）：写这篇的时候，&lt;code&gt;2026-07-28&lt;/code&gt; 还是 &lt;strong&gt;release candidate（候选发布版）&lt;/strong&gt;，正式生效前，线上真正在用的仍是上一版 &lt;code&gt;2025-11-25&lt;/code&gt;。所以下面讲的是"方向"和"即将落地的规范"，别拿去当"今天就必须改完"的 deadline。四个 Tier 1 SDK（TypeScript、Python、Go、C#）都已经能说这版协议了。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;hr&gt;
+&lt;h2 id="_1"&gt;一、最大的变化：从有状态变成无状态&lt;/h2&gt;
+&lt;p&gt;这是这次改动里最核心的一件事，其他所有变化几乎都是围着它转的。先说人话，再说协议。&lt;/p&gt;
+&lt;h3 id="vs"&gt;打个比方：打电话 vs 发快递&lt;/h3&gt;
+&lt;p&gt;&lt;strong&gt;旧版（2025 那套）像打电话。&lt;/strong&gt; 客户端要先拨号（&lt;code&gt;initialize&lt;/code&gt;），服务端接起来、分配一个 session-id，然后你俩就"占着这条线"，后面所有工具调用都得走这条线：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;服务端得记着这通电话的上下文（session、会话状态、能力协商结果）；&lt;/li&gt;
+&lt;li&gt;负载均衡得做 Sticky Session（同一个客户端的请求必须回到同一台机器），不然"电话就断了"；&lt;/li&gt;
+&lt;li&gt;想水平扩容？难。想在前面加个网关或者 CDN？也难。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;新版像发快递。&lt;/strong&gt; 每个请求都是一个自带完整收件地址的包裹，扔给任意一台服务器都能签收、处理、回寄：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;flowchart TB
+    subgraph OLD[&amp;quot;旧版（有状态 / 打电话）&amp;quot;]
+        C1[&amp;quot;Client&amp;quot;]
+        C1 --&amp;gt;|&amp;quot;initialize&amp;quot;| S1[&amp;quot;Server&amp;quot;]
+        S1 -.-&amp;gt;|&amp;quot;session-id = abc123&amp;quot;| C1
+        C1 --&amp;gt;|&amp;quot;tool call&amp;quot;| S1
+        C1 --&amp;gt;|&amp;quot;tool call（必须回到同一台机器）&amp;quot;| S1
+        S1[&amp;quot;Server（必须记住 abc123）&amp;quot;]
+    end
+
+    subgraph NEW[&amp;quot;新版（无状态 / 发快递）&amp;quot;]
+        C2[&amp;quot;Client&amp;quot;]
+        C2 --&amp;gt;|&amp;quot;POST /mcp（每个请求自带全部信息）&amp;quot;| S2A[&amp;quot;任意一台 Server&amp;quot;]
+        C2 --&amp;gt;|&amp;quot;POST /mcp（换一台也行）&amp;quot;| S2B[&amp;quot;另一台 Server&amp;quot;]
+        S2A[&amp;quot;Server（什么都不用记）&amp;quot;]
+        S2B[&amp;quot;Server（什么都不用记）&amp;quot;]
+    end
+
+    OLD --- NEW
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h3 id="_2"&gt;具体到协议长什么样&lt;/h3&gt;
+&lt;p&gt;新版一次工具调用，就是一个自包含的 HTTP 请求，任何一个服务实例都能处理：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nf"&gt;POST&lt;/span&gt; &lt;span class="nn"&gt;/mcp&lt;/span&gt; &lt;span class="kr"&gt;HTTP&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="m"&gt;1.1&lt;/span&gt;
+&lt;span class="na"&gt;MCP-Protocol-Version&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="l"&gt;2026-07-28&lt;/span&gt;
+&lt;span class="na"&gt;Mcp-Method&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="l"&gt;tools/call&lt;/span&gt;
+&lt;span class="na"&gt;Mcp-Name&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="l"&gt;search&lt;/span&gt;
+&lt;span class="na"&gt;Content-Type&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="l"&gt;application/json&lt;/span&gt;
+
+&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;jsonrpc&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;2.0&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;id&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;method&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;tools/call&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;params&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:{&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;name&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;search&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;arguments&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:{&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;q&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;otters&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;}}}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;注意几个细节：&lt;strong&gt;协议版本 &lt;code&gt;MCP-Protocol-Version&lt;/code&gt; 直接放在请求头里&lt;/strong&gt;（每个请求都带，不再靠一次性握手协商）；没有 session-id；没有"先连接再干活"的前置步骤。整体感觉，从"像 Language Server Protocol"变成了"像一个普通的 REST API"。&lt;/p&gt;
+&lt;p&gt;这个转变的好处，做过运维的人一看就懂：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Kubernetes 部署更省心，Pod 可以随便扩缩容，不用担心把请求打到"另一台不认识你的机器"上；&lt;/li&gt;
+&lt;li&gt;前面加网关、加反向代理、加 CDN 都变简单了；&lt;/li&gt;
+&lt;li&gt;Serverless（函数计算那种一次一实例的形态）终于能好好承载 MCP Server 了。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;hr&gt;
+&lt;h2 id="_3"&gt;二、被砍掉和被搬家的东西&lt;/h2&gt;
+&lt;p&gt;无状态这一刀下去，连带着改了一串东西。我整理成一张表，方便你对着旧版做迁移体检：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;能力&lt;/th&gt;
+&lt;th&gt;旧版（2025-11-25）&lt;/th&gt;
+&lt;th&gt;新版（2026-07-28 RC）&lt;/th&gt;
+&lt;th&gt;你要做的&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;握手&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;initialize&lt;/code&gt; / &lt;code&gt;initialized&lt;/code&gt; 两步握手&lt;/td&gt;
+&lt;td&gt;删除，改用按需的 &lt;code&gt;server/discover&lt;/code&gt; 发现能力&lt;/td&gt;
+&lt;td&gt;去掉握手逻辑&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;会话&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;Mcp-Session-Id&lt;/code&gt; 请求头&lt;/td&gt;
+&lt;td&gt;删除，协议层不再有 session&lt;/td&gt;
+&lt;td&gt;状态自己用 handle/存储管&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;长任务&lt;/td&gt;
+&lt;td&gt;实验性的 core 能力&lt;/td&gt;
+&lt;td&gt;搬进官方扩展 &lt;code&gt;io.modelcontextprotocol/tasks&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;用轮询而非阻塞等待&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;服务端反向请求&lt;/td&gt;
+&lt;td&gt;roots / sampling / elicitation&lt;/td&gt;
+&lt;td&gt;统一成 &lt;code&gt;InputRequiredResult&lt;/code&gt;（多轮请求）&lt;/td&gt;
+&lt;td&gt;改造需要用户补充输入的流程&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;roots / sampling / logging&lt;/td&gt;
+&lt;td&gt;正常能力&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;标记为废弃&lt;/strong&gt;，至少还能用 12 个月&lt;/td&gt;
+&lt;td&gt;新项目别再用&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;老的 HTTP+SSE 传输&lt;/td&gt;
+&lt;td&gt;已在更早版本废弃&lt;/td&gt;
+&lt;td&gt;正式进入废弃生命周期，一年缓冲期&lt;/td&gt;
+&lt;td&gt;迁到新的无状态传输&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;这里有两个点我想多啰嗦几句，因为最容易理解错。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;一是 &lt;code&gt;initialize&lt;/code&gt; 不是"简单删掉就完事"。&lt;/strong&gt; 用户群里常见的误解是"以后第一个请求直接调工具就行"。更准确的说法是：握手换成了一个按需的 &lt;code&gt;server/discover&lt;/code&gt; RPC——你想知道这个 Server 有哪些工具、什么 schema，就主动去 discover 一下；但这不再是"必须先做、做完才能干活"的强制前置步骤。这是无状态化很自然的一步。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;二是 Tasks（长任务）不是新东西，是"重造"。&lt;/strong&gt; 它在 &lt;code&gt;2025-11-25&lt;/code&gt; 就以实验能力的身份进过 core，结果生产环境一用，大家发现它跟有状态强绑定，于是这次干脆把它拆出来做成官方扩展，并且围着无状态重新设计。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="tasks-agent"&gt;三、Tasks 扩展：Agent 终于能"边聊边干活"&lt;/h2&gt;
+&lt;p&gt;这是我个人最喜欢的一块，因为它直接解决了 Agent 做长活儿的老大难。&lt;/p&gt;
+&lt;p&gt;旧版的工具调用是&lt;strong&gt;阻塞式&lt;/strong&gt;的：你调一个"跑一段 SQL"或者"构建一个 Docker 镜像"，就得干等它跑完，这期间对话是卡住的。&lt;/p&gt;
+&lt;p&gt;新版的 Tasks 扩展改成了&lt;strong&gt;任务句柄 + 轮询&lt;/strong&gt;的模式：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;sequenceDiagram
+    participant C as Client
+    participant S as Server
+
+    C-&amp;gt;&amp;gt;S: tools/call
+    Note over S: 接活，返回一个 task handle（任务凭证）
+    S--&amp;gt;&amp;gt;C: task handle
+
+    Note over C: （继续和用户聊别的）
+
+    C-&amp;gt;&amp;gt;S: tasks/get(handle)
+    S--&amp;gt;&amp;gt;C: running
+    C-&amp;gt;&amp;gt;S: tasks/update（中途补个输入，需要的话）
+    C-&amp;gt;&amp;gt;S: tasks/get(handle)
+    S--&amp;gt;&amp;gt;C: done + 结果
+    C-&amp;gt;&amp;gt;S: tasks/cancel(handle)（不想等了，取消）
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;几个关键设计（这些都是这次 RC 明确写进去的）：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;用轮询的 &lt;code&gt;tasks/get&lt;/code&gt; 取代了旧版那个阻塞式的 &lt;code&gt;tasks/result&lt;/code&gt;；&lt;/li&gt;
+&lt;li&gt;新增 &lt;code&gt;tasks/update&lt;/code&gt;，让客户端在任务执行途中把输入补进去；&lt;/li&gt;
+&lt;li&gt;去掉了 &lt;code&gt;tasks/list&lt;/code&gt;；&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;任务由服务端决定&lt;/strong&gt;：客户端只是声明"我支持 Tasks 这个扩展"，具体某次调用要不要当成长任务来跑，是服务端说了算，服务端可以主动返回一个 task handle。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;因为 handle 是自包含的、能持久化、不依赖 session，它天生适合跨机器、跨时间的长活儿：代码构建、Docker/K8s Job、深度检索、Deep Research、ETL……这些以前塞进一次同步调用里很别扭的场景，现在有了正经的表达方式。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_4"&gt;四、其他值得一提的变化&lt;/h2&gt;
+&lt;p&gt;无状态和 Tasks 是重头戏，剩下几个我快速过一遍，够你建立全景就行。&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;扩展框架（Extensions Framework）正式定型。&lt;/strong&gt; 以后新增能力（UI、长任务、鉴权……）不用再动整个协议，而是挂成一个带反向域名标识（比如 &lt;code&gt;io.modelcontextprotocol/tasks&lt;/code&gt;）、能独立版本演进的扩展。这个思路和 HTTP Header、Kubernetes CRD 一脉相承——协议留个稳定内核，能力靠扩展生长。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;MCP Apps：Server 能返回 UI 了。&lt;/strong&gt; 以前 Server 只能吐 JSON，现在可以返回沙箱 iframe 里渲染的 HTML 界面（表单、图表、审批按钮）。社区里那个 &lt;code&gt;mcp-ui&lt;/code&gt; 项目，如今被扶正成了官方扩展。对做企业内部工具的人，这意味着"一个 GitHub MCP 直接返回一个 Issue 看板 + 审批按钮"成为可能。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;鉴权向 OAuth 2.0 / OpenID Connect 靠拢。&lt;/strong&gt; 越来越多企业拿 MCP 连内部系统，安全就绕不过去。新版明确往标准鉴权收敛，理想形态是：Okta / Azure AD / Google Workspace 这类身份源，统一走一个 MCP Gateway，而不是每个 Server 各自管一套 Token。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;正式有了废弃策略（Deprecation Policy）。&lt;/strong&gt; 每个能力有明确的生命周期（实验 / 稳定 / 废弃），废弃至少给 12 个月缓冲。这对 SDK 和上下游做兼容是实打实的好事——终于不用猜"这个能力哪天说没就没了"。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;安全被摆到更重要的位置。&lt;/strong&gt; 能力越强，攻击面越大。MCP Apps 能渲染 HTML，就得防 UI 注入；Server 能返回 handle、能跑长任务，就得防恶意 Server 和权限越界。已经有研究专门讨论新功能带来的运行时风险。所以企业落地时，普遍会在 Server 前面加一层网关做审批、审计、沙箱。&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;hr&gt;
+&lt;h2 id="mcp-server"&gt;五、MCP Server 的认证与授权：先分清两个问题&lt;/h2&gt;
+&lt;p&gt;个人开发者的 MCP Server 大多跑在 localhost 上，不做认证也无所谓。但&lt;strong&gt;企业级 MCP Server 的核心难点从来不是 Tool，而是认证（AuthN）和授权（AuthZ）&lt;/strong&gt;。如果你熟悉 Kubernetes ServiceAccount、SPIFFE、JWT、微服务授权中心，会发现 MCP 的安全模型跟现代微服务几乎一模一样。&lt;/p&gt;
+&lt;p&gt;先把两个问题分清楚，别串了：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;认证（Authentication）回答"你是谁"&lt;/strong&gt;——是 Walter，还是 Claude Desktop、某个 Internal Agent。常用手段：OAuth2 / OIDC / JWT / mTLS / SPIFFE。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;授权（Authorization）回答"你能干什么"&lt;/strong&gt;——能调 &lt;code&gt;github.read&lt;/code&gt;、&lt;code&gt;jira.search&lt;/code&gt;，但不能碰 &lt;code&gt;mysql.drop_database&lt;/code&gt;、&lt;code&gt;aws.admin&lt;/code&gt;。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;顺序永远是：&lt;strong&gt;先认证识别身份（Principal），再授权检查权限（Permission）。&lt;/strong&gt;&lt;/p&gt;
+&lt;h3 id="51-server"&gt;5.1 别让每个 Server 自己管用户&lt;/h3&gt;
+&lt;p&gt;最推荐的落地方式，是&lt;strong&gt;不要让每个 MCP Server 各自造一套登录/Token/用户库&lt;/strong&gt;，而是把这些收口到一层 MCP Gateway：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;flowchart LR
+    A[&amp;quot;AI Agent&amp;quot;]
+    G[&amp;quot;MCP Gateway&amp;lt;br/&amp;gt;（认证 / 授权 / 审计）&amp;quot;]
+    M1[&amp;quot;GitHub MCP Server&amp;quot;]
+    M2[&amp;quot;Jira MCP Server&amp;quot;]
+    M3[&amp;quot;MySQL MCP Server&amp;quot;]
+
+    A --&amp;gt;|&amp;quot;Bearer Token&amp;quot;| G
+    G --&amp;gt; M1
+    G --&amp;gt; M2
+    G --&amp;gt; M3
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;分工很清晰：&lt;strong&gt;MCP Server 专心提供 Tool&lt;/strong&gt;，登录、Token 管理、MFA、SSO 这些统统交给 Gateway。&lt;/p&gt;
+&lt;h3 id="52"&gt;5.2 认证怎么做&lt;/h3&gt;
+&lt;p&gt;由简到繁，够用就好：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Bearer Token（最简单）&lt;/strong&gt;：请求头带 &lt;code&gt;Authorization: Bearer &amp;lt;JWT&amp;gt;&lt;/code&gt;，Server 验签、取出 &lt;code&gt;sub&lt;/code&gt;/&lt;code&gt;aud&lt;/code&gt;/&lt;code&gt;scope&lt;/code&gt; 即可，JWT 来自 OAuth / OIDC / 企业 IdP。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;OAuth2 / OIDC（企业首选）&lt;/strong&gt;：走 Okta / Microsoft Entra ID / Google Workspace / Keycloak 统一登录，Server 只验票、根本不碰密码。下一节用 Okta 完整走一遍。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;mTLS / SPIFFE（适合 Agent 集群）&lt;/strong&gt;：用客户端证书或 SPIFFE ID（如 &lt;code&gt;spiffe://company/agent/code-review&lt;/code&gt;）表达工作负载身份，没有 Bearer Token 被窃取的问题，Agent 也不用各自保存 API Key。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id="53"&gt;5.3 授权分几层&lt;/h3&gt;
+&lt;p&gt;从粗到细，按需叠加：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Scope&lt;/strong&gt;：JWT 里写明 &lt;code&gt;repo.read&lt;/code&gt; / &lt;code&gt;jira.read&lt;/code&gt;，Tool 声明自己需要哪个 scope。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;RBAC&lt;/strong&gt;：按角色发权限（Admin / Developer / Guest），类似 Kubernetes RBAC。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;ABAC&lt;/strong&gt;：结合部门、团队、位置、设备、风险等属性动态判定。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;OPA（推荐）&lt;/strong&gt;：把策略交给 Open Policy Agent 等策略引擎，Server 完全不用写权限逻辑。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;再往细里做，还有两条容易被忽略：&lt;strong&gt;Tool 级授权&lt;/strong&gt;（&lt;code&gt;read_issue&lt;/code&gt; 要 &lt;code&gt;jira.read&lt;/code&gt;，&lt;code&gt;delete_issue&lt;/code&gt; 要 &lt;code&gt;jira.admin&lt;/code&gt;，别一股脑放行）和&lt;strong&gt;Resource 级授权&lt;/strong&gt;（不光看能不能调 &lt;code&gt;search_repo&lt;/code&gt;，还要看这个用户对 &lt;code&gt;myrepo&lt;/code&gt; 这个具体资源有没有权限）。最后别忘了&lt;strong&gt;审计&lt;/strong&gt;——谁、何时、调了哪个 Tool、参数是什么、结果如何，统一记下来，SOC、合规、事后取证都靠它。&lt;/p&gt;
+&lt;p&gt;一句话收口：&lt;strong&gt;认证交给 IdP，授权集中到 Gateway/策略引擎，MCP Server 保持无状态、只管执行 Tool。&lt;/strong&gt; 这也正好和新版 MCP 向无状态、企业集成、统一身份治理演进的方向一致。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="okta"&gt;六、安全边界怎么落地：以 Okta 为例&lt;/h2&gt;
+&lt;p&gt;上一节讲了认证/授权的大框架，还是有点抽象。这一节我用 &lt;strong&gt;Okta&lt;/strong&gt;（一个企业常用的身份提供商，IdP）走一遍完整流程，把"你是谁"和"你能干什么"落到具体的票和验票逻辑上。&lt;/p&gt;
+&lt;p&gt;先记住一句话，它能帮你摆正所有角色的位置：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;MCP Server 是 OAuth 里的"资源服务器"（Resource Server），Okta 是"授权服务器"（Authorization Server）。MCP Server 只负责验票、不负责发票。&lt;/strong&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;打个生活比方：Okta 是电影院售票处，MCP Server 是检票口。检票口不管你怎么买的票、也不认识你本人，它只干一件事——&lt;strong&gt;验证你手里这张票是不是售票处开的、是不是这个场次的、有没有过期&lt;/strong&gt;。谁是谁的活儿，别串了。&lt;/p&gt;
+&lt;h3 id="61"&gt;6.1 三个角色和一张票&lt;/h3&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;角色&lt;/th&gt;
+&lt;th&gt;谁来当&lt;/th&gt;
+&lt;th&gt;干什么&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;Authorization Server（授权服务器）&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;Okta&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;认证用户、签发 access token（票）&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Client（客户端）&lt;/td&gt;
+&lt;td&gt;AI Agent / Claude Desktop 等 MCP Client&lt;/td&gt;
+&lt;td&gt;拿着用户去 Okta 换票，带着票来调 Server&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Resource Server（资源服务器）&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;你的 MCP Server&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;验票，票对了才干活&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;这里的"票"就是一个 &lt;strong&gt;JWT access token&lt;/strong&gt;：一段签了名、带过期时间、写明"发票方是谁、这张票给谁用（audience）、能干哪些事（scope）"的字符串。&lt;/p&gt;
+&lt;h3 id="62"&gt;6.2 认证 + 授权的完整流程&lt;/h3&gt;
+&lt;p&gt;新版 MCP 的鉴权基线（&lt;code&gt;2025-11-25&lt;/code&gt; 敲定、&lt;code&gt;2026-07-28&lt;/code&gt; 继续沿用并加固）是 &lt;strong&gt;OAuth 2.1 + PKCE&lt;/strong&gt;，配套两个发现机制。别被术语吓到，我拆成六步：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;sequenceDiagram
+    participant C as Client(Agent)
+    participant S as Your MCP Server
+    participant O as Okta (Auth Server)
+
+    C-&amp;gt;&amp;gt;S: 1. tools/call（没带票）
+    S--&amp;gt;&amp;gt;C: 401 + 一个指路牌（RFC 9728）&amp;lt;br/&amp;gt;指向 /.well-known/oauth-protected-resource
+    Note over C,S: 2. 读指路牌：谁保护我(authorization_servers = Okta)、&amp;lt;br/&amp;gt;我的身份标识(resource)、我要哪些 scope
+
+    C-&amp;gt;&amp;gt;O: 3. 带用户去 Okta 换票
+    Note over O: 用户在 Okta 登录(认证)&amp;lt;br/&amp;gt;OAuth 2.1 授权码 + PKCE
+    O--&amp;gt;&amp;gt;C: 发一张 JWT(access token)&amp;lt;br/&amp;gt;aud = 你的 MCP Server&amp;lt;br/&amp;gt;scope = weather.read
+
+    C-&amp;gt;&amp;gt;S: 4. tools/call + Bearer 票
+    Note over S: 验票（见 6.3）
+    S--&amp;gt;&amp;gt;C: 结果（票 OK 且 scope 够 → 干活，返回天气）
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;其中两个"指路牌"是关键，也是最容易漏的：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;第 1、2 步（RFC 9728，Protected Resource Metadata）&lt;/strong&gt;：Server 被无票访问时，回 &lt;code&gt;401&lt;/code&gt; 并在 &lt;code&gt;WWW-Authenticate&lt;/code&gt; 头里指向自己的元数据端点 &lt;code&gt;/.well-known/oauth-protected-resource&lt;/code&gt;。这个文档机器可读地告诉客户端：&lt;strong&gt;"保护我的是 Okta，去那儿换票，记得带上我的 resource 标识和这些 scope。"&lt;/strong&gt; 客户端不用把 Okta 地址写死，自动发现。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;第 3 步里的 &lt;code&gt;resource&lt;/code&gt; 参数（RFC 8707，Resource Indicators）&lt;/strong&gt;：客户端向 Okta 换票时必须带上"我要给哪个 Server 用"，Okta 才会把 JWT 的 &lt;code&gt;aud&lt;/code&gt;（audience，受众）字段设成你的 MCP Server。&lt;strong&gt;漏了这步，签出来的票 &lt;code&gt;aud&lt;/code&gt; 不对，Server 验票时就会拒绝&lt;/strong&gt;——这是实践中最常见的坑，我特意标出来。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id="63-mcp-server"&gt;6.3 MCP Server 端到底要验什么&lt;/h3&gt;
+&lt;p&gt;回到那个"检票口"的活儿。你的高德天气 MCP Server 收到带 &lt;code&gt;Authorization: Bearer &amp;lt;jwt&amp;gt;&lt;/code&gt; 的请求后，验票要卡这几条，缺一不可：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;签名对不对&lt;/strong&gt;：用 Okta 公开的 JWKS（公钥集）验 JWT 签名，确认票确实是 Okta 签的，不是伪造的。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;iss&lt;/code&gt;（发票方）对不对&lt;/strong&gt;：必须是你信任的那个 Okta 授权服务器地址。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;aud&lt;/code&gt;（受众）是不是我&lt;/strong&gt;：必须等于你这个 MCP Server 的 resource 标识。&lt;strong&gt;这一条防的是"把发给别的 Server 的票拿来这儿用"&lt;/strong&gt;——token 转发攻击的关键防线。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;exp&lt;/code&gt;（过期时间）过没过&lt;/strong&gt;：过期的票一律拒。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;scope&lt;/code&gt; 够不够&lt;/strong&gt;：调 &lt;code&gt;get_current_weather&lt;/code&gt; 至少得有 &lt;code&gt;weather.read&lt;/code&gt;。没有就返回 &lt;code&gt;403&lt;/code&gt;，而不是默默放行。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;用伪代码表达就是（真实项目里用 &lt;code&gt;PyJWT&lt;/code&gt; + 从 Okta 拉 JWKS 即可）：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# 概念示意：MCP Server 侧的验票中间件（伪代码）&lt;/span&gt;
+&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;verify_token&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;bearer_token&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="nb"&gt;dict&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;claims&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;jwt&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;decode&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+        &lt;span class="n"&gt;bearer_token&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+        &lt;span class="n"&gt;key&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;okta_jwks&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;                       &lt;span class="c1"&gt;# 1. 用 Okta 公钥验签名&lt;/span&gt;
+        &lt;span class="n"&gt;algorithms&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;RS256&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;
+        &lt;span class="n"&gt;issuer&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;https://your-org.okta.com&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;  &lt;span class="c1"&gt;# 2. iss 必须是我信任的 Okta&lt;/span&gt;
+        &lt;span class="n"&gt;audience&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;https://mcp.your-org.com/weather&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;  &lt;span class="c1"&gt;# 3. aud 必须是我&lt;/span&gt;
+        &lt;span class="n"&gt;options&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;require&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;exp&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;aud&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;iss&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;]},&lt;/span&gt;   &lt;span class="c1"&gt;# 4. exp 由库校验过期&lt;/span&gt;
+    &lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;weather.read&amp;quot;&lt;/span&gt; &lt;span class="ow"&gt;not&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;claims&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;get&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;scope&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;split&lt;/span&gt;&lt;span class="p"&gt;():&lt;/span&gt;
+        &lt;span class="k"&gt;raise&lt;/span&gt; &lt;span class="ne"&gt;PermissionError&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;scope 不足&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;  &lt;span class="c1"&gt;# 5. 授权检查，不够就 403&lt;/span&gt;
+    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;claims&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h3 id="64"&gt;6.4 无状态 + 网关：为什么这套组合特别搭&lt;/h3&gt;
+&lt;p&gt;这里正好呼应第一节的"无状态"。&lt;strong&gt;JWT 验票本身就是无状态的&lt;/strong&gt;——每张票自带过期时间、&lt;code&gt;aud&lt;/code&gt;、&lt;code&gt;scope&lt;/code&gt;，Server 不用记"这个用户上次登录过"，任意一台实例拿到票都能独立验完。这跟新版 MCP"每个请求自包含"的气质天然合拍，也是它能塞进 Kubernetes、随便扩容的前提。&lt;/p&gt;
+&lt;p&gt;不过我不建议让每个业务 Server 各自实现上面那套验票逻辑——重复、易错、难审计。更好的落地是&lt;strong&gt;把鉴权收口到 MCP Gateway&lt;/strong&gt;：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;flowchart LR
+    O[&amp;quot;Okta（认证 + 发票）&amp;quot;]
+    A[&amp;quot;Agent&amp;quot;]
+    G[&amp;quot;MCP Gateway&amp;lt;br/&amp;gt;（统一验票 / 限流 / 审计 / ACL）&amp;quot;]
+    W1[&amp;quot;天气 MCP Server（只管天气）&amp;quot;]
+    W2[&amp;quot;GitHub MCP Server&amp;quot;]
+    W3[&amp;quot;MySQL MCP Server&amp;quot;]
+
+    A --&amp;gt;|&amp;quot;票&amp;quot;| G
+    O --&amp;gt;|&amp;quot;换票&amp;quot;| A
+    G --&amp;gt; W1
+    G --&amp;gt; W2
+    G --&amp;gt; W3
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;网关统一验签名、查 &lt;code&gt;aud&lt;/code&gt;/&lt;code&gt;scope&lt;/code&gt;、记审计日志、做限流和 ACL；后面的天气 Server 只在内网、只管查天气，甚至可以信任网关已经验过票。这样每加一个新 Server，都不用再抄一遍鉴权代码——&lt;strong&gt;认证授权只做一次，业务逻辑保持干净&lt;/strong&gt;。&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;一句话收口：&lt;strong&gt;认证交给 Okta，验票交给网关，业务 Server 只管业务。&lt;/strong&gt; 三层分工不串，安全和扩展性才都能要。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;hr&gt;
+&lt;h2 id="mcp-server_1"&gt;七、动手：把高德天气包成一个 MCP Server&lt;/h2&gt;
+&lt;p&gt;讲了这么多，不写代码等于纸上谈兵。下面用一个具体例子把它落地：&lt;strong&gt;给 Agent 一个"查某个城市天气"的能力，数据源用&lt;a href="https://lbs.amap.com/api/webservice/guide/api/weatherinfo"&gt;高德天气 API&lt;/a&gt;。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;我参考了自己另一个项目 &lt;code&gt;lazy-rabbit-agent&lt;/code&gt; 里已经在用的高德天气封装，写了&lt;strong&gt;两个只差一行的对照示例&lt;/strong&gt;：一个走旧版有状态、一个走新版无状态。两份完整代码都在这个仓库里，可以直接 clone 下来跑：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;旧版（有状态 / 打电话）：&lt;a href="https://github.com/walterfan/lazy-rabbit-agent/blob/main/example/weather_mcp_2025.py"&gt;&lt;code&gt;example/weather_mcp_2025.py&lt;/code&gt;&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;新版（无状态 / 发快递）：&lt;a href="https://github.com/walterfan/lazy-rabbit-agent/blob/main/example/weather_mcp_2026.py"&gt;&lt;code&gt;example/weather_mcp_2026.py&lt;/code&gt;&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;高德这个接口很适合当例子：一个 &lt;code&gt;GET&lt;/code&gt; 请求，传城市 adcode 和 &lt;code&gt;extensions&lt;/code&gt; 参数，就能拿实时天气或者未来几天预报——本身就是无状态的，正好贴合新版 MCP 的气质。&lt;/p&gt;
+&lt;h3 id="71"&gt;7.1 准备工作&lt;/h3&gt;
+&lt;p&gt;先去&lt;a href="https://lbs.amap.com/"&gt;高德开放平台&lt;/a&gt;申请一个 Web 服务的 key（免费额度足够练手）。然后装依赖：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;pip&lt;span class="w"&gt; &lt;/span&gt;install&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;mcp[cli]&amp;quot;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;httpx
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;code&gt;mcp&lt;/code&gt; 是官方 Python SDK，已经支持 &lt;code&gt;2026-07-28&lt;/code&gt;；&lt;code&gt;httpx&lt;/code&gt; 用来发异步 HTTP 请求。key 别写死在代码里，走环境变量：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nb"&gt;export&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nv"&gt;AMAP_API_KEY&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;你的高德key&amp;quot;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h3 id="72-mcp-server"&gt;7.2 一个能跑的天气 MCP Server&lt;/h3&gt;
+&lt;p&gt;先看新版这份 &lt;a href="https://github.com/walterfan/lazy-rabbit-agent/blob/main/example/weather_mcp_2026.py"&gt;&lt;code&gt;weather_mcp_2026.py&lt;/code&gt;&lt;/a&gt;（有删节，完整版看仓库）。核心就是：用 &lt;code&gt;FastMCP&lt;/code&gt; 声明一个 Server，把"查天气"注册成工具（tool），工具内部去调高德接口。&lt;strong&gt;注意整个 Server 不存任何会话状态&lt;/strong&gt;——每次调用自带城市参数，符合新版无状态的理念。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# example/weather_mcp_2026.py（新版：无状态 / 发快递）&lt;/span&gt;
+&lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="nn"&gt;os&lt;/span&gt;
+&lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="nn"&gt;sys&lt;/span&gt;
+
+&lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="nn"&gt;httpx&lt;/span&gt;
+&lt;span class="kn"&gt;from&lt;/span&gt; &lt;span class="nn"&gt;mcp.server.fastmcp&lt;/span&gt; &lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="n"&gt;FastMCP&lt;/span&gt;
+
+&lt;span class="c1"&gt;# 高德 Web 服务地址（不硬编码 key，从环境变量读）&lt;/span&gt;
+&lt;span class="n"&gt;AMAP_BASE_URL&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;https://restapi.amap.com&amp;quot;&lt;/span&gt;
+&lt;span class="n"&gt;AMAP_API_KEY&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;os&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;environ&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;get&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;AMAP_API_KEY&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+&lt;span class="c1"&gt;# 关键就这一行：stateless_http=True —— 走 HTTP 时不维护会话，&lt;/span&gt;
+&lt;span class="c1"&gt;# 不需要 initialize 握手、不下发 session-id，每个请求自包含。&lt;/span&gt;
+&lt;span class="n"&gt;mcp&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;FastMCP&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;amap-weather-2026&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;stateless_http&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="kc"&gt;True&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+
+&lt;span class="k"&gt;async&lt;/span&gt; &lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;_fetch_weather&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;city&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;extensions&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="nb"&gt;dict&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="sd"&gt;&amp;quot;&amp;quot;&amp;quot;调用高德 weatherInfo 接口，返回原始 JSON。&amp;quot;&amp;quot;&amp;quot;&lt;/span&gt;
+    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="ow"&gt;not&lt;/span&gt; &lt;span class="n"&gt;AMAP_API_KEY&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="k"&gt;raise&lt;/span&gt; &lt;span class="ne"&gt;RuntimeError&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;环境变量 AMAP_API_KEY 未设置&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+    &lt;span class="n"&gt;url&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;AMAP_BASE_URL&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;/v3/weather/weatherInfo&amp;quot;&lt;/span&gt;
+    &lt;span class="n"&gt;params&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="s2"&gt;&amp;quot;key&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;AMAP_API_KEY&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+        &lt;span class="s2"&gt;&amp;quot;city&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;city&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;              &lt;span class="c1"&gt;# 6 位 adcode，如 &amp;quot;110000&amp;quot; 是北京&lt;/span&gt;
+        &lt;span class="s2"&gt;&amp;quot;extensions&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;extensions&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;  &lt;span class="c1"&gt;# base=实时, all=预报&lt;/span&gt;
+        &lt;span class="s2"&gt;&amp;quot;output&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;json&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+    &lt;span class="k"&gt;async&lt;/span&gt; &lt;span class="k"&gt;with&lt;/span&gt; &lt;span class="n"&gt;httpx&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;AsyncClient&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;timeout&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;10&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="k"&gt;as&lt;/span&gt; &lt;span class="n"&gt;client&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;resp&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="k"&gt;await&lt;/span&gt; &lt;span class="n"&gt;client&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;get&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;url&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;params&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;params&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="n"&gt;resp&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;raise_for_status&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+        &lt;span class="n"&gt;data&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;resp&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;json&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+
+    &lt;span class="c1"&gt;# 高德用字符串 &amp;quot;1&amp;quot;/&amp;quot;0&amp;quot; 表示成功/失败，这里做个显式检查&lt;/span&gt;
+    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;data&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;get&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;status&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;!=&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;1&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="k"&gt;raise&lt;/span&gt; &lt;span class="ne"&gt;RuntimeError&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;高德接口返回错误: &lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;data&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;get&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;info&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;data&lt;/span&gt;
+
+
+&lt;span class="nd"&gt;@mcp&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;tool&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+&lt;span class="k"&gt;async&lt;/span&gt; &lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;get_current_weather&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;city&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="sd"&gt;&amp;quot;&amp;quot;&amp;quot;查询某个城市的实时天气。&lt;/span&gt;
+
+&lt;span class="sd"&gt;    参数:&lt;/span&gt;
+&lt;span class="sd"&gt;        city: 6 位城市编码 adcode，例如北京 &amp;quot;110000&amp;quot;、合肥 &amp;quot;340100&amp;quot;。&lt;/span&gt;
+&lt;span class="sd"&gt;    &amp;quot;&amp;quot;&amp;quot;&lt;/span&gt;
+    &lt;span class="n"&gt;data&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="k"&gt;await&lt;/span&gt; &lt;span class="n"&gt;_fetch_weather&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;city&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;extensions&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;base&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="n"&gt;live&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;data&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;lives&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;][&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;
+        &lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;live&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;province&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="si"&gt;}{&lt;/span&gt;&lt;span class="n"&gt;live&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;city&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;当前天气：&lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;live&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;weather&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;，&amp;quot;&lt;/span&gt;
+        &lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;气温 &lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;live&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;temperature&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;℃，&amp;quot;&lt;/span&gt;
+        &lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;live&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;winddirection&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;风 &lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;live&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;windpower&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt; 级，&amp;quot;&lt;/span&gt;
+        &lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;湿度 &lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;live&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;humidity&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;%。&amp;quot;&lt;/span&gt;
+        &lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;（数据时间 &lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;live&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;reporttime&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;）&amp;quot;&lt;/span&gt;
+    &lt;span class="p"&gt;)&lt;/span&gt;
+
+
+&lt;span class="nd"&gt;@mcp&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;tool&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+&lt;span class="k"&gt;async&lt;/span&gt; &lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;get_weather_forecast&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;city&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;days&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;int&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="mi"&gt;3&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="sd"&gt;&amp;quot;&amp;quot;&amp;quot;查询某个城市未来几天的天气预报（最多 4 天）。&lt;/span&gt;
+
+&lt;span class="sd"&gt;    参数:&lt;/span&gt;
+&lt;span class="sd"&gt;        city: 6 位城市编码 adcode。&lt;/span&gt;
+&lt;span class="sd"&gt;        days: 预报天数，1-4，默认 3。&lt;/span&gt;
+&lt;span class="sd"&gt;    &amp;quot;&amp;quot;&amp;quot;&lt;/span&gt;
+    &lt;span class="n"&gt;days&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nb"&gt;max&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="nb"&gt;min&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;days&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mi"&gt;4&lt;/span&gt;&lt;span class="p"&gt;))&lt;/span&gt;
+    &lt;span class="n"&gt;data&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="k"&gt;await&lt;/span&gt; &lt;span class="n"&gt;_fetch_weather&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;city&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;extensions&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;all&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="n"&gt;forecast&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;data&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;forecasts&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;][&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+
+    &lt;span class="n"&gt;labels&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;今天&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;明天&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;后天&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+    &lt;span class="n"&gt;lines&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;forecast&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;province&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="si"&gt;}{&lt;/span&gt;&lt;span class="n"&gt;forecast&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;city&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;未来 &lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;days&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt; 天预报：&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+    &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;i&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;cast&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="nb"&gt;enumerate&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;forecast&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;casts&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;][:&lt;/span&gt;&lt;span class="n"&gt;days&lt;/span&gt;&lt;span class="p"&gt;]):&lt;/span&gt;
+        &lt;span class="n"&gt;label&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;labels&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;get&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;i&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;+&lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;i&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;天&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="n"&gt;lines&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;append&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+            &lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;- &lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;label&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;(&lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;cast&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;date&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;) 白天 &lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;cast&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;dayweather&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt; &amp;quot;&lt;/span&gt;
+            &lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;cast&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;daytemp&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;℃ / 夜间 &lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;cast&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;nightweather&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt; &lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;cast&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;nighttemp&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;℃，&amp;quot;&lt;/span&gt;
+            &lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;cast&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;daywind&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;风 &lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;cast&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;daypower&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt; 级&amp;quot;&lt;/span&gt;
+        &lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="se"&gt;\n&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;join&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;lines&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+
+&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;main&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="kc"&gt;None&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="sd"&gt;&amp;quot;&amp;quot;&amp;quot;入口：默认 stdio，带 --http 时以无状态 HTTP 传输对外。&amp;quot;&amp;quot;&amp;quot;&lt;/span&gt;
+    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;--http&amp;quot;&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;sys&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;argv&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="c1"&gt;# 新版&amp;quot;发快递&amp;quot;形态：无状态 HTTP，可直接塞进 K8s / 函数计算。&lt;/span&gt;
+        &lt;span class="n"&gt;mcp&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;settings&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;host&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;127.0.0.1&amp;quot;&lt;/span&gt;
+        &lt;span class="n"&gt;mcp&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;settings&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;port&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="mi"&gt;8026&lt;/span&gt;
+        &lt;span class="n"&gt;mcp&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;run&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;transport&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;streamable-http&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;else&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="c1"&gt;# 本地开发用 stdio，客户端（如 Claude Desktop）直接拉起这个进程。&lt;/span&gt;
+        &lt;span class="n"&gt;mcp&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;run&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+
+
+&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="vm"&gt;__name__&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;__main__&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;main&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;strong&gt;旧版那份 &lt;a href="https://github.com/walterfan/lazy-rabbit-agent/blob/main/example/weather_mcp_2025.py"&gt;&lt;code&gt;weather_mcp_2025.py&lt;/code&gt;&lt;/a&gt; 工具逻辑一模一样，差别几乎只有一行：&lt;/strong&gt;&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# 旧版（有状态 / 打电话）：走 HTTP 时维护会话，&lt;/span&gt;
+&lt;span class="c1"&gt;# 隐含 initialize 握手 + Mcp-Session-Id，部署要考虑 Sticky Session。&lt;/span&gt;
+&lt;span class="n"&gt;mcp&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;FastMCP&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;amap-weather-2025&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;stateless_http&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="kc"&gt;False&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;把两份放一起看，就能直观感受到这次"从打电话变成发快递"到底改了什么——业务代码没变，变的是协议怎么送请求。&lt;/p&gt;
+&lt;p&gt;几个我特意保留的工程习惯，值得你抄走：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;key 从环境变量读，不写死、不进日志。&lt;/strong&gt; 真调用时要 mask（比如只打印前 8 位），这是安全底线。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;对高德的 &lt;code&gt;status&lt;/code&gt; 字段做显式检查。&lt;/strong&gt; 它成功返回 &lt;code&gt;"1"&lt;/code&gt;、失败返回 &lt;code&gt;"0"&lt;/code&gt;，不看这个字段直接取 &lt;code&gt;lives[0]&lt;/code&gt; 迟早翻车。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;工具的 docstring 就是给模型看的说明书。&lt;/strong&gt; 参数含义、格式、边界（比如"adcode 是 6 位""days 最多 4 天"）都写清楚，模型才知道怎么正确调用。这是写 MCP 工具最容易被忽略、又最影响效果的地方。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id="73"&gt;7.3 跑起来 &amp;amp; 接到客户端&lt;/h3&gt;
+&lt;p&gt;先把仓库拉下来、装依赖：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;git&lt;span class="w"&gt; &lt;/span&gt;clone&lt;span class="w"&gt; &lt;/span&gt;https://github.com/walterfan/lazy-rabbit-agent.git
+&lt;span class="nb"&gt;cd&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;lazy-rabbit-agent/example
+pip&lt;span class="w"&gt; &lt;/span&gt;install&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;mcp[cli]&amp;quot;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;httpx
+&lt;span class="nb"&gt;export&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nv"&gt;AMAP_API_KEY&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;你的高德key&amp;quot;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;本地自测一下 Server 在不在（两份都能这么跑）：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# 用官方 CLI 直接调试，会弹一个交互界面列出工具&lt;/span&gt;
+mcp&lt;span class="w"&gt; &lt;/span&gt;dev&lt;span class="w"&gt; &lt;/span&gt;weather_mcp_2026.py
+
+&lt;span class="c1"&gt;# 或者直接以无状态 HTTP 起服务（监听 127.0.0.1:8026/mcp）&lt;/span&gt;
+python&lt;span class="w"&gt; &lt;/span&gt;weather_mcp_2026.py&lt;span class="w"&gt; &lt;/span&gt;--http
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;然后接到支持 MCP 的客户端。以 Claude Desktop 为例，在它的配置文件里加一段（用 stdio 拉起进程）：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;mcpServers&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;amap-weather&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;command&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;python&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;args&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;/绝对路径/lazy-rabbit-agent/example/weather_mcp_2026.py&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;env&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;AMAP_API_KEY&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;你的高德key&amp;quot;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;重启客户端，就能直接问它"合肥今天天气怎么样"，它会自己决定调 &lt;code&gt;get_current_weather("340100")&lt;/code&gt; 并把结果讲给你听。想体验旧版有状态那套，把文件名换成 &lt;code&gt;weather_mcp_2025.py&lt;/code&gt; 即可。&lt;/p&gt;
+&lt;h3 id="74"&gt;7.4 想上生产？往无状态和网关方向走&lt;/h3&gt;
+&lt;p&gt;上面这个用 &lt;code&gt;stdio&lt;/code&gt; 传输、本地进程的形态，适合自己单机玩。如果要按新版 MCP 的方向做到"对外、可复用、能扩容"，我建议这么演进：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;换成 HTTP 传输、无状态部署。&lt;/strong&gt; 因为 Server 本身不存会话状态，你可以直接塞进 Kubernetes 或函数计算，前面挂负载均衡随便扩。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;给高德结果加缓存。&lt;/strong&gt; 天气一小时内变化不大，&lt;code&gt;lazy-rabbit-agent&lt;/code&gt; 里就对 adcode + extensions 做了一小时缓存来省调用额度——但缓存放 Redis 这类外部存储，别放进程内存，否则又变回"有状态"了。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;前面加一层 MCP Gateway。&lt;/strong&gt; 由网关统一管 OAuth 鉴权、限流、审计、ACL，而不是让这个天气 Server 自己扛。这也正是新版鉴权改造想推动的企业最佳实践。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;hr&gt;
+&lt;h2 id="agent"&gt;八、这次改动，对做 Agent 的人意味着什么&lt;/h2&gt;
+&lt;p&gt;把上面串起来，我认为未来做企业级 Agent，架构会越来越长成下面这样：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;flowchart TB
+    A[&amp;quot;AI Agent&amp;quot;]
+    G[&amp;quot;MCP Gateway&amp;lt;br/&amp;gt;Auth / Audit / ACL&amp;quot;]
+
+    A --&amp;gt;|&amp;quot;MCP Client&amp;quot;| G
+    G --&amp;gt; W1[&amp;quot;天气 MCP（无状态）&amp;quot;]
+    G --&amp;gt; W2[&amp;quot;GitHub MCP&amp;quot;]
+    G --&amp;gt; W3[&amp;quot;MySQL MCP&amp;quot;]
+
+    W1 --- T[&amp;quot;Task / Handle / Apps&amp;quot;]
+    W2 --- T
+    W3 --- T
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;三个我认为最值得深挖的方向，也留给你：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;无状态 MCP Server&lt;/strong&gt;：怎么设计一个真正无状态、能水平扩容、适合云原生和 Serverless 的 Server。上面那个天气例子就是最小起点。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;MCP Gateway&lt;/strong&gt;：在所有 Server 前加一层统一网关，收口鉴权、限流、审计、策略。这大概率会成为企业标配。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Task + Handle 模型&lt;/strong&gt;：让 Agent 从"只会同步调工具"进化到"能编排长任务、异步执行工作流"，去啃那些以前塞不进一次调用的复杂活儿。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;hr&gt;
+&lt;h2 id="_5"&gt;最后一句&lt;/h2&gt;
+&lt;p&gt;MCP 这次从"打电话"改成"发快递"，本质上是把状态从协议层踢回到了应用层——协议只管把每个请求送到，状态谁需要谁自己管。这个取舍，做过分布式系统的人都熟悉：&lt;strong&gt;无状态的东西，才好扩、好换、好治理。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;如果你手上正好有个现成的 REST 服务想接给 Agent 用，别急着上一整套复杂架构。照着上面那个几十行的天气 Server 抄一个最小版本跑通，再按"无状态 → 加缓存 → 加网关"三步慢慢往生产演进。&lt;strong&gt;先能跑，再谈优雅。&lt;/strong&gt;&lt;/p&gt;
+&lt;h4 id="_6"&gt;行动清单&lt;/h4&gt;
+&lt;ul&gt;
+&lt;li&gt;[ ] 分清你面对的是 RC（&lt;code&gt;2026-07-28&lt;/code&gt;）还是当前生效版（&lt;code&gt;2025-11-25&lt;/code&gt;），别把方向当 deadline&lt;/li&gt;
+&lt;li&gt;[ ] 老代码体检：还在用 &lt;code&gt;initialize&lt;/code&gt; 握手、&lt;code&gt;Mcp-Session-Id&lt;/code&gt;、阻塞式 &lt;code&gt;tasks/result&lt;/code&gt; 的，列进迁移清单&lt;/li&gt;
+&lt;li&gt;[ ] 新项目别再碰已废弃的 roots / sampling / logging&lt;/li&gt;
+&lt;li&gt;[ ] 写工具时，把 docstring 当"给模型看的说明书"认真写：参数、格式、边界都交代清楚&lt;/li&gt;
+&lt;li&gt;[ ] key 走环境变量，日志里 mask，别硬编码&lt;/li&gt;
+&lt;li&gt;[ ] 鉴权分清角色：Okta 发票（认证），MCP Server/网关验票（授权）&lt;/li&gt;
+&lt;li&gt;[ ] 验票五查：签名、&lt;code&gt;iss&lt;/code&gt;、&lt;code&gt;aud&lt;/code&gt;、&lt;code&gt;exp&lt;/code&gt;、&lt;code&gt;scope&lt;/code&gt;，一条都不能少&lt;/li&gt;
+&lt;li&gt;[ ] 换票时记得带 &lt;code&gt;resource&lt;/code&gt; 参数（RFC 8707），否则 &lt;code&gt;aud&lt;/code&gt; 会对不上&lt;/li&gt;
+&lt;li&gt;[ ] 上生产前想清楚：无状态传输 + 外部缓存 + 网关鉴权&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id="_7"&gt;全文思维导图&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap
+&amp;lt;style&amp;gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&amp;lt;/style&amp;gt;
+
+* MCP 2026-07-28
+** 核心变化
+*** 无状态协议核心
+*** 打电话→发快递
+*** REST 化
+** 砍掉/搬家
+*** 删 initialize 握手
+*** 删 Mcp-Session-Id
+*** Tasks 搬进扩展
+*** roots/sampling/logging 废弃
+** Tasks 扩展
+*** task handle + 轮询
+*** tasks/get / update / cancel
+*** 服务端决定长任务
+** 其他
+*** 扩展框架定型
+*** MCP Apps 返回 UI
+*** 鉴权向 OAuth 靠拢
+*** 废弃策略 12 个月
+** 认证与授权
+*** AuthN=你是谁
+*** AuthZ=你能干什么
+*** Gateway 收口/Server 只管 Tool
+*** 认证 Bearer/OAuth/mTLS/SPIFFE
+*** 授权 Scope/RBAC/ABAC/OPA
+** 安全边界(Okta)
+*** Okta=授权服务器/发票
+*** MCP Server=资源服务器/验票
+*** RFC 9728 元数据发现
+*** RFC 8707 resource→aud
+*** 验票五查 签名/iss/aud/exp/scope
+** 高德天气实例
+*** FastMCP 声明 Server
+*** tool = get_current_weather
+*** key 走环境变量
+*** 无状态→缓存→网关
+@endmindmap
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;img alt="MCP 大改版 - 思维导图" src="./images/tech_20260802_mcp-2026-stateless-spec_mindmap.png"&gt;&lt;/p&gt;
+&lt;hr/&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。&lt;/p&gt;</content><category term="AI"/><category term="journal"/><category term="AI"/><category term="MCP"/><category term="agent"/><category term="python"/></entry><entry><title>AI 的“操作系统”：Harness 工程如何让模型自我改进</title><link href="https://www.fanyamin.com/blog/2026-07-31-harness-engineering.html" rel="alternate"/><published>2026-07-31T13:20:00+08:00</published><updated>2026-07-31T13:20:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-07-31:/blog/2026-07-31-harness-engineering.html</id><summary type="html">&lt;p&gt;为什么 Claude Code、Codex 这些编码 Agent 感觉比“裸模型”聪明得多？秘密不在模型参数里，而在模型外面那层叫 Harness 的壳。这篇翻译并解读 Lilian Weng 2026 年 7 月的长文《Harness Engineering for Self-Improvement》：什么是 Harness、三大设计模式、优化路线图（上下文工程→工作流→自我改进→进化搜索→权重联合优化）、七大未来挑战，以及我作为一个后端老兵的解读。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;AI 的“操作系统”：Harness 工程如何让模型自我改进&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;learning note&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Version&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;v1.0&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;2026-07-31&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h1 id="ai-harness"&gt;AI 的“操作系统”：Harness 工程如何让模型自我改进&lt;/h1&gt;
+&lt;p&gt;前阵子我在折腾自己的虚拟 Scrum 团队（lazy-scrum-team），把“产品经理”“开发”“测试”这些角色做成一个个 agent 提示词模板。用着用着，我发现自己做的最多的一件事，不是调模型，而是调&lt;strong&gt;模型外面的那套东西&lt;/strong&gt;：提示词怎么组织、工具怎么暴露、上下文怎么存、失败怎么重试、结果怎么评估。&lt;/p&gt;
+&lt;p&gt;我当时的直觉是：这层“壳”比模型本身更值得花时间。读完 Lilian Weng 这篇《Harness Engineering for Self-Improvement》（2026 年 7 月 4 日），我确认了自己的直觉——而且她比我走得远得多：&lt;strong&gt;这层壳不但重要，而且终将学会自己改自己，让 AI 走上递归自我改进（RSI）的路径。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;这篇博客分两半：前半部分是我对原文的完整翻译与整理，后半部分是我的解读——一个后端老兵怎么看“Harness 工程”。&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;先把词说清楚：&lt;strong&gt;Harness&lt;/strong&gt;（框架/外壳/缰绳）指包裹在基础模型外面、编排它如何思考、调用工具、管理上下文、存储产物、评估结果的整套系统。&lt;/li&gt;
+&lt;li&gt;这篇不是纯翻译：原文 31 分钟阅读量，我把它压缩成可消化的结构，并保留了所有关键论文和数字。&lt;/li&gt;
+&lt;li&gt;原文链接：&lt;a href="https://lilianweng.github.io/posts/2026-07-04-harness/"&gt;https://lilianweng.github.io/posts/2026-07-04-harness/&lt;/a&gt;，建议直接读原文配图。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;hr&gt;
+&lt;h2 id="harness"&gt;一、什么是 Harness：模型外面那层“操作系统”&lt;/h2&gt;
+&lt;p&gt;递归自我改进（recursive self-improvement, RSI）的概念可以追溯到 I. J. Good（1965）提出的“超级智能机器”：一个能在所有智力活动中超越人类、并能设计出更好机器来改进自身的系统。Yudkowsky（2008）把“递归自我改进”定义为一个具体的反馈回路：&lt;strong&gt;AI 用当前的智能，去改进生产它智能的认知机器。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;在现代 AI 里，这个回路未必是模型直接改写自己的权重——更广泛地说，是&lt;strong&gt;模型改进自己的训练流水线和部署系统&lt;/strong&gt;，从而让下一代模型在经济上有价值的任务上表现更好。Lilian 特别强调“部署系统”这个词，因为&lt;strong&gt;原始模型和真实世界之间的那一层，和模型本身的原始智能（预训练后的评测分数）一样重要&lt;/strong&gt;。Claude Code、Codex 这些成功产品，就是最好的证据。&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;Harness 是围绕基础模型的系统，它编排执行，决定模型如何思考、规划、调用工具、感知和管理上下文、存储产物、评估结果。&lt;/strong&gt; 它不再只是提示词模板，而更接近运行时和软件系统设计。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;作者还点出一个漂亮的类比：&lt;strong&gt;Harness 之于模型，就像操作系统之于 CPU。&lt;/strong&gt; 操作系统把复杂逻辑封装起来，对外只留简单接口；Harness 也一样，把模型怎么观察、怎么行动、怎么记忆、怎么自检、怎么改进封装成简单接口。她也预言：配置、工具接口、协议会像 TCP/IP 一样逐渐行业标准化。&lt;/p&gt;
+&lt;h2 id="_1"&gt;二、三大设计模式&lt;/h2&gt;
+&lt;h3 id="pattern-1"&gt;Pattern 1：工作流自动化&lt;/h3&gt;
+&lt;p&gt;给模型定义一个可以操作、测试、迭代的工作流，是自动化的关键设计。Karpathy 的 &lt;a href="https://github.com/karpathy/autoresearch"&gt;autoresearch 仓库&lt;/a&gt; 是个干净的范例。常见工作流是目标导向的循环：&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;规划 → 执行 → 观察/测试 → 改进 → 再执行，直到目标达成。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;过程中模型可以主动向用户请求澄清任务说明或执行偏好。关键点是：工作流图强调&lt;strong&gt;模型分析自己的轨迹和失败案例，通过“agent 运行时”迭代进步&lt;/strong&gt;，而不是靠一个静态的提示词模板。&lt;/p&gt;
+&lt;h3 id="pattern-2"&gt;Pattern 2：文件系统即持久记忆&lt;/h3&gt;
+&lt;p&gt;长时程（long-horizon）agent 系统里反复出现的模式是：&lt;strong&gt;对丰富状态和产物的简单控制&lt;/strong&gt;。Harness 不应该把整个工作流和所有日志都塞进上下文，而应该把持久状态放在文件里。&lt;/p&gt;
+&lt;p&gt;原因很实在：在长时程 agent 任务中，实验日志、代码 diff、论文摘要、错误栈、过去的轨迹，常常比模型的上下文窗口还长。而“用 bash 读写编辑文件系统”恰恰是 LLM 的基础技能——&lt;strong&gt;用文件当持久记忆，天然受益于核心模型能力的进步。&lt;/strong&gt;&lt;/p&gt;
+&lt;h3 id="pattern-3"&gt;Pattern 3：子代理与后台任务&lt;/h3&gt;
+&lt;p&gt;Harness 可以派生多个子代理并行执行、监控后台任务。当主代理需要同时搜索多个假设、并发跑实验、或者把隔离的子任务委托出去而不污染主上下文时，这招很有用。&lt;/p&gt;
+&lt;p&gt;父代理需要一个小的进程管理器：启动任务、查看日志、取消失败的运行、把结果合并回主线程。&lt;strong&gt;关键设计决策是让并行显式、可检查。&lt;/strong&gt; 如果子代理的输出只活在临时的聊天上下文里，它们很快就过时、看不见了；如果存成文件、日志、状态记录，模型就能在中断后恢复，并能推理自己的执行历史。&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;一句话总结三大模式：定义好循环，把状态落盘，让并行可见。&lt;/strong&gt; 这哪是 AI 技巧，这就是我们做后端服务的基本功。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h2 id="agent-harness"&gt;三、案例：编码 Agent 的 Harness&lt;/h2&gt;
+&lt;p&gt;主流的 Claude Code、Codex、OpenCode、Cursor 类编码 Agent，核心接口已经趋于稳定，工具大致分这几组：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;工具组&lt;/th&gt;
+&lt;th&gt;典型工具&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;文件系统&lt;/td&gt;
+&lt;td&gt;发现：&lt;code&gt;glob&lt;/code&gt;/&lt;code&gt;grep&lt;/code&gt;/&lt;code&gt;ls&lt;/code&gt;；读取：&lt;code&gt;read&lt;/code&gt;/&lt;code&gt;read_many&lt;/code&gt;；修改：&lt;code&gt;write&lt;/code&gt;/&lt;code&gt;edit&lt;/code&gt;/&lt;code&gt;multi_edit&lt;/code&gt;/&lt;code&gt;apply_patch&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Shell 执行&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;bash&lt;/code&gt;、PowerShell&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;IDE/仓库集成&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;lsp&lt;/code&gt;、&lt;code&gt;git_status&lt;/code&gt;/&lt;code&gt;git_diff&lt;/code&gt;/&lt;code&gt;git_commit&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;外部上下文&lt;/td&gt;
+&lt;td&gt;MCP 工具、Skills&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;联网搜索&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;web_search&lt;/code&gt;/&lt;code&gt;web_fetch&lt;/code&gt;/browser 工具&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;产物&lt;/td&gt;
+&lt;td&gt;读文档、读图、生成 HTML/图片&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;后台进程&lt;/td&gt;
+&lt;td&gt;如 &lt;code&gt;CronCreate&lt;/code&gt;/&lt;code&gt;CronDelete&lt;/code&gt;/&lt;code&gt;CronList&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Agent 委派&lt;/td&gt;
+&lt;td&gt;如 &lt;code&gt;spawn_agent&lt;/code&gt;/&lt;code&gt;resume_agent&lt;/code&gt;/&lt;code&gt;wait_agent&lt;/code&gt;/&lt;code&gt;interrupt_agent&lt;/code&gt; 等&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;看到这张表我挺有共鸣：这不就是给我们这些后端老开发用的 IDE + 终端 + 调度系统吗？只不过操作者是模型。&lt;/p&gt;
+&lt;h2 id="harness-vs"&gt;四、Harness 层 vs 核心智能：作者的预测&lt;/h2&gt;
+&lt;p&gt;Lilian 对近期的 RSI 路径做了一个明确预测：&lt;strong&gt;近期的自我改进不会从“模型直接改写自己权重”开始。&lt;/strong&gt;&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;我的预测是：Harness 工程将朝着“元方法论”的方向进化——改进的是“获得更好答案的机器”，而不只是答案本身。&lt;/strong&gt; Harness 系统本身成为优化目标，启发式规则越来越少，通用机制越来越多。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;成熟后的因果链是：成熟的 Harness 让自动研究（auto-research）跑通模型自我改进的循环 → 更聪明的模型反过来防止 Harness 过度工程化，让系统可持续。长远看，很多 Harness 改进会内化进核心模型行为，但&lt;strong&gt;与外部上下文和工具的接口应该保留&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;她举了个我们已经见过的先例：提示词工程。当年那些手工提示词技巧，随着指令微调和模型推理能力变强而不再重要，但&lt;strong&gt;指定目标、约束、上下文、评估这件事从未消失&lt;/strong&gt;。&lt;/p&gt;
+&lt;h2 id="_2"&gt;五、优化路线图：从提示词到优化器代码&lt;/h2&gt;
+&lt;p&gt;Harness 系统里被优化的对象，大致沿这条线演进：&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;指令提示词 → 结构化上下文 → 工作流 → Harness 代码 → 优化器代码&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;模型越聪明，我们越敢把更复杂的对象交给它优化。分五块展开。&lt;/p&gt;
+&lt;h3 id="1-context-engineering"&gt;1. 上下文工程（Context Engineering）&lt;/h3&gt;
+&lt;p&gt;简单地把所有工具响应和模型输出都追加进上下文，任务一长就会失控。上下文管理是构造更结构化、更精简上下文的层，同时管理持久状态。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;ACE（Agentic Context Engineering，Zhang et al. 2025）&lt;/strong&gt; 把上下文当作一本不断演化的“行动手册”（playbook），而不是越来越长的提示词。三个组件维护一本由带标识符的要点组成的上下文手册：
+- &lt;strong&gt;Generator（生成器）&lt;/strong&gt;：参照手册要点，产生任务轨迹
+- &lt;strong&gt;Reflector（反思器）&lt;/strong&gt;：从成功和失败轨迹中提炼洞见
+- &lt;strong&gt;Curator（策展人）&lt;/strong&gt;：用增量、条目化的方式更新结构化上下文&lt;/p&gt;
+&lt;p&gt;关键设计：策展人不重写整块提示词，而是输出一组 &lt;code&gt;(标识符, 描述)&lt;/code&gt; 的结构化要点，用确定性逻辑合并进上下文手册，定期去重精炼。这防止了“上下文崩溃”和“简洁性偏差”。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;MCE（Meta Context Engineering，Ye et al. 2026）&lt;/strong&gt; 再进一步：把“怎么管理上下文”的机制和“上下文里装什么”的内容分离，在元层做技能进化、在基层做上下文优化。技能 s 定义了一个上下文函数：静态组件（提示词、知识库、代码库）+ 动态算子（搜索、选择、过滤、格式化），形成双层优化——内层在训练集上找给定技能下的最优上下文，外层在验证集上找最优技能。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Meta-Harness（Lee et al. 2026）&lt;/strong&gt; 又深一层：被优化的对象变成“决定该存什么、取什么、给模型看什么”的代码。名字里的 “Meta” 意思是&lt;strong&gt;它是用来优化 Harness 的 Harness&lt;/strong&gt;。提议者本身就是一个编码 agent，输出是帕累托前沿上的一批 Harness 候选；整个执行历史都在文件系统里，编码 agent 用 &lt;code&gt;grep&lt;/code&gt;/&lt;code&gt;cat&lt;/code&gt; 去读，而不是把所有东西塞进一个提示词。&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;核心教训：一旦 Harness 设计变成可执行的搜索空间，一个强大的编码 agent 就能利用人类工程师使用的同一个设计空间。&lt;/strong&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h3 id="2-workflow-design"&gt;2. 工作流设计（Workflow Design）&lt;/h3&gt;
+&lt;p&gt;工作流可以由领域专家手工设计。以自动研究为例，已经有很多框架：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;AI Scientist（Lu et al. 2026）&lt;/strong&gt;：流水线覆盖提出想法 → 写代码 → 跑实验 → 分析结果 → 写论文 → 同行评审。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;ScientistOne（Meng et al. 2026）&lt;/strong&gt;：把“可验证性”作为中心设计约束，每个论断（引用、数字、方法、结论）都必须能追溯到证据源，用 Chain-of-Evidence（证据链）检查审计。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Autodata（Kulikov et al. 2026）&lt;/strong&gt;：一个数据科学家 agent，管理“挑战者”（出题）+“弱求解器”+“强求解器”+“验证器/裁判”，目标是合成“难度恰到好处”的数据——强求解器能过、弱求解器过不了。局限是：合成任务只用来微调弱求解器，如果循环不能迭代改进强模型，就有点像对生成提示词分布的间接蒸馏，RSI 味道不足。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;既然工作流的设计空间巨大，自然可以把工作流设计本身当成搜索问题。两条代表路线：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;ADAS（Automated Design of Agentic Systems，Hu et al. 2025）&lt;/strong&gt;：把 agent 设计本身形式化为优化问题——“元 agent 搜索”。先用 CoT、self-refine 这类简单 agent 初始化档案库，然后让元 agent &lt;strong&gt;全部用代码&lt;/strong&gt;编程新 agent（受档案库现有方案启发），先产生高层描述再实现成代码，经过两轮 self-refine（自反思：让模型给反馈，再让同一模型根据反馈改进输出），评估新候选，成功的加回档案库，迭代到最大轮数。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;AFlow（Zhang et al. 2025）&lt;/strong&gt;：把 agentic 工作流表示成图——节点是调用 LLM 的动作，边是用代码实现的逻辑操作。优化靠蒙特卡洛树搜索（MCTS）：从模板初始化起始工作流，用“分数 + 均匀探索”的软混合选节点，让 LLM 基于评估表现产出修改版，执行评估，有改进就加回树，直到 top-k 平均分持平或预算耗尽。在 QA、代码、数学任务上，AFlow 明显超过手工工作流和 ADAS。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id="3-harnessself-improving-harness"&gt;3. 自我改进的 Harness（Self-Improving Harness）&lt;/h3&gt;
+&lt;p&gt;上下文工程和工作流设计都只是 Harness 的一部分。要把上下文管理逻辑、工作流、权限、其他组件放在一起整体优化，就需要代码作为通用语言——&lt;strong&gt;Harness 本质上是“用代码编程提示词、工具调用、子代理、控制流、记忆和工作流逻辑如何协同”&lt;/strong&gt;。如果 LLM 能优化执行 agent 的代码，它能触及的设计空间远大于手写提示词。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;STOP（Self-Taught Optimizer，Zelikman et al. 2023）&lt;/strong&gt; 是递归脚手架改进的早期例子。目标不是直接改进解 s，而是&lt;strong&gt;改进改进器 I 本身&lt;/strong&gt;：先用元效用（meta-utility，一个改进器在多个下游任务上的平均效用）度量 I，然后递归地让 I 自己改进自己。实验里，改进后的改进器发现了遗传算法、分解并改进部分、多臂提示词老虎机、模拟退火、变温、束/树搜索等策略。&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;一个重要警示：STOP 用 GPT-4 能逐轮提升平均下游表现，用 GPT-3.5 和 Mixtral 这类弱模型反而退化。递归结构本身不够，基础模型必须有足够能力去改进机制。&lt;/strong&gt; Harness 改进让模型部署得更好，但智能仍然是核心。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;Lin et al.（2026）更细致地解耦了两个轴：&lt;strong&gt;harness-updating&lt;/strong&gt;（产生有用 Harness 编辑的能力）和 &lt;strong&gt;harness-benefit&lt;/strong&gt;（利用更新后 Harness 提升任务解决的能力）。有意思的是，从 Qwen3.5-9B 到 Claude Opus 4.6 一大票不同规模、不同核心智能的模型，harness-updating 能力差不多——9B 的提议器能写出与 Opus 程序同构的技能；而 harness-benefit 是非单调的，&lt;strong&gt;中档模型受益最大&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Self-Harness（Zhang et al. 2026）&lt;/strong&gt; 用“提出-评估-接受”循环让 LLM agent 改进自己的 Harness，三阶段：
+1. &lt;strong&gt;弱点挖掘&lt;/strong&gt;：把失败聚类成“验证器可证实的失败模式”。注意表面上两次运行可能是同一个验证器结果（如超时、缺产物），但因果机制不同，所以失败记录要包含终端验证器级原因、相关 agent 行为的因果状态、轨迹暴露的抽象机制。
+2. &lt;strong&gt;有界 Harness 提议&lt;/strong&gt;：同一模型作为提议器，给它有界的提议上下文——当前 Harness 的可编辑面、验证器可证实的失败模式、应保留的通过行为记录、先前尝试过的编辑摘要。编辑应优先处理可寻址的复发错误模式（不是任务本身的难度），用窄改动解决。
+3. &lt;strong&gt;提议验证&lt;/strong&gt;：在保留集上跑回归测试（held-in 检查弱点是否解决，held-out 检查有没有引入新问题），两边都不回归才接受合并。&lt;/p&gt;
+&lt;p&gt;作者在这里明确表达了担忧：&lt;strong&gt;如果允许程序编辑 OS 系统，抽象边界就被打破了。可编辑面必须精心设计，权限控制和安全层必须放在这个循环之外。&lt;/strong&gt; 奖励黑客（reward hacking）的所有挑战依然存在。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;AHE（Agentic Harness Engineering，Lin et al. 2026）&lt;/strong&gt; 认为 Harness 进化的瓶颈在可观测性——一次 rollout 失败时，必须知道是哪个组件干的，每次编辑都要有证据支撑。框架用三根可观测性支柱形成闭环：
+- &lt;strong&gt;组件可观测性&lt;/strong&gt;：每个可编辑组件在文件系统里都有表示，动作空间显式可追踪。Harness 有 7 个组件：系统提示词、工具描述、工具实现、中间件、技能、子代理配置、长期记忆。每个失败模式映射到一个组件，编辑更有针对性。
+- &lt;strong&gt;经验可观测性&lt;/strong&gt;：把大量原始轨迹分析汇总成证据和失败模式的分层结构。每个 Harness 生成 k 条轨迹，用“Agent debugger”逐文件分析，生成每个任务的成功/失败根因报告，再聚合成基准总览，原始轨迹按需访问——分层访问更省 token。
+- &lt;strong&gt;决策可观测性&lt;/strong&gt;：每次编辑都配一个对下一轮的预测来验证。“Evolve agent”读仓库、决定改哪个组件，然后产出编辑和理由。每个编辑都是文件级的可证伪声明，下一轮验证。两条约束：编辑只作用于 Harness 工作区（runs 目录、tracer、验证器、LLM 配置只读，禁用一类奖励黑客如关验证器、换模型、加推理预算）；编辑必须证据驱动，带“宣言条目”（失败证据名、推断的根因、目标修复、预期影响含预期修复和风险回归）。&lt;/p&gt;
+&lt;p&gt;结果：在 Terminal-Bench-2 上，AHE 超过了人类设计的 Harness（OpenCode、Terminus-2、Codex）除 Hard 档以外的全部；同一个冻结的 Harness 不继续进化就迁移到 SWE-bench-verified，说明进化出的 Harness 把工程经验编码进了组件，而不是针对特定基准做优化。&lt;/p&gt;
+&lt;h3 id="4-evolutionary-search"&gt;4. 进化搜索（Evolutionary Search）&lt;/h3&gt;
+&lt;p&gt;进化搜索是受自然选择启发的优化方法：变异一批解，只留下适应度高的。适用于（1）搜索空间大或形状怪异；（2）难以用梯度直接优化、但容易评估解。Harness 搜索正好合适。&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Promptbreeder（Fernando et al. 2023）&lt;/strong&gt;：用丰富的变异算子优化任务特定提示词，有意思的是变异提示词本身（指示 LLM 变异任务提示词的指令）也通过进化改进。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;GEPA（Agrawal et al. 2025）&lt;/strong&gt;：反思式提示 + 进化搜索，用自然语言反思试错轨迹来提议提示词更新。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;AlphaEvolve（Novikov et al. 2025）&lt;/strong&gt;：编码 agent 进化搜索系统，维护候选程序池，冻结 LLM 只负责生成改进 diff。设计细节：提示词包含父程序、结果、指令、元信息；编码 agent 能访问整个仓库，但可改进区域用 &lt;code&gt;# EVOLVE-BLOCK-START&lt;/code&gt;/&lt;code&gt;# EVOLVE-BLOCK-END&lt;/code&gt; 显式标记；元提示词与指令、上下文共同进化。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;ThetaEvolve（Wang et al. 2025）&lt;/strong&gt;：进化 + 强化学习 + 上下文学习组合；&lt;strong&gt;DemoEvolve（Che et al. 2026）&lt;/strong&gt; 用人类专家演示给自我 rollout 档案库补充参考经验；&lt;strong&gt;ShinkaEvolve（Lange et al. 2025）&lt;/strong&gt; 提出三个组件提升 LLM 采样效率：按性能排名和后代数平衡的父代采样、基于嵌入余弦相似度的代码新颖性拒绝采样（丢掉和现有种群太像的候选）、在元草稿本里识别成功解的好模式指导后续变异。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Darwin Gödel Machine（DGM，Zhang et al. 2025）&lt;/strong&gt;：明确针对“可编辑 Harness 代码仓库”的进化——agent 被允许修改自己的 Harness。后代选择按“性能成比例、子代数反比例”的概率挑父代，用 bash + editor 两个基本工具改代码，评估后高绩效者才回池。实验用 Claude 3.5 Sonnet 做基础模型，DGM 发现的 agent 在 SWE-bench Verified（20%→50%）和 Polyglot（14.2%→30.7%）上媲美或超过手工 agent。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Hyperagents（Zhang et al. 2026）&lt;/strong&gt;：引入元 agent 控制“如何修改现有任务 agent 来创造新 agent”。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这类方法的适用边界很清楚：适合候选解能自动评估、适应度容易量化的领域（矩阵乘法、GPU kernel 优化、算法竞赛、数据中心调度）；在评估慢、模糊、主要靠启发式的领域就挣扎。计算效率和进化有效性也是顾虑。&lt;/p&gt;
+&lt;h3 id="5-joint-optimization-with-model-weights"&gt;5. 与模型权重的联合优化（Joint Optimization with Model Weights）&lt;/h3&gt;
+&lt;p&gt;Harness 进化改变的是模型周围的非参数系统。要实现完整自我改进，可以让模型同时更新自己的权重（通过改进训练流水线或测试时持续学习）。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;SIA（Hebbar et al. 2026）&lt;/strong&gt; 是早期尝试，把 Harness 改进和模型参数更新放进同一个优化循环，三个组件：&lt;strong&gt;Meta-Agent&lt;/strong&gt;（提议初始 Harness）、&lt;strong&gt;Task-Specific Agent&lt;/strong&gt;（执行任务）、&lt;strong&gt;Feedback-Agent&lt;/strong&gt;（基于近期轨迹决定下一轮是更新 Harness 还是更新权重）。作者自己都承认实验有混杂因素（任务 agent 远弱于元 agent 和反馈 agent 用的模型，基线太弱），&lt;strong&gt;方向有趣，证据是临时的&lt;/strong&gt;。训练稳定性、Goodhart 效应等挑战仍然开放。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Continual Harness（Karten et al. 2026）&lt;/strong&gt; 在长时程游戏场景里做 Harness 更新 + 通过蒸馏强教师模型在低奖励轨迹上的标签来联合学习策略模型。&lt;/p&gt;
+&lt;h2 id="_3"&gt;六、未来挑战：七大瓶颈&lt;/h2&gt;
+&lt;p&gt;&lt;strong&gt;AI Scientist 系列工作证明：专家设计的 Harness 能协调自动研究循环的很大一部分。&lt;/strong&gt; 但写论文不等于科学发现——系统可以写出貌似合理的稿件，却带着编造的引用、实现漂移、虚弱的实验结果。Trehan &amp;amp; Chopra（2026）用最小脚手架 + 基础工具（&lt;code&gt;read_file&lt;/code&gt;/&lt;code&gt;write_file&lt;/code&gt;/&lt;code&gt;llm_search&lt;/code&gt;/&lt;code&gt;list_files&lt;/code&gt;）测试 LLM 从研究想法到论文，在三个领域（世界模型、多智能体 RL、AI 安全与对齐）各备 45-50 份高质量种子文档，人类专家只选了 4 个想法跑完整流水线，只有 1 个完整执行成论文。他们观察到六个反复出现的失败模式：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;偏向训练数据默认&lt;/strong&gt;：用旧库、过时命令、标准格式，或基于不扎根于实际仓库/数据集的前提假设。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;执行压力下的实现漂移&lt;/strong&gt;：实现变复杂时，模型滑向常见的更简单方案，而不是提出的方法。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;记忆和上下文退化&lt;/strong&gt;：长时程项目丢掉关键细节，除非日志写成持久产物。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;过度乐观&lt;/strong&gt;：实验有噪声甚至失败也宣布成功——Bubeck et al.（2025）观察到的“p-hacking 和 eureka-ing”模式：模型加“数值胶带”就宣布胜利。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;领域智能不足&lt;/strong&gt;：缺少隐性手艺知识，比如预判实现复杂度、判断实验结果是否合理、知道哪些基线重要。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;科学品味弱&lt;/strong&gt;：实验能跑，但没回答对的问题。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;通向完整 RSI 的七个瓶颈：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;弱而模糊的评估器&lt;/strong&gt;：很多研究论断没有又快又准的验证器，现实任务也一样。现有自我改进循环在评估指标可测量、客观的任务上效果最好（和 RL 一样）。研究品味、新颖性、长期科学价值难测得多——研究品味混杂了问题定义、实验设计、判断哪些意外结果值得追、哪些失败值得重试。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;上下文和记忆的生命周期&lt;/strong&gt;：agent 越自主，记忆越膨胀。好 Harness 要管理上下文和记忆来弥补长上下文生成的局限。作者类比人类终生记忆：&lt;strong&gt;上下文工程应该也会成为智能的核心部分，而不是停留在软件系统层。&lt;/strong&gt;&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;负面结果&lt;/strong&gt;：研究者有动力发成功结果，文献偏向成功。LLM 训练数据大部分是人类造的（作者原话：at least for now, lol），成功/失败样本失衡，可能不擅长判断何时放弃假设、报告负面结果、承认失败。研究 Harness 应该让失败尝试容易保存——从失败中学习是裁剪任务搜索空间的最好方法。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;多样性崩溃&lt;/strong&gt;：进化和 RL 循环倾向于剥削已知高奖励模式，需要机制防止种群坍缩成同一解的各种变体。对开放式研究尤其关键——最好的路径在当下评估器下可能一开始看着更差。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;奖励黑客&lt;/strong&gt;：自我改进循环优化它被给予的任何信号。奖励来自单元测试就过拟合测试，来自裁判模型就学针对该裁判的 hack，来自基准分就利用基准伪影。&lt;strong&gt;评估器和权限控制应该放在进化 Harness 的循环之外&lt;/strong&gt;，用保留测试、轨迹审计、在关键决策点的人工审查。监督能多大程度规模化、自动化，仍是开放研究问题。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;长期成功&lt;/strong&gt;：外在优化循环作用于我们能在训练沙箱里模拟的个体 rollout 之外的奖励。以编码 agent 为例：它们已提升软件工程日常生产力，但很多优化目标太短期——能完成手头任务，却看不出如何保护一个由成百上千工程师共同维护的仓库的长期健康。沙箱式 RLVR 训练很少覆盖可维护性、所有权边界、迁移成本、向后兼容、未来调试负担。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;人的角色&lt;/strong&gt;：&lt;strong&gt;人应该往栈的上层走，而不是被移出循环&lt;/strong&gt;——在正确的时间、正确的抽象层级提供监督，系统设计要考虑何时、如何设置这样的人机触点。很多上面列出的挑战需要人的反馈和方向盘。毕竟，我们是在为人类更美好的未来建设技术，而不是反过来。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h2 id="_4"&gt;七、附录：几个有用的基准&lt;/h2&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;基准&lt;/th&gt;
+&lt;th&gt;测什么&lt;/th&gt;
+&lt;th&gt;人类/最佳表现&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;PaperBench&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;从零复现 20 篇 ICML 2024 Spotlight/Oral 论文（8,316 条 rubric）&lt;/td&gt;
+&lt;td&gt;当时最强 Claude 3.5 Sonnet 约 21%，不及 ML 博士&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;CORE-Bench&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;90 篇论文（计算机、社科、医学）的计算可复现性，270 个任务&lt;/td&gt;
+&lt;td&gt;最强 agent（GPT-4o）在最难任务上仅 21%&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;ScienceAgentBench&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;44 篇论文、4 学科（数学/化学/生物/地理）的 102 个数据科学任务&lt;/td&gt;
+&lt;td&gt;—&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;RE-Bench&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;7 个开放 ML 研究工程环境（≤8 张 H100），61 位人类专家 71 次 8 小时尝试&lt;/td&gt;
+&lt;td&gt;人类 82% 尝试得分非零；AI 在 2 小时预算下比人类高 4 倍，但人类在 8/32 小时预算下反超&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;MLE-bench&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;75 个 Kaggle 离线 ML 工程竞赛&lt;/td&gt;
+&lt;td&gt;o1-preview + AIDE 脚手架在 16.9% 竞赛达铜牌级&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;KernelBench&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;250 个 PyTorch 任务，评估 GPU kernel 的正确性和速度&lt;/td&gt;
+&lt;td&gt;指标 fast_p = 正确且快于基线的 kernel 百分比&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;hr&gt;
+&lt;h2 id="harness_1"&gt;八、我的解读：老后端看 Harness 工程&lt;/h2&gt;
+&lt;p&gt;翻译完，说点我自己的感想。有四个点特别戳我。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;第一，这层“壳”我们早就熟，只是没人给它起名。&lt;/strong&gt; 我做后端二十年，天天在跟“壳”打交道：WebRTC 的信令服务器之于音视频 SDK，微服务网关之于业务服务，OS 之于 CPU。Harness 就是把同一套思想搬到 LLM 身上——&lt;strong&gt;封装复杂性，暴露简单接口，管理状态生命周期，把失败变成可观测、可恢复的事件&lt;/strong&gt;。Lilian 说的“把状态落盘、让并行显式”，就是我们做分布式系统时说的“状态外置、幂等重试、日志先行”。这套知识从没失效，只是换了个主子。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;第二，优化对象一步步上移，是模型变强后的必然。&lt;/strong&gt; 提示词 → 上下文 → 工作流 → Harness 代码 → 优化器代码，这条线和我做自动化运维的路径一模一样：先是写死脚本，然后是模板，然后是配置化，然后是元编程——最后发现真正值钱的是“能自己改配置的程序”。ADAS 让元 agent 用代码编程新 agent、STOP 改进改进器本身，本质都是把“写代码的能力”从人手里交还给程序。这让我想起自己折腾 lazy-scrum-team 的体会：最开始我手写每个角色的提示词，后来我想让父 agent 自动生成子 agent 的提示词——那不就是最朴素的“harness 优化 harness”吗？&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;第三，最扎心的发现是：弱模型用不好自己的 Harness。&lt;/strong&gt; STOP 在 GPT-3.5 上退化，Lin et al. 发现 9B 模型能写出和 Opus 程序同构的技能但用不好它——这直接呼应我另一个项目（async-pkb-book 里评估 AI 辅助写作效率）的观察：工具的价值上限，取决于使用者的能力下限。这提醒我们别迷信“套个壳就起飞”：&lt;strong&gt;Harness 放大的是模型已有的能力，而不是凭空创造能力。&lt;/strong&gt; 对我们这些用 API 的开发者，选模型时“中档模型 + 好 Harness 收益最大”这个发现也值得记一笔——性价比的甜区可能不在最贵的模型。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;第四，挑战清单里我最认同“评估器”和“人的角色”两条。&lt;/strong&gt; 我做服务负责人多年，深知线上事故里最难的不是修，而是“判断这是不是事故”。奖励黑客、过度乐观、p-hacking，本质上都是&lt;strong&gt;评估信号被游戏化&lt;/strong&gt;——这跟绩效考核被刷数据、KPI 被钻空子一模一样。Lilian 说评估器和权限控制要放在进化循环之外，就是“裁判不能由运动员自己当”的工程化表达。而“人往栈的上层走”，我理解是：我们不会失业，但必须从写代码的人，变成定义“什么值得做、什么算做好”的人。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;一句话总结我的收获：&lt;/strong&gt;&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;AI 的下一个战场不在模型参数里，而在模型外面那层壳里；而这层壳最终要学着改自己——我们这些造壳的人，要先学会给壳留好“可编辑面”和“不可触碰的边界”。&lt;/strong&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;如果你想跟进这个话题，建议按这个顺序读原文：先读“Harness 层 vs 核心智能”那节（作者的判断），再读 AHE（最有工程味道的框架），最后看七个挑战（最接近现实）。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_5"&gt;全文思维导图&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap
+&amp;lt;style&amp;gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&amp;lt;/style&amp;gt;
+
+* AI 的“操作系统”：Harness 工程如何让模型自我改进
+** 什么是 Harness
+*** 模型外层的编排系统：思考/工具/上下文/产物/评估
+*** 类比操作系统之于 CPU
+*** RSI：改进训练与部署系统，而非直接改权重
+** 三大设计模式
+*** 工作流自动化：规划-执行-观察-改进循环
+*** 文件系统即持久记忆
+*** 子代理与后台任务：并行显式可检查
+** 优化路线图
+*** 上下文工程：ACE/MCE/Meta-Harness
+*** 工作流设计：AI Scientist/ADAS/AFlow
+*** 自我改进 Harness：STOP/Self-Harness/AHE
+*** 进化搜索：AlphaEvolve/DGM/Hyperagents
+*** 权重联合优化：SIA/Continual Harness
+** 七大未来挑战
+*** 弱评估器
+*** 上下文与记忆生命周期
+*** 负面结果
+*** 多样性崩溃
+*** 奖励黑客
+*** 长期成功
+*** 人的角色
+** 我的解读
+*** 壳的思想=后端基本功
+*** 优化对象随模型变强上移
+*** 弱模型用不好自己的 Harness
+*** 评估器与人的角色最关键
+@endmindmap
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;img alt="AI 的“操作系统”：Harness 工程如何让模型自我改进 - 思维导图" src="./images/journal_20260731_harness_engineering_mindmap.png"&gt;&lt;/p&gt;
+&lt;hr/&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。&lt;/p&gt;</content><category term="AI"/><category term="journal"/><category term="AI"/><category term="harness"/><category term="agent"/><category term="LLM"/><category term="自我改进"/></entry><entry><title>AI Agent 孵化器：用一个父 Agent，批量造出贴身服务的子 Agent</title><link href="https://www.fanyamin.com/blog/2026-07-29-ai-agent-incubator.html" rel="alternate"/><published>2026-07-29T20:40:00+08:00</published><updated>2026-07-30T00:30:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-07-29:/blog/2026-07-29-ai-agent-incubator.html</id><summary type="html">&lt;p&gt;与其一个个手搓专业 AI Agent，不如造一台"孵化器"——一个父 Agent，听你一句大白话，就快速孵化出贴身服务某类需求的子 Agent。这篇聊聊这台"AI Agent 制造工厂"的运转机制：父 Agent 怎么把自然语言编译成五份产品图纸（角色/工具/规矩/提示词/验收），照着标准模板批量生产，再让子 Agent 用 ReAct 边想边做。以日程安排专家作为流水线上的第一个样品。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
 &lt;thead&gt;
 &lt;tr&gt;
 &lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;

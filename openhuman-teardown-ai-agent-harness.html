@@ -1,0 +1,820 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="把 tinyhumansai 开源的 OpenHuman clone 下来读了一遍——一个纯 Rust 内核 + Tauri 桌面的开源 AI 助手。它把&#34;AI 助手&#34;拆成了三件事：一块会按时给自己喂料、压缩成&#34;记忆树&#34;的持久记忆大脑；一个跑在可恢复图（tinyagents）上的编排器，能把一群子代理当成一支舰队来指挥；外加一整套从语音、会议、工作流到加密的 agent 间通信的家当。真正让我放下的是它的取舍：复杂的 ML 全外包给开源 crate，内核只负责&#34;对与错&#34;的调度与安全，隐私开关一到 Rust 层就直接掐死出网。这篇按代码讲讲它这套&#34;会折腾的剥洋葱式&#34;架构，以及一个老后端能从中抄走的东西。" />
+<meta name="keywords" content="ai-agent, rust, tauri, memory, orchestrator, mcp, teardown, architecture, openhuman">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "AI 助手拆机：OpenHuman 怎么做到&#34;记得你、自己干、还不出网&#34;",
+  "description": "把 tinyhumansai 开源的 OpenHuman clone 下来读了一遍——一个纯 Rust 内核 + Tauri 桌面的开源 AI 助手。它把&#34;AI 助手&#34;拆成了三件事：一块会按时给自己喂料、压缩成&#34;记忆树&#34;的持久记忆大脑；一个跑在可恢复图（tinyagents）上的编排器，能把一群子代理当成一支舰队来指挥；外加一整套从语音、会议、工作流到加密的 agent 间通信的家当。真正让我放下的是它的取舍：复杂的 ML 全外包给开源 crate，内核只负责&#34;对与错&#34;的调度与安全，隐私开关一到 Rust 层就直接掐死出网。这篇按代码讲讲它这套&#34;会折腾的剥洋葱式&#34;架构，以及一个老后端能从中抄走的东西。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-08-05T23:30:00+08:00",
+  "dateModified": "2026-08-05T23:30:00+08:00",
+  "url": "https://www.fanyamin.com/blog/openhuman-teardown-ai-agent-harness.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/openhuman-teardown-ai-agent-harness.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "ai-agent, rust, tauri, memory, orchestrator, mcp, teardown, architecture, openhuman"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="AI 助手拆机：OpenHuman 怎么做到&#34;记得你、自己干、还不出网&#34;"/>
+  <meta property="og:description" content="把 tinyhumansai 开源的 OpenHuman clone 下来读了一遍——一个纯 Rust 内核 + Tauri 桌面的开源 AI 助手。它把&#34;AI 助手&#34;拆成了三件事：一块会按时给自己喂料、压缩成&#34;记忆树&#34;的持久记忆大脑；一个跑在可恢复图（tinyagents）上的编排器，能把一群子代理当成一支舰队来指挥；外加一整套从语音、会议、工作流到加密的 agent 间通信的家当。真正让我放下的是它的取舍：复杂的 ML 全外包给开源 crate，内核只负责&#34;对与错&#34;的调度与安全，隐私开关一到 Rust 层就直接掐死出网。这篇按代码讲讲它这套&#34;会折腾的剥洋葱式&#34;架构，以及一个老后端能从中抄走的东西。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/openhuman-teardown-ai-agent-harness.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-08-05 23:30:00+08:00"/>
+  <meta property="article:modified_time" content="2026-08-05 23:30:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="ai-agent"/>
+  <meta property="article:tag" content="rust"/>
+  <meta property="article:tag" content="tauri"/>
+  <meta property="article:tag" content="memory"/>
+  <meta property="article:tag" content="orchestrator"/>
+  <meta property="article:tag" content="mcp"/>
+  <meta property="article:tag" content="teardown"/>
+  <meta property="article:tag" content="architecture"/>
+  <meta property="article:tag" content="openhuman"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; AI 助手拆机：OpenHuman 怎么做到&#34;记得你、自己干、还不出网&#34;</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="openhuman-teardown-ai-agent-harness">AI 助手拆机：OpenHuman 怎么做到"记得你、自己干、还不出网"</h1>
+    <p>
+      Posted on 三 05 8月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>AI 助手 OpenHuman 拆机报告</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-08-05</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<p>我这人不长记性，所以看到"一个记得一切的助手"这个卖点，比看到"又一个 AI 聊天框"更能让我手软。我把 <a href="https://github.com/tinyhumansai/openhuman">tinyhumansai/openhuman</a> clone 下来，想看看它那句宣传语到底有多少水分。</p>
+<p>结论先说：<strong>它确实不是 AGI，但它是少数把"记忆、编排、隐私"这三件事都当成一等公民、而不是后补插件的 AI 助手。</strong> 而且架构上它做了一个很"老程序员"的决定——把算法的脏活全外包，自己只握着一个纯 Rust 内核，负责调度、安全和"对与错"。</p>
+<p>README 里那句自我定位我很喜欢：<strong>"OpenHuman is not AGI. But it is a meaningful architectural step closer."</strong> 翻译过来就是：我不装神仙，我先把该做的事做扎实。这态度，比满嘴跑火车的同行顺眼多了。</p>
+<p>这篇文章按代码讲讲它现在的样子：为什么内核要单独剥出来、记忆树是怎么把脏数据压缩成能读的 Markdown、那个"分脑"的编排器是怎么指挥一群子代理的、TokenJuice 怎么省钱、代理怎么进会议室，以及隐私模式凭什么敢开到"一开关就彻底不出网"。</p>
+<hr>
+<h2 id="rust-tauri">一句话架构：纯 Rust 内核当大脑，Tauri 桌面当躯壳</h2>
+<p>先给个全局视角，这套架构剥开其实只有两层。</p>
+<p><strong>内核（<code>src/</code>）是整个系统的唯一事实来源，用 Rust 写。</strong> 它不是一个微服务，也不是一个 sidecar 进程，而是以一个 <code>CoreBuilder → CoreRuntime</code> 的组合子，<strong>直接作为 tokio 任务跑在 Tauri 进程里</strong>（<code>app/src-tauri/src/core_process.rs</code>）。前端要调用它，走本机 <code>127.0.0.1:7788</code> 上的 axum JSON-RPC 服务，认证用一把<strong>只在内存里传、不写环境变量</strong>的 bearer token——连 <code>/proc/&lt;pid&gt;/environ</code> 都偷不到。</p>
+<p><strong>躯壳（<code>app/</code>）是 React + Tauri v2。</strong> 渲染层通过一个 <code>coreRpcClient</code> 桥接所有 RPC，剩下的是 Redux Toolkit 管状态、socket.io 推事件、Tailwind 画界面。</p>
+<p>为什么非要把内核剥出来当一等公民？因为这样<strong>同一个大脑可以有多副躯壳</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>外壳</th>
+<th>怎么连</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>openhuman-core</code> CLI</td>
+<td>进程内直接调 controller</td>
+<td>命令行随便折腾</td>
+</tr>
+<tr>
+<td>TUI</td>
+<td>进程内 <code>CoreBuilder</code> 起内核，当纯客户端</td>
+<td>终端里的用户界面</td>
+</tr>
+<tr>
+<td>桌面 App</td>
+<td>Tauri 壳内嵌内核 + HTTP RPC</td>
+<td>主产品</td>
+</tr>
+<tr>
+<td><code>embed/</code> 宿主</td>
+<td><code>CoreBuilder</code> 组合子</td>
+<td>把这个大脑嵌进别人的程序</td>
+</tr>
+</tbody>
+</table>
+<p><code>src/main.rs</code> 里几乎是空的——只做 Sentry 初始化、<code>before_send</code> 那次彻底的密钥/事件清洗、加载 dotenv、恢复 SIGPIPE，然后一句 <code>run_core_from_args</code> 就交给内核库。<strong>入口薄如纸，逻辑全在 <code>src/openhuman/</code> 里。</strong></p>
+<p>而 <code>src/openhuman/</code> 是三十几个按领域切的目录（<code>memory/</code>、<code>agent/</code>、<code>mcp/</code>、<code>voice/</code>、<code>meet/</code>、<code>web3/</code>、<code>security/</code>、<code>flows/</code>……），每个目录配一个 Cargo feature 门，编译时就能整套裁掉。"一个目录 = 一个功能开关"，这是把它从 124 个目录压到 31 个之后换来的清爽。</p>
+<hr>
+<h2 id="markdown">记忆不是"向量汤"，是一棵能读的 Markdown 树</h2>
+<p>记忆是 OpenHuman 的第一块招牌，也是我最想确认有没有水分的部分。结论：它在这个坑位上花的心思，明显比同类的"全塞进 embedding 向量"深。</p>
+<p>它的模型是双层的：</p>
+<blockquote>
+<p><strong>上磁盘的 <code>.md</code> 文件是唯一的"真相源"，SQLite 只管索引。向量？向量只是其中一张索引表，不是记忆本体。</strong></p>
+</blockquote>
+<p>具体说，<code>memory/store/</code> 的逻辑是几件事配合：</p>
+<ul>
+<li><strong><code>.md</code> 文件</strong>：人类的正文，认为是不可变的，只有 YAML 头里的 <code>tags</code> 允许改；</li>
+<li><strong>SQLite</strong>：管 chunks、trees、entities、kv、vectors——也就是"哪段话属于哪棵树、得分多少、跟哪些实体相关"；</li>
+<li><strong>字节寻址</strong>：内容按 <code>(content_path, content_sha256)</code> 定位，改一个字就是一个新块，绝不就地改原文。</li>
+</ul>
+<p><strong>每一类要记的东西（Source / Global / Topic 树）都同时实现 <code>VectorEmbeddable</code> 和 <code>ObsidianRepresentable</code>。</strong> 这句话值得划重点——意思是"凡是能进记忆的，既有向量表示、又能导出成 Obsidian 的 Markdown 让你打开编辑"。不是黑盒向量汤，是你真能打开看一眼的树。Karpathy 那个"把记忆存成纯文本文件"的执念，这里变成了产品级能力。</p>
+<p>压缩靠的是<strong>准入打分</strong>（<code>memory/tree/score/</code>）：每个 chunk 先算一个 <code>[0.0, 1.0]</code> 的综合分（词数、唯一词、来源权重、交互标签、实体密度、LLM 重要性），落到一个"必丢 / 待定 / 必留"三分带里，再配合关系抽取和反向实体索引。等叶子桶攒够了，压缩器会把它们"封"成一条更高层级的摘要（<code>summarise.rs</code>），这就是<strong>封桶成摘要</strong>的级联——本质是让记忆不断向上抽象，老的细节沉到摘要里，新的细节留在桶里。</p>
+<p>然后有个很 Boss 的设定：<strong>"潜意识"（<code>subconscious/</code>）是一个后台 cron 循环</strong>，它不断 diff 你的世界、推进目标、写晨报——你以为你下班了，它还在消化今天发生的事。"潜意识"这名字起得真不客气，但它干的事就是这么个后台自动内化过程。</p>
+<hr>
+<h2 id="_1">"会折腾的分脑"：反射快车 + 深推理核心</h2>
+<p>OpenHuman 宣传里最玄乎的是"分脑"：一个快速反射代理先分诊，一个深推理核心再派活。读完代码，我把它翻译成一个不玄乎的版本：</p>
+<blockquote>
+<p><strong>Agent 的每一次"思考"都跑在一张可恢复的图（tinyagents 的 CompiledGraph）上，由路由层决定这一轮走快通道还是深通道。</strong></p>
+</blockquote>
+<p><code>agent/tinyagents/routes.rs</code> 里那个 <code>ModelRouter</code> 干脆利落：<code>chat-v1 ⇄ burst-v1</code>（轻快兄弟俩）对付日常，<code>reasoning-v1 ⇄ agentic-v1</code>（重推理兄弟俩）对付深活，再配上 <code>coding-v1</code>、<code>vision-v1</code> 各管一摊。中间件 <code>RequiredCapabilitiesMiddleware</code> 管"这模型得支持图才行"，<code>FallbackObserverMiddleware</code> 管"不行就换"，<code>UsageCarryMiddleware</code> 管用量记账。<strong>换模型不是拍脑袋，是路由表上一行配置。</strong></p>
+<p>编排的"分脑"在宿主会话（<code>hosted/orchestration/</code>）里看得更清楚：每个进来的会话 DM 变成一个 <strong>wake cycle</strong>，整个由一张 wake 图驱动。图的 <code>frontend</code> 节点是个"快速 LLM"，把宏观指令交给 <code>reasoning</code> 核心——这个核心再 spawn 出一群 worker 子代理去干活。<strong>快节点做路由，深节点负责任务，子代理当苦力。</strong> 三层往下压。</p>
+<p>图是<strong>可 checkpointer 的</strong>（<code>SqlRunLedgerCheckpointer</code> / <code>SqliteCheckpointer</code>）：跑到一半停了？存盘，重启后<strong>从断点接着跑</strong>，不是重新来一遍。这对长任务几乎是刚需——谁也不想让一个跑了 20 分钟的编排因为程序一崩从头再来。</p>
+<blockquote>
+<p><strong>图的另一个被低估的好处是"能看"。</strong> 一个 Graph 天生就是一张可以画出来的 DAG，配上一份每次实际开销的回放，比"又一个黑盒循环"强太多。</p>
+</blockquote>
+<hr>
+<h2 id="supercontext">SuperContext：模型还没读第一句，侦察兵先扫完你的家底</h2>
+<p>"冷启动"是 agent 界的通病：模型每次都不知道你最近翻过什么。OpenHuman 用 <code>SuperContextMiddleware</code> 解决——它押着<strong>每一轮对话的第一次模型调用</strong>，在其它任何 hook 之前，先派一个只读的 <code>context_scout</code> 子代理去搜你的记忆和文件。</p>
+<p>等侦察兵回来，它把结果（一个 <code>[context_bundle]</code>）通过 <code>prepend_text_to_last_user</code> <strong>折进用户消息里</strong>，模型一上来就已经带着"昨天你写了那篇草稿、今天邮件里有个 dead1ine"的上下文了。<em>（顺手吐槽：我本来要写 deadline，这个词被 OpenHuman 习惯了。）</em></p>
+<p>它还是 best-effort 的——侦察兵崩了也不挡主流程，顶多没拿到 bundle。这个"尽力而为、绝不添堵"的设计很老练：锦上添花的东西，不该成为主路径的定时炸弹。</p>
+<hr>
+<h2 id="tokenjuice">TokenJuice：模型不付"见过除非"的账单</h2>
+<p>记忆造大了，最大的坑不是存储，是<strong>每次喂给模型的 token 账单</strong>。OpenHuman 的解法是把工具输出在被模型读到<strong>之前</strong>就地压缩，宣称同类信息最多省 80% 的 token。</p>
+<p>这个引擎本身是外包的 <code>tinyjuice</code> crate，<code>inference/tokenjuice/</code> 只是它的一层薄适配。它的实力在 <code>ToolOutputMiddleware</code>：工具返回一大堆 JSON/日志/网页，先按类型路由到对应的压缩器（<code>compressors/</code> 里有 JSON、code、log、search、diff、HTML、ML 槽位那一堆），压完再进模型。树若是开着，代码压缩器还能用 tree-sitter 做真正的 AST 压缩——不是无脑截断，是懂语法的压。</p>
+<p>它还配了个 <code>tinyjuice_retrieve</code> 工具，让模型自己开口"把那坨旧内容按需取回来/便宜地压一下"——<strong>又省又不忘</strong>，两头占。更有意思的是它的策略表：</p>
+<ul>
+<li><strong>提供一次恢复/检索的工具绝不压实</strong>（<code>is_recovery_tool</code>、<code>NEVER_COMPACT_TOOLS</code> 清单），因为丢了恢复入口的压缩就是自残；</li>
+<li>省下的每个 token 都记账（<code>savings.rs</code>），能按模型单价换算成真金白银回填到 dashboard。</li>
+</ul>
+<blockquote>
+<p><strong>一个连"压缩省了多少钱"都要记账的项目，大概率是真的在认真算成本——这病，我和老后端都懂。</strong></p>
+</blockquote>
+<hr>
+<h2 id="agent">语音、会议、工作流：把"干活的 agent"武装到能进会议室</h2>
+<p>我原本以为"进会议室"是营销话术，读进去才发现它是真下了功夫的几块，值得拆开说。</p>
+<p><strong>语音（<code>voice/</code>）</strong>：STT 用本地 whisper.cpp 或托管后端，TTS 用本地 Piper 或托管 ElevenLabs，外加一个<strong>热键触发的听写服务</strong>。关键是语音合成返回的不只是音频，还有 <strong>Oculus-15 的 viseme 对齐帧</strong>——就是让吉祥物嘴巴对得上发音的那组关键帧，<code>app/src/mascot/</code> 用 Rive 渲染出来。</p>
+<p><strong>会议（<code>meet/</code> + <code>meet/agent/</code>）</strong>：核心里的 <code>meet/</code> 只管一件事——<strong>单次校验</strong>：验证一个 <code>meet.google.com</code> 链接、裁掉显示名、发一个 <code>request_id</code>。所有平台侧的脏活（开 CEF webview、用 CDP 驱动 Meet 的加入页、挂一个虚拟摄像头、虚拟麦克风）都在 Tauri 壳里（<code>app/src-tauri/src/meet_*</code>）。而 <code>meet/agent/</code> 是<strong>长命的活体通话循环</strong>：壳把 PCM 音频 + 抓取的 captions 流进核心，核心做 VAD 分段 STT，把每一句话路由进<strong>那个完整的编排器代理</strong>，合成 TTS 再流回虚拟麦克风。</p>
+<p>这里有两个很值得抄的工程细节：</p>
+<ol>
+<li><strong>隐私门</strong>：只有 owner / allowlist 才能唤醒"会用工具"的那类 turn，防止会场上任何人一句话就把你的 agent 指挥得乱跑；</li>
+<li><strong>barge-in</strong>：真人插话就打断 agent，不是等它把话说完。<strong>真人始终有优先权</strong>，这是"agent 是来帮忙的不是来祛魅的"的准确体现。</li>
+</ol>
+<p><strong>工作流（<code>flows/</code>）</strong>：agent 提议、你在画布上审、保存后才是 durable 的、触发器驱动的自动化。跑在 tinyflows 引擎上，门槛可以用 generic 的 approval 挡住副作用。<strong>"agent 自己提议、人审了才生效"</strong>——这跟我在 free4chat 里看到的"能默认关闭的 AI 才配叫隐私友好的 AI"是同一个心态。</p>
+<hr>
+<h2 id="_2">隐私模式为什么敢"一开关就彻底不出网"</h2>
+<p>最后说安全——这块是 OpenHuman 最让我（一个被安全基线训过几轮的老后端）放心的部分，因为它是<strong>在 Rust 内核层强制执行，而不是靠前端提示或后台约定</strong>。</p>
+<p>整个体系由 <code>[autonomy]</code> 配置块驱动出 <code>SecurityPolicy</code>，分三层：</p>
+<ol>
+<li><strong>自治分级</strong>：<code>readonly / supervised / full</code> × <code>workspace_only</code> × <code>trusted_roots</code>。而且有个<strong>无条件 fail-closed</strong> 的铁律：<code>workspace_dir</code>（内部状态目录）是 agent 工具"永远不许写"的，不管你在哪个级别、trusted_roots 里写了啥（<code>is_workspace_internal_path</code>）。</li>
+<li><strong>命令头校验</strong>：<code>classify_command</code> 把命令分 <code>Read / Write / Network / Install / Destructive</code>，不认识默认按 <code>Write</code> 处理，再叠 <code>gate_decision</code> 出 <code>Allow / Prompt / Block</code>。系统目录和凭证目录无条件禁。</li>
+<li><strong>审批门（approval gate）</strong>：默认开。任何工具只要 <code>external_effect()</code> 为真，就要过一道审批——allowed 清单短路，否则写一条 <code>pending_approvals</code>，发个 UI 通知，然后用一个 <code>oneshot</code> <strong>把这次调用挂起</strong>，直到 <code>approval_decide</code> 决定为止。10 分钟不批默认 Deny。</li>
+</ol>
+<p><strong>隐私模式（<code>PrivacyMode::{Standard, LocalOnly}</code>）</strong>是这套体系里最亮的一颗：<code>LocalOnly</code> 模式下，外部 provider / 集成 / 网络出口<strong>在内核的 factory / enforce 层就被直接掐死</strong>——<code>inference/provider/factory.rs</code> 直接返回"Local-only privacy mode is active"。不是设置里劝你别用外网，是代码层面压根不放行。</p>
+<p>密钥栈也讲究：<code>SecretStore</code> 用<strong>加密落盘 + OS keychain 里的主密钥</strong>兜底，哈希比较用 <code>constant_time_eq</code> 防时序侧信道，还有 append-only 审计日志。</p>
+<blockquote>
+<p><strong>换个角度看，这套设计的核心心法就一句话：凡涉及"能不能/该不该"，一律下沉到最底一层、用默认拒绝来兜底；越往上，越只负责"漂亮"不负责"判断"。</strong></p>
+</blockquote>
+<hr>
+<h2 id="_3">我作为一个老后端，想抄走的五件事</h2>
+<p>把 OpenHuman 读完，我脑子里存的不是"又见了一个 AI 助手"，而是几个跨领域都能用的判断：</p>
+<ol>
+<li>
+<p><strong>算法的脏活，能外包就别自己写。</strong> 记忆压缩、token 压缩、图引擎、芯片推理——全用 <code>tinycortex</code> / <code>tinyjuice</code> / <code>tinyagents</code> / <code>tinyflows</code> 这些外包 crate 顶住，内核只留调度与安全。<strong>把精力花在组合与兜底，而不是重新发明向量。</strong></p>
+</li>
+<li>
+<p><strong>"一个目录 = 一个功能开关"。</strong> feature 门既能编译期砍，又能运行时 <code>DomainSet</code> 配，还能自动生成 schema。规模大了以后，这种"可裁剪"比"全都要"好维护一个数量级。</p>
+</li>
+<li>
+<p><strong>隐私要下沉到内核层默认拒绝。</strong> 别在 UI 上劝，别在某个服务里偷偷放行。"一开关就彻底不出网"之所以可信，是因为它在 Rust 层就把出口堵死了。</p>
+</li>
+<li>
+<p><strong>长活要有可恢复的图 + 可回放的成本。</strong> 编排器跑在 checkpoint 图上，崩了从断点接；每轮实际开销能回放记账。这比"又一个黑盒循环"更像工程。</p>
+</li>
+<li>
+<p><strong>agent 提议、人审批、副作用设门槛。</strong> 从工作流画布到会议里的隐私门，"AI 自己跑、人点头才生效"——这是我能给任何自动化下的通用结论。</p>
+</li>
+</ol>
+<p>一句话：</p>
+<blockquote>
+<p><strong>做 AI 助手，胜利不在"显得多聪明"，而在把"记得住、靠得住、不乱来"这三件难事，用尽量少的自有代码一次做扎实。</strong></p>
+</blockquote>
+<p>如果你也好奇它这套"会折腾的剥洋葱式"架构，建议 clone 一份：<code>git clone https://github.com/tinyhumansai/openhuman</code>（记得 <code>git submodule update --init --recursive</code>，vendor 目录里的 tiny<em> 家族才在）。重点读 <code>src/openhuman/memory/store</code>、<code>src/openhuman/agent/tinyagents</code>、<code>src/openhuman/security</code> 这三个目录，然后你会同意我说的：</em><em>这是一次有诚意的"step closer"。</em>*</p>
+<p>唯一我没法替你验证的是线上跑的延迟、成本、以及它宣传的"开出即结 80% token"的实际收益——本地 clone 只管得了代码，够不到生产指标。你要是跑过，欢迎回来告诉我真实体验。</p>
+<h2 id="_4">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* OpenHuman 拆机
+** 一句话架构
+*** 纯 Rust 内核当大脑
+*** Tauri + React 当躯壳
+*** 一脑多壳（CLI/TUI/桌面/embed）
+** 记忆大脑
+*** .md 文件是真相源
+*** SQLite 只做索引
+*** 打分准入 + 封桶成摘要
+*** 潜意识后台 cron 自动内化
+** 分脑编排
+*** 快路由 chat/burst
+*** 深推理 reasoning/agentic
+*** 可恢复图 + checkpointer
+*** 子代理舰队三层下压
+** TokenJuice
+*** tool 输出先压再进模型
+*** 类型化压缩器（HTML/JSON/code…）
+*** 恢复/检索工具不压实
+*** 省多少 token 都记账
+** 语音会议
+*** viseme 对齐帧驱动吉祥物
+*** meet/agent 活体通话循环
+*** 虚拟摄像头 + 虚拟麦克风
+*** 真人可 barge-in
+** 隐私安全
+*** autonomy 分级
+*** approval gate 默认开
+*** LocalOnly 内核层掐断出网
+*** keychain 主密钥 + 审计日志
+** 可抄的五件事
+*** 算法外包，理由调度安全
+*** 一目录一开关
+*** 隐私下沉内核层默认拒绝
+*** 长活可恢复图 + 成本回放
+*** agent 提议、人审批、副作用设门槛
+@endmindmap
+</code></pre></div>
+
+<p><img alt="OpenHuman 拆机 - 思维导图" src="./images/tech_20260805_openhuman_teardown_mindmap.png"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/openhuman-teardown-ai-agent-harness.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/ai-agent.html">ai-agent</a>
+      <a href="https://www.fanyamin.com/blog/tag/rust.html">rust</a>
+      <a href="https://www.fanyamin.com/blog/tag/tauri.html">tauri</a>
+      <a href="https://www.fanyamin.com/blog/tag/memory.html">memory</a>
+      <a href="https://www.fanyamin.com/blog/tag/orchestrator.html">orchestrator</a>
+      <a href="https://www.fanyamin.com/blog/tag/mcp.html">mcp</a>
+      <a href="https://www.fanyamin.com/blog/tag/teardown.html">teardown</a>
+      <a href="https://www.fanyamin.com/blog/tag/architecture.html">architecture</a>
+      <a href="https://www.fanyamin.com/blog/tag/openhuman.html">openhuman</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-08-05-process-vs-people.html" title="流程与人，到底谁更重要？先分清护栏、记忆和仪式">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/2026-08-06-ai-planning.html" title="用 AI 做好计划之一：把 PDCA 环转起来">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/2026-03-21-nanobot-memory-deep-dive.html">再聊 nanobot 的记忆机制：从消息计数到 Token 预算</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-03-15-nanobot-memory-mechanism.html">nanobot 的记忆机制：它为什么能记住你的习惯和喜好？</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-02-06-ai-agent-workflow-prompt.html">用 AI Agent 处理复杂流程：先写 Workflow，再写 Prompt</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-01-15-pdca-paoe-ai-agent.html">从 PDCA 到 PAOE：AI Agent 大脑里的循环</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-01-12-cursor-rules-commands.html">Cursor 的三板斧：Rules, Commands 与 Agent Skills</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

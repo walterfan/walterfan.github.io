@@ -1,0 +1,777 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="拆 i365dev 开源的 free4chat——一个&#34;开房间就能说话、不注册不存数据&#34;的实时语音文字聊天室。真正让我感兴趣的不是功能，而是它为了&#34;不养服务器&#34;这个目标换了三次技术栈：Go+Pion、Elixir+Membrane，最后落到 Cloudflare 全托管（RealtimeKit + Workers + Durable Object）。这篇按代码讲清楚它现在的架构：Worker 只发一个短期 token，媒体走 WebRTC 数据面，两小时房间过期、三层反机器人，以及那个藏在 Durable Object 里的 AI 助手 Luna，还有它踩过的坑和留给自己的下一步。" />
+<meta name="keywords" content="webrtc, cloudflare, serverless, durable-objects, teardown, architecture">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "免费聊天室拆机：一个 WebRTC 项目如何在三次换栈后彻底&#34;不养服务器&#34;",
+  "description": "拆 i365dev 开源的 free4chat——一个&#34;开房间就能说话、不注册不存数据&#34;的实时语音文字聊天室。真正让我感兴趣的不是功能，而是它为了&#34;不养服务器&#34;这个目标换了三次技术栈：Go+Pion、Elixir+Membrane，最后落到 Cloudflare 全托管（RealtimeKit + Workers + Durable Object）。这篇按代码讲清楚它现在的架构：Worker 只发一个短期 token，媒体走 WebRTC 数据面，两小时房间过期、三层反机器人，以及那个藏在 Durable Object 里的 AI 助手 Luna，还有它踩过的坑和留给自己的下一步。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-08-04T23:10:00+08:00",
+  "dateModified": "2026-08-04T23:10:00+08:00",
+  "url": "https://www.fanyamin.com/blog/free4chat-teardown-zero-server-webrtc.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/free4chat-teardown-zero-server-webrtc.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "webrtc, cloudflare, serverless, durable-objects, teardown, architecture"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="免费聊天室拆机：一个 WebRTC 项目如何在三次换栈后彻底&#34;不养服务器&#34;"/>
+  <meta property="og:description" content="拆 i365dev 开源的 free4chat——一个&#34;开房间就能说话、不注册不存数据&#34;的实时语音文字聊天室。真正让我感兴趣的不是功能，而是它为了&#34;不养服务器&#34;这个目标换了三次技术栈：Go+Pion、Elixir+Membrane，最后落到 Cloudflare 全托管（RealtimeKit + Workers + Durable Object）。这篇按代码讲清楚它现在的架构：Worker 只发一个短期 token，媒体走 WebRTC 数据面，两小时房间过期、三层反机器人，以及那个藏在 Durable Object 里的 AI 助手 Luna，还有它踩过的坑和留给自己的下一步。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/free4chat-teardown-zero-server-webrtc.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-08-04 23:10:00+08:00"/>
+  <meta property="article:modified_time" content="2026-08-04 23:10:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="webrtc"/>
+  <meta property="article:tag" content="cloudflare"/>
+  <meta property="article:tag" content="serverless"/>
+  <meta property="article:tag" content="durable-objects"/>
+  <meta property="article:tag" content="teardown"/>
+  <meta property="article:tag" content="architecture"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 免费聊天室拆机：一个 WebRTC 项目如何在三次换栈后彻底&#34;不养服务器&#34;</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="free4chat-teardown-zero-server-webrtc">免费聊天室拆机：一个 WebRTC 项目如何在三次换栈后彻底"不养服务器"</h1>
+    <p>
+      Posted on 二 04 8月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>免费聊天室拆机报告</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-08-04</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<p>周五晚上我把 <a href="https://github.com/i365dev/free4chat">free4chat</a> clone 下来，本来只想看看它那个"不注册、不存数据"的语音聊天室是怎么做到的。结果顺藤摸瓜，发现最有味道的不是功能，而是技术栈那栏写着的三个分支：<code>golang</code>、<code>elixir</code>、还有现在默认的 <code>cloudflare</code>。</p>
+<p><strong>同一个产品目标，一路换掉了三次底层实现——第一次自建 Pion WebRTC + coturn，第二次上 Elixir 的 Membrane 集群，最后彻底躺进 Cloudflare，一台服务器都不碰。</strong> 产品没变，变的只有运维负担。这话说出来轻巧，背后的取舍值得拆开看。</p>
+<p>这篇文章按代码讲它现在的样子：Worker 干了多少活、媒体为什么不落盘、房间凭什么两小时就死、反机器人怎么叠了三层、那个藏在 Durable Object 里的 AI 助手 Luna 是怎么长出来的，以及它给自己留了哪些后路。</p>
+<p>顺手说一句：如果你也写过后端，看完大概会跟我想的一样——<strong>"serverless 不香"的反面，是"自己养一套 RTC 集群更疼"。</strong> 这是一次结结实实的用脚投票。</p>
+<hr>
+<h2 id="worker">架构一句话：Worker 只发令牌，媒体全走点对点</h2>
+<p>先给个全局视角。整个项目一个 Worker 就装下了（Next.js 前端 + API 路由 + Durable Object 打包在一起），真正的实时能力和聊天室长得完全不一样。</p>
+<p>普通聊天室长这样：客户端把消息发到一个中心服务器，服务器转发给房间里的其他人。free4chat 反过来——</p>
+<blockquote>
+<p><strong>中心的 Worker 只有一个职责：签发一张短期的认证 token。拿到 token 之后，所有语音、文字、文件、屏幕共享都走 WebRTC 的点对点数据通道，跟服务器没关系了。</strong></p>
+</blockquote>
+<p><code>app/src/pages/api/token.ts</code> 就是这个被拆到不能再小的后端。浏览器打开房间，往 <code>/api/token</code> 发一个 POST（带房间名、昵称、想开的房间类型），Worker 拿着 Cloudflare API token 去 RealtimeKit 申请一个 meeting、再往里面加一个参与者，然后把参与者的鉴权令牌还给浏览器。剩下的事，交给 <code>@cloudflare/realtimekit-react</code> 这个 SDK 在浏览器里直接连 WebRTC。</p>
+<p>所以消息、语音、文件——全都活在参与者的浏览器内存里。<strong>关掉标签页，什么证据都没有。</strong> 这正是这个产品"少即是多"的信心来源：不是靠承诺"我们不存"，而是从架构上就让它"没地方存"。</p>
+<p><code>app/src/hooks/useChatRoom.ts</code> 是整个前端的核心，403 行，一头扎进 RealtimeKit 的底层 <code>meeting</code> 对象，把参与者列表、消息流、静音、屏幕共享全用命令式的方式管起来。它是参与者的唯一事实来源——永远是整表重建，绝不局部补丁。</p>
+<hr>
+<h2 id="_1">三次换栈：不是技术不香，是养不起了</h2>
+<p>README 里那张"Stack History"表，是我最想抄走的部分。</p>
+<table>
+<thead>
+<tr>
+<th>分支</th>
+<th>技术栈</th>
+<th>为什么换掉</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>golang</code></td>
+<td>Go + Pion WebRTC + coturn</td>
+<td>一个个人项目要自己养基础设施，太重</td>
+</tr>
+<tr>
+<td><code>elixir</code></td>
+<td>Elixir + Membrane 框架</td>
+<td>维护一个服务器集群，对这么小的项目还是太贵</td>
+</tr>
+<tr>
+<td><code>cloudflare</code></td>
+<td>RealtimeKit + Workers</td>
+<td>全托管，file transfer 内置，免费额度够用</td>
+</tr>
+</tbody>
+</table>
+<p>做过后端的人都懂那两行"为什么"的含金量。WebRTC 是个伟大的协议，但它把难题全堆在你头上：信令服务器、TURN 打洞、STUN、媒体面转发、带宽估计、NAT 穿透……在 Go 里用 Pion 把这些凑齐，不是做不到，是<strong>运维成本爆炸</strong>——而且是为了一个"开个房间聊两句"的聊天室。</p>
+<p>Elixir + Membrane 的取向是对的（Actor 模型天生适合并发媒体），但还得自己跑集群、盯水位、处理回退。对个人项目来说，这是拿管理员的命换架构师的爽。</p>
+<p>Cloudflare 这一版把"我没钱也不想养的麻烦"全部丢给了平台：RealtimeKit 管媒体面，Workers 管信令，Durable Object 管状态，KV 管元数据，Turnstile 管反机器人。预算从"白银一顿"降到"几乎为零"，还白送内置文件传输。</p>
+<blockquote>
+<p>我自己做过 WebRTC SDK 的活，看到别人这么选，心里第一反应是：他这不是认输，是终于把有限的精力花在了刀刃上。<strong>能用平台把复杂度外包出去，是本事，不是偷懒。</strong></p>
+</blockquote>
+<hr>
+<h2 id="_2">三层反机器人：从"能防"到"默认开启"</h2>
+<p>一个匿名、无认证、任何人填个昵称就能进的语音房，天然是全网爬虫和骚扰脚本的靶子。所以 token.ts 里反机器人不是一层，是三叠。</p>
+<ol>
+<li><strong>来源白名单</strong>：校验浏览器的 <code>Origin</code> 头，非浏览器、或者不是来自 free4chat 域的请求直接 403。这是第一道廉价的门。</li>
+<li><strong>KV 限流</strong>：用 <code>cf-connecting-ip</code> 在 KV 里记数，20 次/60 秒 / IP，超了就 429。</li>
+<li><strong>Turnstile 人机验证</strong>：配置了 <code>TURNSTILE_SECRET_KEY</code> 时，<code>/api/token</code> 强制要求一个有效的 Turnstile token，否则 403。前端的 <code>TurnstileGate</code> 组件包住整个应用，第一次进是整页挑战，过了以后存在 <code>sessionStorage</code>，同一次浏览器会话不再重复要。</li>
+</ol>
+<p>有意思的是第三层的实现——它在 <code>sessionStorage</code> 存 token，等用户真的点了加入、token 被消费掉之后再回落到未验证状态重新挑战。代码里为此专门修过两回（commit 有：<code>re-render Turnstile widget when token is consumed</code>），属于那种"看着小、不修就出洞"的边界处理。</p>
+<p>除了反机器人，输入也锁了：房间名 ≤ 64 字符、昵称 ≤ 32 字符、机器人消息 ≤ 1000 字符。云端的东西，能少信一份输入就少信一份。</p>
+<hr>
+<h2 id="kv-ttl">房间为什么两小时就死：KV 加 TTL，再加一条定时删除</h2>
+<p>"免费"的代价是要控制成本，所以房间不能永生。README 说 2 小时过期，代码里是三样东西配合：</p>
+<p><strong>第一层，KV 记录的过期字段。</strong> 每个房间在 <code>ROOMS_KV</code> 里有个 <code>room:名字</code> 记录，写着 meeting id、创建时间和房间类型，写入时带上 4 小时的 <code>expirationTtl</code>（<code>ROOM_KV_TTL_S = 4 * 3600</code>）。到了时间 KV 自动把元数据抹掉。</p>
+<p><strong>第二层，逻辑过期。</strong> <code>token.ts</code> 里 <code>ROOM_MAX_AGE_MS = 2 小时</code>，进来的人如果发现房间已经创建超过 2 小时，就回一个 410 "room expired"，并顺手调 RealtimeKit 把那个 meeting 标记成 <code>INACTIVE</code>，防止它赖着占资源。</p>
+<p><strong>第三层，防呆的 Cron。</strong> <code>wrangler.jsonc</code> 里挂着一条 <code>*/30 * * * *</code> 的定时任务，每半小时扫一遍，把该清理的彻底清掉。前端 <code>useChatRoom.ts</code> 里还有个倒计时+到期自动退房（<code>doExpireLeave</code>），用的是<strong>服务端返回的 <code>expiresAt</code></strong> 而不是本地加入时间——这处坑踩得很典型：<code>base countdown on server-side expiresAt instead of local join time</code>，本地时钟是不可信的。</p>
+<p>一件事用了 kv TTL、逻辑 410、Cron、客户端倒计时四重保险，还专门修了双退房（<code>double-leave</code>）、时钟漂移（<code>timer drift</code>）这些 edge case。<strong>一个"免费"得不能再免费的功能，防御却被反复加固</strong>——这正是我欣赏的工程态度：越是免费的东西，越不能让它偷跑。</p>
+<hr>
+<h2 id="durable-object-ai-luna">藏在 Durable Object 里的 AI 助手 Luna</h2>
+<p>如果说前面的都是"防守"，Luna 就是产品里最"进攻"的一块——一个可选的 AI 助手，在聊天里 <code>@luna</code> 就能召唤。</p>
+<p>它的关键是 Cloudflare 的 <strong>Durable Object</strong>。跟普通无状态 Worker 不一样，DO 是一个有持久状态的单点——同一把 key 的请求会被路由到同一个对象实例，这在多人聊天这种需要"一个人记得上下文"的场景里简直是为它量身定的。</p>
+<p><code>app/src/do/BotSession.ts</code> 的逻辑很干净：</p>
+<ul>
+<li>用 <code>BOT_SESSION.idFromName(房间的 meetingId+创建时间)</code> 得到一个<strong>每房间唯一</strong>的 DO 实例；</li>
+<li>它把 <code>state.storage</code> 当数据库用，持久化两样东西：最近 <strong>20 条</strong>聊天历史（<code>MAX_HISTORY</code>）和一个<strong>每小时 30 次</strong>的限流计数（<code>HOURLY_RATE_LIMIT</code>）；</li>
+<li>拿到用户消息后拼上下文，丢给 Cloudflare AI Gateway 的 OpenAI 兼容端点，用 <code>@cf/zai-org/glm-4.7-flash</code> 这个模型（智谱 GLM-4.7 的 flash 版）生成回答；</li>
+<li>回答里还专门 <code>stripThinkTags()</code> 把模型可能吐出来的 <code>思考</code> 标签剥掉，免得污染聊天界面。</li>
+</ul>
+<p>系统提示词写得很有产品感："KEEP REPLIES SHORT (1-3 sentences)、别用 markdown 表格和代码块、说中文就用中文回。"一个聊天室里的助手的权重很简单：别抢戏。</p>
+<p><strong>但它一个很妙的取舍是：Luna 是默认关的。</strong> 打开房间时你不勾选，<code>botEnabled</code> 就是 false，就算有人 <code>@luna</code>，<code>api/bot.ts</code> 也会回 403。因为启用 Luna 意味着把用户消息发给外部 AI 模型，这在隐私上是另一个量级——所以 README 和 UI 都把"数据会发给 AI 处理"这件事写得明明白白。<strong>能默认关闭的 AI，才配叫隐私友好的 AI。</strong></p>
+<hr>
+<h2 id="_3">一个让工程强迫症很舒服的部署细节</h2>
+<p>最后说一个纯工程的小事，但它能说明这个项目有多抠细节。</p>
+<p>Cloudflare 的 <code>opennextjs-cloudflare</code> 打包后会自己生成一个 <code>worker.js</code>，忽略你在 <code>wrangler.jsonc</code> 里写的自定义 <code>main</code>。问题是 Luna 的 <code>BotSession</code> 这个 Durable Object 必须导出到 Worker 入口才能被绑定。于是项目早期写了个 <code>scripts/patch-worker.mjs</code>，在每次构建后把 <code>BotSession.ts</code> 用 esbuild 单独打成一个文件，再把 <code>export { BotSession }</code> 追加到生成的 <code>worker.js</code> 末尾——一个"绕过框架限制的补丁"。</p>
+<p>做法很实用，但也很脆。后来社区出了官方支持的自定义 <code>worker.ts</code> 入口（<code>refactor: replace patch-worker.mjs with official custom worker.ts entry point</code>），他们就把补丁删了，换成正道。<strong>先 hack 顶上，等官方便利了就立刻迁走</strong>——这是对"技术债要记账"的最好示范：欠可以欠，但要记得还，且有还的路线图。</p>
+<hr>
+<h2 id="_4">它留给自己的下一步（也是我们的启示）</h2>
+<p>DEVELOPMENT.md 的"Future Directions"写得克制又清醒：</p>
+<ul>
+<li><strong>SQLite-backed Durable Objects</strong>：现在的 <code>state.storage.get/put</code> 够用，数据模型真长大了再切 <code>state.storage.sql</code>，还能解锁 Cloudflare Data Studio 在线调试数据——但没到那个量不折腾。</li>
+<li><strong>Cloudflare Actors 库</strong>：更高层的 DO 抽象，有类型化 RPC，但也明确写了"当前规模无收益"。</li>
+<li><strong>语音 Bot（Luna Phase 2）</strong>：要用 <code>@cloudflare/voice</code>（STT→LLM→TTS）+ Cloudflare Calls 把音轨桥进 RTK，预估全 Cloudflare 延迟 700–900ms。这是把文字助手升级成能真人对讲的"语音版 Luna"。</li>
+</ul>
+<p><strong>这三条里有两条在说"现在别做"。</strong> 一个个人项目愿意在"还不需要"的时刻忍住不提前架构，这本身就值一行笔记。</p>
+<hr>
+<h2 id="recap-free4chat">Recap：从 free4chat 能带走什么</h2>
+<p>把这个项目读完，我脑子里存下的不是"又见了一个聊天室"，而是几个可复用的判断：</p>
+<ol>
+<li><strong>能外包的复杂度，别自己扛。</strong> WebRTC 的痛不是协议难，是运维难。第三台服务器之前，先想清楚平台能不能替你把媒体面、信令、状态全管了。</li>
+<li><strong>隐私要做到"没地方存"。</strong> 不再强调"我们不存"，而是让数据在架构上根本没地方可存——媒体走 P2P、消息只进浏览器内存。</li>
+<li><strong>免费的东西更要防御。</strong> 匿名 + 免费 = 爬虫靶子。白名单、限流、人机验证照叠，输入长度照锁，房间 TTL 照设四重保险。</li>
+<li><strong>把用户数据交给 AI，要默认关闭 + 明示。</strong> <code>@luna</code> 默认不启用，要启用用户得自己勾，且一切写得清清楚楚。</li>
+<li><strong>先 hack 顶上，等正道来了就迁。</strong> patch-worker 的补丁有生命周期，官方便利一到立刻换掉。</li>
+</ol>
+<p>一句话：</p>
+<blockquote>
+<p><strong>做小而免费的项目，胜利不在功能炫技，而在把"不养服务器、不留数据、不挨薅"这三件难事，一次做扎实。</strong></p>
+</blockquote>
+<p>如果你也想看它是怎么把这三件事一次做扎实的，强烈建议 clone 一份：<code>git clone https://github.com/i365dev/free4chat</code>，认准 <code>cloudflare</code> 分支，重点读 <code>app/src/pages/api/token.ts</code> 和 <code>app/src/do/BotSession.ts</code>。</p>
+<p>我唯一没能替你验证的是线上跑的延迟和成本数字——本地 clone 下来只管得了代码，够不到生产指标。你要是跑了，欢迎回来告诉我真实体验。</p>
+<h2 id="_5">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* free4chat 拆机
+** 三次换栈
+*** Go + Pion WebRTC + coturn
+*** Elixir + Membrane 集群
+*** Cloudflare 全托管（当前）
+** 架构核心
+*** Worker 只发短期 token
+*** 媒体全走 WebRTC P2P
+*** 消息只在浏览器内存
+** 三层反机器人
+*** Origin 白名单
+*** KV 限流 (20/60s/IP)
+*** Turnstile 人机验证
+** 房间 2 小时过期
+*** KV TTL (4h)
+*** 逻辑 410 + INACTIVE
+*** Cron 每 30 分钟清扫
+** Luna AI 助手
+*** Durable Object 每房间实例
+*** GLM-4.7-flash via AI Gateway
+*** 20 条历史 + 每小时 30 次
+*** 默认关闭 + 隐私明示
+** 工程亮点
+*** patch-worker 补丁后迁正
+*** 防呆 edge case 反复加固
+** 下一步
+*** SQLite DO
+*** Actors 库
+*** 语音 Bot (Luna Phase 2)
+@endmindmap
+</code></pre></div>
+
+<p><img alt="free4chat 拆机 - 思维导图" src="./images/tech_20260804_free4chat_teardown_mindmap.png"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/free4chat-teardown-zero-server-webrtc.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/webrtc.html">webrtc</a>
+      <a href="https://www.fanyamin.com/blog/tag/cloudflare.html">cloudflare</a>
+      <a href="https://www.fanyamin.com/blog/tag/serverless.html">serverless</a>
+      <a href="https://www.fanyamin.com/blog/tag/durable-objects.html">durable-objects</a>
+      <a href="https://www.fanyamin.com/blog/tag/teardown.html">teardown</a>
+      <a href="https://www.fanyamin.com/blog/tag/architecture.html">architecture</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-08-04-ai-super-individual-secretary.html" title="比起让 AI 写代码，我更想让它替我干些脏活杂活">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/2026-08-05-process-vs-people.html" title="流程与人，到底谁更重要？先分清护栏、记忆和仪式">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/2026-07-05-sample-app.html">给你的服务养一个"数字替身"：AI 时代为什么要写 Sample App</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-03-08-build-mini-zoom-meeting.html">从零构建一个迷你 Zoom：Lazy Rabbit Meeting 架构全解析</a></li>
+      <li><a href="https://www.fanyamin.com/blog/openhuman-teardown-ai-agent-harness.html">AI 助手拆机：OpenHuman 怎么做到"记得你、自己干、还不出网"</a></li>
+      <li><a href="https://www.fanyamin.com/blog/ai-era-senior-programmer-webrtc.html">AI 时代高级程序员的门槛在哪里？以 WebRTC 为例</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2023-07-19-webrtc-video.html">WebRTC 的音视频如何同步</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

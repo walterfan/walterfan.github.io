@@ -1,5 +1,1363 @@
 <?xml version="1.0" encoding="utf-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom"><title>Walter Fan's Blog - AI</title><link href="https://www.fanyamin.com/blog/" rel="alternate"/><link href="https://www.fanyamin.com/blog/feeds/ai.atom.xml" rel="self"/><id>https://www.fanyamin.com/blog/</id><updated>2026-08-06T22:29:00+08:00</updated><subtitle>手握灵珠常奋笔, 心开天籁不吹箫</subtitle><entry><title>用 AI 做好计划之三：配个不睡觉的监工</title><link href="https://www.fanyamin.com/blog/2026-08-06-ai-planning-agent.html" rel="alternate"/><published>2026-08-06T21:56:00+08:00</published><updated>2026-08-06T22:29:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-08-06:/blog/2026-08-06-ai-planning-agent.html</id><summary type="html">&lt;p&gt;前两篇讲了用 AI 做计划的心法和工具，但都有个漏洞：PDCA 是个环，却全靠人手动推着转，人一忙就停。这篇讲怎么用一个长期运行的 AI Agent 把 Check→Act→Plan 半环自动转起来——它不替你干活，它是个不睡觉的监工，盯进度、发提醒、起草方案，卡住了就喊人。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Walter Fan's Blog - AI</title><link href="https://www.fanyamin.com/blog/" rel="alternate"/><link href="https://www.fanyamin.com/blog/feeds/ai.atom.xml" rel="self"/><id>https://www.fanyamin.com/blog/</id><updated>2026-08-08T21:00:00+08:00</updated><subtitle>手握灵珠常奋笔, 心开天籁不吹箫</subtitle><entry><title>如何管理 AI Agent 的记忆之三：让 mem0 给 AI Agent 装一层"通用记忆"</title><link href="https://www.fanyamin.com/blog/2026-08-08-mem0-memory-layer.html" rel="alternate"/><published>2026-08-08T21:00:00+08:00</published><updated>2026-08-08T21:00:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-08-08:/blog/2026-08-08-mem0-memory-layer.html</id><summary type="html">&lt;p&gt;前两篇我自己用 pgvector 手搓了一套 Agent 记忆系统，也讲了怎么让 Claude Code、Codex、OpenCode 共享它。这篇介绍一个 6 万多 star 的开源库 mem0——它把"打分、抽取、去重、多信号检索"这些活儿全帮你做了，还官方提供了三个编码工具的 skill 和 MCP 集成。附架构拆解、核心 API 用法，以及一行命令接进三个工具的实操。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;如何管理 AI Agent 的记忆之三：让 memo0 给 AI Agent 装一层"通用记忆"&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;learning note&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Version&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;v1.0&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;2026-08-08&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;写完前两篇——&lt;a href="./2026-08-07-ai-agent-memory.html"&gt;自己用 pgvector 手搓记忆系统&lt;/a&gt;、&lt;a href="./2026-08-07-ai-coding-shared-memory.html"&gt;让三个编码工具共享记忆&lt;/a&gt;——有读者问我：这些活儿有没有现成的轮子？&lt;/p&gt;
+&lt;p&gt;有，而且很成熟：&lt;a href="https://github.com/mem0ai/mem0"&gt;&lt;strong&gt;mem0&lt;/strong&gt;&lt;/a&gt;（读作 "mem-zero"）。GitHub 6 万多 star，Apache 2.0，自我定位是 &lt;strong&gt;AI Agent 的"通用记忆层"（universal memory layer）&lt;/strong&gt;。我把前两篇里自己吭哧吭哧写的"重要性打分、事实抽取、去重、多信号检索"对着它的源码和文档过了一遍，感受是：&lt;strong&gt;该有的它基本都有，而且做得比我那一百行讲究得多。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;更让我意外的是：它官方就带了 Claude Code、Codex、OpenCode 的集成——仓库里躺着 &lt;code&gt;.claude-plugin&lt;/code&gt;、&lt;code&gt;.codex-plugin&lt;/code&gt;，还有一行命令就能挂上的 MCP server。这正好接上前一篇"自己搭 MCP + Skill"的话题：&lt;strong&gt;原来这条路，人家已经铺好了。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;这篇分三段：&lt;strong&gt;它到底是什么、架构怎么设计的、怎么用；然后重点讲怎么深度接进三个编码工具。&lt;/strong&gt; 老规矩，代码都是照官方文档核对过的，不是我瞎编。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="mem0"&gt;一、mem0 是什么：一个"记忆即服务"的中间层&lt;/h2&gt;
+&lt;p&gt;先给个一句话定位：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;mem0 坐在你的 Agent 和存储之间，帮你把"从对话里该记什么、怎么存、怎么找回来"这套脏活全包了。&lt;/strong&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;你只管调两个动作——&lt;code&gt;add&lt;/code&gt;（把这段对话喂给它）和 &lt;code&gt;search&lt;/code&gt;（按当前问题捞回相关记忆）。中间那些"用 LLM 抽事实、算 embedding、去重、加权排序"的活儿，它在内部替你干了。对照前两篇你就懂了：&lt;strong&gt;我手写的 &lt;code&gt;remember()&lt;/code&gt; / &lt;code&gt;recall()&lt;/code&gt;，就是 mem0 的 &lt;code&gt;add&lt;/code&gt; / &lt;code&gt;search&lt;/code&gt; 的简化版。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;它给自己划了三类典型用户：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;AI 助手/聊天机器人&lt;/strong&gt;：跨会话记住用户偏好，越用越懂你。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;客服/医疗等&lt;/strong&gt;：调取历史工单、病人偏好，给个性化回应。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;自主 Agent&lt;/strong&gt;：从过去的运行里学经验，别每次从零开始。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;一个最小的"带记忆的对话"长这样（OSS 版，官方 README 示例，我做了裁剪）：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="kn"&gt;from&lt;/span&gt; &lt;span class="nn"&gt;openai&lt;/span&gt; &lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="n"&gt;OpenAI&lt;/span&gt;
+&lt;span class="kn"&gt;from&lt;/span&gt; &lt;span class="nn"&gt;mem0&lt;/span&gt; &lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="n"&gt;Memory&lt;/span&gt;
+
+&lt;span class="n"&gt;openai_client&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;OpenAI&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+&lt;span class="n"&gt;memory&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;Memory&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+
+&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;chat_with_memories&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;message&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;user_id&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;default_user&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+    &lt;span class="c1"&gt;# 1) 先按当前问题检索相关记忆&lt;/span&gt;
+    &lt;span class="n"&gt;hits&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;memory&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;search&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;query&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;message&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;filters&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;user_id&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;user_id&lt;/span&gt;&lt;span class="p"&gt;},&lt;/span&gt; &lt;span class="n"&gt;top_k&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;3&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="n"&gt;mem_str&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="se"&gt;\n&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;join&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;- &lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;e&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;memory&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt; &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;e&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;hits&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;results&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;])&lt;/span&gt;
+
+    &lt;span class="c1"&gt;# 2) 把记忆拼进 system prompt，生成回答&lt;/span&gt;
+    &lt;span class="n"&gt;messages&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;
+        &lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;role&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;system&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;content&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;你是助手。参考已知记忆回答。&lt;/span&gt;&lt;span class="se"&gt;\n&lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;mem_str&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;},&lt;/span&gt;
+        &lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;role&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;user&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;content&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;message&lt;/span&gt;&lt;span class="p"&gt;},&lt;/span&gt;
+    &lt;span class="p"&gt;]&lt;/span&gt;
+    &lt;span class="n"&gt;reply&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;openai_client&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;chat&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;completions&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;create&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+        &lt;span class="n"&gt;model&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;gpt-5-mini&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;messages&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;messages&lt;/span&gt;
+    &lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;choices&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;message&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;content&lt;/span&gt;
+
+    &lt;span class="c1"&gt;# 3) 把这轮对话喂回 mem0，让它自己决定记什么&lt;/span&gt;
+    &lt;span class="n"&gt;messages&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;append&lt;/span&gt;&lt;span class="p"&gt;({&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;role&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;assistant&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;content&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;reply&lt;/span&gt;&lt;span class="p"&gt;})&lt;/span&gt;
+    &lt;span class="n"&gt;memory&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;add&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;messages&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;user_id&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;user_id&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;reply&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;注意第 3 步：你把&lt;strong&gt;整段对话&lt;/strong&gt;丢给 &lt;code&gt;add&lt;/code&gt;，&lt;strong&gt;记什么、怎么提炼、要不要记，是 mem0 内部用 LLM 决定的&lt;/strong&gt;——你不用自己写打分逻辑。这就是它和"裸向量库"最大的区别：&lt;strong&gt;向量库只负责存和查，mem0 多了"理解和提炼"这一层。&lt;/strong&gt;&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_1"&gt;二、架构拆解：它内部到底做了什么&lt;/h2&gt;
+&lt;p&gt;mem0 的 &lt;code&gt;add&lt;/code&gt; 不是简单 &lt;code&gt;INSERT&lt;/code&gt;。官方把它描述成一条&lt;strong&gt;抽取 → 累加存储 → 检索&lt;/strong&gt;的管线。我按它 2026 年 4 月那版新算法梳理一下（细节以官方&lt;a href="https://mem0.ai/research"&gt;研究页&lt;/a&gt;和文档为准）：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;flowchart TD
+    IN[&amp;quot;add(messages)&amp;quot;] --&amp;gt; EX[&amp;quot;信息抽取&amp;lt;br/&amp;gt;LLM 提炼出事实/决定/偏好&amp;quot;]
+    EX --&amp;gt; EL[&amp;quot;实体链接&amp;lt;br/&amp;gt;抽实体、embedding、跨记忆关联&amp;quot;]
+    EL --&amp;gt; ST[&amp;quot;累加存储 ADD-only&amp;lt;br/&amp;gt;只增不覆盖&amp;quot;]
+    ST --&amp;gt; V[(&amp;quot;向量库&amp;lt;br/&amp;gt;Qdrant / pgvector&amp;quot;)]
+    ST --&amp;gt; H[(&amp;quot;历史库&amp;lt;br/&amp;gt;SQLite&amp;quot;)]
+
+    Q[&amp;quot;search(query)&amp;quot;] --&amp;gt; MS[&amp;quot;多信号检索&amp;quot;]
+    MS --&amp;gt;|语义相似| V
+    MS --&amp;gt;|BM25 关键词| V
+    MS --&amp;gt;|实体匹配| V
+    MS --&amp;gt; TR[&amp;quot;时间推理&amp;lt;br/&amp;gt;选对&amp;#39;当前/过去/将来&amp;#39;那条&amp;quot;]
+    TR --&amp;gt; OUT[&amp;quot;排序融合后的 top-k&amp;quot;]
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;几个设计点，我觉得值得单独说说，因为它们正好回应了前两篇里的取舍：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;ADD-only，只增不改&lt;/strong&gt;。新版算法一次 LLM 调用就抽完，不做 UPDATE/DELETE，记忆只累加。这和我前一篇里"命中就 UPDATE 去重"的思路不同——它靠检索端的排序和时间推理来处理"旧事实过时"，而不是写入端覆盖。各有取舍：累加式实现简单、可追溯，代价是库会长得快，更依赖检索质量。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;多信号检索&lt;/strong&gt;。语义相似 + BM25 关键词 + 实体匹配，三路并行打分再融合。这正是前一篇我强调的"别只看向量相似度"，它做成了默认能力。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;时间推理&lt;/strong&gt;。同一个事实的不同时间版本，它能按"你问的是现状、往事、还是计划"选对那一条。这解决了"用户上周改了架构、别翻两个月前老配置"那个痛点。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;作用域三件套&lt;/strong&gt;：&lt;code&gt;user_id&lt;/code&gt;、&lt;code&gt;agent_id&lt;/code&gt;、&lt;code&gt;run_id&lt;/code&gt;。分别对应"哪个用户、哪个 Agent、哪一次运行"——天然就是前一篇强调的"用户/项目/会话隔离"，不用你自己拼命名空间。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id="server"&gt;三种形态：库 / 自建 server / 云平台&lt;/h3&gt;
+&lt;p&gt;这点对落地很关键，别选错：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;形态&lt;/th&gt;
+&lt;th&gt;怎么起&lt;/th&gt;
+&lt;th&gt;存储默认&lt;/th&gt;
+&lt;th&gt;适合&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;库（OSS）&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;pip install mem0ai&lt;/code&gt; → &lt;code&gt;Memory()&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;本地 Qdrant + SQLite 历史库&lt;/td&gt;
+&lt;td&gt;试水、原型、自己玩&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;自建 server&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;cd server &amp;amp;&amp;amp; make bootstrap&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;Postgres + pgvector&lt;/td&gt;
+&lt;td&gt;团队、要 dashboard 和 API key&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;云平台&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;注册 app.mem0.ai 拿 key&lt;/td&gt;
+&lt;td&gt;托管&lt;/td&gt;
+&lt;td&gt;不想运维、直接上生产&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;API 上的区别就一行：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# OSS：本地跑，自带向量库&lt;/span&gt;
+&lt;span class="kn"&gt;from&lt;/span&gt; &lt;span class="nn"&gt;mem0&lt;/span&gt; &lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="n"&gt;Memory&lt;/span&gt;
+&lt;span class="n"&gt;m&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;Memory&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+&lt;span class="n"&gt;m&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;add&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;我用 Go，不要给我推 Java 方案&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;user_id&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;walter&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="nb"&gt;print&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;m&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;search&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;推荐个后端技术栈&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;filters&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;user_id&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;walter&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;}))&lt;/span&gt;
+
+&lt;span class="c1"&gt;# 云平台：连托管服务，换个 client&lt;/span&gt;
+&lt;span class="kn"&gt;from&lt;/span&gt; &lt;span class="nn"&gt;mem0&lt;/span&gt; &lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="n"&gt;MemoryClient&lt;/span&gt;
+&lt;span class="n"&gt;client&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;MemoryClient&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;api_key&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;m0-xxx&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="n"&gt;client&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;add&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;我用 Go，不要给我推 Java 方案&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;user_id&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;walter&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="nb"&gt;print&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;client&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;search&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;推荐个后端技术栈&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;filters&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;user_id&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;walter&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;}))&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;一句话选型：&lt;strong&gt;自己玩用库，团队用自建 server，怕运维上云平台。&lt;/strong&gt; 你会发现自建 server 的默认存储就是 Postgres + pgvector——和我前一篇手搓的那套底子一模一样，只是人家在上面盖了完整的房子。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_2"&gt;三、深度集成：一行命令接进三个编码工具&lt;/h2&gt;
+&lt;p&gt;这是重头戏，也是 mem0 让我眼前一亮的地方。它对编码 Agent 的集成不是"你自己看 SDK 文档去接"，而是&lt;strong&gt;官方做好了 skill 和 MCP，一行命令挂上&lt;/strong&gt;。而且明确支持 Claude Code、Codex、Cursor、Windsurf、OpenCode 等一票工具。&lt;/p&gt;
+&lt;p&gt;集成分两个层次，正好对应前一篇讲的"&lt;strong&gt;手（Tools/MCP）+ 规矩（Skill）&lt;/strong&gt;"：&lt;/p&gt;
+&lt;h3 id="skill-mem0-mem0"&gt;层次一：装 Skill，让工具"会写 mem0 代码 / 会用 mem0"&lt;/h3&gt;
+&lt;p&gt;mem0 提供两类 skill，都走 &lt;code&gt;npx skills add&lt;/code&gt; 这个标准命令：&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;参考型 skill（常驻，教工具正确使用 mem0 的 SDK）：&lt;/strong&gt;&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# 教它 mem0 的 Python/TS SDK 用法，写集成代码不再瞎猜&lt;/span&gt;
+npx&lt;span class="w"&gt; &lt;/span&gt;skills&lt;span class="w"&gt; &lt;/span&gt;add&lt;span class="w"&gt; &lt;/span&gt;https://github.com/mem0ai/mem0&lt;span class="w"&gt; &lt;/span&gt;--skill&lt;span class="w"&gt; &lt;/span&gt;mem0
+&lt;span class="c1"&gt;# 教它 mem0 CLI 的终端用法&lt;/span&gt;
+npx&lt;span class="w"&gt; &lt;/span&gt;skills&lt;span class="w"&gt; &lt;/span&gt;add&lt;span class="w"&gt; &lt;/span&gt;https://github.com/mem0ai/mem0&lt;span class="w"&gt; &lt;/span&gt;--skill&lt;span class="w"&gt; &lt;/span&gt;mem0-cli
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;strong&gt;流水线型 skill（按需触发，跑一整套工作流，用斜杠命令调用）：&lt;/strong&gt;&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;npx&lt;span class="w"&gt; &lt;/span&gt;skills&lt;span class="w"&gt; &lt;/span&gt;add&lt;span class="w"&gt; &lt;/span&gt;https://github.com/mem0ai/mem0&lt;span class="w"&gt; &lt;/span&gt;--skill&lt;span class="w"&gt; &lt;/span&gt;mem0-integrate
+npx&lt;span class="w"&gt; &lt;/span&gt;skills&lt;span class="w"&gt; &lt;/span&gt;add&lt;span class="w"&gt; &lt;/span&gt;https://github.com/mem0ai/mem0&lt;span class="w"&gt; &lt;/span&gt;--skill&lt;span class="w"&gt; &lt;/span&gt;mem0-test-integration
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;/mem0-integrate&lt;/code&gt;：在你现有仓库里，&lt;strong&gt;测试先行&lt;/strong&gt;地把 mem0 接进去——它会自动探测技术栈、问你用云还是自建、先写失败测试、再让集成保持"可开关的增量"。&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;/mem0-test-integration&lt;/code&gt;：验证上一步接得对不对，跑你仓库原生测试 + 真实端到端冒烟，最后出一张打分卡。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这套设计挺有意思：&lt;strong&gt;它把"如何正确集成一个库"本身，也做成了 Agent 能执行的 skill。&lt;/strong&gt; 你在 Claude Code 里敲一句 &lt;code&gt;/mem0-integrate&lt;/code&gt;，它就照着这套流程帮你把 mem0 焊进项目，还带测试兜底。&lt;/p&gt;
+&lt;h3 id="mcp"&gt;层次二：挂 MCP，让工具"能直接存取记忆"&lt;/h3&gt;
+&lt;p&gt;Skill 是"知识和流程"，MCP 才是"真正的手"。挂上 mem0 的 MCP server 之后，三个工具就能在对话里直接读写你的记忆库。官方给了一条命令搞定多个客户端：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# 先去 app.mem0.ai 拿 API key，然后一条命令挂到多个工具&lt;/span&gt;
+npx&lt;span class="w"&gt; &lt;/span&gt;mcp-add&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="se"&gt;\&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;--name&lt;span class="w"&gt; &lt;/span&gt;mem0-mcp&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="se"&gt;\&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;--type&lt;span class="w"&gt; &lt;/span&gt;http&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="se"&gt;\&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;--url&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;https://mcp.mem0.ai/mcp&amp;quot;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="se"&gt;\&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;--clients&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;claude,claude code,cursor,windsurf,vscode,opencode&amp;quot;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;跑完之后的效果，和我前一篇自己搭 MCP 想达到的一模一样，但零代码：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;你在 &lt;strong&gt;Claude Code&lt;/strong&gt; 里说"记住：这个项目 CI 用 GitLab，不是 GitHub"，它通过 mem0 MCP 把这条写进你的记忆库。&lt;/li&gt;
+&lt;li&gt;第二天切到 &lt;strong&gt;OpenCode&lt;/strong&gt; 干活，它通过同一个 mem0 MCP 检索，"想起"了这条——&lt;strong&gt;尽管这条不是它写的。&lt;/strong&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;一张图收口整个集成：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;flowchart TD
+    subgraph Tools[&amp;quot;三个编码 Agent&amp;quot;]
+        CC[Claude Code]
+        CX[Codex]
+        OC[OpenCode]
+    end
+    SK[&amp;quot;mem0 Skills&amp;lt;br/&amp;gt;教它怎么用 / 何时用&amp;quot;]
+    MCP[&amp;quot;mem0 MCP&amp;lt;br/&amp;gt;mcp.mem0.ai/mcp&amp;quot;]
+    ENG[&amp;quot;mem0 记忆引擎&amp;lt;br/&amp;gt;抽取 · 累加 · 多信号检索&amp;quot;]
+    DB[(&amp;quot;同一份记忆后端&amp;quot;)]
+
+    CC --&amp;gt; SK
+    CX --&amp;gt; SK
+    OC --&amp;gt; SK
+    CC --&amp;gt; MCP
+    CX --&amp;gt; MCP
+    OC --&amp;gt; MCP
+    SK -.指导.-&amp;gt; MCP
+    MCP --&amp;gt; ENG --&amp;gt; DB
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;对比一下前一篇我自己搭的方案：我是"手写 MCP server + 手写 Skill + 自己维护 pgvector"，mem0 是"官方 skill + 官方 MCP + 托管或自建引擎"。&lt;strong&gt;如果你只是想快速让三个工具共享记忆，mem0 这条路省事得多；如果你想完全掌控数据和逻辑、或有特殊的记忆策略，前一篇那套自建方案给你的自由度更大。&lt;/strong&gt; 两条路不冲突——你甚至可以用 mem0 的自建 server（底层也是 pgvector），既省了造轮子，又把数据留在自己机器上。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="mem0_1"&gt;什么时候用 mem0，什么时候别用&lt;/h2&gt;
+&lt;p&gt;工具再好也有边界，说几句实在的：&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;适合用 mem0 的场景：&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;你想快速给 Agent 加长期记忆，不想自己写抽取/去重/检索。&lt;/li&gt;
+&lt;li&gt;你同时用多个编码工具，想让它们共享一份记忆——官方集成现成。&lt;/li&gt;
+&lt;li&gt;你要跨会话的用户级个性化（助手、客服、教育类产品）。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;可能不适合、或要谨慎的场景：&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;数据敏感、合规要求高&lt;/strong&gt;：云平台要把对话送到它那边抽取，涉密项目慎用；这种情况优先自建 server 或纯 OSS 库。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;每次 add 都要过 LLM&lt;/strong&gt;：抽取是有成本和延迟的（虽然新算法已优化到单次调用）。高频、低价值的写入，得掂量 Token 账。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;你需要非常定制的记忆策略&lt;/strong&gt;：比如特殊的重要性评分、领域专用的图结构——这时候前两篇那种自建方案反而更顺手。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;强一致/事务性记忆&lt;/strong&gt;：mem0 是 ADD-only 累加式，"实时精确覆盖旧值"不是它的强项，得靠检索端时间推理绕。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;一句话：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;mem0 帮你把"记忆的通用脏活"外包掉；但"记什么、值不值得记、数据放哪"这些决策，仍然是你的责任。&lt;/strong&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;hr&gt;
+&lt;h2 id="_3"&gt;收个尾：三篇串起来的记忆地图&lt;/h2&gt;
+&lt;p&gt;这三篇其实是一条线：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;&lt;a href="./2026-08-07-ai-agent-memory.html"&gt;第一篇&lt;/a&gt;&lt;/strong&gt;：记忆为什么要分层（工作/情景/语义/程序），生命周期怎么管，自己用 pgvector 手搓一套——&lt;strong&gt;懂原理&lt;/strong&gt;。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;a href="./2026-08-07-ai-coding-shared-memory.html"&gt;第二篇&lt;/a&gt;&lt;/strong&gt;：怎么让 Claude Code、Codex、OpenCode 共享同一份记忆（单一事实源 + MCP）——&lt;strong&gt;懂协作&lt;/strong&gt;。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;本篇&lt;/strong&gt;：直接用成熟的 mem0，架构、用法、官方集成一条龙——&lt;strong&gt;懂选型&lt;/strong&gt;。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;给你一张落地 checklist：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;[ ] 先想清楚：你要的是"快速可用"还是"完全掌控"？前者选 mem0，后者可自建。&lt;/li&gt;
+&lt;li&gt;[ ] 试水用 &lt;code&gt;pip install mem0ai&lt;/code&gt; + &lt;code&gt;Memory()&lt;/code&gt;，几行代码跑通 add/search。&lt;/li&gt;
+&lt;li&gt;[ ] 团队/生产：自建 server（&lt;code&gt;make bootstrap&lt;/code&gt;，底层 pgvector）或上云平台。&lt;/li&gt;
+&lt;li&gt;[ ] 给编码工具装 skill：&lt;code&gt;npx skills add ... --skill mem0&lt;/code&gt;（+ &lt;code&gt;mem0-integrate&lt;/code&gt; 按需）。&lt;/li&gt;
+&lt;li&gt;[ ] 挂 MCP 让三个工具共享记忆：&lt;code&gt;npx mcp-add --url https://mcp.mem0.ai/mcp --clients "..."&lt;/code&gt;。&lt;/li&gt;
+&lt;li&gt;[ ] 上线前想清楚数据合规：敏感项目别用云平台的抽取，走自建。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;如果要比较 mem0 和自建 pgvector，建议使用同一批脱敏样本、同一个模型和同一组问题，分别记录：安装与升级成本、写入时延、检索时延、返回候选数量、事实更新后的处理方式、删除是否彻底，以及模型调用次数。没有实测数字时，就明确写“待验证”，不要用项目 star 数或宣传语替代质量评估。&lt;/p&gt;
+&lt;p&gt;还应单独写清数据边界：云端方案会把哪些内容送出本地，自建方案由谁维护模型和数据库，用户如何查看、导出和删除记忆。通用记忆层最容易被忽略的不是 API，而是数据隔离、租户边界和“忘记我”能否真的生效。&lt;/p&gt;
+&lt;h2 id="_4"&gt;最后一句&lt;/h2&gt;
+&lt;p&gt;我自己是"先手搓、再用轮子"这个顺序过来的，反而觉得值——&lt;strong&gt;先手搓一遍，你才知道 mem0 每个设计点在解决什么问题；直接用轮子，容易把它当黑盒，出了问题一脸懵。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;所以我的建议是：前两篇的原理别跳过，但真要上项目、尤其想让三个编码工具共享记忆时，不必重复造轮子——&lt;code&gt;pip install mem0ai&lt;/code&gt; 加两行 &lt;code&gt;npx&lt;/code&gt;，你前一篇想要的效果，基本就有了。&lt;/p&gt;
+&lt;p&gt;工具会迭代，mem0 的 API 和集成命令也可能变（落地前记得看它最新文档）；但"给 Agent 一层会提炼、会遗忘、能共享的记忆"这个方向，是确定的。&lt;/p&gt;
+&lt;h2 id="_5"&gt;全文思维导图&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap
+&amp;lt;style&amp;gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&amp;lt;/style&amp;gt;
+
+* Mem0 通用记忆层
+** 是什么
+*** Agent 和存储之间的中间层
+*** add / search 两个动作
+*** 内部包办抽取/去重/检索
+*** 我手搓的 remember/recall 的加强版
+** 架构
+*** add: 抽取→实体链接→累加存储
+*** ADD-only 只增不覆盖
+*** search: 语义+BM25+实体 多信号
+*** 时间推理选对版本
+*** 作用域 user/agent/run
+** 三种形态
+*** 库 OSS: Memory() 本地 Qdrant
+*** 自建 server: pgvector + 面板
+*** 云平台: MemoryClient + key
+** 深度集成
+*** 装 Skill: npx skills add
+*** mem0-integrate 测试先行
+*** 挂 MCP: npx mcp-add
+*** 三个工具共享同一记忆
+** 边界
+*** 敏感数据慎用云
+*** 每次 add 过 LLM 有成本
+*** 定制策略不如自建
+*** 累加式非强一致
+** 系列串联
+*** 一懂原理(手搓)
+*** 二懂协作(共享)
+*** 三懂选型(mem0)
+@endmindmap
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;img alt="Mem0 通用记忆层 - 思维导图" src="./images/tech_20260808_mem0_memory_layer_mindmap.png"&gt;&lt;/p&gt;
+&lt;hr/&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。&lt;/p&gt;</content><category term="AI"/><category term="journal"/><category term="AI"/><category term="agent"/><category term="memory"/><category term="mem0"/><category term="claude-code"/><category term="codex"/><category term="opencode"/><category term="MCP"/><category term="RAG"/></entry><entry><title>如何管理 AI Agent 的记忆之二：让 Claude Code、Codex、OpenCode 共享同一份记忆</title><link href="https://www.fanyamin.com/blog/2026-08-07-ai-coding-shared-memory.html" rel="alternate"/><published>2026-08-07T22:00:00+08:00</published><updated>2026-08-07T22:00:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-08-07:/blog/2026-08-07-ai-coding-shared-memory.html</id><summary type="html">&lt;p&gt;我同时用 Claude Code、Codex、OpenCode 写代码，结果发现自己在维护三份几乎一样的规则文件——改了这个忘了那个，三个工具越用越"精神分裂"。这篇给一套让它们共享同一份记忆的落地方案：静态规则用"单一事实源 + 符号链接"，动态长期记忆用一个 MCP 记忆服务，附可直接抄的脚本和 checklist。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;如何管理 AI Agent 的记忆之二：让 Claude Code、Codex、OpenCode 共享同一份记忆&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;learning note&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Version&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;v1.0&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;2026-08-07&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;前几天我清理主目录，&lt;code&gt;ls&lt;/code&gt; 一敲，愣是发现自己在维护一堆内容几乎一样的文件：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="gp"&gt;$ &lt;/span&gt;ls&lt;span class="w"&gt; &lt;/span&gt;-la&lt;span class="w"&gt; &lt;/span&gt;~/.claude/CLAUDE.md&lt;span class="w"&gt; &lt;/span&gt;~/.codex/AGENTS.md&lt;span class="w"&gt; &lt;/span&gt;~/.config/opencode/AGENTS.md
+&lt;span class="go"&gt;~/.claude/CLAUDE.md          # 给 Claude Code 看的个人规则&lt;/span&gt;
+&lt;span class="go"&gt;~/.codex/AGENTS.md           # 给 Codex 看的，内容八成一样&lt;/span&gt;
+&lt;span class="go"&gt;~/.config/opencode/AGENTS.md # 给 OpenCode 看的，又抄了一遍&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;再看我这个博客仓库根目录，&lt;code&gt;AGENTS.md&lt;/code&gt; 14KB、&lt;code&gt;CLAUDE.md&lt;/code&gt; 12KB，俩文件内容重叠九成——就因为不同工具读不同的文件名，我把同一套约定抄了两遍。&lt;/p&gt;
+&lt;p&gt;这就是同时用多个编码 Agent 的通病：&lt;strong&gt;你的"记忆"被工具切成了好几份，改了这份忘了那份，三个助手越用越像三个各说各话的人。&lt;/strong&gt; 上一篇《&lt;a href="./2026-08-07-ai-agent-memory.html"&gt;如何管理 AI Agent 的记忆&lt;/a&gt;》讲的是单个 Agent 内部怎么分层管记忆；这一篇解决的是它的孪生问题——&lt;strong&gt;多个工具之间，怎么共享同一份记忆。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;看完你能带走一套可落地的方案，分两层：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;静态规则&lt;/strong&gt;（项目约定、编码规范、个人偏好）：用"&lt;strong&gt;单一事实源 + 符号链接&lt;/strong&gt;"，一处编辑，三处生效。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;动态长期记忆&lt;/strong&gt;（跨会话积累的偏好、项目事实）：用一个"&lt;strong&gt;记忆 MCP 服务&lt;/strong&gt;"，三个工具连同一个后端。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;hr&gt;
+&lt;h2 id="_1"&gt;先搞清楚：三个工具各读哪份文件&lt;/h2&gt;
+&lt;p&gt;想让它们共享，得先知道它们各自认哪个文件名、按什么顺序加载。这是整套方案的地基，别猜，照下面这张表来（截至 2026 年中的约定，工具更新快，落地前建议 &lt;code&gt;--help&lt;/code&gt; 或看官方文档再核一遍）：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;工具&lt;/th&gt;
+&lt;th&gt;全局（个人）记忆&lt;/th&gt;
+&lt;th&gt;项目记忆&lt;/th&gt;
+&lt;th&gt;加载方式&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;Claude Code&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;~/.claude/CLAUDE.md&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;./CLAUDE.md&lt;/code&gt; 或 &lt;code&gt;./.claude/CLAUDE.md&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;启动时全量载入上下文&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Codex&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;~/.codex/AGENTS.md&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;项目根往下走的 &lt;code&gt;AGENTS.md&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;启动时构建指令链&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;OpenCode&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;~/.config/opencode/AGENTS.md&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;./AGENTS.md&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;启动时载入指令&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;一眼就能看出好消息和坏消息：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;好消息&lt;/strong&gt;：Codex 和 OpenCode 都认 &lt;code&gt;AGENTS.md&lt;/code&gt; 这个名字——这已经在慢慢变成事实标准了。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;坏消息&lt;/strong&gt;：Claude Code 偏偏认 &lt;code&gt;CLAUDE.md&lt;/code&gt;。所以要三家统一，绕不开处理这个"名字不一样"的问题。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;关键洞察：三个工具读的都是"磁盘上的一个文件"。&lt;/strong&gt;&lt;br&gt;
+那让它们共享就简单了——只要这几个路径最终指向同一份内容就行。这正是符号链接（symlink）的用武之地。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;hr&gt;
+&lt;h2 id="_2"&gt;第一层：静态规则用"单一事实源 + 符号链接"&lt;/h2&gt;
+&lt;p&gt;思路和上一篇的"单一事实源"一模一样：&lt;strong&gt;内容只存一份，其他位置都是指向它的链接。&lt;/strong&gt; 编辑那一份，三个工具同时生效，从此告别"抄三遍、改漏俩"。&lt;/p&gt;
+&lt;h3 id="agentsmd-claudemd"&gt;项目级：一份 &lt;code&gt;AGENTS.md&lt;/code&gt;，把 &lt;code&gt;CLAUDE.md&lt;/code&gt; 链过去&lt;/h3&gt;
+&lt;p&gt;在项目根目录，让 &lt;code&gt;AGENTS.md&lt;/code&gt; 当唯一真身，&lt;code&gt;CLAUDE.md&lt;/code&gt; 做它的软链：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# 项目根目录下&lt;/span&gt;
+&lt;span class="c1"&gt;# 1) 保留 AGENTS.md 作为单一事实源（Codex / OpenCode 直接读它）&lt;/span&gt;
+&lt;span class="c1"&gt;# 2) 把 CLAUDE.md 变成指向 AGENTS.md 的软链（Claude Code 也读到同一份）&lt;/span&gt;
+ln&lt;span class="w"&gt; &lt;/span&gt;-sf&lt;span class="w"&gt; &lt;/span&gt;AGENTS.md&lt;span class="w"&gt; &lt;/span&gt;CLAUDE.md
+
+&lt;span class="c1"&gt;# 验证：CLAUDE.md 现在是个指向 AGENTS.md 的链接&lt;/span&gt;
+ls&lt;span class="w"&gt; &lt;/span&gt;-l&lt;span class="w"&gt; &lt;/span&gt;CLAUDE.md
+&lt;span class="c1"&gt;# CLAUDE.md -&amp;gt; AGENTS.md&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这样三个工具在这个项目里读到的都是同一份 &lt;code&gt;AGENTS.md&lt;/code&gt;。想改约定？只动 &lt;code&gt;AGENTS.md&lt;/code&gt; 一个文件。&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;提交进 Git 前留个心眼&lt;/strong&gt;：Git 默认会把 symlink 当"链接"存下来，同事拉下去在 macOS/Linux 上能正常还原。但 &lt;strong&gt;Windows 上 symlink 支持不稳&lt;/strong&gt;，团队里有 Windows 同事的话，考虑改用下一节的"import 引用"方案，或在 CI 里生成链接。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h3 id="_3"&gt;全局级：把三个个人规则都指向一份&lt;/h3&gt;
+&lt;p&gt;个人偏好（比如"提交信息用中文""别自动 push""回答简洁点"）也同理。挑一个中立位置放真身，其余软链过去：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# 1) 真身放一个中立位置，比如 ~/.config/ai/AGENTS.md&lt;/span&gt;
+mkdir&lt;span class="w"&gt; &lt;/span&gt;-p&lt;span class="w"&gt; &lt;/span&gt;~/.config/ai
+mv&lt;span class="w"&gt; &lt;/span&gt;~/.claude/CLAUDE.md&lt;span class="w"&gt; &lt;/span&gt;~/.config/ai/AGENTS.md&lt;span class="w"&gt;   &lt;/span&gt;&lt;span class="c1"&gt;# 把现有内容挪过去当真身&lt;/span&gt;
+
+&lt;span class="c1"&gt;# 2) 三个工具的路径都软链到这份真身&lt;/span&gt;
+ln&lt;span class="w"&gt; &lt;/span&gt;-sf&lt;span class="w"&gt; &lt;/span&gt;~/.config/ai/AGENTS.md&lt;span class="w"&gt; &lt;/span&gt;~/.claude/CLAUDE.md
+ln&lt;span class="w"&gt; &lt;/span&gt;-sf&lt;span class="w"&gt; &lt;/span&gt;~/.config/ai/AGENTS.md&lt;span class="w"&gt; &lt;/span&gt;~/.codex/AGENTS.md
+ln&lt;span class="w"&gt; &lt;/span&gt;-sf&lt;span class="w"&gt; &lt;/span&gt;~/.config/ai/AGENTS.md&lt;span class="w"&gt; &lt;/span&gt;~/.config/opencode/AGENTS.md
+
+&lt;span class="c1"&gt;# 3) 验证三条都指向同一个 inode（ls -i 看 inode 号是否相同）&lt;/span&gt;
+ls&lt;span class="w"&gt; &lt;/span&gt;-li&lt;span class="w"&gt; &lt;/span&gt;~/.claude/CLAUDE.md&lt;span class="w"&gt; &lt;/span&gt;~/.codex/AGENTS.md&lt;span class="w"&gt; &lt;/span&gt;~/.config/opencode/AGENTS.md
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;从此我个人的规则只有一份 &lt;code&gt;~/.config/ai/AGENTS.md&lt;/code&gt;，&lt;code&gt;vim&lt;/code&gt; 一改，三个工具下次启动全生效。&lt;/p&gt;
+&lt;h3 id="import"&gt;不想用软链？用"import 引用"更稳&lt;/h3&gt;
+&lt;p&gt;如果 symlink 让你不放心（Windows、或者团队协作），还有个更朴素的办法：&lt;strong&gt;每个工具的文件只写一行，把内容"引用"进来。&lt;/strong&gt; 三个工具大多支持 &lt;code&gt;@path&lt;/code&gt; 或 Markdown 链接式的 import：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&amp;lt;!-- ~/.claude/CLAUDE.md 里就写一行 --&amp;gt;
+@~/.config/ai/AGENTS.md
+
+&amp;lt;!-- ~/.codex/AGENTS.md 里也是 --&amp;gt;
+@~/.config/ai/AGENTS.md
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;真身依然只有一份，三个入口文件都是"薄壳"。好处是纯文本、跨平台、Git 友好；代价是得确认你那版工具支持 import 语法（这点各家实现有差异，落地前测一下）。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;小结一下静态层的取舍：&lt;/strong&gt;&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;方案&lt;/th&gt;
+&lt;th&gt;优点&lt;/th&gt;
+&lt;th&gt;缺点&lt;/th&gt;
+&lt;th&gt;适合&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;符号链接&lt;/td&gt;
+&lt;td&gt;零配置、内容 100% 一致&lt;/td&gt;
+&lt;td&gt;Windows 支持差、Git 需留意&lt;/td&gt;
+&lt;td&gt;个人、macOS/Linux&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;import 引用&lt;/td&gt;
+&lt;td&gt;跨平台、Git 友好&lt;/td&gt;
+&lt;td&gt;依赖工具支持 import 语法&lt;/td&gt;
+&lt;td&gt;团队、跨系统&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;手工同步脚本&lt;/td&gt;
+&lt;td&gt;最兼容&lt;/td&gt;
+&lt;td&gt;得记得跑、易漏&lt;/td&gt;
+&lt;td&gt;前两者都不行时的兜底&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;hr&gt;
+&lt;h2 id="mcp"&gt;第二层：动态长期记忆用一个 MCP 服务&lt;/h2&gt;
+&lt;p&gt;静态规则解决了"约定"，但还有一类记忆是&lt;strong&gt;跑着跑着自动长出来的&lt;/strong&gt;：用户偏好、项目事实、上次踩的坑——就是上一篇讲的那套语义/情景记忆。这类东西你没法手写进 &lt;code&gt;AGENTS.md&lt;/code&gt;，得让工具自己写、自己读。&lt;/p&gt;
+&lt;p&gt;问题来了：Claude Code 把自动记忆写在 &lt;code&gt;~/.claude/projects/&amp;lt;project&amp;gt;/memory/&lt;/code&gt; 下，Codex 和 OpenCode 各有各的地盘。&lt;strong&gt;这些"自动记忆"是各存各的，天然不通。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;要打通，靠一个共同的"接口层"——&lt;strong&gt;MCP（Model Context Protocol）&lt;/strong&gt;。这三个工具都支持接 MCP server。那思路就清晰了：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;把记忆做成一个 MCP 服务，三个工具都连它。&lt;/strong&gt; 记忆的"读"和"写"都走这个统一后端，谁写的另俩都读得到。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;这正好接上一篇那个记忆库（pgvector + 重要性打分 + 去重 + 加权检索）。只要在它外面套一层 MCP，就从"单个 Agent 的私有记忆"升级成了"多工具共享的记忆服务"。&lt;/p&gt;
+&lt;h3 id="_4"&gt;架构长这样&lt;/h3&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;   Claude Code      Codex       OpenCode
+        │             │            │
+        └──────┬──────┴─────┬──────┘
+               │  MCP 协议   │
+               ▼             ▼
+        ┌──────────────────────────┐
+        │   记忆 MCP Server         │
+        │   remember() / recall()   │  ← 上一篇那套逻辑
+        └──────────────────────────┘
+               │
+        PostgreSQL + pgvector
+        （单一记忆后端，谁写都读得到）
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h3 id="mcp-server"&gt;记忆 MCP Server 的骨架&lt;/h3&gt;
+&lt;p&gt;用 Python 的 MCP SDK 把上一篇的 &lt;code&gt;remember()&lt;/code&gt; / &lt;code&gt;recall()&lt;/code&gt; 包成两个工具（tool），代码骨架如下——注意核心逻辑直接复用，MCP 只是壳：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# memory_mcp_server.py&lt;/span&gt;
+&lt;span class="kn"&gt;from&lt;/span&gt; &lt;span class="nn"&gt;mcp.server.fastmcp&lt;/span&gt; &lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="n"&gt;FastMCP&lt;/span&gt;
+&lt;span class="kn"&gt;from&lt;/span&gt; &lt;span class="nn"&gt;memory_store&lt;/span&gt; &lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="n"&gt;remember&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;recall&lt;/span&gt;   &lt;span class="c1"&gt;# 上一篇实现的那两个函数&lt;/span&gt;
+
+&lt;span class="n"&gt;mcp&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;FastMCP&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;shared-memory&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+&lt;span class="nd"&gt;@mcp&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;tool&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;save_memory&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;user_id&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;text&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;kind&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;semantic&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="sd"&gt;&amp;quot;&amp;quot;&amp;quot;把一条值得长期记住的信息存进共享记忆（会自动打分+去重）。&amp;quot;&amp;quot;&amp;quot;&lt;/span&gt;
+    &lt;span class="n"&gt;remember&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;user_id&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;text&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;kind&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;kind&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;source&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;mcp&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;ok&amp;quot;&lt;/span&gt;
+
+&lt;span class="nd"&gt;@mcp&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;tool&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;search_memory&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;user_id&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;query&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;k&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;int&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="mi"&gt;3&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="nb"&gt;list&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;]:&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="sd"&gt;&amp;quot;&amp;quot;&amp;quot;从共享记忆里检索与 query 最相关的 top-k 条。&amp;quot;&amp;quot;&amp;quot;&lt;/span&gt;
+    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;recall&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;user_id&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;query&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;k&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;k&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="vm"&gt;__name__&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;__main__&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;mcp&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;run&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;   &lt;span class="c1"&gt;# 默认 stdio 传输，三个工具都能连&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h3 id="_5"&gt;三个工具怎么连它&lt;/h3&gt;
+&lt;p&gt;各家配置文件格式略有差异，但都是"声明一个 MCP server + 启动命令"这个套路：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;// Claude Code: 项目根 .mcp.json（或用 `claude mcp add` 命令）&lt;/span&gt;
+&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;mcpServers&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;shared-memory&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;command&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;python&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;args&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;/path/to/memory_mcp_server.py&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;// OpenCode: opencode.json 里的 mcp 段&lt;/span&gt;
+&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;mcp&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;shared-memory&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;type&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;local&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;command&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;python&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;/path/to/memory_mcp_server.py&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;Codex 同样支持在其配置里声明 MCP server（配置键名以你手头版本的文档为准）。三个都连上之后，效果就是：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;你在 &lt;strong&gt;Claude Code&lt;/strong&gt; 里说"记住：这个项目 CI 用的是 GitLab 不是 GitHub"，它调 &lt;code&gt;save_memory&lt;/code&gt; 写进共享库。&lt;/li&gt;
+&lt;li&gt;第二天你切到 &lt;strong&gt;Codex&lt;/strong&gt; 干活，它调 &lt;code&gt;search_memory&lt;/code&gt; 检索，"想起来"了这条——&lt;strong&gt;尽管这条根本不是它写的。&lt;/strong&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这就是跨工具共享动态记忆的闭环。而且因为复用了上一篇那套"打分+去重+加权检索"，共享的同时依然&lt;strong&gt;不烧 Token、不爆存储&lt;/strong&gt;。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="setup"&gt;完整落地：一个 setup 脚本搞定静态层&lt;/h2&gt;
+&lt;p&gt;静态层可以一把梭。下面这个脚本你改改路径就能跑（先备份、幂等、可重复执行）：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="ch"&gt;#!/usr/bin/env bash&lt;/span&gt;
+&lt;span class="nb"&gt;set&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;-euo&lt;span class="w"&gt; &lt;/span&gt;pipefail
+
+&lt;span class="c1"&gt;# 单一事实源&lt;/span&gt;
+&lt;span class="nv"&gt;SRC&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="nv"&gt;$HOME&lt;/span&gt;&lt;span class="s2"&gt;/.config/ai/AGENTS.md&amp;quot;&lt;/span&gt;
+mkdir&lt;span class="w"&gt; &lt;/span&gt;-p&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="k"&gt;$(&lt;/span&gt;dirname&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="nv"&gt;$SRC&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="k"&gt;)&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;
+
+&lt;span class="c1"&gt;# 若真身还不存在，从现有 Claude 规则迁过来（没有就建空文件）&lt;/span&gt;
+&lt;span class="k"&gt;if&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;[[&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;!&lt;span class="w"&gt; &lt;/span&gt;-f&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="nv"&gt;$SRC&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;]]&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="k"&gt;then&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="k"&gt;if&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;[[&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;-f&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="nv"&gt;$HOME&lt;/span&gt;&lt;span class="s2"&gt;/.claude/CLAUDE.md&amp;quot;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;&amp;amp;&amp;amp;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;!&lt;span class="w"&gt; &lt;/span&gt;-L&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="nv"&gt;$HOME&lt;/span&gt;&lt;span class="s2"&gt;/.claude/CLAUDE.md&amp;quot;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;]]&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="k"&gt;then&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;mv&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="nv"&gt;$HOME&lt;/span&gt;&lt;span class="s2"&gt;/.claude/CLAUDE.md&amp;quot;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="nv"&gt;$SRC&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="k"&gt;else&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;touch&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="nv"&gt;$SRC&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="k"&gt;fi&lt;/span&gt;
+&lt;span class="k"&gt;fi&lt;/span&gt;
+
+link&lt;span class="o"&gt;()&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;{&lt;/span&gt;&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="c1"&gt;# 备份已有真文件，再建软链&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nb"&gt;local&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nv"&gt;target&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="nv"&gt;$1&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;mkdir&lt;span class="w"&gt; &lt;/span&gt;-p&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="k"&gt;$(&lt;/span&gt;dirname&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="nv"&gt;$target&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="k"&gt;)&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="k"&gt;if&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;[[&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;-f&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="nv"&gt;$target&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;&amp;amp;&amp;amp;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;!&lt;span class="w"&gt; &lt;/span&gt;-L&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="nv"&gt;$target&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;]]&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="k"&gt;then&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;mv&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="nv"&gt;$target&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="nv"&gt;$target&lt;/span&gt;&lt;span class="s2"&gt;.bak.&lt;/span&gt;&lt;span class="k"&gt;$(&lt;/span&gt;date&lt;span class="w"&gt; &lt;/span&gt;+%s&lt;span class="k"&gt;)&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nb"&gt;echo&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;backed up &lt;/span&gt;&lt;span class="nv"&gt;$target&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="k"&gt;fi&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;ln&lt;span class="w"&gt; &lt;/span&gt;-sf&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="nv"&gt;$SRC&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="nv"&gt;$target&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nb"&gt;echo&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;linked &lt;/span&gt;&lt;span class="nv"&gt;$target&lt;/span&gt;&lt;span class="s2"&gt; -&amp;gt; &lt;/span&gt;&lt;span class="nv"&gt;$SRC&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;
+&lt;span class="o"&gt;}&lt;/span&gt;
+
+link&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="nv"&gt;$HOME&lt;/span&gt;&lt;span class="s2"&gt;/.claude/CLAUDE.md&amp;quot;&lt;/span&gt;
+link&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="nv"&gt;$HOME&lt;/span&gt;&lt;span class="s2"&gt;/.codex/AGENTS.md&amp;quot;&lt;/span&gt;
+link&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="nv"&gt;$HOME&lt;/span&gt;&lt;span class="s2"&gt;/.config/opencode/AGENTS.md&amp;quot;&lt;/span&gt;
+
+&lt;span class="nb"&gt;echo&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;done. edit &lt;/span&gt;&lt;span class="nv"&gt;$SRC&lt;/span&gt;&lt;span class="s2"&gt; once, all three tools follow.&amp;quot;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;跑完，你以后维护记忆就只剩一件事：&lt;code&gt;vim ~/.config/ai/AGENTS.md&lt;/code&gt;。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_6"&gt;几个坑，提前给你避掉&lt;/h2&gt;
+&lt;p&gt;我自己趟这套方案时踩到的和想到的坑，列出来省你时间：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;别把动态记忆写进静态文件&lt;/strong&gt;。&lt;code&gt;AGENTS.md&lt;/code&gt; 是给人和团队看的"约定"，改动要过脑子、进 Git；自动积累的偏好该走 MCP 记忆库。两者混在一起，&lt;code&gt;AGENTS.md&lt;/code&gt; 会越滚越臃肿，最后每次会话白烧一大把 Token。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;全局 vs 项目要分清&lt;/strong&gt;。个人偏好（回答风格、提交习惯）放全局那份；项目约定（这个 repo 的构建命令、目录结构）放项目那份。别把"我个人爱好"塞进团队仓库,也别把"项目专属规则"塞进全局。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;symlink 提交 Git 前想清楚&lt;/strong&gt;。团队有 Windows 同事就改用 import 引用；纯个人 macOS/Linux 用软链最省事。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;MCP 记忆要做用户/项目隔离&lt;/strong&gt;。共享后端不等于"大杂烩"——&lt;code&gt;user_id&lt;/code&gt; / &lt;code&gt;project_id&lt;/code&gt; 命名空间一定要带上，否则 A 项目的事实被检索进 B 项目，既影响效果也有隐私风险（这点上一篇的 checklist 里强调过）。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;工具更新快，约定会变&lt;/strong&gt;。&lt;code&gt;AGENTS.md&lt;/code&gt; 正在成为跨工具事实标准，但各家加载顺序、import 语法、MCP 配置键仍在演进。&lt;strong&gt;落地前用小项目验一遍&lt;/strong&gt;，别一上来就动主力仓库。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;接入前可以先做一张兼容性表：工具版本、规则文件加载位置、import 或 symlink 是否支持、MCP 配置格式、失败时的错误提示。再用同一个小项目测试四种情况：新建会话、跨工具读取规则、写入一条长期记忆、修改单一事实源后重新加载。&lt;/p&gt;
+&lt;p&gt;Token 是否节省不必凭感觉判断。可以选三类相同任务，分别采用重复粘贴规则、共享静态文件、共享 MCP 记忆，记录上下文长度、工具调用次数和人工纠正次数。共享记忆的收益不只是少写几段提示词，还包括避免三个工具分别形成互相矛盾的项目事实。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="checklist"&gt;收个尾：checklist&lt;/h2&gt;
+&lt;p&gt;想让三个编码 Agent 共享记忆，照这张单子走：&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;静态规则层&lt;/strong&gt;&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;选一个单一事实源，比如 &lt;code&gt;~/.config/ai/AGENTS.md&lt;/code&gt;。&lt;/li&gt;
+&lt;li&gt;三个工具的规则路径全部软链（或 import）到它。&lt;/li&gt;
+&lt;li&gt;项目里让 &lt;code&gt;AGENTS.md&lt;/code&gt; 当真身、&lt;code&gt;CLAUDE.md&lt;/code&gt; 软链过去。&lt;/li&gt;
+&lt;li&gt;区分全局（个人偏好）和项目（团队约定），别混。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;&lt;strong&gt;动态记忆层&lt;/strong&gt;&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;把上一篇那套记忆库（打分+去重+加权检索）包成 MCP server。&lt;/li&gt;
+&lt;li&gt;三个工具都在各自配置里声明这个 MCP server。&lt;/li&gt;
+&lt;li&gt;记忆读写全走这个统一后端，带上 &lt;code&gt;user_id&lt;/code&gt; / &lt;code&gt;project_id&lt;/code&gt; 隔离。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;一句话：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;静态规则靠"一份文件链三处"，动态记忆靠"一个服务连三家"。&lt;/strong&gt;&lt;br&gt;
+单一事实源，永远是治"多份不一致"的解药。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h2 id="_7"&gt;最后一句&lt;/h2&gt;
+&lt;p&gt;工具会一直增多——今天是 Claude Code、Codex、OpenCode，明天可能又冒出来俩。但只要你守住一个原则：&lt;strong&gt;记忆只存一份，工具只是它的不同入口&lt;/strong&gt;，那不管来几个新工具，你要做的都只是"再加一条链接、再连一次 MCP"，而不是"再抄一遍规则"。&lt;/p&gt;
+&lt;p&gt;别让你的 AI 助手们，活成三个各记各账、互不通气的同事。&lt;/p&gt;
+&lt;h2 id="_8"&gt;全文思维导图&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap
+&amp;lt;style&amp;gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&amp;lt;/style&amp;gt;
+
+* 三个编码 Agent 共享记忆
+** 痛点
+*** 一套规则抄三份
+*** 改了这个忘那个
+*** 三个助手各说各话
+** 各读哪份文件
+*** Claude Code: CLAUDE.md
+*** Codex: AGENTS.md
+*** OpenCode: AGENTS.md
+*** 都是磁盘上一个文件
+** 静态规则层
+*** 单一事实源
+*** 符号链接（macOS/Linux）
+*** import 引用（跨平台）
+*** 全局 vs 项目分开
+** 动态记忆层
+*** 各工具自动记忆不互通
+*** 用 MCP 做统一接口
+*** 复用上一篇记忆库
+*** 谁写的另俩都读得到
+** 坑
+*** 动态别写进静态文件
+*** symlink 慎入 Git/Windows
+*** MCP 记忆做用户/项目隔离
+*** 工具更新快先小项目验
+** 原则
+*** 记忆只存一份
+*** 工具是入口不是仓库
+@endmindmap
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;img alt="三个编码 Agent 共享记忆 - 思维导图" src="./images/tech_20260807_ai_coding_shared_memory_mindmap.png"&gt;&lt;/p&gt;
+&lt;hr/&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。&lt;/p&gt;</content><category term="AI"/><category term="journal"/><category term="AI"/><category term="agent"/><category term="memory"/><category term="claude-code"/><category term="codex"/><category term="opencode"/><category term="AGENTS.md"/><category term="MCP"/></entry><entry><title>如何管理 AI Agent 的记忆之一：既记得牢、想得起，又不烧钱</title><link href="https://www.fanyamin.com/blog/2026-08-07-ai-agent-memory.html" rel="alternate"/><published>2026-08-07T20:30:00+08:00</published><updated>2026-08-07T20:30:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-08-07:/blog/2026-08-07-ai-agent-memory.html</id><summary type="html">&lt;p&gt;生产上的 AI Agent 大多不是死在模型不行，而是死在记忆管得烂：要么什么都记，Token 和存储一起爆炸；要么什么都记不住，用户说三遍它忘三遍。这篇讲清楚一套像人脑一样分层的记忆系统——工作记忆、情景记忆、语义记忆、程序记忆，以及写入、巩固、检索、遗忘的完整生命周期，最后给一套可落地的参考架构和 checklist。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;如何管理 AI Agent 的记忆之一：既记得牢、想得起，又不烧钱&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;learning note&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Version&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;v1.0&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;2026-08-07&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;我带过一个实习生，人很聪明，脑子转得也快，就一个毛病：转头就忘。今天跟他讲清楚的事，明天他又来问你一遍；你上周说过“这个客户偏好 Go，不要给他推 Java”，他下次照样甩过去一份 Spring Boot 方案。你不能说他不聪明，只能说他“记不住、也想不起来”。&lt;/p&gt;
+&lt;p&gt;现在很多 AI Agent，就是这个实习生。&lt;/p&gt;
+&lt;p&gt;大家总以为 Agent 做得烂是因为大模型不行。其实真到生产环境，&lt;strong&gt;绝大多数 Agent 翻车不是输在模型，而是输在记忆管理&lt;/strong&gt;。要么什么都往数据库里塞，聊到第三天上下文塞不下、Token 账单吓死人；要么根本没做长期记忆，用户说了三遍的偏好它一次都记不住。看完这篇你能带走一件事：&lt;strong&gt;Agent 的记忆不该是"把聊天记录扔进向量库"这么简单，它更该像人脑一样分层管理&lt;/strong&gt;——记得牢、想得起、还不烧钱，这三件事是可以同时做到的。&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;不是"存得越多越聪明"，恰恰相反：&lt;strong&gt;存得越多，检索越慢、越贵、越容易翻出一堆无关的旧账。&lt;/strong&gt;&lt;/li&gt;
+&lt;li&gt;好的记忆系统解决的是三个问题:&lt;strong&gt;该记什么、怎么想起来、什么时候忘掉。&lt;/strong&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;hr&gt;
+&lt;h2 id="_1"&gt;为什么"一股脑存向量库"是个坑&lt;/h2&gt;
+&lt;p&gt;咱们先说清楚最常见的做法：把每一轮对话都算个 embedding，扔进 Qdrant 或者 pgvector，用户来问就做一次相似度检索，捞回来拼进 prompt。&lt;/p&gt;
+&lt;p&gt;这套东西 demo 阶段特别香，上线之后就开始还债：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;存储只涨不跌&lt;/strong&gt;。用户说的 "hello" "谢谢" "好的" 全都进了库，一个月下来九成是垃圾。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;检索质量下降&lt;/strong&gt;。库里噪音越多，相似度 top-k 里混进来的无关内容越多，模型被带偏。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Token 越烧越多&lt;/strong&gt;。捞回来的东西一股脑塞进上下文，输入 Token 蹭蹭涨，钱包蹭蹭瘪。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;问题的根子在于：&lt;strong&gt;向量相似度只是"长得像"，不等于"该记"也不等于"现在有用"。&lt;/strong&gt; 人脑不是这么干的。你不会把今天说的每句话原封不动背下来，你会区分"这是我现在正在想的""这是昨天发生的事""这是我知道的一个事实""这是我会做的一件事"——然后大部分细节，睡一觉就忘了，只留下提炼过的结论。&lt;/p&gt;
+&lt;p&gt;Agent 的记忆系统，也该照这个思路搭。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_2"&gt;像人脑一样分四层&lt;/h2&gt;
+&lt;p&gt;一个生产级的 Agent，记忆通常分成四层，各管各的事：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;记忆类型&lt;/th&gt;
+&lt;th&gt;对应人脑&lt;/th&gt;
+&lt;th&gt;存什么&lt;/th&gt;
+&lt;th&gt;大白话&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;工作记忆 Working&lt;/td&gt;
+&lt;td&gt;你此刻在想的&lt;/td&gt;
+&lt;td&gt;当前对话、工具输出、当前计划&lt;/td&gt;
+&lt;td&gt;"我正在干的这件事"&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;情景记忆 Episodic&lt;/td&gt;
+&lt;td&gt;过去发生的事&lt;/td&gt;
+&lt;td&gt;一次次任务的经过和结果&lt;/td&gt;
+&lt;td&gt;"昨天我们做了啥"&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;语义记忆 Semantic&lt;/td&gt;
+&lt;td&gt;学到的事实&lt;/td&gt;
+&lt;td&gt;用户偏好、项目配置等长期事实&lt;/td&gt;
+&lt;td&gt;"我知道的一条条事实"&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;程序记忆 Procedural&lt;/td&gt;
+&lt;td&gt;会做的事&lt;/td&gt;
+&lt;td&gt;工作流、操作步骤&lt;/td&gt;
+&lt;td&gt;"这件事该怎么做"&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;很多开源框架只做了其中一层（通常是把对话塞向量库那层），就号称"有记忆"了。这就好比只有短期记忆的人——聊天挺顺，一转身全忘。&lt;/p&gt;
+&lt;p&gt;它们怎么协作，看这张图：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;flowchart TD
+    A[用户请求] --&amp;gt; B[工作记忆&amp;lt;br/&amp;gt;当前上下文]
+    B --&amp;gt;|检索相关的长期记忆| C[长期记忆]
+    subgraph C [长期记忆]
+        direction LR
+        C1[情景记忆&amp;lt;br/&amp;gt;发生过的事]
+        C2[语义记忆&amp;lt;br/&amp;gt;学到的事实]
+        C3[程序记忆&amp;lt;br/&amp;gt;怎么做]
+    end
+    C --&amp;gt;|回答之后再更新记忆| D[记忆巩固&amp;lt;br/&amp;gt;合并 / 压缩]
+    D -.回流.-&amp;gt; C
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;下面一层层拆。&lt;/p&gt;
+&lt;h3 id="1"&gt;1. 工作记忆：相当于内存条&lt;/h3&gt;
+&lt;p&gt;工作记忆就是 RAM，装的是"我此刻在想的东西"：当前对话、刚刚的工具输出、当前任务、当前计划、草稿本。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;目标:
+    做一个 REST API
+
+当前步骤:
+    先写 OpenAPI
+
+已知约束:
+    Java 21
+    Spring Boot
+
+待定问题:
+    要不要上 OAuth?
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这层通常活在 LangGraph 的 state、AutoGen 的 AgentState、CrewAI 的 Context 里，&lt;strong&gt;用完就丢，不做永久持久化&lt;/strong&gt;。就像你算一道题时草稿纸上的演算，算完撕了就撕了。&lt;/p&gt;
+&lt;h3 id="2"&gt;2. 情景记忆：昨天发生了什么&lt;/h3&gt;
+&lt;p&gt;情景记忆存的是"经历"——一次任务从头到尾的经过。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;昨天
+
+用户要:
+    - OAuth
+    - Spring Security
+    - JWT
+
+结果:
+    API 顺利完成。
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;等第二天用户说"接着昨天的做"，Agent 就得能把这段经历捞回来。常见的存储结构长这样：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;task&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;...&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;timestamp&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;...&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;outcome&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;success&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;summary&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;...&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;embeddings&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="err"&gt;...&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;一般按向量、时间戳、标签三种维度建索引——因为你要么按"内容像不像"找，要么按"什么时候"找，要么按"打了啥标签"找。&lt;/p&gt;
+&lt;h3 id="3"&gt;3. 语义记忆：我知道的事实&lt;/h3&gt;
+&lt;p&gt;语义记忆和情景记忆最大的区别：&lt;strong&gt;情景是"事件导向"（某时某刻发生了啥），语义是"事实导向"（一条条稳定的事实）。&lt;/strong&gt;&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;用户偏好 Go。
+用户在 X 公司。
+项目跑在 Kubernetes 上。
+数据库是 MySQL。
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这些事实用"主-谓-宾"三元组存最合适：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;主语      谓语        宾语
+用户      偏好        Go
+项目      部署在      Kubernetes
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;一到"关系"就该想到图数据库。比如 Neo4j 里：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;(用户)-[:偏好]-&amp;gt;(Go)
+(项目)-[:部署于]-&amp;gt;(Kubernetes)
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;好处是：以后你问"这个用户相关的项目都用什么技术栈"，顺着边一走就出来了，比向量检索精确得多。&lt;/p&gt;
+&lt;h3 id="4"&gt;4. 程序记忆：这件事该怎么做&lt;/h3&gt;
+&lt;p&gt;程序记忆存的不是"发生了什么"，而是"怎么做一件事"——工作流、SOP。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;部署服务
+
+1. 构建 Docker 镜像
+2. 推送镜像
+3. 更新 Helm
+4. 等待 rollout 完成
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这类东西存成 Markdown、JSON workflow、YAML，或者直接编成 LangGraph 的图都行。它的价值在于让 Agent 别每次都"重新发明轮子"——标准流程记下来，下次照着走。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_3"&gt;记忆的生命周期：别急着写&lt;/h2&gt;
+&lt;p&gt;这是最容易被忽略、却最影响成本的一环。&lt;strong&gt;记忆不该聊完立刻写库。&lt;/strong&gt; 一个健康的写入流程是这样的：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;对话
+  ↓
+候选记忆（先当&amp;quot;待定&amp;quot;，不落库）
+  ↓
+重要性评估（值不值得永久记？）
+  ↓
+去重（是不是已经有了？）
+  ↓
+摘要（压成一句能复用的话）
+  ↓
+存储
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这一套下来，就能拦住那些没营养的东西：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;hello
+谢谢
+好的
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这些根本不该进长期记忆。&lt;/p&gt;
+&lt;h3 id="llm"&gt;用 LLM 给记忆打个重要性分&lt;/h3&gt;
+&lt;p&gt;一个业界常用的招：让模型自己给这段内容打个重要性分。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;给下面这段对话打个 1-10 分。
+这段内容值得被永久记住吗？
+
+对话:
+...
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;然后只存 &lt;code&gt;score &amp;gt; 7&lt;/code&gt; 的。阈值可以按业务调——你想记得多，就调低；想省钱，就调高。这个"用 LLM 评估要不要记"的思路，微软、Anthropic、OpenAI 在各自的研究或工程实践里都提过类似的变体（具体做法各家不同，这里只取其神）。&lt;/p&gt;
+&lt;h3 id="_4"&gt;记忆巩固：像睡觉一样整理&lt;/h3&gt;
+&lt;p&gt;人脑在睡觉时会做"记忆巩固"，把白天零碎的经历整理、压缩、归档。Agent 也该有这么个后台过程。&lt;/p&gt;
+&lt;p&gt;别把这三条分开存：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;昨天：问了 Kubernetes。
+今天：问了 K8S。
+明天：问了 Pod。
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;后台巩固时，把它们合并成一条：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;用户正在搞 Kubernetes 基础设施。
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;strong&gt;存储的增长立刻就被摁住了&lt;/strong&gt;——三条噪音变一条信号，检索时也更容易命中。这一步一般放到低峰期的定时任务里跑，配合摘要和去重一起做。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_5"&gt;检索：永远别把全部捞回来&lt;/h2&gt;
+&lt;p&gt;写入省了，检索这头也不能松。&lt;strong&gt;最忌讳的就是"把相关记忆全捞回来塞进上下文"&lt;/strong&gt;——那是 Token 账单的头号杀手。&lt;/p&gt;
+&lt;p&gt;好的检索是多信号打分，不是只看向量相似度。一个常见的加权公式：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;score = 0.45 * 向量相似度
+      + 0.25 * 新近度
+      + 0.20 * 重要性
+      + 0.10 * 图关系距离
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;向量相似度&lt;/strong&gt;：内容像不像。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;新近度&lt;/strong&gt;：越新的记忆越可能有用（用户上周改了架构，就别再翻两个月前的老配置）。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;重要性&lt;/strong&gt;：写入时打的那个分，重要的优先。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;图关系距离&lt;/strong&gt;：在知识图谱里离当前话题几跳，越近越相关。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这四个信号一起排序，再取 top-k，捞回来的东西又准又少，Token 自然就省了。权重不是圣旨，得拿真实 case 调——不同业务对"新"和"准"的偏好不一样。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_6"&gt;什么记忆放什么存储&lt;/h2&gt;
+&lt;p&gt;没有一个数据库能通吃所有记忆类型。按用途选存储，才不至于用向量库干图数据库的活：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;记忆&lt;/th&gt;
+&lt;th&gt;合适的存储&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;工作记忆&lt;/td&gt;
+&lt;td&gt;LangGraph State / Redis&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;对话记录&lt;/td&gt;
+&lt;td&gt;PostgreSQL / SQLite&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;语义记忆&lt;/td&gt;
+&lt;td&gt;PostgreSQL + pgvector / Neo4j&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;情景记忆&lt;/td&gt;
+&lt;td&gt;向量库&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;文档&lt;/td&gt;
+&lt;td&gt;向量库&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;知识（强关系）&lt;/td&gt;
+&lt;td&gt;图数据库&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;工作流&lt;/td&gt;
+&lt;td&gt;YAML / Markdown&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;向量库这块，Qdrant、Milvus、Weaviate、Chroma 都行；很多企业场景，&lt;strong&gt;PostgreSQL + pgvector 就够用了&lt;/strong&gt;——别一上来就上一堆重组件，先看数据量。&lt;/p&gt;
+&lt;p&gt;顺手提一句常用的现成轮子（各有侧重，别指望一个搞定一切）：LangGraph（长跑 Agent 的状态与 checkpoint）、Mem0（专门做长期记忆，自带抽取、打分、去重）、Zep（专攻对话记忆，带时间检索和知识图谱）、LlamaIndex（文档记忆与检索）、Graphiti（从交互里动态构建知识图谱）。选型时先问自己"我缺的是哪一层"，再对号入座。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_7"&gt;一套可落地的参考架构&lt;/h2&gt;
+&lt;p&gt;如果让我来搭，我不会把记忆逻辑硬塞进每个 Agent 里——那样每个 Agent 各记各的，一致性、审计、权限全乱套。我更倾向于&lt;strong&gt;把记忆做成一个独立的服务&lt;/strong&gt;，前面用 API 或者 MCP 暴露出来：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;flowchart TD
+    Agent[&amp;quot;AI Agent (LangGraph)&amp;quot;] --&amp;gt; API[&amp;quot;记忆 API / MCP Server&amp;quot;]
+    API --&amp;gt; Redis[&amp;quot;工作缓存&amp;lt;br/&amp;gt;Redis&amp;quot;]
+    API --&amp;gt; PG[&amp;quot;语义存储&amp;lt;br/&amp;gt;PostgreSQL + pgvector&amp;quot;]
+    API --&amp;gt; Qdrant[&amp;quot;情景存储&amp;lt;br/&amp;gt;Qdrant&amp;quot;]
+    Redis --&amp;gt; KG[&amp;quot;知识图谱&amp;lt;br/&amp;gt;Neo4j / Graphiti&amp;quot;]
+    PG --&amp;gt; KG
+    Qdrant --&amp;gt; KG
+    API -.触发.-&amp;gt; Consolidate[&amp;quot;后台记忆巩固&amp;lt;br/&amp;gt;摘要 / 去重 / 衰减&amp;quot;]
+    Consolidate -.整理后写回.-&amp;gt; PG
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这么搭有几个实实在在的好处：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;多个 Agent 共享同一套记忆&lt;/strong&gt;，不会你记你的、我记我的。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;检索可扩展&lt;/strong&gt;，各存储组件能独立演进——换向量库不影响 Agent 逻辑。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;企业场景友好&lt;/strong&gt;：权限控制、审计、记忆生命周期策略，都能在这一层统一收口。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;落地时不必一开始就把四层记忆和所有数据库都配齐。可以先选十几条不敏感的样本，分别测试“能否写入、能否按原话找回、事实更新后旧版本是否被正确标记、用户要求忘记时能否删除”。等这条最小链路稳定，再决定是否需要图数据库、后台巩固任务和更复杂的排序。&lt;/p&gt;
+&lt;p&gt;建议把成本和质量一起记录：每次写入消耗多少 Token，检索返回多少候选，最终真正被模型采用了多少条，错误记忆和过期记忆各有多少。记忆系统不是存得越多越好，而是要让每一条被留下的内容都能解释“为什么留下、什么时候失效、如何删除”。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_8"&gt;上代码：一个能跑的最小记忆库&lt;/h2&gt;
+&lt;p&gt;道理讲一堆，不如给一段能跑的代码。下面用 &lt;strong&gt;PostgreSQL + pgvector&lt;/strong&gt; 实现前面说的核心逻辑：候选记忆 → 重要性打分 → 去重 → 存储 → 多信号检索。为了聚焦，我把工作记忆（Redis）和图数据库那两层略掉了，先把最吃成本的语义/情景记忆这条主线跑通。&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;依赖：&lt;code&gt;pip install psycopg2-binary openai numpy&lt;/code&gt;，外加一个装了 pgvector 的 PostgreSQL（&lt;code&gt;docker run -e POSTGRES_PASSWORD=pass -p 5432:5432 pgvector/pgvector:pg16&lt;/code&gt;）。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h3 id="_9"&gt;建表：一条记忆该带哪些字段&lt;/h3&gt;
+&lt;p&gt;记忆不是只存 embedding，而是要带够检索和治理需要的元数据——这是"记得起来"和"敢忘"的前提：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;CREATE&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="n"&gt;EXTENSION&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="k"&gt;IF&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="k"&gt;NOT&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="k"&gt;EXISTS&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="n"&gt;vector&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+
+&lt;span class="k"&gt;CREATE&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="k"&gt;TABLE&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="n"&gt;memories&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="n"&gt;id&lt;/span&gt;&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="n"&gt;BIGSERIAL&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="k"&gt;PRIMARY&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="k"&gt;KEY&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="n"&gt;user_id&lt;/span&gt;&lt;span class="w"&gt;     &lt;/span&gt;&lt;span class="nb"&gt;TEXT&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="k"&gt;NOT&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="k"&gt;NULL&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="c1"&gt;-- 用户隔离：命名空间&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="n"&gt;kind&lt;/span&gt;&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nb"&gt;TEXT&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="k"&gt;NOT&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="k"&gt;NULL&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="c1"&gt;-- semantic / episodic&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="n"&gt;content&lt;/span&gt;&lt;span class="w"&gt;     &lt;/span&gt;&lt;span class="nb"&gt;TEXT&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="k"&gt;NOT&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="k"&gt;NULL&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="c1"&gt;-- 提炼后的记忆，不是原始对话&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="n"&gt;importance&lt;/span&gt;&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nb"&gt;REAL&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="k"&gt;NOT&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="k"&gt;NULL&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="c1"&gt;-- 1-10 重要性分&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="k"&gt;source&lt;/span&gt;&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="nb"&gt;TEXT&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt;                   &lt;/span&gt;&lt;span class="c1"&gt;-- provenance：这条哪来的&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="n"&gt;created_at&lt;/span&gt;&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="n"&gt;TIMESTAMPTZ&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="k"&gt;DEFAULT&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="n"&gt;now&lt;/span&gt;&lt;span class="p"&gt;(),&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="n"&gt;embedding&lt;/span&gt;&lt;span class="w"&gt;   &lt;/span&gt;&lt;span class="n"&gt;vector&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mi"&gt;1536&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="p"&gt;);&lt;/span&gt;
+
+&lt;span class="c1"&gt;-- 向量索引 + 用户维度过滤，检索又快又不串味&lt;/span&gt;
+&lt;span class="k"&gt;CREATE&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="k"&gt;INDEX&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="k"&gt;ON&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="n"&gt;memories&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="k"&gt;USING&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="n"&gt;hnsw&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;embedding&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="n"&gt;vector_cosine_ops&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+&lt;span class="k"&gt;CREATE&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="k"&gt;INDEX&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="k"&gt;ON&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="n"&gt;memories&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;user_id&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="n"&gt;kind&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h3 id="_10"&gt;写入：先打分、再去重、才落库&lt;/h3&gt;
+&lt;p&gt;关键就在于&lt;strong&gt;别聊完立刻写&lt;/strong&gt;。下面这段 &lt;code&gt;remember()&lt;/code&gt; 把生命周期串起来了：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="nn"&gt;numpy&lt;/span&gt; &lt;span class="k"&gt;as&lt;/span&gt; &lt;span class="nn"&gt;np&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt; &lt;span class="nn"&gt;psycopg2&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt; &lt;span class="nn"&gt;json&lt;/span&gt;
+&lt;span class="kn"&gt;from&lt;/span&gt; &lt;span class="nn"&gt;openai&lt;/span&gt; &lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="n"&gt;OpenAI&lt;/span&gt;
+
+&lt;span class="n"&gt;client&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;OpenAI&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;  &lt;span class="c1"&gt;# 或任意 OpenAI 兼容网关&lt;/span&gt;
+&lt;span class="n"&gt;db&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;psycopg2&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;connect&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;dbname=postgres user=postgres password=pass host=localhost&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;embed&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;text&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="nb"&gt;list&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="nb"&gt;float&lt;/span&gt;&lt;span class="p"&gt;]:&lt;/span&gt;
+    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;client&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;embeddings&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;create&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+        &lt;span class="n"&gt;model&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;text-embedding-3-small&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="nb"&gt;input&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;text&lt;/span&gt;
+    &lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;data&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;embedding&lt;/span&gt;
+
+&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;score_importance&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;text&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="nb"&gt;float&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="sd"&gt;&amp;quot;&amp;quot;&amp;quot;让 LLM 给这条内容打 1-10 分，只有值得长期记的才存&amp;quot;&amp;quot;&amp;quot;&lt;/span&gt;
+    &lt;span class="n"&gt;prompt&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;
+        &lt;span class="s2"&gt;&amp;quot;给下面这段内容打 1-10 分，评估它是否值得被 AI 助手永久记住。&amp;quot;&lt;/span&gt;
+        &lt;span class="s2"&gt;&amp;quot;用户的长期偏好、项目关键事实给高分；寒暄、临时性内容给低分。&amp;quot;&lt;/span&gt;
+        &lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;只回一个数字。&lt;/span&gt;&lt;span class="se"&gt;\n\n&lt;/span&gt;&lt;span class="s2"&gt;内容：&lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;text&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;
+    &lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="n"&gt;resp&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;client&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;chat&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;completions&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;create&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+        &lt;span class="n"&gt;model&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;gpt-4o-mini&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+        &lt;span class="n"&gt;messages&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="p"&gt;[{&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;role&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;user&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;content&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;prompt&lt;/span&gt;&lt;span class="p"&gt;}],&lt;/span&gt;
+    &lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;try&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="nb"&gt;float&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;resp&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;choices&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;message&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;content&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;strip&lt;/span&gt;&lt;span class="p"&gt;())&lt;/span&gt;
+    &lt;span class="k"&gt;except&lt;/span&gt; &lt;span class="ne"&gt;ValueError&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="mf"&gt;5.0&lt;/span&gt;
+
+&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;remember&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;user_id&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;text&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;kind&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;semantic&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+             &lt;span class="n"&gt;source&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;chat&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;threshold&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mf"&gt;7.0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;dedup_sim&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mf"&gt;0.92&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+    &lt;span class="c1"&gt;# 1) 重要性闸门：不够重要直接丢&lt;/span&gt;
+    &lt;span class="n"&gt;imp&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;score_importance&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;text&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;imp&lt;/span&gt; &lt;span class="o"&gt;&amp;lt;&lt;/span&gt; &lt;span class="n"&gt;threshold&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="nb"&gt;print&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;[skip] importance=&lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;imp&lt;/span&gt;&lt;span class="si"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;.1f&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt; &amp;lt; &lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;threshold&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;: &lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;text&lt;/span&gt;&lt;span class="p"&gt;[:&lt;/span&gt;&lt;span class="mi"&gt;30&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt;
+
+    &lt;span class="n"&gt;vec&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;embed&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;text&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+    &lt;span class="c1"&gt;# 2) 去重：和已有记忆太像就不新增（真正生产里应改成&amp;quot;合并/更新&amp;quot;）&lt;/span&gt;
+    &lt;span class="k"&gt;with&lt;/span&gt; &lt;span class="n"&gt;db&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;cursor&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt; &lt;span class="k"&gt;as&lt;/span&gt; &lt;span class="n"&gt;cur&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;cur&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;execute&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="sd"&gt;&amp;quot;&amp;quot;&amp;quot;SELECT id, content, 1 - (embedding &amp;lt;=&amp;gt; %s::vector) AS sim&lt;/span&gt;
+&lt;span class="sd"&gt;               FROM memories WHERE user_id=%s&lt;/span&gt;
+&lt;span class="sd"&gt;               ORDER BY embedding &amp;lt;=&amp;gt; %s::vector LIMIT 1&amp;quot;&amp;quot;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+            &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;vec&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;user_id&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;vec&lt;/span&gt;&lt;span class="p"&gt;),&lt;/span&gt;
+        &lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="n"&gt;row&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;cur&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;fetchone&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+        &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;row&lt;/span&gt; &lt;span class="ow"&gt;and&lt;/span&gt; &lt;span class="n"&gt;row&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt; &lt;span class="o"&gt;&amp;gt;=&lt;/span&gt; &lt;span class="n"&gt;dedup_sim&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+            &lt;span class="nb"&gt;print&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;[dedup] 命中已有记忆(sim=&lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;row&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="si"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;.2f&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;): &lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;row&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="p"&gt;][:&lt;/span&gt;&lt;span class="mi"&gt;30&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+            &lt;span class="k"&gt;return&lt;/span&gt;
+
+        &lt;span class="c1"&gt;# 3) 落库&lt;/span&gt;
+        &lt;span class="n"&gt;cur&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;execute&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="sd"&gt;&amp;quot;&amp;quot;&amp;quot;INSERT INTO memories(user_id, kind, content, importance, source, embedding)&lt;/span&gt;
+&lt;span class="sd"&gt;               VALUES (%s,%s,%s,%s,%s,%s)&amp;quot;&amp;quot;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+            &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;user_id&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;kind&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;text&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;imp&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;source&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;vec&lt;/span&gt;&lt;span class="p"&gt;),&lt;/span&gt;
+        &lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="n"&gt;db&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;commit&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+        &lt;span class="nb"&gt;print&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;[store] importance=&lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;imp&lt;/span&gt;&lt;span class="si"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;.1f&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;: &lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;text&lt;/span&gt;&lt;span class="p"&gt;[:&lt;/span&gt;&lt;span class="mi"&gt;30&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h3 id="top-k"&gt;检索：多信号加权，只取 top-k&lt;/h3&gt;
+&lt;p&gt;检索这头，别只按向量相似度排。把&lt;strong&gt;新近度&lt;/strong&gt;和&lt;strong&gt;重要性&lt;/strong&gt;也揉进去——这就是前面那个加权公式落到 SQL 里的样子：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;recall&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;user_id&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;query&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;k&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;3&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+           &lt;span class="n"&gt;w_sim&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mf"&gt;0.6&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;w_recency&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mf"&gt;0.25&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;w_imp&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mf"&gt;0.15&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+    &lt;span class="n"&gt;qvec&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;embed&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;query&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;with&lt;/span&gt; &lt;span class="n"&gt;db&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;cursor&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt; &lt;span class="k"&gt;as&lt;/span&gt; &lt;span class="n"&gt;cur&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;cur&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;execute&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+&lt;span class="w"&gt;            &lt;/span&gt;&lt;span class="sd"&gt;&amp;quot;&amp;quot;&amp;quot;&lt;/span&gt;
+&lt;span class="sd"&gt;            SELECT content, importance,&lt;/span&gt;
+&lt;span class="sd"&gt;                   1 - (embedding &amp;lt;=&amp;gt; %s::vector) AS sim,&lt;/span&gt;
+&lt;span class="sd"&gt;                   -- 新近度：越新越接近 1，30 天前衰减到 ~0.37&lt;/span&gt;
+&lt;span class="sd"&gt;                   exp(-EXTRACT(EPOCH FROM (now()-created_at))/2592000.0) AS recency&lt;/span&gt;
+&lt;span class="sd"&gt;            FROM memories WHERE user_id=%s&lt;/span&gt;
+&lt;span class="sd"&gt;            ORDER BY embedding &amp;lt;=&amp;gt; %s::vector LIMIT 20&lt;/span&gt;
+&lt;span class="sd"&gt;            &amp;quot;&amp;quot;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+            &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;qvec&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;user_id&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;qvec&lt;/span&gt;&lt;span class="p"&gt;),&lt;/span&gt;
+        &lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="n"&gt;rows&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;cur&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;fetchall&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+
+    &lt;span class="n"&gt;scored&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;
+        &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;w_sim&lt;/span&gt;&lt;span class="o"&gt;*&lt;/span&gt;&lt;span class="n"&gt;sim&lt;/span&gt; &lt;span class="o"&gt;+&lt;/span&gt; &lt;span class="n"&gt;w_recency&lt;/span&gt;&lt;span class="o"&gt;*&lt;/span&gt;&lt;span class="n"&gt;rec&lt;/span&gt; &lt;span class="o"&gt;+&lt;/span&gt; &lt;span class="n"&gt;w_imp&lt;/span&gt;&lt;span class="o"&gt;*&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;imp&lt;/span&gt;&lt;span class="o"&gt;/&lt;/span&gt;&lt;span class="mf"&gt;10.0&lt;/span&gt;&lt;span class="p"&gt;),&lt;/span&gt; &lt;span class="n"&gt;content&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;content&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;imp&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;sim&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;rec&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;rows&lt;/span&gt;
+    &lt;span class="p"&gt;]&lt;/span&gt;
+    &lt;span class="n"&gt;scored&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;sort&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;reverse&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="kc"&gt;True&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="n"&gt;c&lt;/span&gt; &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;_&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;c&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;scored&lt;/span&gt;&lt;span class="p"&gt;[:&lt;/span&gt;&lt;span class="n"&gt;k&lt;/span&gt;&lt;span class="p"&gt;]]&lt;/span&gt;   &lt;span class="c1"&gt;# 只回 top-k，省 Token&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;用起来就三行：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="n"&gt;remember&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;u1&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;用户偏好 Go，明确不要 Java 方案&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;source&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;preference&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="n"&gt;remember&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;u1&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;谢谢，辛苦了&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;          &lt;span class="c1"&gt;# 会被 importance 闸门拦掉&lt;/span&gt;
+&lt;span class="n"&gt;remember&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;u1&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;用户喜欢用 Go 语言&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;    &lt;span class="c1"&gt;# 会被 dedup 拦掉（和第一条太像）&lt;/span&gt;
+
+&lt;span class="nb"&gt;print&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;recall&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;u1&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;给他推荐个后端技术栈&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;))&lt;/span&gt;
+&lt;span class="c1"&gt;# → [&amp;#39;用户偏好 Go，明确不要 Java 方案&amp;#39;]&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;看到没：三次写入，只有一条真正进库，检索时也只回一条最相关的。&lt;strong&gt;寒暄被闸门拦了，重复被去重拦了，检索只取 top-k&lt;/strong&gt;——存储和 Token 就是这么省下来的。这段一百来行，就是前面所有道理的可执行版本。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_11"&gt;走一遍真实场景：用户说"接着昨天的做"&lt;/h2&gt;
+&lt;p&gt;光有零件不够，看它们怎么配合。假设一个写代码的 Agent，还原一个最常见的场景：&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;第一天&lt;/strong&gt;，用户让 Agent 搭一套带 OAuth 的 REST API。这一天里：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;工作记忆&lt;/strong&gt;（Redis）实时装着当前对话、刚才的工具输出、当前计划。任务一结束，这块就清空——它是 RAM，不是硬盘。&lt;/li&gt;
+&lt;li&gt;收尾时触发一次&lt;strong&gt;写入流程&lt;/strong&gt;：把这一天压成一条&lt;strong&gt;情景记忆&lt;/strong&gt;存进库：
+  &lt;code&gt;json
+  {
+    "kind": "episodic",
+    "content": "帮用户完成了带 OAuth2 + JWT 的 Spring Boot REST API，用户 Java 21，已上线",
+    "importance": 8.5,
+    "source": "task-completion"
+  }&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;同时抽出两条&lt;strong&gt;语义记忆&lt;/strong&gt;（事实）：&lt;code&gt;用户用 Java 21&lt;/code&gt;、&lt;code&gt;用户项目用 Spring Security&lt;/code&gt;。寒暄那些，importance 打分没过 7 分，直接丢掉。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;第二天&lt;/strong&gt;，用户只甩一句："&lt;strong&gt;接着昨天的做，加上刷新 token。&lt;/strong&gt;"&lt;/p&gt;
+&lt;p&gt;Agent 内部这么转：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;工作记忆是空的&lt;/strong&gt;——昨天的 RAM 早清了，它此刻啥都不知道。&lt;/li&gt;
+&lt;li&gt;拿"昨天""刷新 token"去 &lt;strong&gt;&lt;code&gt;recall()&lt;/code&gt;&lt;/strong&gt;，多信号加权命中：那条 importance 8.5、created_at 就在昨天（recency 接近 1）的&lt;strong&gt;情景记忆&lt;/strong&gt;排到第一，两条语义事实跟上。&lt;/li&gt;
+&lt;li&gt;把这三条（而不是昨天几百轮对话原文）拼进上下文——&lt;strong&gt;输入 Token 从"几千"降到"几十"&lt;/strong&gt;。&lt;/li&gt;
+&lt;li&gt;Agent 于是"想起来了"：哦，Spring Boot + OAuth2 那套，Java 21,继续加 refresh token。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;这就是"记得起来又不烧钱"的完整闭环：&lt;strong&gt;该记的压成一条存下、该忘的当场丢掉、要用时精准捞几条。&lt;/strong&gt; 如果你当初把昨天几百轮对话原样塞进向量库，第二天检索捞回来一大坨,Token 爆炸不说,模型还容易被无关内容带偏。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="ai-skill-ai-tools-claude-code-codex-opencode"&gt;更进一步：把它做成 AI Skill + AI Tools，让 Claude Code / Codex / OpenCode 都能用&lt;/h2&gt;
+&lt;p&gt;上面这套 &lt;code&gt;remember()&lt;/code&gt; / &lt;code&gt;recall()&lt;/code&gt; 现在还只是"我自己脚本里的函数"。可如果你像我一样，同时在用 Claude Code、Codex、OpenCode 写代码，就会冒出一个很自然的想法：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;能不能把这套记忆系统抽出来，做成一个所有编码 Agent 都能调用的公共能力？&lt;/strong&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;答案是能，而且这正是 &lt;strong&gt;AI Tools（MCP）&lt;/strong&gt; 和 &lt;strong&gt;AI Skill&lt;/strong&gt; 该干的活。区别在于：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;AI Tools（MCP Server）&lt;/strong&gt;：把 &lt;code&gt;remember&lt;/code&gt; / &lt;code&gt;recall&lt;/code&gt; 暴露成标准工具，让 Agent &lt;strong&gt;能存能取&lt;/strong&gt;——这是"手"。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;AI Skill&lt;/strong&gt;：一份写给 Agent 看的说明书，告诉它&lt;strong&gt;什么时候该存、什么时候该取、怎么用这两个工具&lt;/strong&gt;——这是"脑子里的规矩"。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;光有工具没 Skill，Agent 有手不会用；光有 Skill 没工具，Agent 有想法没抓手。两个得配套。&lt;/p&gt;
+&lt;h3 id="mcp-ai-tools"&gt;第一步：用 MCP 把记忆包成 AI Tools&lt;/h3&gt;
+&lt;p&gt;MCP（Model Context Protocol）是现在 Claude Code、Codex、OpenCode 都支持的工具协议。用 Python SDK 把上面两个函数包一层就行，核心逻辑一行没改：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# memory_mcp_server.py&lt;/span&gt;
+&lt;span class="kn"&gt;from&lt;/span&gt; &lt;span class="nn"&gt;mcp.server.fastmcp&lt;/span&gt; &lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="n"&gt;FastMCP&lt;/span&gt;
+&lt;span class="kn"&gt;from&lt;/span&gt; &lt;span class="nn"&gt;memory_store&lt;/span&gt; &lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="n"&gt;remember&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;recall&lt;/span&gt;   &lt;span class="c1"&gt;# 就是上面实现的那两个函数&lt;/span&gt;
+
+&lt;span class="n"&gt;mcp&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;FastMCP&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;shared-memory&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+&lt;span class="nd"&gt;@mcp&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;tool&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;save_memory&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;user_id&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;text&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;kind&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;semantic&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="sd"&gt;&amp;quot;&amp;quot;&amp;quot;存一条值得长期记住的信息（自动打分 + 去重，不重要的会被丢弃）。&amp;quot;&amp;quot;&amp;quot;&lt;/span&gt;
+    &lt;span class="n"&gt;remember&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;user_id&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;text&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;kind&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;kind&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;source&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;mcp&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;ok&amp;quot;&lt;/span&gt;
+
+&lt;span class="nd"&gt;@mcp&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;tool&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;search_memory&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;user_id&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;query&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;k&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;int&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="mi"&gt;3&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="nb"&gt;list&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;]:&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="sd"&gt;&amp;quot;&amp;quot;&amp;quot;按相关度检索最相关的 top-k 条记忆。&amp;quot;&amp;quot;&amp;quot;&lt;/span&gt;
+    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;recall&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;user_id&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;query&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;k&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;k&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="vm"&gt;__name__&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;__main__&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;mcp&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;run&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;   &lt;span class="c1"&gt;# 默认 stdio，三个工具都能连&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;然后在三个工具里各声明一次这个 server（格式略有差异，套路一致）：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;// Claude Code: 项目根 .mcp.json（或用 `claude mcp add`）&lt;/span&gt;
+&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;mcpServers&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;shared-memory&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;command&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;python&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;args&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;/path/to/memory_mcp_server.py&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+
+&lt;span class="c1"&gt;// OpenCode: opencode.json 的 mcp 段&lt;/span&gt;
+&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;mcp&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;shared-memory&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;type&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;local&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;command&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;python&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;/path/to/memory_mcp_server.py&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+
+&lt;span class="c1"&gt;// Codex: 同样支持在其配置里声明 MCP server（配置键以你的版本为准）&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;连上之后，三个工具就都长出了"存记忆、取记忆"这两只手，&lt;strong&gt;而且指向同一个 PostgreSQL 后端&lt;/strong&gt;——你在 Claude Code 里存的，Codex 第二天就能检索到。&lt;/p&gt;
+&lt;h3 id="ai-skill"&gt;第二步：写一份 AI Skill 教它怎么用&lt;/h3&gt;
+&lt;p&gt;有了手还不够。Agent 不会无缘无故去调工具，你得告诉它"什么情况下该动手"。这就是一份 Skill（在 Claude Code 里是 skill，在别的工具里可能叫 rule 或写进 &lt;code&gt;AGENTS.md&lt;/code&gt;），本质是一段自然语言说明书：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;---
+name: shared-memory
+description: 在跨会话记住用户偏好和项目事实时使用。当用户表达长期偏好、
+  确认项目关键事实、或说&amp;quot;记住…&amp;quot;时，调用 save_memory；在开始新任务、
+&lt;span class="gu"&gt;  需要用户偏好或项目背景时，先调用 search_memory 回忆。&lt;/span&gt;
+&lt;span class="gu"&gt;---&lt;/span&gt;
+
+&lt;span class="gh"&gt;# 记忆使用规矩&lt;/span&gt;
+
+&lt;span class="gu"&gt;## 什么时候“存”（save_memory）&lt;/span&gt;
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;用户说出长期偏好：如&amp;quot;我用 Go 不用 Java&amp;quot;&amp;quot;提交信息用中文&amp;quot;
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;确认了项目关键事实：技术栈、CI 平台、数据库、目录约定
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;用户明确说&amp;quot;记住这个&amp;quot;
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;⚠️ 别存：寒暄、临时性问题、一次性的调试细节
+
+&lt;span class="gu"&gt;## 什么时候“取”（search_memory）&lt;/span&gt;
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;每个新任务开始前，先按任务关键词检索一次
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;要给建议、选技术栈、写配置前，先看看有没有相关偏好
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;用户说&amp;quot;接着上次的做&amp;quot;时，务必先检索
+
+&lt;span class="gu"&gt;## 原则&lt;/span&gt;
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;存之前先想：三个月后这条还有用吗？没用就别存。
+&lt;span class="k"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;取回来的记忆当作&amp;quot;已知事实&amp;quot;，别再反问用户。
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这份 Skill 放进各工具的 skill/rules 目录（或用上一篇讲的"单一事实源 + 软链"让三家共享同一份），Agent 启动时就知道了这套规矩。&lt;/p&gt;
+&lt;h3 id="_12"&gt;合起来是什么效果&lt;/h3&gt;
+&lt;p&gt;工具（手）+ Skill（规矩）+ 共享后端（同一个库），三者一凑，就得到一套&lt;strong&gt;跨工具、跨会话的记忆中枢&lt;/strong&gt;：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;flowchart TD
+    subgraph Tools[&amp;quot;三个编码 Agent&amp;quot;]
+        CC[Claude Code]
+        CX[Codex]
+        OC[OpenCode]
+    end
+    Skill[&amp;quot;AI Skill&amp;lt;br/&amp;gt;什么时候存 / 什么时候取&amp;quot;]
+    MCP[&amp;quot;AI Tools / MCP&amp;lt;br/&amp;gt;save_memory · search_memory&amp;quot;]
+    DB[&amp;quot;共享记忆后端&amp;lt;br/&amp;gt;PostgreSQL + pgvector&amp;quot;]
+
+    CC --&amp;gt; Skill
+    CX --&amp;gt; Skill
+    OC --&amp;gt; Skill
+    Skill --&amp;gt; MCP
+    MCP --&amp;gt; DB
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;从此你换哪个工具干活都无所谓——它们共享同一份记忆、同一套"该记什么"的规矩。这套怎么落地、三个工具的配置文件各在哪、静态规则又怎么用软链共享，我在另一篇《&lt;a href="./2026-08-07-ai-coding-shared-memory.html"&gt;让 Claude Code、Codex、OpenCode 共享同一份记忆&lt;/a&gt;》里讲得更细，这里就不展开了。&lt;/p&gt;
+&lt;p&gt;接入多个编码工具后，建议用同一组任务做一次对照：明确要求记忆、自然提到长期偏好、要求检索旧决策、要求删除一条记忆。分别记录工具是否调用了正确的工具、传入的摘要是否足够、删除后是否还能被召回。&lt;/p&gt;
+&lt;p&gt;这类测试能暴露一个常见问题：Skill 写得越长，不一定越听话。通常应把触发条件、禁止保存的内容、必须询问用户的场景写在前面，把示例和解释放在后面；工具返回结果也要带来源和时间，避免 Agent 把一条旧记忆当成当前事实。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_13"&gt;生产环境的几条经验&lt;/h2&gt;
+&lt;p&gt;把散落各处的最佳实践收成一张 checklist，方便你照着自查：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;按用途分层存&lt;/strong&gt;&lt;br&gt;
+   工作、情景、语义、程序四类记忆分开，别混成一锅粥。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;存事实，别存每句话&lt;/strong&gt;  &lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;❌ &lt;code&gt;INSERT ... VALUES('用户: 那用 Go 吧;  助手: 好的没问题')&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;✅ &lt;code&gt;INSERT ... VALUES('用户偏好 Go')&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;抽取出耐用的信息，而不是原样保存整段聊天记录。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;持续做摘要&lt;/strong&gt;&lt;br&gt;
+   长对话压成可复用的知识。实操：每 N 轮或每次任务收尾，跑一次 &lt;code&gt;summarize()&lt;/code&gt; 把这段压成一两句情景记忆，再清掉工作记忆。别让上下文越拖越长。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;狠一点去重&lt;/strong&gt;  &lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;❌ 每来一条就 &lt;code&gt;INSERT&lt;/code&gt;，一个月后库里躺着五条"用户喜欢 Go"。&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;✅ 写入前先按向量相似度查一次，命中就 &lt;strong&gt;&lt;code&gt;UPDATE&lt;/code&gt; 已有记忆&lt;/strong&gt;（更新时间戳、合并来源），而不是新建。上面 &lt;code&gt;remember()&lt;/code&gt; 里的 &lt;code&gt;dedup_sim&lt;/code&gt; 就是干这个的。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;混合检索&lt;/strong&gt;&lt;br&gt;
+   别只 &lt;code&gt;ORDER BY embedding &amp;lt;=&amp;gt; query&lt;/code&gt;。向量相似度 + 关键词（&lt;code&gt;content ILIKE&lt;/code&gt;）+ 结构化过滤（&lt;code&gt;WHERE user_id=... AND kind=...&lt;/code&gt;）+ 新近度 + 图关系，一起加权，就像上面 &lt;code&gt;recall()&lt;/code&gt; 那样。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;记来源和可信度&lt;/strong&gt;&lt;br&gt;
+   建表时就带上 &lt;code&gt;source&lt;/code&gt; 字段（&lt;code&gt;preference&lt;/code&gt; / &lt;code&gt;task-completion&lt;/code&gt; / &lt;code&gt;user-stated&lt;/code&gt; / &lt;code&gt;inferred&lt;/code&gt;）。以后要审计"这条 Agent 凭什么这么认为"，或者要清理某类不可靠来源，才有抓手。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;支持遗忘&lt;/strong&gt;  &lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;加个后台任务：&lt;code&gt;DELETE FROM memories WHERE importance &amp;lt; 5 AND created_at &amp;lt; now() - interval '90 days'&lt;/code&gt;。&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;用户说"忘了我的地址"，要能精确删除对应记忆。&lt;strong&gt;能忘，才不至于越背越重。&lt;/strong&gt;&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;用户记忆和项目记忆分开&lt;/strong&gt;&lt;br&gt;
+   用 &lt;code&gt;user_id&lt;/code&gt; / &lt;code&gt;project_id&lt;/code&gt; 做命名空间，检索时强制带上过滤条件。用户 A 的偏好，绝不该被检索进用户 B 的上下文——这既是效果问题，也是隐私/安全问题。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;重要记忆做版本&lt;/strong&gt;&lt;br&gt;
+   事实会变（比如项目数据库从 MySQL 换成 PostgreSQL）。别 &lt;code&gt;UPDATE&lt;/code&gt; 悄悄覆盖，而是新写一条、把旧的标记 &lt;code&gt;superseded&lt;/code&gt;，保留时间线。将来排查"它为什么还记得旧配置"时你会感谢自己。&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;一句话:&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;好的记忆系统，本事不在"能记多少"，而在"敢忘多少"。&lt;/strong&gt;&lt;br&gt;
+什么都记的 Agent，最后既想不起来、又特别贵。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;hr&gt;
+&lt;h2 id="_14"&gt;最后一句&lt;/h2&gt;
+&lt;p&gt;回到开头那个转头就忘的实习生。你后来怎么带好他的？无非是让他养成三个习惯：重要的事记进本子（分层存储）、定期回顾整理（记忆巩固）、用的时候翻对页码（精准检索）。Agent 也一样。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;记得牢，靠的是分层和巩固；想得起，靠的是多信号检索；不烧钱，靠的是舍得忘。&lt;/strong&gt; 这三件事不是三选一，而是同一套设计的三个侧面——把记忆当成一个有生命周期的系统来管，而不是一个只进不出的仓库。&lt;/p&gt;
+&lt;p&gt;至于那些花里胡哨的框架，工具年年换，道理不变：&lt;strong&gt;先想清楚你缺的是哪一层记忆，再去挑轮子。&lt;/strong&gt; 别让你的 Agent，活成那个聪明却总让人重复第三遍的实习生。&lt;/p&gt;
+&lt;h2 id="_15"&gt;全文思维导图&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap
+&amp;lt;style&amp;gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&amp;lt;/style&amp;gt;
+
+* AI Agent 记忆管理
+** 核心问题
+*** 该记什么
+*** 怎么想起来
+*** 什么时候忘
+*** 一股脑存向量库是坑
+** 分四层（像人脑）
+*** 工作记忆（RAM/当前）
+*** 情景记忆（发生过的事）
+*** 语义记忆（事实/三元组）
+*** 程序记忆（怎么做）
+** 生命周期
+*** 候选→重要性→去重→摘要→存
+*** LLM 重要性打分
+*** 记忆巩固（合并压缩）
+** 检索
+*** 别全捞回来
+*** 相似度+新近+重要+图距离
+** 存储选型
+*** 按用途分开存
+*** pgvector 常常够用
+*** Mem0/Zep/LangGraph
+** 参考架构
+*** 记忆做成独立服务
+*** API/MCP 暴露
+*** 多 Agent 共享
+** 经验 checklist
+*** 存事实不存每句话
+*** 狠去重、持续摘要
+*** 支持遗忘、分命名空间
+@endmindmap
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;img alt="AI Agent 记忆管理 - 思维导图" src="./images/journal_20260807_ai_agent_memory_mindmap.png"&gt;&lt;/p&gt;
+&lt;hr/&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。&lt;/p&gt;</content><category term="AI"/><category term="journal"/><category term="AI"/><category term="agent"/><category term="memory"/><category term="LLM"/><category term="RAG"/><category term="architecture"/></entry><entry><title>用 AI 做好计划之三：配个不睡觉的监工</title><link href="https://www.fanyamin.com/blog/2026-08-06-ai-planning-agent.html" rel="alternate"/><published>2026-08-06T21:56:00+08:00</published><updated>2026-08-06T22:29:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-08-06:/blog/2026-08-06-ai-planning-agent.html</id><summary type="html">&lt;p&gt;前两篇讲了用 AI 做计划的心法和工具，但都有个漏洞：PDCA 是个环，却全靠人手动推着转，人一忙就停。这篇讲怎么用一个长期运行的 AI Agent 把 Check→Act→Plan 半环自动转起来——它不替你干活，它是个不睡觉的监工，盯进度、发提醒、起草方案，卡住了就喊人。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
 &lt;thead&gt;
 &lt;tr&gt;
 &lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
@@ -161,7 +1519,10 @@
 &lt;p&gt;这三块拼起来，你就有了一个最朴素但能真正长期跑的 PDCA 监工。想升级？把读数据那一步接上真实数据源（CI、监控、工单），把发提醒那一步接上你的 IM——但&lt;strong&gt;核心的职责和红线，就是上面那份系统提示词，一个字都别松。&lt;/strong&gt;&lt;/p&gt;
 &lt;p&gt;最后补一个让环闭合的细节。冲刺结束那天，让它把本周的复盘结论归档：哪些事做得好、哪些拖了后腿、下个迭代怎么改——这份归档，就是下一个冲刺 Plan 的输入。很多团队开完回顾会就算完事，Agent 帮你把 PDCA 的这一圈真的连上了：转完一圈又回到起点，但起点已经比上一圈高了一点。&lt;/p&gt;
 &lt;hr&gt;
-&lt;h2 id="_2"&gt;最后一句&lt;/h2&gt;
+&lt;h2 id="_2"&gt;先做一轮“只读监工”&lt;/h2&gt;
+&lt;p&gt;长期 Agent 不必一开始就接 IM、日历和工单。最安全的第一版只有三个动作：定时读取一份结构化计划，生成一份带出处的风险简报，把简报写回固定目录。人确认它连续几轮都能正确识别延期、区分事实和推测之后，再增加通知能力。&lt;/p&gt;
+&lt;p&gt;还要提前定义三种失败：数据源不可用时明确报告“无法判断”，模型不确定时停下来询问，通知发送失败时保留待发送记录。&lt;strong&gt;一个会诚实说“不知道”的监工，比一个总能生成结论但来源不明的监工更可靠。&lt;/strong&gt;&lt;/p&gt;
+&lt;h2 id="_3"&gt;最后一句&lt;/h2&gt;
 &lt;p&gt;三篇写下来，其实是一条线：&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;第一篇讲&lt;strong&gt;心法&lt;/strong&gt;——人主导、AI 助攻，把 PDCA 环转起来；&lt;/li&gt;
@@ -171,7 +1532,7 @@
 &lt;p&gt;你可能注意到了，越往后走，AI 承担的越多，但&lt;strong&gt;人守住的那几样东西反而越来越清晰、越来越硬&lt;/strong&gt;：目标、取舍、拍板、急停键。这不是巧合。&lt;strong&gt;自动化程度越高，人的判断就越金贵&lt;/strong&gt;——因为能自动的部分早晚会被自动掉，剩下留给人的，全是机器不敢也不该替你扛的责任。&lt;/p&gt;
 &lt;p&gt;所以别怕给计划配个不睡觉的监工。它替你扛掉的是“记得去看、记得去算、记得去提醒”这些又累又机械的心力活；它替不了的，是“往哪儿走、要不要变、值不值得”这些真正属于你的判断。&lt;/p&gt;
 &lt;p&gt;&lt;strong&gt;让 Agent 转动那个环，让你专心守住那个心。&lt;/strong&gt;&lt;/p&gt;
-&lt;h2 id="_3"&gt;全文思维导图&lt;/h2&gt;
+&lt;h2 id="_4"&gt;全文思维导图&lt;/h2&gt;
 &lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap
 &amp;lt;style&amp;gt;
 mindmapDiagram {
@@ -232,7 +1593,7 @@ mindmapDiagram {
 
 &lt;p&gt;&lt;img alt="给计划配个不睡觉的监工 - 思维导图" src="./images/journal_20260806_ai_planning_agent_mindmap.png"&gt;&lt;/p&gt;
 &lt;hr/&gt;
-&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。&lt;/p&gt;</content><category term="AI"/><category term="journal"/><category term="planning"/><category term="AI"/><category term="PDCA"/><category term="agent"/></entry><entry><title>用 AI 做好计划之二：趁手的工具与 Skill</title><link href="https://www.fanyamin.com/blog/2026-08-06-ai-planning-tools.html" rel="alternate"/><published>2026-08-06T21:42:00+08:00</published><updated>2026-08-06T22:29:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-08-06:/blog/2026-08-06-ai-planning-tools.html</id><summary type="html">&lt;p&gt;上一篇讲了用 AI 做计划的心法，这篇讲兵器：有哪些 AI 工具能落地 PDCA，通用工具怎么选，怎么把 PDCA 封装成你自己的 AI Skill——文末附一份可以直接抄的 Skill 模板和四段 Prompt。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。&lt;/p&gt;</content><category term="AI"/><category term="journal"/><category term="planning"/><category term="AI"/><category term="PDCA"/><category term="agent"/></entry><entry><title>用 AI 做好计划之二：趁手的工具与 Skill</title><link href="https://www.fanyamin.com/blog/2026-08-06-ai-planning-tools.html" rel="alternate"/><published>2026-08-06T21:42:00+08:00</published><updated>2026-08-07T10:01:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-08-06:/blog/2026-08-06-ai-planning-tools.html</id><summary type="html">&lt;p&gt;上一篇讲了用 AI 做计划的心法，这篇讲兵器：有哪些 AI 工具能落地 PDCA，通用工具怎么选，怎么把 PDCA 封装成你自己的 AI Skill——文末附一份可以直接抄的 Skill 模板和四段 Prompt。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
 &lt;thead&gt;
 &lt;tr&gt;
 &lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
@@ -314,11 +1675,17 @@ mindmapDiagram {
 &lt;/table&gt;
 &lt;p&gt;看出规律没有？&lt;strong&gt;Plan 和 Act 靠“会想”的通用 AI，Do 和 Check 靠“不嫌烦”的自动化。&lt;/strong&gt; 前者要判断力，后者要执行力——别指望一个工具全包。&lt;/p&gt;
 &lt;p&gt;下面挑三个我踩过坑、也尝到甜头的点，具体说说。&lt;/p&gt;
-&lt;h3 id="plan-ai"&gt;Plan：别用“计划生成器”，用“会抬杠的对话 AI”&lt;/h3&gt;
+&lt;h3 id="plan"&gt;Plan：别用“计划生成器”，先喂够料，再让它抬杠&lt;/h3&gt;
 &lt;p&gt;我试过好几个号称一键生成项目计划的产品，结论是：&lt;strong&gt;它们生成的计划太顺了，顺到没用。&lt;/strong&gt; 一个真实项目的价值恰恰在那些不顺的地方——风险、依赖、意外。&lt;/p&gt;
-&lt;p&gt;所以计划这一步，我反而回归到最朴素的通用对话式 AI（Claude 或 GPT 都行），因为它支持你&lt;strong&gt;反复追问、让它唱反调&lt;/strong&gt;。上一篇讲的“事前验尸”那招，只有在能多轮对话的工具里才玩得转。一次性生成器给不了你这个。&lt;/p&gt;
-&lt;p&gt;选型就一条：&lt;strong&gt;挑那个能读你整份文档、能陪你聊十个回合还不掉线的。&lt;/strong&gt; 上下文窗口和推理能力，比界面漂不漂亮重要得多。&lt;/p&gt;
-&lt;p&gt;举个冲刺规划会的场景。你作为 Scrum Master，会前把产品抛来的需求丢给 AI：“把这次迭代要做的支付对账功能拆成任务，标出依赖和风险。”它十分钟给你一张作战图——你带着它进规划会，团队估点、排依赖就有得聊了，而不是从零开始七嘴八舌。AI 不是替你拍计划，是替你把会前那点没人愿意做的功课做掉。&lt;/p&gt;
+&lt;p&gt;但换到通用对话式 AI，也不等于万事大吉。做计划这一步，AI 的产出质量九成取决于你喂了什么料——光丢一句“帮我做个计划”，它只能给你一份正确但通用的废话。所以动手之前，先把四样东西凑齐，一股脑喂给它：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;一份计划模板&lt;/strong&gt;：任务、负责人、时间、进度、风险，用表格还是清单，里程碑怎么排——模板是你定的，AI 照着填，出来的才是你的形状，而不是它默认的形状。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;足够的资料&lt;/strong&gt;：背景文档、上一版计划、相关数据、约束条件、历史复盘，能喂多少喂多少。它知道的上下文越多，计划就越贴你的实际情况。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;你想达到的目标&lt;/strong&gt;：一句话说清要什么、什么最优先、死线在哪。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;你的想法和担忧&lt;/strong&gt;：这一步最容易被忽略，也最值钱。心里那点犹豫、直觉里的不安、吃过亏的环节，都摆出来——“我担心压测环境审批会卡”，它就会去帮你验证、给对策，而不是顺着你的乐观往下写。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;料喂足了，剩下的交给“会抬杠的对话 AI”：选那个&lt;strong&gt;能读你整份文档、能陪你聊十个回合还不掉线的&lt;/strong&gt;——上一篇讲的事前验尸，也只有这种能多轮追问的工具才玩得转。&lt;/p&gt;
+&lt;p&gt;举个冲刺规划会的场景。你作为 Scrum Master，会前把“支付对账功能”的资料包整理好：需求文档、上季度的复盘、你拍板的目标（两周上线、准确率优先），连那句“我担心对账精度在月底大促时撑不住”也写上，再附一份你们惯用的计划模板，一起丢给 AI。它十分钟给你一张按模板填好的作战图——你带着它进规划会，团队估点、排依赖就有得聊了，而不是从零开始七嘴八舌。AI 不是替你拍计划，是替你把会前那点没人愿意做的功课做掉。&lt;/p&gt;
 &lt;h3 id="do-check"&gt;Do &amp;amp; Check：结构化是一切自动化的前提&lt;/h3&gt;
 &lt;p&gt;这一步的兵器选择，取决于你的数据长什么样。&lt;/p&gt;
 &lt;p&gt;我见过太多人的计划是&lt;strong&gt;一张微信里的截图，或者一段大白话&lt;/strong&gt;。这种计划，AI 帮不上忙——它没法读、没法更新、没法对着它算延期。想让 AI 当项目助理，第一步是&lt;strong&gt;把计划变成机器能读的结构化数据&lt;/strong&gt;：Markdown 表格、YAML、或者干脆用支持 API 的看板工具（Notion、飞书多维表格、Jira 这类）。&lt;/p&gt;
@@ -424,14 +1791,17 @@ mindmapDiagram {
 &lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 
 &lt;hr&gt;
-&lt;h2 id="_1"&gt;最后一句&lt;/h2&gt;
+&lt;h2 id="_1"&gt;一个不依赖具体产品的选型实验&lt;/h2&gt;
+&lt;p&gt;工具会换，测试方法可以留下。选一个真实但不敏感的计划，分别用“纯对话”“结构化表格 + 对话”“定时脚本 + 对话”跑一遍，记录四项：上下文准备成本、生成结果的可核对程度、人工返工量、下一次能否复用。&lt;/p&gt;
+&lt;p&gt;如果一个工具生成得很快，却不能读真实状态、不能指出出处、不能在第二天接着跑，那么它更像一次性的计划生成器，而不是项目助理。反过来，哪怕界面朴素，只要数据结构清楚、输出稳定、失败时能停下来问人，就值得继续打磨。&lt;/p&gt;
+&lt;h2 id="_2"&gt;最后一句&lt;/h2&gt;
 &lt;p&gt;工具会换、产品会迭代，今天火的明天可能就没人提了。但有两样东西不会过期：&lt;strong&gt;一是 PDCA 这个转了几十年的老框架，二是你把方法论固化成 Skill 的能力。&lt;/strong&gt;&lt;/p&gt;
 &lt;p&gt;所以我的建议是：&lt;strong&gt;别追工具，追方法。&lt;/strong&gt; 挑一个能陪你多轮对话、能读你文档的通用 AI 打底，把你做计划的套路沉淀成一个 Skill，然后在用的过程中一点点打磨它。工具是消耗品，方法论才是你的复利资产。&lt;/p&gt;
 &lt;p&gt;真正稀缺的，从来不是“会用某个工具”，而是&lt;strong&gt;知道自己要去哪，以及有一套能一遍遍复用的打法&lt;/strong&gt;。前者 AI 给不了你，后者，AI 能帮你放大。&lt;/p&gt;
 &lt;blockquote&gt;
 &lt;p&gt;这是三部曲的第二篇（兵器）。开头的心法在第一篇《&lt;a href="./2026-08-06-ai-planning.html"&gt;用 AI 做好计划之一：把 PDCA 环转起来&lt;/a&gt;》；把这套打法交给一个长期运行的 Agent 自动转起来，在第三篇《&lt;a href="./2026-08-06-ai-planning-agent.html"&gt;用 AI 做好计划之三：配个不睡觉的监工&lt;/a&gt;》。&lt;/p&gt;
 &lt;/blockquote&gt;
-&lt;h2 id="_2"&gt;全文思维导图&lt;/h2&gt;
+&lt;h2 id="_3"&gt;全文思维导图&lt;/h2&gt;
 &lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap
 &amp;lt;style&amp;gt;
 mindmapDiagram {
@@ -463,7 +1833,7 @@ mindmapDiagram {
 *** AI Agent/编排（能自动）
 *** AI Skill（可复用打法）
 ** 按 PDCA 选工具
-*** Plan：会抬杠的对话 AI
+*** Plan：喂够料 + 会抬杠
 *** Do&amp;amp;Check：结构化+自动化
 *** Act：生成决策对照表
 *** 规律：想靠通用AI，做靠自动化
@@ -636,7 +2006,10 @@ mindmapDiagram {
 环是那些重复的拆解、盯梢、同步、纠偏——交给 AI；心是目标、取舍、判断和拍板——留给自己。&lt;/p&gt;
 &lt;/blockquote&gt;
 &lt;hr&gt;
-&lt;h2 id="_2"&gt;最后一句&lt;/h2&gt;
+&lt;h2 id="_2"&gt;一次小型复盘：别让计划只停在漂亮的表格里&lt;/h2&gt;
+&lt;p&gt;如果没有完整的项目数据，可以先拿一个两周内能结束的小目标练手。计划里只保留五列：任务、负责人、完成条件、依赖、风险。执行中每天只更新事实，不让 AI 猜进度；到了复盘时，再让 AI 对照原计划回答三个问题：哪一项最早出现偏差、哪个依赖被低估、哪一个风险本来可以提前验证。&lt;/p&gt;
+&lt;p&gt;这一步的价值不在于生成一份更漂亮的计划，而在于形成一条可追溯的链：&lt;strong&gt;当时为什么这样计划，后来发生了什么，下一轮应该改哪一个假设。&lt;/strong&gt; 如果计划每次都只是被动改日期，说明你还没有真正进入 Act 环节，只是在给延期换一种字体。&lt;/p&gt;
+&lt;h2 id="_3"&gt;最后一句&lt;/h2&gt;
 &lt;p&gt;回到开头那个矛盾：计划总会过期，可做计划的过程无比重要。&lt;/p&gt;
 &lt;p&gt;AI 没有解决这个矛盾，它做的是另一件事——&lt;strong&gt;把“做计划”和“维护计划”这两件又累又机械的苦差事的成本大幅拉低&lt;/strong&gt;，低到你愿意一遍遍去做、去调、去纠偏。计划文档还是会过期，但你转动 PDCA 环的那份“planning”能力，被 AI 放大了。&lt;/p&gt;
 &lt;p&gt;省下来的时间干嘛？别拿去开更多的会。拿去做那些 AI 替不了的事——想清楚“我们到底要往哪儿走”，以及在没人给标准答案的地方，创新和创造。&lt;/p&gt;
@@ -644,7 +2017,7 @@ mindmapDiagram {
 &lt;blockquote&gt;
 &lt;p&gt;这是“用 AI 做好计划”三部曲的第一篇（心法）。想看具体工具和怎么封装成自己的 Skill，去第二篇兵器谱：《&lt;a href="./2026-08-06-ai-planning-tools.html"&gt;趁手的工具与 Skill&lt;/a&gt;》；想让 PDCA 环自动转起来，去第三篇：《&lt;a href="./2026-08-06-ai-planning-agent.html"&gt;配个不睡觉的监工&lt;/a&gt;》。&lt;/p&gt;
 &lt;/blockquote&gt;
-&lt;h2 id="_3"&gt;全文思维导图&lt;/h2&gt;
+&lt;h2 id="_4"&gt;全文思维导图&lt;/h2&gt;
 &lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap
 &amp;lt;style&amp;gt;
 mindmapDiagram {
@@ -1122,8 +2495,8 @@ mindmapDiagram {
 &lt;p&gt;市面上冒出一批叫做 AI chief of staff（AI 参谋长/办公室主任）的东西，思路大体一致：&lt;strong&gt;不再让人填表，而是直接读工作真正发生的地方&lt;/strong&gt;——代码仓库的提交、工单的状态流转、日历、聊天记录——然后自动生成一份带出处的简报，把每日站会、周同步这类“状态广播型会议”换成一段可以异步阅读的文字。&lt;/p&gt;
 &lt;p&gt;我不评价具体产品，但这个思路值得抄：&lt;strong&gt;状态同步会存在的根本原因不是信息不够，而是没人信报告。&lt;/strong&gt; 如果报告是自动生成、每条都带出处链接、还标出哪些数字是推断而非直取的，那这个会就没必要开了。&lt;/p&gt;
 &lt;p&gt;我把这个思路挪到了自己的项目跟踪上——先自动生成，我改两句，再发出去。写状态这件事从“攒信息 + 组织语言”，变成了只做后半截。&lt;/p&gt;
-&lt;!-- 建议亲自补充：这里补一个真实数字最有说服力（比如写周报/状态从多久降到多久，或者某份 skill 这个月被调用了多少次）。我不替你编。 --&gt;
-
+&lt;p&gt;如果暂时没有完整的效率统计，也可以先做一轮轻量记录：连续两周记下“原始输入、AI 初稿耗时、人工修改耗时、最终是否采用”四项。不要只看省了多少分钟，还要看返工次数、漏项数量和因为上下文不足而中断的次数。很多自动化一开始看起来很快，真正拉开差距的却是它能不能稳定地交付一个人愿意继续使用的初稿。&lt;/p&gt;
+&lt;p&gt;一个实用的验收标准是：&lt;strong&gt;机器负责把零散信息整理成可审阅的半成品，人负责判断、取舍和对外承诺。&lt;/strong&gt; 如果每次仍然需要重新解释背景，说明上下文还没有沉淀；如果生成内容漂亮却找不到出处，说明它还没有资格进入正式流程。&lt;/p&gt;
 &lt;h3 id="_14"&gt;参照四：我自己的两个副产品&lt;/h3&gt;
 &lt;p&gt;顺着这条路走下去，我做了两个自己在用的东西。&lt;/p&gt;
 &lt;p&gt;一个是&lt;a href="https://www.fanyamin.com/2026-07-29-ai-agent-incubator.html"&gt;给自己造一台 Agent 孵化器&lt;/a&gt;：我发现手搓专用 Agent 的骨架其实长得都差不多，索性做了个父 Agent 来批量生产子 Agent。另一个是研究&lt;a href="https://www.fanyamin.com/2026-07-31-harness-engineering.html"&gt;模型外面那层壳（Harness）&lt;/a&gt;——真正决定 AI 好不好用的，往往不是模型有多聪明，而是外面这层壳给了它什么上下文、什么工具、什么验收标准。&lt;/p&gt;
@@ -1506,11 +2879,14 @@ mindmapDiagram {
 &lt;/ol&gt;
 &lt;p&gt;关于框架，Anthropic 的态度也很实在——&lt;strong&gt;框架能帮你快速起步，但往生产走的时候，别怕砍掉抽象层，回到最基础的组件上来&lt;/strong&gt;。很多模式几行代码就能实现；你要是用框架，起码得搞清楚底下到底在干什么。"对底层的错误假设，是客户最常见的出错来源。"这句话我深有同感。&lt;/p&gt;
 &lt;hr&gt;
-&lt;h2 id="_2"&gt;最后一句&lt;/h2&gt;
+&lt;h2 id="_2"&gt;把五种模式放进一次真实决策&lt;/h2&gt;
+&lt;p&gt;拿一个熟悉的任务做对照最容易理解：如果输入输出稳定、步骤固定，先用 Prompt Chaining；如果请求类型差异很大，再考虑 Routing；如果子任务相互独立，优先 Parallelization；只有当任务需要动态拆解、工具调用和多轮反馈时，才进入 Orchestrator-Workers 或 Agent。&lt;/p&gt;
+&lt;p&gt;评估时不要只问“效果好不好”，还要记录：步骤数量、失败后能否重试、每轮消耗多少上下文、最长运行时间、是否需要人工接管。很多所谓 Agent，真正上线后只是一个带工具的 workflow；这不是降级，而是把复杂度控制在问题真正需要的范围内。&lt;/p&gt;
+&lt;h2 id="_3"&gt;最后一句&lt;/h2&gt;
 &lt;p&gt;重读这么多遍，我最大的体会是：&lt;strong&gt;"高效的 Agent"这个说法，重点从来不在"Agent"，而在"高效"&lt;/strong&gt;。真正高效的做法，往往是克制——先问清楚"这事到底需不需要一个 agent"，而不是急着证明"我也做了个 agent"。&lt;/p&gt;
 &lt;p&gt;在 LLM 这个领域，成功不是比谁的系统更花哨，而是比谁给自己的需求搭了&lt;strong&gt;对的&lt;/strong&gt;那个系统。从最简单的 prompt 开始，用扎实的评估去优化它，只有当简单方案确实撑不住时，才一层层往上加复杂度。&lt;/p&gt;
 &lt;p&gt;说到底，这跟写代码、带项目是一个道理：&lt;strong&gt;能把复杂的事情做简单，才是真本事；把简单的事情做复杂，谁都会。&lt;/strong&gt;&lt;/p&gt;
-&lt;h2 id="_3"&gt;全文思维导图&lt;/h2&gt;
+&lt;h2 id="_4"&gt;全文思维导图&lt;/h2&gt;
 &lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap
 &amp;lt;style&amp;gt;
 mindmapDiagram {
@@ -2102,10 +3478,13 @@ python&lt;span class="w"&gt; &lt;/span&gt;weather_mcp_2026.py&lt;span class="w"&
 &lt;li&gt;&lt;strong&gt;Task + Handle 模型&lt;/strong&gt;：让 Agent 从"只会同步调工具"进化到"能编排长任务、异步执行工作流"，去啃那些以前塞不进一次调用的复杂活儿。&lt;/li&gt;
 &lt;/ol&gt;
 &lt;hr&gt;
-&lt;h2 id="_5"&gt;最后一句&lt;/h2&gt;
+&lt;h2 id="_5"&gt;给快速变化的规范加一层“保鲜膜”&lt;/h2&gt;
+&lt;p&gt;阅读或实现新规范时，最好在文章和代码旁边同时记录四项：规范发布日期或 draft 版本、使用的 SDK 版本、实际跑过的客户端、仍未验证的扩展。这样读者能分辨哪些是协议核心，哪些只是某个 SDK 当前的实现方式。&lt;/p&gt;
+&lt;p&gt;最小兼容性测试可以包括：首次请求、重复请求、长任务轮询、鉴权失败、客户端断线后重试，以及旧客户端访问新服务。每个测试都保留一份原始请求和响应，尤其不要只展示封装库返回的成功结果。协议文章最怕“看起来已经能跑”，却没有告诉读者它在哪个版本、哪些边界还没跑过。&lt;/p&gt;
+&lt;h2 id="_6"&gt;最后一句&lt;/h2&gt;
 &lt;p&gt;MCP 这次从"打电话"改成"发快递"，本质上是把状态从协议层踢回到了应用层——协议只管把每个请求送到，状态谁需要谁自己管。这个取舍，做过分布式系统的人都熟悉：&lt;strong&gt;无状态的东西，才好扩、好换、好治理。&lt;/strong&gt;&lt;/p&gt;
 &lt;p&gt;如果你手上正好有个现成的 REST 服务想接给 Agent 用，别急着上一整套复杂架构。照着上面那个几十行的天气 Server 抄一个最小版本跑通，再按"无状态 → 加缓存 → 加网关"三步慢慢往生产演进。&lt;strong&gt;先能跑，再谈优雅。&lt;/strong&gt;&lt;/p&gt;
-&lt;h4 id="_6"&gt;行动清单&lt;/h4&gt;
+&lt;h4 id="_7"&gt;行动清单&lt;/h4&gt;
 &lt;ul&gt;
 &lt;li&gt;[ ] 分清你面对的是 RC（&lt;code&gt;2026-07-28&lt;/code&gt;）还是当前生效版（&lt;code&gt;2025-11-25&lt;/code&gt;），别把方向当 deadline&lt;/li&gt;
 &lt;li&gt;[ ] 老代码体检：还在用 &lt;code&gt;initialize&lt;/code&gt; 握手、&lt;code&gt;Mcp-Session-Id&lt;/code&gt;、阻塞式 &lt;code&gt;tasks/result&lt;/code&gt; 的，列进迁移清单&lt;/li&gt;
@@ -2117,7 +3496,7 @@ python&lt;span class="w"&gt; &lt;/span&gt;weather_mcp_2026.py&lt;span class="w"&
 &lt;li&gt;[ ] 换票时记得带 &lt;code&gt;resource&lt;/code&gt; 参数（RFC 8707），否则 &lt;code&gt;aud&lt;/code&gt; 会对不上&lt;/li&gt;
 &lt;li&gt;[ ] 上生产前想清楚：无状态传输 + 外部缓存 + 网关鉴权&lt;/li&gt;
 &lt;/ul&gt;
-&lt;h2 id="_7"&gt;全文思维导图&lt;/h2&gt;
+&lt;h2 id="_8"&gt;全文思维导图&lt;/h2&gt;
 &lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap
 &amp;lt;style&amp;gt;
 mindmapDiagram {

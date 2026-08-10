@@ -1,0 +1,1254 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="生产上的 AI Agent 大多不是死在模型不行，而是死在记忆管得烂：要么什么都记，Token 和存储一起爆炸；要么什么都记不住，用户说三遍它忘三遍。这篇讲清楚一套像人脑一样分层的记忆系统——工作记忆、情景记忆、语义记忆、程序记忆，以及写入、巩固、检索、遗忘的完整生命周期，最后给一套可落地的参考架构和 checklist。" />
+<meta name="keywords" content="journal, AI, agent, memory, LLM, RAG, architecture">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "如何管理 AI Agent 的记忆之一：既记得牢、想得起，又不烧钱",
+  "description": "生产上的 AI Agent 大多不是死在模型不行，而是死在记忆管得烂：要么什么都记，Token 和存储一起爆炸；要么什么都记不住，用户说三遍它忘三遍。这篇讲清楚一套像人脑一样分层的记忆系统——工作记忆、情景记忆、语义记忆、程序记忆，以及写入、巩固、检索、遗忘的完整生命周期，最后给一套可落地的参考架构和 checklist。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-08-07T20:30:00+08:00",
+  "dateModified": "2026-08-07T20:30:00+08:00",
+  "url": "https://www.fanyamin.com/blog/2026-08-07-ai-agent-memory.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/2026-08-07-ai-agent-memory.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "journal, AI, agent, memory, LLM, RAG, architecture"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="如何管理 AI Agent 的记忆之一：既记得牢、想得起，又不烧钱"/>
+  <meta property="og:description" content="生产上的 AI Agent 大多不是死在模型不行，而是死在记忆管得烂：要么什么都记，Token 和存储一起爆炸；要么什么都记不住，用户说三遍它忘三遍。这篇讲清楚一套像人脑一样分层的记忆系统——工作记忆、情景记忆、语义记忆、程序记忆，以及写入、巩固、检索、遗忘的完整生命周期，最后给一套可落地的参考架构和 checklist。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/2026-08-07-ai-agent-memory.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-08-07 20:30:00+08:00"/>
+  <meta property="article:modified_time" content="2026-08-07 20:30:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="AI"/>
+  <meta property="article:tag" content="journal"/>
+  <meta property="article:tag" content="AI"/>
+  <meta property="article:tag" content="agent"/>
+  <meta property="article:tag" content="memory"/>
+  <meta property="article:tag" content="LLM"/>
+  <meta property="article:tag" content="RAG"/>
+  <meta property="article:tag" content="architecture"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 如何管理 AI Agent 的记忆之一：既记得牢、想得起，又不烧钱</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="2026-08-07-ai-agent-memory">如何管理 AI Agent 的记忆之一：既记得牢、想得起，又不烧钱</h1>
+    <p>
+      Posted on 五 07 8月 2026 in <a href="https://www.fanyamin.com/blog/category/ai.html">AI</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>如何管理 AI Agent 的记忆之一：既记得牢、想得起，又不烧钱</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>learning note</td>
+</tr>
+<tr>
+<td><strong>Version</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-08-07</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<p>我带过一个实习生，人很聪明，脑子转得也快，就一个毛病：转头就忘。今天跟他讲清楚的事，明天他又来问你一遍；你上周说过“这个客户偏好 Go，不要给他推 Java”，他下次照样甩过去一份 Spring Boot 方案。你不能说他不聪明，只能说他“记不住、也想不起来”。</p>
+<p>现在很多 AI Agent，就是这个实习生。</p>
+<p>大家总以为 Agent 做得烂是因为大模型不行。其实真到生产环境，<strong>绝大多数 Agent 翻车不是输在模型，而是输在记忆管理</strong>。要么什么都往数据库里塞，聊到第三天上下文塞不下、Token 账单吓死人；要么根本没做长期记忆，用户说了三遍的偏好它一次都记不住。看完这篇你能带走一件事：<strong>Agent 的记忆不该是"把聊天记录扔进向量库"这么简单，它更该像人脑一样分层管理</strong>——记得牢、想得起、还不烧钱，这三件事是可以同时做到的。</p>
+<ul>
+<li>不是"存得越多越聪明"，恰恰相反：<strong>存得越多，检索越慢、越贵、越容易翻出一堆无关的旧账。</strong></li>
+<li>好的记忆系统解决的是三个问题:<strong>该记什么、怎么想起来、什么时候忘掉。</strong></li>
+</ul>
+<hr>
+<h2 id="_1">为什么"一股脑存向量库"是个坑</h2>
+<p>咱们先说清楚最常见的做法：把每一轮对话都算个 embedding，扔进 Qdrant 或者 pgvector，用户来问就做一次相似度检索，捞回来拼进 prompt。</p>
+<p>这套东西 demo 阶段特别香，上线之后就开始还债：</p>
+<ul>
+<li><strong>存储只涨不跌</strong>。用户说的 "hello" "谢谢" "好的" 全都进了库，一个月下来九成是垃圾。</li>
+<li><strong>检索质量下降</strong>。库里噪音越多，相似度 top-k 里混进来的无关内容越多，模型被带偏。</li>
+<li><strong>Token 越烧越多</strong>。捞回来的东西一股脑塞进上下文，输入 Token 蹭蹭涨，钱包蹭蹭瘪。</li>
+</ul>
+<p>问题的根子在于：<strong>向量相似度只是"长得像"，不等于"该记"也不等于"现在有用"。</strong> 人脑不是这么干的。你不会把今天说的每句话原封不动背下来，你会区分"这是我现在正在想的""这是昨天发生的事""这是我知道的一个事实""这是我会做的一件事"——然后大部分细节，睡一觉就忘了，只留下提炼过的结论。</p>
+<p>Agent 的记忆系统，也该照这个思路搭。</p>
+<hr>
+<h2 id="_2">像人脑一样分四层</h2>
+<p>一个生产级的 Agent，记忆通常分成四层，各管各的事：</p>
+<table>
+<thead>
+<tr>
+<th>记忆类型</th>
+<th>对应人脑</th>
+<th>存什么</th>
+<th>大白话</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>工作记忆 Working</td>
+<td>你此刻在想的</td>
+<td>当前对话、工具输出、当前计划</td>
+<td>"我正在干的这件事"</td>
+</tr>
+<tr>
+<td>情景记忆 Episodic</td>
+<td>过去发生的事</td>
+<td>一次次任务的经过和结果</td>
+<td>"昨天我们做了啥"</td>
+</tr>
+<tr>
+<td>语义记忆 Semantic</td>
+<td>学到的事实</td>
+<td>用户偏好、项目配置等长期事实</td>
+<td>"我知道的一条条事实"</td>
+</tr>
+<tr>
+<td>程序记忆 Procedural</td>
+<td>会做的事</td>
+<td>工作流、操作步骤</td>
+<td>"这件事该怎么做"</td>
+</tr>
+</tbody>
+</table>
+<p>很多开源框架只做了其中一层（通常是把对话塞向量库那层），就号称"有记忆"了。这就好比只有短期记忆的人——聊天挺顺，一转身全忘。</p>
+<p>它们怎么协作，看这张图：</p>
+<div class="highlight"><pre><span></span><code>flowchart TD
+    A[用户请求] --&gt; B[工作记忆&lt;br/&gt;当前上下文]
+    B --&gt;|检索相关的长期记忆| C[长期记忆]
+    subgraph C [长期记忆]
+        direction LR
+        C1[情景记忆&lt;br/&gt;发生过的事]
+        C2[语义记忆&lt;br/&gt;学到的事实]
+        C3[程序记忆&lt;br/&gt;怎么做]
+    end
+    C --&gt;|回答之后再更新记忆| D[记忆巩固&lt;br/&gt;合并 / 压缩]
+    D -.回流.-&gt; C
+</code></pre></div>
+
+<p>下面一层层拆。</p>
+<h3 id="1">1. 工作记忆：相当于内存条</h3>
+<p>工作记忆就是 RAM，装的是"我此刻在想的东西"：当前对话、刚刚的工具输出、当前任务、当前计划、草稿本。</p>
+<div class="highlight"><pre><span></span><code>目标:
+    做一个 REST API
+
+当前步骤:
+    先写 OpenAPI
+
+已知约束:
+    Java 21
+    Spring Boot
+
+待定问题:
+    要不要上 OAuth?
+</code></pre></div>
+
+<p>这层通常活在 LangGraph 的 state、AutoGen 的 AgentState、CrewAI 的 Context 里，<strong>用完就丢，不做永久持久化</strong>。就像你算一道题时草稿纸上的演算，算完撕了就撕了。</p>
+<h3 id="2">2. 情景记忆：昨天发生了什么</h3>
+<p>情景记忆存的是"经历"——一次任务从头到尾的经过。</p>
+<div class="highlight"><pre><span></span><code>昨天
+
+用户要:
+    - OAuth
+    - Spring Security
+    - JWT
+
+结果:
+    API 顺利完成。
+</code></pre></div>
+
+<p>等第二天用户说"接着昨天的做"，Agent 就得能把这段经历捞回来。常见的存储结构长这样：</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;task&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;timestamp&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;outcome&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;summary&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;embeddings&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w"> </span><span class="err">...</span><span class="w"> </span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>一般按向量、时间戳、标签三种维度建索引——因为你要么按"内容像不像"找，要么按"什么时候"找，要么按"打了啥标签"找。</p>
+<h3 id="3">3. 语义记忆：我知道的事实</h3>
+<p>语义记忆和情景记忆最大的区别：<strong>情景是"事件导向"（某时某刻发生了啥），语义是"事实导向"（一条条稳定的事实）。</strong></p>
+<div class="highlight"><pre><span></span><code>用户偏好 Go。
+用户在 X 公司。
+项目跑在 Kubernetes 上。
+数据库是 MySQL。
+</code></pre></div>
+
+<p>这些事实用"主-谓-宾"三元组存最合适：</p>
+<div class="highlight"><pre><span></span><code>主语      谓语        宾语
+用户      偏好        Go
+项目      部署在      Kubernetes
+</code></pre></div>
+
+<p>一到"关系"就该想到图数据库。比如 Neo4j 里：</p>
+<div class="highlight"><pre><span></span><code>(用户)-[:偏好]-&gt;(Go)
+(项目)-[:部署于]-&gt;(Kubernetes)
+</code></pre></div>
+
+<p>好处是：以后你问"这个用户相关的项目都用什么技术栈"，顺着边一走就出来了，比向量检索精确得多。</p>
+<h3 id="4">4. 程序记忆：这件事该怎么做</h3>
+<p>程序记忆存的不是"发生了什么"，而是"怎么做一件事"——工作流、SOP。</p>
+<div class="highlight"><pre><span></span><code>部署服务
+
+1. 构建 Docker 镜像
+2. 推送镜像
+3. 更新 Helm
+4. 等待 rollout 完成
+</code></pre></div>
+
+<p>这类东西存成 Markdown、JSON workflow、YAML，或者直接编成 LangGraph 的图都行。它的价值在于让 Agent 别每次都"重新发明轮子"——标准流程记下来，下次照着走。</p>
+<hr>
+<h2 id="_3">记忆的生命周期：别急着写</h2>
+<p>这是最容易被忽略、却最影响成本的一环。<strong>记忆不该聊完立刻写库。</strong> 一个健康的写入流程是这样的：</p>
+<div class="highlight"><pre><span></span><code>对话
+  ↓
+候选记忆（先当&quot;待定&quot;，不落库）
+  ↓
+重要性评估（值不值得永久记？）
+  ↓
+去重（是不是已经有了？）
+  ↓
+摘要（压成一句能复用的话）
+  ↓
+存储
+</code></pre></div>
+
+<p>这一套下来，就能拦住那些没营养的东西：</p>
+<div class="highlight"><pre><span></span><code>hello
+谢谢
+好的
+</code></pre></div>
+
+<p>这些根本不该进长期记忆。</p>
+<h3 id="llm">用 LLM 给记忆打个重要性分</h3>
+<p>一个业界常用的招：让模型自己给这段内容打个重要性分。</p>
+<div class="highlight"><pre><span></span><code>给下面这段对话打个 1-10 分。
+这段内容值得被永久记住吗？
+
+对话:
+...
+</code></pre></div>
+
+<p>然后只存 <code>score &gt; 7</code> 的。阈值可以按业务调——你想记得多，就调低；想省钱，就调高。这个"用 LLM 评估要不要记"的思路，微软、Anthropic、OpenAI 在各自的研究或工程实践里都提过类似的变体（具体做法各家不同，这里只取其神）。</p>
+<h3 id="_4">记忆巩固：像睡觉一样整理</h3>
+<p>人脑在睡觉时会做"记忆巩固"，把白天零碎的经历整理、压缩、归档。Agent 也该有这么个后台过程。</p>
+<p>别把这三条分开存：</p>
+<div class="highlight"><pre><span></span><code>昨天：问了 Kubernetes。
+今天：问了 K8S。
+明天：问了 Pod。
+</code></pre></div>
+
+<p>后台巩固时，把它们合并成一条：</p>
+<div class="highlight"><pre><span></span><code>用户正在搞 Kubernetes 基础设施。
+</code></pre></div>
+
+<p><strong>存储的增长立刻就被摁住了</strong>——三条噪音变一条信号，检索时也更容易命中。这一步一般放到低峰期的定时任务里跑，配合摘要和去重一起做。</p>
+<hr>
+<h2 id="_5">检索：永远别把全部捞回来</h2>
+<p>写入省了，检索这头也不能松。<strong>最忌讳的就是"把相关记忆全捞回来塞进上下文"</strong>——那是 Token 账单的头号杀手。</p>
+<p>好的检索是多信号打分，不是只看向量相似度。一个常见的加权公式：</p>
+<div class="highlight"><pre><span></span><code>score = 0.45 * 向量相似度
+      + 0.25 * 新近度
+      + 0.20 * 重要性
+      + 0.10 * 图关系距离
+</code></pre></div>
+
+<ul>
+<li><strong>向量相似度</strong>：内容像不像。</li>
+<li><strong>新近度</strong>：越新的记忆越可能有用（用户上周改了架构，就别再翻两个月前的老配置）。</li>
+<li><strong>重要性</strong>：写入时打的那个分，重要的优先。</li>
+<li><strong>图关系距离</strong>：在知识图谱里离当前话题几跳，越近越相关。</li>
+</ul>
+<p>这四个信号一起排序，再取 top-k，捞回来的东西又准又少，Token 自然就省了。权重不是圣旨，得拿真实 case 调——不同业务对"新"和"准"的偏好不一样。</p>
+<hr>
+<h2 id="_6">什么记忆放什么存储</h2>
+<p>没有一个数据库能通吃所有记忆类型。按用途选存储，才不至于用向量库干图数据库的活：</p>
+<table>
+<thead>
+<tr>
+<th>记忆</th>
+<th>合适的存储</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>工作记忆</td>
+<td>LangGraph State / Redis</td>
+</tr>
+<tr>
+<td>对话记录</td>
+<td>PostgreSQL / SQLite</td>
+</tr>
+<tr>
+<td>语义记忆</td>
+<td>PostgreSQL + pgvector / Neo4j</td>
+</tr>
+<tr>
+<td>情景记忆</td>
+<td>向量库</td>
+</tr>
+<tr>
+<td>文档</td>
+<td>向量库</td>
+</tr>
+<tr>
+<td>知识（强关系）</td>
+<td>图数据库</td>
+</tr>
+<tr>
+<td>工作流</td>
+<td>YAML / Markdown</td>
+</tr>
+</tbody>
+</table>
+<p>向量库这块，Qdrant、Milvus、Weaviate、Chroma 都行；很多企业场景，<strong>PostgreSQL + pgvector 就够用了</strong>——别一上来就上一堆重组件，先看数据量。</p>
+<p>顺手提一句常用的现成轮子（各有侧重，别指望一个搞定一切）：LangGraph（长跑 Agent 的状态与 checkpoint）、Mem0（专门做长期记忆，自带抽取、打分、去重）、Zep（专攻对话记忆，带时间检索和知识图谱）、LlamaIndex（文档记忆与检索）、Graphiti（从交互里动态构建知识图谱）。选型时先问自己"我缺的是哪一层"，再对号入座。</p>
+<hr>
+<h2 id="_7">一套可落地的参考架构</h2>
+<p>如果让我来搭，我不会把记忆逻辑硬塞进每个 Agent 里——那样每个 Agent 各记各的，一致性、审计、权限全乱套。我更倾向于<strong>把记忆做成一个独立的服务</strong>，前面用 API 或者 MCP 暴露出来：</p>
+<div class="highlight"><pre><span></span><code>flowchart TD
+    Agent[&quot;AI Agent (LangGraph)&quot;] --&gt; API[&quot;记忆 API / MCP Server&quot;]
+    API --&gt; Redis[&quot;工作缓存&lt;br/&gt;Redis&quot;]
+    API --&gt; PG[&quot;语义存储&lt;br/&gt;PostgreSQL + pgvector&quot;]
+    API --&gt; Qdrant[&quot;情景存储&lt;br/&gt;Qdrant&quot;]
+    Redis --&gt; KG[&quot;知识图谱&lt;br/&gt;Neo4j / Graphiti&quot;]
+    PG --&gt; KG
+    Qdrant --&gt; KG
+    API -.触发.-&gt; Consolidate[&quot;后台记忆巩固&lt;br/&gt;摘要 / 去重 / 衰减&quot;]
+    Consolidate -.整理后写回.-&gt; PG
+</code></pre></div>
+
+<p>这么搭有几个实实在在的好处：</p>
+<ul>
+<li><strong>多个 Agent 共享同一套记忆</strong>，不会你记你的、我记我的。</li>
+<li><strong>检索可扩展</strong>，各存储组件能独立演进——换向量库不影响 Agent 逻辑。</li>
+<li><strong>企业场景友好</strong>：权限控制、审计、记忆生命周期策略，都能在这一层统一收口。</li>
+</ul>
+<p>落地时不必一开始就把四层记忆和所有数据库都配齐。可以先选十几条不敏感的样本，分别测试“能否写入、能否按原话找回、事实更新后旧版本是否被正确标记、用户要求忘记时能否删除”。等这条最小链路稳定，再决定是否需要图数据库、后台巩固任务和更复杂的排序。</p>
+<p>建议把成本和质量一起记录：每次写入消耗多少 Token，检索返回多少候选，最终真正被模型采用了多少条，错误记忆和过期记忆各有多少。记忆系统不是存得越多越好，而是要让每一条被留下的内容都能解释“为什么留下、什么时候失效、如何删除”。</p>
+<hr>
+<h2 id="_8">上代码：一个能跑的最小记忆库</h2>
+<p>道理讲一堆，不如给一段能跑的代码。下面用 <strong>PostgreSQL + pgvector</strong> 实现前面说的核心逻辑：候选记忆 → 重要性打分 → 去重 → 存储 → 多信号检索。为了聚焦，我把工作记忆（Redis）和图数据库那两层略掉了，先把最吃成本的语义/情景记忆这条主线跑通。</p>
+<blockquote>
+<p>依赖：<code>pip install psycopg2-binary openai numpy</code>，外加一个装了 pgvector 的 PostgreSQL（<code>docker run -e POSTGRES_PASSWORD=pass -p 5432:5432 pgvector/pgvector:pg16</code>）。</p>
+</blockquote>
+<h3 id="_9">建表：一条记忆该带哪些字段</h3>
+<p>记忆不是只存 embedding，而是要带够检索和治理需要的元数据——这是"记得起来"和"敢忘"的前提：</p>
+<div class="highlight"><pre><span></span><code><span class="k">CREATE</span><span class="w"> </span><span class="n">EXTENSION</span><span class="w"> </span><span class="k">IF</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">EXISTS</span><span class="w"> </span><span class="n">vector</span><span class="p">;</span>
+
+<span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">memories</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="n">id</span><span class="w">          </span><span class="n">BIGSERIAL</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="p">,</span>
+<span class="w">    </span><span class="n">user_id</span><span class="w">     </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span><span class="w">          </span><span class="c1">-- 用户隔离：命名空间</span>
+<span class="w">    </span><span class="n">kind</span><span class="w">        </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span><span class="w">          </span><span class="c1">-- semantic / episodic</span>
+<span class="w">    </span><span class="n">content</span><span class="w">     </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span><span class="w">          </span><span class="c1">-- 提炼后的记忆，不是原始对话</span>
+<span class="w">    </span><span class="n">importance</span><span class="w">  </span><span class="nb">REAL</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span><span class="w">          </span><span class="c1">-- 1-10 重要性分</span>
+<span class="w">    </span><span class="k">source</span><span class="w">      </span><span class="nb">TEXT</span><span class="p">,</span><span class="w">                   </span><span class="c1">-- provenance：这条哪来的</span>
+<span class="w">    </span><span class="n">created_at</span><span class="w">  </span><span class="n">TIMESTAMPTZ</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">now</span><span class="p">(),</span>
+<span class="w">    </span><span class="n">embedding</span><span class="w">   </span><span class="n">vector</span><span class="p">(</span><span class="mi">1536</span><span class="p">)</span>
+<span class="p">);</span>
+
+<span class="c1">-- 向量索引 + 用户维度过滤，检索又快又不串味</span>
+<span class="k">CREATE</span><span class="w"> </span><span class="k">INDEX</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">memories</span><span class="w"> </span><span class="k">USING</span><span class="w"> </span><span class="n">hnsw</span><span class="w"> </span><span class="p">(</span><span class="n">embedding</span><span class="w"> </span><span class="n">vector_cosine_ops</span><span class="p">);</span>
+<span class="k">CREATE</span><span class="w"> </span><span class="k">INDEX</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">memories</span><span class="w"> </span><span class="p">(</span><span class="n">user_id</span><span class="p">,</span><span class="w"> </span><span class="n">kind</span><span class="p">);</span>
+</code></pre></div>
+
+<h3 id="_10">写入：先打分、再去重、才落库</h3>
+<p>关键就在于<strong>别聊完立刻写</strong>。下面这段 <code>remember()</code> 把生命周期串起来了：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span><span class="o">,</span> <span class="nn">psycopg2</span><span class="o">,</span> <span class="nn">json</span>
+<span class="kn">from</span> <span class="nn">openai</span> <span class="kn">import</span> <span class="n">OpenAI</span>
+
+<span class="n">client</span> <span class="o">=</span> <span class="n">OpenAI</span><span class="p">()</span>  <span class="c1"># 或任意 OpenAI 兼容网关</span>
+<span class="n">db</span> <span class="o">=</span> <span class="n">psycopg2</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="s2">&quot;dbname=postgres user=postgres password=pass host=localhost&quot;</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">embed</span><span class="p">(</span><span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span>
+    <span class="k">return</span> <span class="n">client</span><span class="o">.</span><span class="n">embeddings</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
+        <span class="n">model</span><span class="o">=</span><span class="s2">&quot;text-embedding-3-small&quot;</span><span class="p">,</span> <span class="nb">input</span><span class="o">=</span><span class="n">text</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">embedding</span>
+
+<span class="k">def</span> <span class="nf">score_importance</span><span class="p">(</span><span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;让 LLM 给这条内容打 1-10 分，只有值得长期记的才存&quot;&quot;&quot;</span>
+    <span class="n">prompt</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="s2">&quot;给下面这段内容打 1-10 分，评估它是否值得被 AI 助手永久记住。&quot;</span>
+        <span class="s2">&quot;用户的长期偏好、项目关键事实给高分；寒暄、临时性内容给低分。&quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;只回一个数字。</span><span class="se">\n\n</span><span class="s2">内容：</span><span class="si">{</span><span class="n">text</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="p">)</span>
+    <span class="n">resp</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">chat</span><span class="o">.</span><span class="n">completions</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
+        <span class="n">model</span><span class="o">=</span><span class="s2">&quot;gpt-4o-mini&quot;</span><span class="p">,</span>
+        <span class="n">messages</span><span class="o">=</span><span class="p">[{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="n">prompt</span><span class="p">}],</span>
+    <span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">resp</span><span class="o">.</span><span class="n">choices</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">message</span><span class="o">.</span><span class="n">content</span><span class="o">.</span><span class="n">strip</span><span class="p">())</span>
+    <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+        <span class="k">return</span> <span class="mf">5.0</span>
+
+<span class="k">def</span> <span class="nf">remember</span><span class="p">(</span><span class="n">user_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s2">&quot;semantic&quot;</span><span class="p">,</span>
+             <span class="n">source</span><span class="o">=</span><span class="s2">&quot;chat&quot;</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="mf">7.0</span><span class="p">,</span> <span class="n">dedup_sim</span><span class="o">=</span><span class="mf">0.92</span><span class="p">):</span>
+    <span class="c1"># 1) 重要性闸门：不够重要直接丢</span>
+    <span class="n">imp</span> <span class="o">=</span> <span class="n">score_importance</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">imp</span> <span class="o">&lt;</span> <span class="n">threshold</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[skip] importance=</span><span class="si">{</span><span class="n">imp</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2"> &lt; </span><span class="si">{</span><span class="n">threshold</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">text</span><span class="p">[:</span><span class="mi">30</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span>
+
+    <span class="n">vec</span> <span class="o">=</span> <span class="n">embed</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+
+    <span class="c1"># 2) 去重：和已有记忆太像就不新增（真正生产里应改成&quot;合并/更新&quot;）</span>
+    <span class="k">with</span> <span class="n">db</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cur</span><span class="p">:</span>
+        <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;SELECT id, content, 1 - (embedding &lt;=&gt; %s::vector) AS sim</span>
+<span class="sd">               FROM memories WHERE user_id=%s</span>
+<span class="sd">               ORDER BY embedding &lt;=&gt; %s::vector LIMIT 1&quot;&quot;&quot;</span><span class="p">,</span>
+            <span class="p">(</span><span class="n">vec</span><span class="p">,</span> <span class="n">user_id</span><span class="p">,</span> <span class="n">vec</span><span class="p">),</span>
+        <span class="p">)</span>
+        <span class="n">row</span> <span class="o">=</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">row</span> <span class="ow">and</span> <span class="n">row</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="n">dedup_sim</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[dedup] 命中已有记忆(sim=</span><span class="si">{</span><span class="n">row</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">): </span><span class="si">{</span><span class="n">row</span><span class="p">[</span><span class="mi">1</span><span class="p">][:</span><span class="mi">30</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">return</span>
+
+        <span class="c1"># 3) 落库</span>
+        <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;INSERT INTO memories(user_id, kind, content, importance, source, embedding)</span>
+<span class="sd">               VALUES (%s,%s,%s,%s,%s,%s)&quot;&quot;&quot;</span><span class="p">,</span>
+            <span class="p">(</span><span class="n">user_id</span><span class="p">,</span> <span class="n">kind</span><span class="p">,</span> <span class="n">text</span><span class="p">,</span> <span class="n">imp</span><span class="p">,</span> <span class="n">source</span><span class="p">,</span> <span class="n">vec</span><span class="p">),</span>
+        <span class="p">)</span>
+        <span class="n">db</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[store] importance=</span><span class="si">{</span><span class="n">imp</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">text</span><span class="p">[:</span><span class="mi">30</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<h3 id="top-k">检索：多信号加权，只取 top-k</h3>
+<p>检索这头，别只按向量相似度排。把<strong>新近度</strong>和<strong>重要性</strong>也揉进去——这就是前面那个加权公式落到 SQL 里的样子：</p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span> <span class="nf">recall</span><span class="p">(</span><span class="n">user_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">query</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+           <span class="n">w_sim</span><span class="o">=</span><span class="mf">0.6</span><span class="p">,</span> <span class="n">w_recency</span><span class="o">=</span><span class="mf">0.25</span><span class="p">,</span> <span class="n">w_imp</span><span class="o">=</span><span class="mf">0.15</span><span class="p">):</span>
+    <span class="n">qvec</span> <span class="o">=</span> <span class="n">embed</span><span class="p">(</span><span class="n">query</span><span class="p">)</span>
+    <span class="k">with</span> <span class="n">db</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cur</span><span class="p">:</span>
+        <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            SELECT content, importance,</span>
+<span class="sd">                   1 - (embedding &lt;=&gt; %s::vector) AS sim,</span>
+<span class="sd">                   -- 新近度：越新越接近 1，30 天前衰减到 ~0.37</span>
+<span class="sd">                   exp(-EXTRACT(EPOCH FROM (now()-created_at))/2592000.0) AS recency</span>
+<span class="sd">            FROM memories WHERE user_id=%s</span>
+<span class="sd">            ORDER BY embedding &lt;=&gt; %s::vector LIMIT 20</span>
+<span class="sd">            &quot;&quot;&quot;</span><span class="p">,</span>
+            <span class="p">(</span><span class="n">qvec</span><span class="p">,</span> <span class="n">user_id</span><span class="p">,</span> <span class="n">qvec</span><span class="p">),</span>
+        <span class="p">)</span>
+        <span class="n">rows</span> <span class="o">=</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+
+    <span class="n">scored</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="p">(</span><span class="n">w_sim</span><span class="o">*</span><span class="n">sim</span> <span class="o">+</span> <span class="n">w_recency</span><span class="o">*</span><span class="n">rec</span> <span class="o">+</span> <span class="n">w_imp</span><span class="o">*</span><span class="p">(</span><span class="n">imp</span><span class="o">/</span><span class="mf">10.0</span><span class="p">),</span> <span class="n">content</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">content</span><span class="p">,</span> <span class="n">imp</span><span class="p">,</span> <span class="n">sim</span><span class="p">,</span> <span class="n">rec</span> <span class="ow">in</span> <span class="n">rows</span>
+    <span class="p">]</span>
+    <span class="n">scored</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">reverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">[</span><span class="n">c</span> <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">scored</span><span class="p">[:</span><span class="n">k</span><span class="p">]]</span>   <span class="c1"># 只回 top-k，省 Token</span>
+</code></pre></div>
+
+<p>用起来就三行：</p>
+<div class="highlight"><pre><span></span><code><span class="n">remember</span><span class="p">(</span><span class="s2">&quot;u1&quot;</span><span class="p">,</span> <span class="s2">&quot;用户偏好 Go，明确不要 Java 方案&quot;</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="s2">&quot;preference&quot;</span><span class="p">)</span>
+<span class="n">remember</span><span class="p">(</span><span class="s2">&quot;u1&quot;</span><span class="p">,</span> <span class="s2">&quot;谢谢，辛苦了&quot;</span><span class="p">)</span>          <span class="c1"># 会被 importance 闸门拦掉</span>
+<span class="n">remember</span><span class="p">(</span><span class="s2">&quot;u1&quot;</span><span class="p">,</span> <span class="s2">&quot;用户喜欢用 Go 语言&quot;</span><span class="p">)</span>    <span class="c1"># 会被 dedup 拦掉（和第一条太像）</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">recall</span><span class="p">(</span><span class="s2">&quot;u1&quot;</span><span class="p">,</span> <span class="s2">&quot;给他推荐个后端技术栈&quot;</span><span class="p">))</span>
+<span class="c1"># → [&#39;用户偏好 Go，明确不要 Java 方案&#39;]</span>
+</code></pre></div>
+
+<p>看到没：三次写入，只有一条真正进库，检索时也只回一条最相关的。<strong>寒暄被闸门拦了，重复被去重拦了，检索只取 top-k</strong>——存储和 Token 就是这么省下来的。这段一百来行，就是前面所有道理的可执行版本。</p>
+<hr>
+<h2 id="_11">走一遍真实场景：用户说"接着昨天的做"</h2>
+<p>光有零件不够，看它们怎么配合。假设一个写代码的 Agent，还原一个最常见的场景：</p>
+<p><strong>第一天</strong>，用户让 Agent 搭一套带 OAuth 的 REST API。这一天里：</p>
+<ul>
+<li><strong>工作记忆</strong>（Redis）实时装着当前对话、刚才的工具输出、当前计划。任务一结束，这块就清空——它是 RAM，不是硬盘。</li>
+<li>收尾时触发一次<strong>写入流程</strong>：把这一天压成一条<strong>情景记忆</strong>存进库：
+  <code>json
+  {
+    "kind": "episodic",
+    "content": "帮用户完成了带 OAuth2 + JWT 的 Spring Boot REST API，用户 Java 21，已上线",
+    "importance": 8.5,
+    "source": "task-completion"
+  }</code></li>
+<li>同时抽出两条<strong>语义记忆</strong>（事实）：<code>用户用 Java 21</code>、<code>用户项目用 Spring Security</code>。寒暄那些，importance 打分没过 7 分，直接丢掉。</li>
+</ul>
+<p><strong>第二天</strong>，用户只甩一句："<strong>接着昨天的做，加上刷新 token。</strong>"</p>
+<p>Agent 内部这么转：</p>
+<ol>
+<li><strong>工作记忆是空的</strong>——昨天的 RAM 早清了，它此刻啥都不知道。</li>
+<li>拿"昨天""刷新 token"去 <strong><code>recall()</code></strong>，多信号加权命中：那条 importance 8.5、created_at 就在昨天（recency 接近 1）的<strong>情景记忆</strong>排到第一，两条语义事实跟上。</li>
+<li>把这三条（而不是昨天几百轮对话原文）拼进上下文——<strong>输入 Token 从"几千"降到"几十"</strong>。</li>
+<li>Agent 于是"想起来了"：哦，Spring Boot + OAuth2 那套，Java 21,继续加 refresh token。</li>
+</ol>
+<p>这就是"记得起来又不烧钱"的完整闭环：<strong>该记的压成一条存下、该忘的当场丢掉、要用时精准捞几条。</strong> 如果你当初把昨天几百轮对话原样塞进向量库，第二天检索捞回来一大坨,Token 爆炸不说,模型还容易被无关内容带偏。</p>
+<hr>
+<h2 id="ai-skill-ai-tools-claude-code-codex-opencode">更进一步：把它做成 AI Skill + AI Tools，让 Claude Code / Codex / OpenCode 都能用</h2>
+<p>上面这套 <code>remember()</code> / <code>recall()</code> 现在还只是"我自己脚本里的函数"。可如果你像我一样，同时在用 Claude Code、Codex、OpenCode 写代码，就会冒出一个很自然的想法：</p>
+<blockquote>
+<p><strong>能不能把这套记忆系统抽出来，做成一个所有编码 Agent 都能调用的公共能力？</strong></p>
+</blockquote>
+<p>答案是能，而且这正是 <strong>AI Tools（MCP）</strong> 和 <strong>AI Skill</strong> 该干的活。区别在于：</p>
+<ul>
+<li><strong>AI Tools（MCP Server）</strong>：把 <code>remember</code> / <code>recall</code> 暴露成标准工具，让 Agent <strong>能存能取</strong>——这是"手"。</li>
+<li><strong>AI Skill</strong>：一份写给 Agent 看的说明书，告诉它<strong>什么时候该存、什么时候该取、怎么用这两个工具</strong>——这是"脑子里的规矩"。</li>
+</ul>
+<p>光有工具没 Skill，Agent 有手不会用；光有 Skill 没工具，Agent 有想法没抓手。两个得配套。</p>
+<h3 id="mcp-ai-tools">第一步：用 MCP 把记忆包成 AI Tools</h3>
+<p>MCP（Model Context Protocol）是现在 Claude Code、Codex、OpenCode 都支持的工具协议。用 Python SDK 把上面两个函数包一层就行，核心逻辑一行没改：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># memory_mcp_server.py</span>
+<span class="kn">from</span> <span class="nn">mcp.server.fastmcp</span> <span class="kn">import</span> <span class="n">FastMCP</span>
+<span class="kn">from</span> <span class="nn">memory_store</span> <span class="kn">import</span> <span class="n">remember</span><span class="p">,</span> <span class="n">recall</span>   <span class="c1"># 就是上面实现的那两个函数</span>
+
+<span class="n">mcp</span> <span class="o">=</span> <span class="n">FastMCP</span><span class="p">(</span><span class="s2">&quot;shared-memory&quot;</span><span class="p">)</span>
+
+<span class="nd">@mcp</span><span class="o">.</span><span class="n">tool</span><span class="p">()</span>
+<span class="k">def</span> <span class="nf">save_memory</span><span class="p">(</span><span class="n">user_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">kind</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;semantic&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;存一条值得长期记住的信息（自动打分 + 去重，不重要的会被丢弃）。&quot;&quot;&quot;</span>
+    <span class="n">remember</span><span class="p">(</span><span class="n">user_id</span><span class="p">,</span> <span class="n">text</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="n">kind</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="s2">&quot;mcp&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="s2">&quot;ok&quot;</span>
+
+<span class="nd">@mcp</span><span class="o">.</span><span class="n">tool</span><span class="p">()</span>
+<span class="k">def</span> <span class="nf">search_memory</span><span class="p">(</span><span class="n">user_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">query</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">k</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">3</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;按相关度检索最相关的 top-k 条记忆。&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">recall</span><span class="p">(</span><span class="n">user_id</span><span class="p">,</span> <span class="n">query</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="n">k</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">mcp</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>   <span class="c1"># 默认 stdio，三个工具都能连</span>
+</code></pre></div>
+
+<p>然后在三个工具里各声明一次这个 server（格式略有差异，套路一致）：</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// Claude Code: 项目根 .mcp.json（或用 `claude mcp add`）</span>
+<span class="p">{</span><span class="w"> </span><span class="nt">&quot;mcpServers&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;shared-memory&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;command&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;python&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;args&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;/path/to/memory_mcp_server.py&quot;</span><span class="p">]</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+
+<span class="c1">// OpenCode: opencode.json 的 mcp 段</span>
+<span class="p">{</span><span class="w"> </span><span class="nt">&quot;mcp&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;shared-memory&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;local&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;command&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;python&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;/path/to/memory_mcp_server.py&quot;</span><span class="p">]</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+
+<span class="c1">// Codex: 同样支持在其配置里声明 MCP server（配置键以你的版本为准）</span>
+</code></pre></div>
+
+<p>连上之后，三个工具就都长出了"存记忆、取记忆"这两只手，<strong>而且指向同一个 PostgreSQL 后端</strong>——你在 Claude Code 里存的，Codex 第二天就能检索到。</p>
+<h3 id="ai-skill">第二步：写一份 AI Skill 教它怎么用</h3>
+<p>有了手还不够。Agent 不会无缘无故去调工具，你得告诉它"什么情况下该动手"。这就是一份 Skill（在 Claude Code 里是 skill，在别的工具里可能叫 rule 或写进 <code>AGENTS.md</code>），本质是一段自然语言说明书：</p>
+<div class="highlight"><pre><span></span><code>---
+name: shared-memory
+description: 在跨会话记住用户偏好和项目事实时使用。当用户表达长期偏好、
+  确认项目关键事实、或说&quot;记住…&quot;时，调用 save_memory；在开始新任务、
+<span class="gu">  需要用户偏好或项目背景时，先调用 search_memory 回忆。</span>
+<span class="gu">---</span>
+
+<span class="gh"># 记忆使用规矩</span>
+
+<span class="gu">## 什么时候“存”（save_memory）</span>
+<span class="k">-</span><span class="w"> </span>用户说出长期偏好：如&quot;我用 Go 不用 Java&quot;&quot;提交信息用中文&quot;
+<span class="k">-</span><span class="w"> </span>确认了项目关键事实：技术栈、CI 平台、数据库、目录约定
+<span class="k">-</span><span class="w"> </span>用户明确说&quot;记住这个&quot;
+<span class="k">-</span><span class="w"> </span>⚠️ 别存：寒暄、临时性问题、一次性的调试细节
+
+<span class="gu">## 什么时候“取”（search_memory）</span>
+<span class="k">-</span><span class="w"> </span>每个新任务开始前，先按任务关键词检索一次
+<span class="k">-</span><span class="w"> </span>要给建议、选技术栈、写配置前，先看看有没有相关偏好
+<span class="k">-</span><span class="w"> </span>用户说&quot;接着上次的做&quot;时，务必先检索
+
+<span class="gu">## 原则</span>
+<span class="k">-</span><span class="w"> </span>存之前先想：三个月后这条还有用吗？没用就别存。
+<span class="k">-</span><span class="w"> </span>取回来的记忆当作&quot;已知事实&quot;，别再反问用户。
+</code></pre></div>
+
+<p>这份 Skill 放进各工具的 skill/rules 目录（或用上一篇讲的"单一事实源 + 软链"让三家共享同一份），Agent 启动时就知道了这套规矩。</p>
+<h3 id="_12">合起来是什么效果</h3>
+<p>工具（手）+ Skill（规矩）+ 共享后端（同一个库），三者一凑，就得到一套<strong>跨工具、跨会话的记忆中枢</strong>：</p>
+<div class="highlight"><pre><span></span><code>flowchart TD
+    subgraph Tools[&quot;三个编码 Agent&quot;]
+        CC[Claude Code]
+        CX[Codex]
+        OC[OpenCode]
+    end
+    Skill[&quot;AI Skill&lt;br/&gt;什么时候存 / 什么时候取&quot;]
+    MCP[&quot;AI Tools / MCP&lt;br/&gt;save_memory · search_memory&quot;]
+    DB[&quot;共享记忆后端&lt;br/&gt;PostgreSQL + pgvector&quot;]
+
+    CC --&gt; Skill
+    CX --&gt; Skill
+    OC --&gt; Skill
+    Skill --&gt; MCP
+    MCP --&gt; DB
+</code></pre></div>
+
+<p>从此你换哪个工具干活都无所谓——它们共享同一份记忆、同一套"该记什么"的规矩。这套怎么落地、三个工具的配置文件各在哪、静态规则又怎么用软链共享，我在另一篇《<a href="./2026-08-07-ai-coding-shared-memory.html">让 Claude Code、Codex、OpenCode 共享同一份记忆</a>》里讲得更细，这里就不展开了。</p>
+<p>接入多个编码工具后，建议用同一组任务做一次对照：明确要求记忆、自然提到长期偏好、要求检索旧决策、要求删除一条记忆。分别记录工具是否调用了正确的工具、传入的摘要是否足够、删除后是否还能被召回。</p>
+<p>这类测试能暴露一个常见问题：Skill 写得越长，不一定越听话。通常应把触发条件、禁止保存的内容、必须询问用户的场景写在前面，把示例和解释放在后面；工具返回结果也要带来源和时间，避免 Agent 把一条旧记忆当成当前事实。</p>
+<hr>
+<h2 id="_13">生产环境的几条经验</h2>
+<p>把散落各处的最佳实践收成一张 checklist，方便你照着自查：</p>
+<ol>
+<li>
+<p><strong>按用途分层存</strong><br>
+   工作、情景、语义、程序四类记忆分开，别混成一锅粥。</p>
+</li>
+<li>
+<p><strong>存事实，别存每句话</strong>  </p>
+</li>
+<li>❌ <code>INSERT ... VALUES('用户: 那用 Go 吧;  助手: 好的没问题')</code></li>
+<li>✅ <code>INSERT ... VALUES('用户偏好 Go')</code></li>
+<li>
+<p>抽取出耐用的信息，而不是原样保存整段聊天记录。</p>
+</li>
+<li>
+<p><strong>持续做摘要</strong><br>
+   长对话压成可复用的知识。实操：每 N 轮或每次任务收尾，跑一次 <code>summarize()</code> 把这段压成一两句情景记忆，再清掉工作记忆。别让上下文越拖越长。</p>
+</li>
+<li>
+<p><strong>狠一点去重</strong>  </p>
+</li>
+<li>❌ 每来一条就 <code>INSERT</code>，一个月后库里躺着五条"用户喜欢 Go"。</li>
+<li>
+<p>✅ 写入前先按向量相似度查一次，命中就 <strong><code>UPDATE</code> 已有记忆</strong>（更新时间戳、合并来源），而不是新建。上面 <code>remember()</code> 里的 <code>dedup_sim</code> 就是干这个的。</p>
+</li>
+<li>
+<p><strong>混合检索</strong><br>
+   别只 <code>ORDER BY embedding &lt;=&gt; query</code>。向量相似度 + 关键词（<code>content ILIKE</code>）+ 结构化过滤（<code>WHERE user_id=... AND kind=...</code>）+ 新近度 + 图关系，一起加权，就像上面 <code>recall()</code> 那样。</p>
+</li>
+<li>
+<p><strong>记来源和可信度</strong><br>
+   建表时就带上 <code>source</code> 字段（<code>preference</code> / <code>task-completion</code> / <code>user-stated</code> / <code>inferred</code>）。以后要审计"这条 Agent 凭什么这么认为"，或者要清理某类不可靠来源，才有抓手。</p>
+</li>
+<li>
+<p><strong>支持遗忘</strong>  </p>
+</li>
+<li>加个后台任务：<code>DELETE FROM memories WHERE importance &lt; 5 AND created_at &lt; now() - interval '90 days'</code>。</li>
+<li>
+<p>用户说"忘了我的地址"，要能精确删除对应记忆。<strong>能忘，才不至于越背越重。</strong></p>
+</li>
+<li>
+<p><strong>用户记忆和项目记忆分开</strong><br>
+   用 <code>user_id</code> / <code>project_id</code> 做命名空间，检索时强制带上过滤条件。用户 A 的偏好，绝不该被检索进用户 B 的上下文——这既是效果问题，也是隐私/安全问题。</p>
+</li>
+<li>
+<p><strong>重要记忆做版本</strong><br>
+   事实会变（比如项目数据库从 MySQL 换成 PostgreSQL）。别 <code>UPDATE</code> 悄悄覆盖，而是新写一条、把旧的标记 <code>superseded</code>，保留时间线。将来排查"它为什么还记得旧配置"时你会感谢自己。</p>
+</li>
+</ol>
+<p>一句话:</p>
+<blockquote>
+<p><strong>好的记忆系统，本事不在"能记多少"，而在"敢忘多少"。</strong><br>
+什么都记的 Agent，最后既想不起来、又特别贵。</p>
+</blockquote>
+<hr>
+<h2 id="_14">最后一句</h2>
+<p>回到开头那个转头就忘的实习生。你后来怎么带好他的？无非是让他养成三个习惯：重要的事记进本子（分层存储）、定期回顾整理（记忆巩固）、用的时候翻对页码（精准检索）。Agent 也一样。</p>
+<p><strong>记得牢，靠的是分层和巩固；想得起，靠的是多信号检索；不烧钱，靠的是舍得忘。</strong> 这三件事不是三选一，而是同一套设计的三个侧面——把记忆当成一个有生命周期的系统来管，而不是一个只进不出的仓库。</p>
+<p>至于那些花里胡哨的框架，工具年年换，道理不变：<strong>先想清楚你缺的是哪一层记忆，再去挑轮子。</strong> 别让你的 Agent，活成那个聪明却总让人重复第三遍的实习生。</p>
+<h2 id="_15">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* AI Agent 记忆管理
+** 核心问题
+*** 该记什么
+*** 怎么想起来
+*** 什么时候忘
+*** 一股脑存向量库是坑
+** 分四层（像人脑）
+*** 工作记忆（RAM/当前）
+*** 情景记忆（发生过的事）
+*** 语义记忆（事实/三元组）
+*** 程序记忆（怎么做）
+** 生命周期
+*** 候选→重要性→去重→摘要→存
+*** LLM 重要性打分
+*** 记忆巩固（合并压缩）
+** 检索
+*** 别全捞回来
+*** 相似度+新近+重要+图距离
+** 存储选型
+*** 按用途分开存
+*** pgvector 常常够用
+*** Mem0/Zep/LangGraph
+** 参考架构
+*** 记忆做成独立服务
+*** API/MCP 暴露
+*** 多 Agent 共享
+** 经验 checklist
+*** 存事实不存每句话
+*** 狠去重、持续摘要
+*** 支持遗忘、分命名空间
+@endmindmap
+</code></pre></div>
+
+<p><img alt="AI Agent 记忆管理 - 思维导图" src="./images/journal_20260807_ai_agent_memory_mindmap.png"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/2026-08-07-ai-agent-memory.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/journal.html">journal</a>
+      <a href="https://www.fanyamin.com/blog/tag/ai.html">AI</a>
+      <a href="https://www.fanyamin.com/blog/tag/agent.html">agent</a>
+      <a href="https://www.fanyamin.com/blog/tag/memory.html">memory</a>
+      <a href="https://www.fanyamin.com/blog/tag/llm.html">LLM</a>
+      <a href="https://www.fanyamin.com/blog/tag/rag.html">RAG</a>
+      <a href="https://www.fanyamin.com/blog/tag/architecture.html">architecture</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-08-06-ai-planning-agent.html" title="用 AI 做好计划之三：配个不睡觉的监工">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/2026-08-07-yong-jiang-cheng-zhi-tuo-yan.html" title="用奖惩治拖延：给自己列一张愿望清单和一张惩罚清单">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/2026-08-08-mem0-memory-layer.html">如何管理 AI Agent 的记忆之三：让 mem0 给 AI Agent 装一层"通用记忆"</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-07-ai-coding-shared-memory.html">如何管理 AI Agent 的记忆之二：让 Claude Code、Codex、OpenCode 共享同一份记忆</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-02-building-effective-agents.html">重读《Building Effective Agents》：怎么才算构建了一个"高效"的 AI Agent</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-07-31-harness-engineering.html">AI 的“操作系统”：Harness 工程如何让模型自我改进</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-07-29-ai-agent-incubator.html">AI Agent 孵化器：用一个父 Agent，批量造出贴身服务的子 Agent</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

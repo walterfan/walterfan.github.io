@@ -1,0 +1,1356 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="一个密钥管理服务，给每个应用建一组角色，应用涨到上万个，角色也跟着破万——这就是典型的角色爆炸。本文用这个真实案例把 RBAC 和 ABAC 的区别讲透，说清角色爆炸的根源，一步步演示怎么把三万个角色塌回三个，并盘点 Kubernetes、AWS、GCP、Azure 的实践与 OPA、Cedar、Casbin 等成熟开源框架的选型。" />
+<meta name="keywords" content="authorization, rbac, abac, role-explosion, security, 授权, 访问控制, opa, casbin">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "如何解决角色爆炸问题：从 RBAC 到 ABAC",
+  "description": "一个密钥管理服务，给每个应用建一组角色，应用涨到上万个，角色也跟着破万——这就是典型的角色爆炸。本文用这个真实案例把 RBAC 和 ABAC 的区别讲透，说清角色爆炸的根源，一步步演示怎么把三万个角色塌回三个，并盘点 Kubernetes、AWS、GCP、Azure 的实践与 OPA、Cedar、Casbin 等成熟开源框架的选型。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-08-08T09:00:00+08:00",
+  "dateModified": "2026-08-08T14:00:00+08:00",
+  "url": "https://www.fanyamin.com/blog/rbac-vs-abac.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/rbac-vs-abac.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "authorization, rbac, abac, role-explosion, security, 授权, 访问控制, opa, casbin"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="如何解决角色爆炸问题：从 RBAC 到 ABAC"/>
+  <meta property="og:description" content="一个密钥管理服务，给每个应用建一组角色，应用涨到上万个，角色也跟着破万——这就是典型的角色爆炸。本文用这个真实案例把 RBAC 和 ABAC 的区别讲透，说清角色爆炸的根源，一步步演示怎么把三万个角色塌回三个，并盘点 Kubernetes、AWS、GCP、Azure 的实践与 OPA、Cedar、Casbin 等成熟开源框架的选型。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/rbac-vs-abac.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-08-08 09:00:00+08:00"/>
+  <meta property="article:modified_time" content="2026-08-08 14:00:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="authorization"/>
+  <meta property="article:tag" content="rbac"/>
+  <meta property="article:tag" content="abac"/>
+  <meta property="article:tag" content="role-explosion"/>
+  <meta property="article:tag" content="security"/>
+  <meta property="article:tag" content="授权"/>
+  <meta property="article:tag" content="访问控制"/>
+  <meta property="article:tag" content="opa"/>
+  <meta property="article:tag" content="casbin"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 如何解决角色爆炸问题：从 RBAC 到 ABAC</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="rbac-vs-abac">如何解决角色爆炸问题：从 RBAC 到 ABAC</h1>
+    <p>
+      Posted on 六 08 8月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>如何解决角色爆炸问题：从 RBAC 到 ABAC</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Cloud / Security</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-08-08</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h1 id="rbac-abac">如何解决角色爆炸问题：从 RBAC 到 ABAC</h1>
+<p>有一段时间，我特别怕给人开权限。不是怕麻烦，是怕我开出去的那个角色，下个月没人说得清它是干嘛的。</p>
+<p>我们系统的角色列表，是这样一步步变长的。早年间就两三个角色——管理员、编辑、访客，清爽得很。后来接了密钥管理的需求，为每个应用（app）都设置了专门的角色：app1_admin、app1_viewer、app2_admin、app2_viewer……一开始管理的应用不多还好，后来应用急剧增长，上万个应用就要有上万个角色。一年下来，角色表几万行，好多人名下挂着五六个角色，还有几个角色是为了某一个人单独建的，角色名里都开始出现应用名和人名了。</p>
+<p>按理说 RBAC（基于角色的访问控制）用了这么多年，不该越用越乱。但这里有个反直觉的事实：</p>
+<blockquote>
+<p>角色越来越多，往往不是 RBAC 用错了，而是你正在拿 RBAC 表达一种它天生不擅长表达的东西——<strong>条件</strong>。条件不是角色，硬把条件塞进角色里，就是角色爆炸。</p>
+</blockquote>
+<p>这篇文章，我想把 RBAC 和 ABAC（基于属性的访问控制）的区别讲透：各自的优点和缺点、为什么角色会爆炸、以及我是怎么一步步把那三万个角色塌回三个的。行文尽量不用术语砸人，文末有一张检查清单，你可以照着盘一遍自己的权限系统。</p>
+<ul>
+<li>讲什么：RBAC 的边界、ABAC 的机制、两者的取舍、业界大厂怎么做、开源框架选型、混合落地</li>
+<li>不讲什么：ReBAC 与实例级共享（在<a href="https://www.fanyamin.com/blog/2026-03-05-rbac-openfga-authorization.html">《从 RBAC 到 OpenFGA》</a>里已展开）</li>
+</ul>
+<hr>
+<h2 id="rbac">一、RBAC 是干嘛的：给权限加一层"岗位"</h2>
+<p>RBAC 的精髓一句话：<strong>在"人"和"权限"之间，插一层"角色"当缓冲。</strong></p>
+<div class="highlight"><pre><span></span><code>flowchart LR
+    U[用户 User] -- 分配 --&gt; R[角色 Role]
+    R -- 授予 --&gt; P[权限 Permission]
+</code></pre></div>
+
+<p>用人话讲，它模仿的是现实单位里的门禁：你不是凭自己的名字开门，而是凭工牌上挂的"门禁组"。张三走了，卡收回来就行，不用重新配锁；岗位权限变了，把整个组调整一下，比逐个人改省事得多。</p>
+<p>NIST（美国国家标准与技术研究院）在 1992 年提出 RBAC 的概念，1996 年由 Sandhu 等人给出统一模型，后来成为 ANSI INCITS 359 标准。它能成为企业系统几十年的主力，根本原因是一个：<strong>它和人类组织的方式同构</strong>。组织里本来就分岗位、分工种，权限跟着岗位走，天经地义。</p>
+<p>标准的 RBAC 就三件事：</p>
+<ul>
+<li><strong>用户 ↔ 角色</strong>：把用户挂到哪些角色上（入职分配、离职回收）</li>
+<li><strong>角色 ↔ 权限</strong>：每个角色能干什么（角色和操作的绑定）</li>
+<li><strong>会话</strong>：登录之后实际激活哪几个角色（比如下班后管理员角色自动失效）</li>
+</ul>
+<p>进阶的 RBAC 还有角色继承（经理继承员工的权限）和职责分离约束（管钱的和记账的不能是同一个人），这些都是在"角色"这层上做文章，骨架没变。</p>
+<hr>
+<h2 id="rbac_1">二、RBAC 的优点和缺点，我都说清楚</h2>
+<p>先讲公道话。RBAC 不是不好，它好的地方非常实在：</p>
+<table>
+<thead>
+<tr>
+<th>优点</th>
+<th>具体表现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>直观</td>
+<td>人人听得懂"给张三管理员角色"</td>
+</tr>
+<tr>
+<td>可审计</td>
+<td>"谁能访问这份报表"能查角色映射回答出来</td>
+</tr>
+<tr>
+<td>管理成本低</td>
+<td>加人 = 配角色，换岗 = 换角色，离职 = 收角色</td>
+</tr>
+<tr>
+<td>标准通用</td>
+<td>每个框架、系统都有现成实现，零学习成本</td>
+</tr>
+</tbody>
+</table>
+<p>缺点也很实在，而且越到后期越疼：</p>
+<table>
+<thead>
+<tr>
+<th>缺点</th>
+<th>具体表现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>角色爆炸</strong></td>
+<td>权限一加"条件"，角色按组合数膨胀</td>
+</tr>
+<tr>
+<td>细粒度不足</td>
+<td>"这份文档只共享给张三"这种实例级权限没法表达</td>
+</tr>
+<tr>
+<td>动态条件难表达</td>
+<td>时间、IP、设备、金额这类运行时才有的事实，角色表达不了</td>
+</tr>
+<tr>
+<td>语义漂移</td>
+<td>角色从"岗位"变成"给谁的权限"，最后角色名全是人名和日期</td>
+</tr>
+</tbody>
+</table>
+<p>一句话概括本质：<strong>RBAC 把权限当成"静态归类"，它默认权限主要由"你是谁"决定。</strong> 当决定权限的不再只是"你是谁"，还要看"什么时候、在哪儿、对哪份具体的东西、金额多少"时，RBAC 就有点顶不住了。</p>
+<hr>
+<h2 id="_1">三、角色爆炸的真实场景（我的痛）</h2>
+<p>我的密钥管理服务里角色爆炸，爆得很典型。细看下来，根本原因就一条：</p>
+<blockquote>
+<p><strong>我们把"应用归属"烧进了"角色名"。</strong></p>
+</blockquote>
+<p>需求本身不复杂：每个应用（app）有自己的密钥（secret），用户需要访问特定应用的密钥。拆开就是两个维度：</p>
+<div class="highlight"><pre><span></span><code>应用（app）：app1, app2, app3 …  → 上万个
+操作：admin / viewer / operator  → 3 种
+</code></pre></div>
+
+<p>用 RBAC 的老办法，每来一个应用就要建三个角色：</p>
+<div class="highlight"><pre><span></span><code>app1_admin    # app1 的管理员
+app1_viewer   # app1 的查看者
+app1_operator # app1 的操作者
+app2_admin
+app2_viewer
+app2_operator
+...
+</code></pre></div>
+
+<p>10000 个应用 × 3 种操作 = 30000 个角色。关键是，<strong>每多一个应用，角色数量就加三个</strong>——新应用上线了？加三个角色。应用要分环境（prod/staging）了？再翻倍。一年前还是几十个角色，年底就几万个了。</p>
+<p>角色爆炸有四个典型症状，中两三个就该警惕了：</p>
+<ul>
+<li>角色数量几万个，没人能解释清楚大半是干嘛的</li>
+<li>新角色建得快，旧角色回收得慢，僵尸角色扎堆</li>
+<li>离职审计变成大工程：查"这个人挂了多少角色"要翻半天</li>
+<li>角色名开始出现应用名和人名（<code>app12345_admin_for_zhangsan</code>）</li>
+</ul>
+<p>这里的本质矛盾是：<strong>RBAC 希望"角色的数量 ≈ 岗位的数量"，而岗位数量是稳定的；可当"应用归属"这种高基数维度掺进来，角色数量 ≈ 应用数 × 操作数，应用是会爆炸的。</strong></p>
+<hr>
+<h2 id="abac">四、ABAC 是什么：用属性算规则，不列名单</h2>
+<p>ABAC（Attribute-Based Access Control，基于属性的访问控制）换了一条路：不枚举"谁对什么有什么权限"，而是<strong>写规则，让属性参与运算</strong>。</p>
+<p>NIST SP 800-162 给出的定义很精确：基于主体（Subject）的属性、客体（Object）的属性、环境（Context）条件，以及一组策略规则，来决定"是否允许这次操作"。通俗地说，一次授权判断要看四类属性：</p>
+<table>
+<thead>
+<tr>
+<th>属性</th>
+<th>回答的问题</th>
+<th>例子</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>主体属性 Subject</td>
+<td>请求者是谁、是什么身份</td>
+<td>部门、职级、用工形式、租户</td>
+</tr>
+<tr>
+<td>资源属性 Object</td>
+<td>操作对象是什么</td>
+<td>owner、敏感级别、所属区域、项目</td>
+</tr>
+<tr>
+<td>操作 Action</td>
+<td>想干什么</td>
+<td>查看、导出、审批</td>
+</tr>
+<tr>
+<td>环境属性 Context</td>
+<td>在什么条件下</td>
+<td>时间、IP、设备可信度、风控分</td>
+</tr>
+</tbody>
+</table>
+<p>决策就变成一道布尔表达式：</p>
+<div class="highlight"><pre><span></span><code>allow = rule( 主体的属性, 资源的属性, 操作, 环境的属性 )
+</code></pre></div>
+
+<p>类比一下：RBAC 是"门禁卡"——刷卡，看你属于哪个组；ABAC 是"安检规则"——不看你是谁，看你的行李、目的地、飞行时间满不满足规定。</p>
+<p>在工程上，ABAC 通常拆成这几个角色（这也是授权领域最经典的分层，PEP 是执行点、PDP 是决策点、PIP 是属性源）：</p>
+<div class="highlight"><pre><span></span><code>flowchart LR
+    Req[请求] --&gt; PEP[PEP 策略执行点&lt;br/&gt;拦截]
+    PEP --&gt; PDP[PDP 策略决策点&lt;br/&gt;算 allow/deny]
+    PDP --&gt;|缺属性| PIP[PIP 属性源&lt;br/&gt;补属性]
+    PIP --&gt;|属性| PDP
+    PDP --&gt;|allow / deny| PEP
+    PEP --&gt;|放行 / 拒绝| App[业务系统]
+</code></pre></div>
+
+<p>用 OPA（一个开源策略引擎，用 Rego 语言写策略）表达密钥管理的需求，大约是这样的：</p>
+<div class="highlight"><pre><span></span><code>package authz
+
+import rego.v1
+
+default allow := false
+
+# 密钥管理：用户只能访问自己所属应用的密钥
+allow if {
+    input.subject.role in {&quot;admin&quot;, &quot;viewer&quot;, &quot;operator&quot;}  # 角色是这三种之一
+    input.resource.app in input.subject.apps               # 资源的 app 在用户的 apps 列表里
+    input.action in {&quot;read&quot;, &quot;write&quot;, &quot;rotate&quot;}            # 操作在允许范围内
+}
+</code></pre></div>
+
+<p>看不懂 Rego 没关系，看语义就够了：一条规则，把"角色、应用归属、操作"三个条件一起算，满足就放行，不满足就拒绝（默认拒绝，这是对的）。关键差异在于——<strong>这里没有"app12345_admin"这个角色</strong>，应用归属是被算出来的，不是被造出来的。</p>
+<hr>
+<h2 id="_2">五、两者的区别讲透：一张表 + 同一个需求的两个写法</h2>
+<p>把 RBAC 和 ABAC 放一张表里对看，区别就清楚了：</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>RBAC</th>
+<th>ABAC</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>核心问题</td>
+<td>你属于哪个角色？</td>
+<td>这些属性是否满足条件？</td>
+</tr>
+<tr>
+<td>决策方式</td>
+<td>查映射表（静态）</td>
+<td>算规则（动态）</td>
+</tr>
+<tr>
+<td>权限粒度</td>
+<td>角色级，偏粗</td>
+<td>属性级，可细到单个实例</td>
+</tr>
+<tr>
+<td>表达时间/IP/风控等条件</td>
+<td>几乎不行，只能造角色</td>
+<td>天然支持</td>
+</tr>
+<tr>
+<td>"谁能访问 X"</td>
+<td>查角色就能回答</td>
+<td>要把规则跑一遍才知道</td>
+</tr>
+<tr>
+<td>加一个新条件</td>
+<td>新增角色，组合数膨胀</td>
+<td>加一条规则/一个属性</td>
+</tr>
+<tr>
+<td>用户量大、权限差异大</td>
+<td>角色会爆炸</td>
+<td>相对稳定</td>
+</tr>
+<tr>
+<td>上手门槛</td>
+<td>低，人人会</td>
+<td>高，需要策略工程</td>
+</tr>
+<tr>
+<td>典型标准/工具</td>
+<td>ANSI INCITS 359；Spring Security</td>
+<td>NIST SP 800-162；OPA/Rego、Cedar、Casbin</td>
+</tr>
+</tbody>
+</table>
+<p>再看同一个需求，两种写法摆在一起，体会更深。需求："用户只能访问自己所属应用的密钥。"</p>
+<p><strong>RBAC 的写法</strong>——每来一个应用就建三个角色，还要记得把新角色挂到新人头上：</p>
+<div class="highlight"><pre><span></span><code>app1_admin
+app1_viewer
+app1_operator
+app2_admin
+app2_viewer
+app2_operator
+... # 上万个应用，几万个角色
+</code></pre></div>
+
+<p><strong>ABAC 的写法</strong>——不用建任何应用级角色，一条规则搞定：</p>
+<div class="highlight"><pre><span></span><code>allow if {
+    input.subject.role in {&quot;admin&quot;, &quot;viewer&quot;, &quot;operator&quot;}
+    input.resource.app in input.subject.apps
+    input.action in {&quot;read&quot;, &quot;write&quot;, &quot;rotate&quot;}
+}
+</code></pre></div>
+
+<p>以后新应用上线了？不用建角色，用户的属性里带上 <code>apps: [app1, app2, new_app]</code> 就行。以后要限制只能读不能写？规则里改一行 <code>input.action == "read"</code>，一次生效。<strong>RBAC 的扩张靠"加角色"，ABAC 的扩张靠"加属性、改规则"，这就是本质区别。</strong></p>
+<p>再往深想一层：在 ABAC 眼里，"角色"并不特殊——它只是主体的一个属性。<code>input.subject.role == "editor"</code> 这样一条规则，是 ABAC，也恰好等价于 RBAC。<strong>也就是说，ABAC 不否定 RBAC，它包含 RBAC</strong>：RBAC 能表达的，ABAC 一行规则就能表达；而 ABAC 能表达的"条件"，RBAC 只能拿角色去换。想通这一层，两者的关系就清楚了——不是对垒，而是泛化与特化。</p>
+<hr>
+<h2 id="_3">六、把这个例子讲透：三万个角色怎么塌回三个</h2>
+<p>回到我的密钥管理服务。当时我没有推倒重来，而是做了一次"拆应用归属"的手术。核心动作只有一句话：<strong>把"应用归属"从角色名里赶出去，让它回归属性。</strong> 下面一步步拆。</p>
+<h3 id="61-app">6.1 重新建模：角色里不该有 app</h3>
+<p>先看清楚问题出在哪。<code>app123_admin</code> 这个角色，其实塞了两件事：</p>
+<ul>
+<li><code>admin</code>——这是<strong>权限级别</strong>，稳定、可枚举（就 admin / operator / viewer 三种）</li>
+<li><code>app123</code>——这是<strong>应用归属</strong>，高基数、天天在长</li>
+</ul>
+<p>把它们焊在一起，就注定了"角色数 = 应用数 × 级别数"。拆开之后：</p>
+<table>
+<thead>
+<tr>
+<th>建模对象</th>
+<th>改造前（纯 RBAC）</th>
+<th>改造后（RBAC + ABAC）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>角色</td>
+<td><code>app1_admin</code> … <code>app10000_viewer</code>，约 3 万个</td>
+<td><code>admin</code> / <code>operator</code> / <code>viewer</code>，3 个</td>
+</tr>
+<tr>
+<td>用户</td>
+<td>挂一堆 <code>appX_role</code> 角色</td>
+<td>挂两个属性：<code>roles</code> 和 <code>apps</code></td>
+</tr>
+<tr>
+<td>密钥（资源）</td>
+<td>归属靠角色名隐含</td>
+<td>显式带一个 <code>app</code> 属性</td>
+</tr>
+<tr>
+<td>判断依据</td>
+<td>查角色映射表</td>
+<td>角色定操作 + app 归属匹配</td>
+</tr>
+</tbody>
+</table>
+<p>一句话：<strong>角色只留"能做什么"，把"对哪个 app"下放成属性。</strong></p>
+<h3 id="62-pip">6.2 属性从哪来（PIP 别漏）</h3>
+<p>ABAC 的规则再漂亮，属性不对也是白搭。这个场景要落地，先把两处属性的来源定死：</p>
+<ul>
+<li><strong>用户 → apps</strong>：用户负责哪些应用，本来就存在于应用注册表 / CMDB / 组织系统里。把它当权威源（PIP，属性源），别让权限系统自己维护一份会漂移的副本。</li>
+<li><strong>密钥 → app</strong>：每个密钥创建时就该带上"属于哪个 app"。这一步最容易被忽略——历史密钥如果没有 app 归属，得先补一轮数据回填，否则规则无从判起。</li>
+</ul>
+<h3 id="63-rbac-abac">6.3 完整策略：RBAC 打底 + ABAC 补条件</h3>
+<p>把两者拼起来，一份能直接跑的 Rego 长这样：</p>
+<div class="highlight"><pre><span></span><code>package secrets.authz
+
+import rego.v1
+
+default allow := false
+
+# —— RBAC 打底：3 个角色各能做什么，固定不变 ——
+role_actions := {
+    &quot;viewer&quot;:   {&quot;read&quot;},
+    &quot;operator&quot;: {&quot;read&quot;, &quot;rotate&quot;},
+    &quot;admin&quot;:    {&quot;read&quot;, &quot;rotate&quot;, &quot;write&quot;, &quot;delete&quot;},
+}
+
+# —— ABAC 补条件：用户必须归属于这个密钥所属的应用 ——
+allow if {
+    some role in input.subject.roles            # 用户的某个角色
+    input.action in role_actions[role]           # 该角色允许这个操作
+    input.resource.app in input.subject.apps     # 且密钥的 app 在用户负责的 apps 里
+}
+</code></pre></div>
+
+<p>三个角色定"能做什么"，一条 app 归属定"能对谁做"。<strong>这就是把 RBAC 和 ABAC 各摆在它擅长的位置。</strong></p>
+<h3 id="64">6.4 一次请求怎么走</h3>
+<p>假设张三是 operator，负责 app123 和 app888，现在要轮转（rotate）app123 的一个数据库密钥。请求上下文长这样：</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;subject&quot;</span><span class="p">:</span><span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;zhangsan&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;roles&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;operator&quot;</span><span class="p">],</span><span class="w"> </span><span class="nt">&quot;apps&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;app123&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;app888&quot;</span><span class="p">]</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;action&quot;</span><span class="p">:</span><span class="w">   </span><span class="s2">&quot;rotate&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;resource&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;secret&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;app&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;app123&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;db-password&quot;</span><span class="w"> </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>引擎的判断：operator 的允许操作里有 <code>rotate</code>（过），<code>app123</code> 在张三的 <code>apps</code> 里（过）→ <strong>allow</strong>。</p>
+<p>换几个输入立刻见分晓：他去 rotate <code>app999</code> 的密钥？<code>app999</code> 不在 <code>apps</code> 里 → <strong>deny</strong>。他若是 viewer 想 rotate？viewer 只有 <code>read</code> → <strong>deny</strong>。全程没有一个 <code>appX_role</code> 角色参与。</p>
+<h3 id="65">6.5 三万个角色怎么平滑退场</h3>
+<p>存量迁移比写规则更需要胆识，硬切一定出事。我的做法是"先对账、再切流、后删角色"：</p>
+<ol>
+<li><strong>反推属性</strong>：把每个 <code>appX_role</code> 角色反解成 <code>(app, 级别)</code> 二元组，聚合成每个用户的 <code>roles + apps</code> 属性表——这正好是 PIP 的第一版种子数据。</li>
+<li><strong>影子运行（shadow）</strong>：新策略引擎旁路部署，对每个真实请求同时算"老 RBAC 结果"和"新 ABAC 结果"，只比对、记差异、不拦截。</li>
+<li><strong>清零差异</strong>：差异基本来自脏数据（密钥缺 app 属性、用户 apps 不全），逐条补齐，直到新老结果一致。</li>
+<li><strong>切流 + 冻结</strong>：把决策切到新引擎，老角色只读冻结；观察一到两周无异常，再批量删掉那三万个角色。</li>
+</ol>
+<h3 id="66">6.6 顺带把可审计性也解决了</h3>
+<p>前面说 ABAC 有个通病是"谁能访问 X 不好查"。但这个场景恰恰相反——因为归属被建成了一个干净的属性，"谁能访问 app123 的密钥"变成一句属性查询：<strong>列出 <code>apps</code> 里包含 app123 的所有用户</strong>，比在三万个角色里翻 <code>app123_*</code> 还快还准。可见 ABAC 审计难不难，关键看属性建得干不干净，而不是模型本身。</p>
+<p>结果很直接：角色从三万多个，塌回到三个，每一个都说得清；再接入新应用，不用建任何角色，给用户的 <code>apps</code> 属性加一项即可。</p>
+<p>这里有个不变量，值得记住：</p>
+<blockquote>
+<p><strong>权限里"谁"的部分，用 RBAC 管；"在什么条件下"的部分，用 ABAC 管。</strong> 角色管归属，规则管条件，各司其职。</p>
+</blockquote>
+<p>什么场景该留在 RBAC、什么该上 ABAC，大致可以这么分：</p>
+<table>
+<thead>
+<tr>
+<th>你的需求</th>
+<th>更合适</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>谁能进系统、基本岗位权限</td>
+<td>RBAC</td>
+</tr>
+<tr>
+<td>时间 / 地点 / 金额 / 敏感级别等条件</td>
+<td>ABAC</td>
+</tr>
+<tr>
+<td>我创建的资源只有我能看（实例级归属）</td>
+<td>ABAC（或 ReBAC）</td>
+</tr>
+<tr>
+<td>把某个文档单独共享给某人/某个群</td>
+<td>ReBAC（关系型授权）</td>
+</tr>
+</tbody>
+</table>
+<p>关于实例级共享和 ReBAC，我单独写过<a href="https://www.fanyamin.com/blog/2026-03-05-rbac-openfga-authorization.html">《从 RBAC 到 OpenFGA》</a>，这里不展开。</p>
+<hr>
+<h2 id="openfga">七、当归属长出层级和目录树：用 OpenFGA 落地</h2>
+<p>前面那套 ABAC 方案，成立的前提是"归属是平的"——用户挂几个 app，密钥挂一个 app，一次属性匹配就够了。但真实系统往往会长出层级：</p>
+<ul>
+<li>一个 app 可能由<strong>一个或多个 team</strong> 共同维护，团队管理员应自动能管团队名下所有 app 的密钥；</li>
+<li>app 里的密钥以<strong>目录树</strong>组织，像文件系统一样，父目录的权限要往子节点继承；</li>
+<li>密钥之间还有<strong>成组</strong>和<strong>相互引用</strong>的关系。</li>
+</ul>
+<p>一旦"归属"从"平的标签"长成"带继承的关系树"，ABAC 的规则就会越写越绕（每条规则都要自己去查上层）。这正是 ReBAC（关系型访问控制）和 OpenFGA 回本的地方。但动手前，得先把这几种关系分个类——<strong>它们不该全进 OpenFGA。</strong></p>
+<h3 id="71-openfga">7.1 先分类：哪些关系进 OpenFGA，哪些不进</h3>
+<table>
+<thead>
+<tr>
+<th>你的关系</th>
+<th>本质</th>
+<th>该谁管</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>app 由一个/多个 team 维护</td>
+<td>多对多<strong>归属 + 权限继承</strong></td>
+<td>✅ OpenFGA</td>
+</tr>
+<tr>
+<td>密钥目录树（folder → secret）</td>
+<td><strong>层级继承</strong></td>
+<td>✅ OpenFGA</td>
+</tr>
+<tr>
+<td>下层同名密钥覆盖上层</td>
+<td><strong>解析取值语义</strong>，不是授权</td>
+<td>❌ 业务逻辑</td>
+</tr>
+<tr>
+<td>密钥成组</td>
+<td>授权型分组进，纯逻辑分组不进</td>
+<td>🔶 看用途</td>
+</tr>
+<tr>
+<td>密钥相互引用</td>
+<td><strong>数据依赖</strong>，不是授权</td>
+<td>❌ 业务逻辑</td>
+</tr>
+</tbody>
+</table>
+<p>一句话原则：<strong>"谁能对它做什么"交给 OpenFGA；"它的值是什么、它依赖谁"留在业务逻辑。</strong> 授权和解析是两件事，混在一起是灾难。</p>
+<h3 id="72-team">7.2 授权模型：team 多对多 + 目录树继承</h3>
+<p>用 OpenFGA 的 DSL 把前两类关系建出来（<code>admin from parent_team</code> 表示从父节点继承 admin 关系）：</p>
+<div class="highlight"><pre><span></span><code>model
+  schema 1.1
+
+type user
+
+type team
+  relations
+    define admin:  [user]
+    define member: [user] or admin
+
+# 一个 app 可被多个 team 维护 —— 多对多就是多写几条 tuple
+type app
+  relations
+    define maintainer_team: [team]
+    define app_admin:    [user] or admin  from maintainer_team
+    define app_operator: [user] or app_admin
+    define app_viewer:   [user] or member from maintainer_team or app_operator
+
+# 目录节点：权限沿目录树向下继承
+type folder
+  relations
+    define parent_app:    [app]
+    define parent_folder: [folder]
+    define can_read:   app_viewer   from parent_app or can_read   from parent_folder
+    define can_rotate: app_operator from parent_app or can_rotate from parent_folder
+    define can_admin:  app_admin    from parent_app or can_admin  from parent_folder
+
+# 密钥：挂在 folder 或 app 下，继承父节点权限
+type secret
+  relations
+    define parent: [folder, app]
+    define can_read:   can_read  from parent or app_viewer   from parent
+    define can_rotate: can_rotate from parent or app_operator from parent
+    define can_write:  can_admin from parent or app_admin    from parent
+    define can_delete: can_admin from parent or app_admin    from parent
+</code></pre></div>
+
+<p>关键点：你原来的 admin/operator/viewer 三个角色，变成了 app 上的三种<strong>关系</strong>，并且能从 team 层层继承。<code>maintainer_team: [team]</code> 允许写多条 tuple，这就天然支持"一个 app 多个 team 维护"。</p>
+<p>写关系数据（tuples）时，"团队管理员管全队 app"只要一条：</p>
+<div class="highlight"><pre><span></span><code>user:zhangsan  admin  team:payment        # 张三是 payment 团队管理员
+app:pay        maintainer_team  team:payment
+secret:pay/db-password  parent  app:pay
+</code></pre></div>
+
+<p>一条 tuple 顶原来一片 <code>appX_admin</code> 角色，这就是关系图相对属性匹配的优势。</p>
+<h3 id="73">7.3 同名覆盖是"解析"，不是授权</h3>
+<p>"下层同名密钥覆盖上层"是<strong>取值语义</strong>，跟"谁能访问"无关，放业务层做。两步分离：</p>
+<ol>
+<li><strong>授权</strong>：<code>Check(user, can_read, secret:pay/prod/db/password)</code> 判能不能读；</li>
+<li><strong>解析</strong>：业务逻辑按目录树从叶子往根找同名项，命中最深的那个值。</li>
+</ol>
+<p>OpenFGA 没有"覆盖"这个语义，别想用它表达取值优先级，硬凑只会把模型搞烂。</p>
+<h3 id="74">7.4 相互引用默认不传递权限</h3>
+<p>"密钥 A 引用密钥 B"是数据依赖。<strong>默认不要</strong>让引用自动带上读权限——否则就是隐蔽的越权路径（能读 A，顺着引用把没授权的 B 也偷读了）。安全默认是：解引用时对 B <strong>单独再 Check 一次</strong>。只有确实需要"能读 A 就能读它引用的 B"时，才显式建模、且要评审：</p>
+<div class="highlight"><pre><span></span><code>type secret
+  relations
+    define references: [secret]
+    # 谨慎：默认别开，开了要能解释清楚为什么
+    define can_read_via_ref: can_read or can_read from references
+</code></pre></div>
+
+<p>一次完整请求就串成了三件事，各归各位：<strong>Check 判授权 → 业务层做同名覆盖解析 → 解引用时再独立 Check。</strong></p>
+<h3 id="75-openfga">7.5 上 OpenFGA 前的清单</h3>
+<ol>
+<li><strong>先切两刀</strong>：把需求分成"授权关系"（team 归属、目录继承、授权组）和"业务语义"（同名覆盖、数据引用），只有前者进 OpenFGA。</li>
+<li><strong>压测反向查询</strong>：<code>ListObjects</code>、<code>ListUsers</code> 在深目录 + 多 team 下容易超时、碰结果上限，建模时就压测，别只验 <code>Check</code>。</li>
+<li><strong>tuple 是副本，PIP 是权威</strong>：team/app/folder 结构从 CMDB、组织系统、密钥元数据同步成 tuples，同步要幂等 + 定期对账。</li>
+<li><strong>迁移仍走 shadow</strong>：老 <code>appX_role</code> 反解成 tuples（<code>user X app_operator app:X</code>），影子比对新老结果，清零差异再切流。</li>
+</ol>
+<p>一句话：<strong>层级继承和目录树是 OpenFGA 的主场，果断上；但"同名覆盖"是解析、"相互引用"是数据依赖，这两个留在业务层——授权只回答"能不能"，"取哪个值、依赖谁"不归它管。</strong> 更完整的 OpenFGA 落地在<a href="https://www.fanyamin.com/blog/2026-03-05-rbac-openfga-authorization.html">《从 RBAC 到 OpenFGA》</a>里。</p>
+<hr>
+<h2 id="abac_1">八、别神话 ABAC：它的边界和坑</h2>
+<p>ABAC 不是银弹，它把"管理角色"的成本，换成了"治理属性 + 维护规则"的成本。几个坑先说在前面：</p>
+<ul>
+<li><strong>可审计性可能变差。</strong> 规则一多、属性一乱，"谁能访问 X"就得把规则对每个用户跑一遍才知道（第六节那种干净的单属性是幸运的例外）。合规审计时这是常见硬伤，需要有"谁可能访问 X"的估算和报告手段。</li>
+<li><strong>规则也会爆炸。</strong> 角色会爆炸，规则写得不收敛照样会爆炸。几十条互相覆盖的规则，比几百个角色更难维护。</li>
+<li><strong>依赖属性源。</strong> 属性从哪来、多新鲜、会不会被篡改，直接决定决策对不对。PIP（属性源）本身得管好，否则规则再漂亮也是沙上建塔。</li>
+<li><strong>要当"策略工程"来做。</strong> 规则是代码，要进 Git、要测试、要灰度、要回滚，不能直接在页面上手改。</li>
+<li><strong>对团队要求高。</strong> 上 ABAC 意味着团队里得有人懂策略建模，否则容易写出一堆没人敢动的规则。</li>
+</ul>
+<p>一个朴素的经验：<strong>没被角色爆炸真正痛过，就别急着上 ABAC。</strong> 两三个角色能搞定的系统，上 ABAC 是给自己找运维负担。</p>
+<hr>
+<h2 id="_4">九、业界是怎么做的：几个有代表性的实践</h2>
+<p>我说"RBAC 打底 + ABAC 补条件"，不是我发明的——业界这些年基本都收敛到了这条路。看几个最有代表性的。</p>
+<h3 id="kubernetesrbac">Kubernetes：RBAC 打底，条件交给策略引擎</h3>
+<p>K8s 是后端最熟悉的授权教科书。它的授权模式可以叠加：RBAC 是默认推荐，Role/ClusterRole/RoleBinding 管"谁能操作哪类资源"；早期的 ABAC 模式至今还在——一堆基于文件的属性匹配，策略格式停留在 v1beta1，改策略还得重启 API server——实际项目里早被 RBAC 边缘化了。真正有意思的是：像"镜像只能来自可信仓库""Pod 不能以 root 运行"这类<strong>条件</strong>，社区没有往 RBAC 里塞，而是交给了 OPA Gatekeeper、Kyverno——策略即代码，准入时计算，本质就是 ABAC。</p>
+<p>K8s 的演进就是一部活教材：<strong>RBAC 管身份和资源，条件交给策略引擎。</strong></p>
+<h3 id="aws-iam-abac">AWS IAM：用标签做大规模的 ABAC</h3>
+<p>AWS IAM 骨子里是策略式的：一条 Policy 就是一组带 Condition 的 allow/deny 规则。AWS 甚至官方命名了一种做法叫"ABAC for AWS"：给人和资源都打标签（<code>team=payment</code>、<code>env=prod</code>），策略按标签匹配。新资源上线只要贴好标签，就自动被既有策略覆盖，<strong>一行策略都不用改</strong>。RBAC 角色爆炸最疼的场景就是大规模、高频变化的环境，AWS 的答案是属性。</p>
+<p>看几个常见的 Condition key：<code>aws:SourceIp</code>（来源 IP）、<code>aws:CurrentTime</code>（时间）、<code>aws:PrincipalTag</code>（请求者标签）、<code>s3:ResourceTag</code>（资源标签）——全是前面讲的四类属性。</p>
+<h3 id="google-cloud-azure">Google Cloud 和 Azure：给角色加"条件尾巴"</h3>
+<p>Google Cloud IAM 表面是 RBAC 形态（预定义角色 + 自定义角色），但它很早就提供了 IAM Conditions：给角色绑定附加一段 CEL（Common Expression Language，通用表达式语言）表达式，限定这个角色只在某个时间窗口、只对带某个属性的资源生效。临时授权、属性限制，一次解决。</p>
+<p>Azure 同理：Azure RBAC 的角色分配上可以附加 ABAC 条件，比如"只有当 blob 的索引标签是 <code>Project=Blue</code> 时，才授予该存储账户的读权限"。</p>
+<p>把几家的选择摆一起：</p>
+<table>
+<thead>
+<tr>
+<th>平台</th>
+<th>RBAC 部分</th>
+<th>ABAC 部分</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Kubernetes</td>
+<td>RBAC（默认授权模式）</td>
+<td>遗留 ABAC 模式 + OPA Gatekeeper / Kyverno</td>
+</tr>
+<tr>
+<td>AWS</td>
+<td>IAM Role（权限束）</td>
+<td>IAM Policy Condition + 标签 ABAC</td>
+</tr>
+<tr>
+<td>Google Cloud</td>
+<td>预定义 / 自定义角色</td>
+<td>IAM Conditions（CEL 表达式）</td>
+</tr>
+<tr>
+<td>Azure</td>
+<td>Azure RBAC 角色</td>
+<td>角色分配上的 ABAC 条件</td>
+</tr>
+</tbody>
+</table>
+<p><strong>没有一家是纯 RBAC，也没有一家是纯 ABAC，全是"角色打底、条件补充"。</strong> 这个形态是大规模、高频变更场景里打磨出来的，和我在项目里做的那次手术方向一致。</p>
+<h3 id="xacml-abac">XACML 补一句：ABAC 的"老前辈"</h3>
+<p>讲 ABAC 标准绕不开 XACML（OASIS 标准，现行版本 3.0）。十多年前它就是政务、医疗、金融场景的主流选择——病历隐私、跨机构访问控制这类"要讲同意、讲目的、讲紧急破例"的硬需求，正是 ABAC 的主场。它的问题是 XML 太啰嗦、工具链太重，新项目今天多选 Rego、Cedar；但它推广开的属性四元组和 PEP/PDP/PIP 架构，已经是行业常识。</p>
+<hr>
+<h2 id="_5">十、成熟的开源框架和库速查</h2>
+<p>想动手的话，开源世界已经有相当成熟的选择。我只列经过大规模生产验证的：</p>
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>模型取向</th>
+<th>形态</th>
+<th>一句话点评</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="https://www.openpolicyagent.org/">OPA</a></td>
+<td>通用策略（偏 ABAC/PBAC）</td>
+<td>Rego 语言，独立部署 / sidecar</td>
+<td>CNCF 毕业项目，K8s 准入与统一策略面的事实标准</td>
+</tr>
+<tr>
+<td><a href="https://www.cedarpolicy.com/">Cedar</a></td>
+<td>RBAC + ABAC 融合</td>
+<td>AWS 开源，引擎 Rust 实现</td>
+<td>策略可读 + 形式化验证，Amazon Verified Permissions 的底座</td>
+</tr>
+<tr>
+<td><a href="https://casbin.org/">Casbin</a></td>
+<td>PERM 元模型（可配成 ACL/RBAC/ABAC）</td>
+<td>十多种语言的库，进程内</td>
+<td>轻量嵌入、零运维，中文社区友好</td>
+</tr>
+<tr>
+<td><a href="https://openfga.dev/">OpenFGA</a></td>
+<td>ReBAC（+ Conditions 补 ABAC）</td>
+<td>独立服务，CNCF 孵化项目</td>
+<td>实例级共享、层级继承是它的主场</td>
+</tr>
+<tr>
+<td><a href="https://www.keycloak.org/">Keycloak</a></td>
+<td>IAM（RBAC + Authorization Services）</td>
+<td>一站式开源 IAM</td>
+<td>统一登录 + 角色，Authorization Services 能写属性/时间策略</td>
+</tr>
+<tr>
+<td><a href="https://kyverno.io/">Kyverno</a> / <a href="https://open-policy-agent.github.io/gatekeeper/">OPA Gatekeeper</a></td>
+<td>K8s 准入策略</td>
+<td>YAML 规则 / Rego</td>
+<td>只管 K8s 里的"条件"，这两个最直接</td>
+</tr>
+<tr>
+<td><a href="https://www.osohq.com/">Oso</a></td>
+<td>应用内嵌授权</td>
+<td>Python/Java/Node/Rust 库</td>
+<td>授权想嵌进业务代码、又不想写 if-else</td>
+</tr>
+</tbody>
+</table>
+<p>几句选型点评，都是前文讲过的道理：</p>
+<ul>
+<li><strong>单服务、只想补几个条件</strong>：Casbin 或 Oso，进程内嵌入，别动架构。</li>
+<li><strong>多服务要统一策略面，或已经在 K8s 里</strong>：OPA，准入配 Gatekeeper / Kyverno。</li>
+<li><strong>团队在意策略正确性，想让机器帮你证明"不会误放行"</strong>：Cedar，形式化验证是它的独门卖点。</li>
+<li><strong>核心痛点是实例级共享、层级继承</strong>：OpenFGA，那是 ReBAC 的活，别硬用 ABAC。</li>
+</ul>
+<p>工具清单会过期，选型原则不会：<strong>先定关系形态（角色 / 属性 / 关系），再看团队和部署形态</strong>。这句话在<a href="https://www.fanyamin.com/blog/authz-domain-model.html">《授权的领域模型》</a>里展开讲过。</p>
+<hr>
+<h2 id="rbac-abac_1">十一、落地建议：RBAC 打底 + ABAC 补条件</h2>
+<p>上一节看到，大厂的共识是<strong>混合</strong>：不是二选一，而是按需分层。结合我自己的实践，推荐做法：</p>
+<ol>
+<li><strong>按"稳定还是动态"给权限分类。</strong> 稳定的（岗位、系统入口）归 RBAC；动态的（时间、区域、金额、敏感度）归 ABAC。</li>
+<li><strong>RBAC 打底。</strong> 角色继续管组织归属，该有角色继承、职责分离的继续用，可审计性保住了。</li>
+<li><strong>ABAC 补条件。</strong> 在角色通过之后，再用属性规则做一次条件判断。绝大多数"动态"需求在这一层就解决了。</li>
+<li><strong>属性要有统一来源。</strong> 部门、用工形式这些别散落在各个系统，最好有一个人力/组织系统当属性源（PIP），其余地方引用。</li>
+<li><strong>规则当代码管。</strong> 进 Git、带版本、可测试、可回滚；变更走评审。</li>
+<li><strong>定期盘点。</strong> 每季度过一遍角色和规则，把僵尸角色和失效规则清掉。</li>
+</ol>
+<p>一句话记住：</p>
+<blockquote>
+<p><strong>角色管"你是谁"，规则管"在什么条件下你能干什么"。</strong> 能用角色表达的就别上规则，角色表达不了条件了，再上 ABAC。</p>
+</blockquote>
+<hr>
+<h2 id="_6">把角色迁移写成可回滚的实验</h2>
+<p>角色从高基数命名迁移到“稳定角色 + 动态属性”时，最重要的交付物不是新策略，而是新旧结果的对照记录。先旁路计算，不拦截真实请求；把差异按属性缺失、历史脏数据、规则理解不同分类；差异清零后再切流，并保留旧模型只读一段时间。</p>
+<p>每次迁移都应能回答四个问题：哪些请求会从允许变成拒绝，哪些请求会反过来放开，属性从哪个权威系统来，紧急回滚由谁执行。这样“角色数量下降”只是结果之一，真正可审计的是每个权限变化都能解释、能测试、能撤回。</p>
+<h2 id="_7">最后一句</h2>
+<p>回到开头那个场景。后来我把那批"app1_admin、app2_admin、app12345_viewer"们拆掉了，系统里的角色重新变得每个都说得清。那种感觉，就像收拾完一个堆了三年杂物的储藏室。</p>
+<p>权限这件事，最难的从来不是规则怎么写，而是规则<strong>会变</strong>——人来了又走，组织合并拆分，合规要求越来越细。RBAC 给了一个稳定的骨架，ABAC 给了骨架长肉的空间。<strong>模型选对了，后面所有"又变了"的需求，都不会再让你头皮发麻。</strong></p>
+<h2 id="_8">行动清单</h2>
+<ol>
+<li>把系统里的角色拉出来，数一数：有没有角色名里带人名、区域名、时间段的？有，就是条件被烧进角色名了。</li>
+<li>对每个角色问一句"它代表的岗位是什么"，答不上来的就是语义漂移，标记待拆。</li>
+<li>把需求里的"条件"列出来：时间、区域、金额、敏感级别、设备……这些都不该是角色。</li>
+<li>选定策略引擎（OPA / Cedar / Casbin 都可以起步），先挑一个高频需求，把"条件"写成规则。</li>
+<li>属性找好来源：部门、用工形式从哪来、谁来维护、多久更新一次。</li>
+<li>把规则放进代码库，写测试、定灰度、留回滚，别在页面上手改。</li>
+<li>三个月后再拉一次角色表，和这次对比，看"角色数量"有没有降下来。</li>
+</ol>
+<h2 id="_9">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap rbac_vs_abac_mindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* 角色爆炸\nRBAC → ABAC
+** RBAC：静态归类
+*** 用户↔角色↔权限
+*** 优点：直观/可审计/标准
+*** 缺点：角色爆炸/细粒度不足/条件难表达
+** ABAC：条件计算
+*** 属性四元组 S/R/A/C
+*** 优点：动态/细粒度/规模友好
+*** 缺点：审计难/规则爆炸/依赖属性源
+** 角色爆炸的本质
+*** 把条件/归属烧进角色名
+*** 数量 = 应用 × 级别
+*** 角色语义漂移
+** 密钥管理案例：3 万→3
+*** 角色只留 admin/operator/viewer
+*** app 归属下放为属性
+*** 角色定操作 + app 匹配
+*** shadow 对账后平滑迁移
+** 长出层级→OpenFGA
+*** team 多对多维护
+*** 密钥目录树继承
+*** 同名覆盖=解析(留业务层)
+*** 相互引用=数据依赖(独立Check)
+** 何时用哪个
+*** 组织归属 → RBAC
+*** 动态条件 → ABAC
+*** 实例级共享 → ReBAC
+** 业界实践
+*** K8s：RBAC + 策略引擎
+*** AWS：标签 ABAC
+*** GCP/Azure：角色 + 条件
+** 开源选型
+*** OPA 通用策略
+*** Cedar 形式化验证
+*** Casbin 轻量嵌入
+*** OpenFGA 关系型
+** 落地：RBAC 打底 + ABAC 补条件
+*** 属性统一来源 PIP
+*** 规则进代码库
+*** 定期盘点
+@endmindmap
+</code></pre></div>
+
+<p><img alt="RBAC vs ABAC - 思维导图" src="./images/tech_20260808_rbac-vs-abac_mindmap.png"></p>
+<hr>
+<blockquote>
+<p>本文是授权系列的补充篇，系列相关文章：
+- <a href="https://www.fanyamin.com/blog/authz-domain-model.html">授权的领域模型：从 RBAC、ABAC 到 Keycloak、Vault 的一张全景图</a>
+- <a href="https://www.fanyamin.com/blog/2026-03-05-rbac-openfga-authorization.html">从 RBAC 到 OpenFGA：细粒度授权的架构、落地与取舍</a>
+- <a href="https://www.fanyamin.com/blog/perm-casbin.html">PERM 模型与 Casbin：把云端授权从代码里抠出去</a>
+- <a href="https://www.fanyamin.com/blog/unified-authorization-center.html">如何为你的服务创建统一的授权中心</a></p>
+</blockquote>
+<hr>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/rbac-vs-abac.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/authorization.html">authorization</a>
+      <a href="https://www.fanyamin.com/blog/tag/rbac.html">rbac</a>
+      <a href="https://www.fanyamin.com/blog/tag/abac.html">abac</a>
+      <a href="https://www.fanyamin.com/blog/tag/role-explosion.html">role-explosion</a>
+      <a href="https://www.fanyamin.com/blog/tag/security.html">security</a>
+      <a href="https://www.fanyamin.com/blog/tag/shou-quan.html">授权</a>
+      <a href="https://www.fanyamin.com/blog/tag/fang-wen-kong-zhi.html">访问控制</a>
+      <a href="https://www.fanyamin.com/blog/tag/opa.html">opa</a>
+      <a href="https://www.fanyamin.com/blog/tag/casbin.html">casbin</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-08-07-ai-coding-shared-memory.html" title="如何管理 AI Agent 的记忆之二：让 Claude Code、Codex、OpenCode 共享同一份记忆">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/2026-08-08-mem0-memory-layer.html" title="如何管理 AI Agent 的记忆之三：让 mem0 给 AI Agent 装一层"通用记忆"">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/authz-domain-model.html">授权的领域模型：从 RBAC、ABAC 到 Keycloak、Vault 的一张全景图</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-04-29-oss-iam-authorization-system.html">用开源组件搭一个 AWS IAM 风格的授权系统</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-03-05-rbac-openfga-authorization.html">从 RBAC 到 OpenFGA：细粒度授权的架构、落地与取舍</a></li>
+      <li><a href="https://www.fanyamin.com/blog/unified-authorization-center.html">如何为你的服务创建统一的授权中心</a></li>
+      <li><a href="https://www.fanyamin.com/blog/perm-casbin.html">PERM 模型与 Casbin：把云端授权从代码里抠出去</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

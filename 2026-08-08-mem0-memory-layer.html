@@ -1,0 +1,898 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="前两篇我自己用 pgvector 手搓了一套 Agent 记忆系统，也讲了怎么让 Claude Code、Codex、OpenCode 共享它。这篇介绍一个 6 万多 star 的开源库 mem0——它把&#34;打分、抽取、去重、多信号检索&#34;这些活儿全帮你做了，还官方提供了三个编码工具的 skill 和 MCP 集成。附架构拆解、核心 API 用法，以及一行命令接进三个工具的实操。" />
+<meta name="keywords" content="journal, AI, agent, memory, mem0, claude-code, codex, opencode, MCP, RAG">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "如何管理 AI Agent 的记忆之三：让 mem0 给 AI Agent 装一层&#34;通用记忆&#34;",
+  "description": "前两篇我自己用 pgvector 手搓了一套 Agent 记忆系统，也讲了怎么让 Claude Code、Codex、OpenCode 共享它。这篇介绍一个 6 万多 star 的开源库 mem0——它把&#34;打分、抽取、去重、多信号检索&#34;这些活儿全帮你做了，还官方提供了三个编码工具的 skill 和 MCP 集成。附架构拆解、核心 API 用法，以及一行命令接进三个工具的实操。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-08-08T21:00:00+08:00",
+  "dateModified": "2026-08-08T21:00:00+08:00",
+  "url": "https://www.fanyamin.com/blog/2026-08-08-mem0-memory-layer.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/2026-08-08-mem0-memory-layer.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "journal, AI, agent, memory, mem0, claude-code, codex, opencode, MCP, RAG"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="如何管理 AI Agent 的记忆之三：让 mem0 给 AI Agent 装一层&#34;通用记忆&#34;"/>
+  <meta property="og:description" content="前两篇我自己用 pgvector 手搓了一套 Agent 记忆系统，也讲了怎么让 Claude Code、Codex、OpenCode 共享它。这篇介绍一个 6 万多 star 的开源库 mem0——它把&#34;打分、抽取、去重、多信号检索&#34;这些活儿全帮你做了，还官方提供了三个编码工具的 skill 和 MCP 集成。附架构拆解、核心 API 用法，以及一行命令接进三个工具的实操。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/2026-08-08-mem0-memory-layer.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-08-08 21:00:00+08:00"/>
+  <meta property="article:modified_time" content="2026-08-08 21:00:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="AI"/>
+  <meta property="article:tag" content="journal"/>
+  <meta property="article:tag" content="AI"/>
+  <meta property="article:tag" content="agent"/>
+  <meta property="article:tag" content="memory"/>
+  <meta property="article:tag" content="mem0"/>
+  <meta property="article:tag" content="claude-code"/>
+  <meta property="article:tag" content="codex"/>
+  <meta property="article:tag" content="opencode"/>
+  <meta property="article:tag" content="MCP"/>
+  <meta property="article:tag" content="RAG"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 如何管理 AI Agent 的记忆之三：让 mem0 给 AI Agent 装一层&#34;通用记忆&#34;</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="2026-08-08-mem0-memory-layer">如何管理 AI Agent 的记忆之三：让 mem0 给 AI Agent 装一层"通用记忆"</h1>
+    <p>
+      Posted on 六 08 8月 2026 in <a href="https://www.fanyamin.com/blog/category/ai.html">AI</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>如何管理 AI Agent 的记忆之三：让 memo0 给 AI Agent 装一层"通用记忆"</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>learning note</td>
+</tr>
+<tr>
+<td><strong>Version</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-08-08</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<p>写完前两篇——<a href="./2026-08-07-ai-agent-memory.html">自己用 pgvector 手搓记忆系统</a>、<a href="./2026-08-07-ai-coding-shared-memory.html">让三个编码工具共享记忆</a>——有读者问我：这些活儿有没有现成的轮子？</p>
+<p>有，而且很成熟：<a href="https://github.com/mem0ai/mem0"><strong>mem0</strong></a>（读作 "mem-zero"）。GitHub 6 万多 star，Apache 2.0，自我定位是 <strong>AI Agent 的"通用记忆层"（universal memory layer）</strong>。我把前两篇里自己吭哧吭哧写的"重要性打分、事实抽取、去重、多信号检索"对着它的源码和文档过了一遍，感受是：<strong>该有的它基本都有，而且做得比我那一百行讲究得多。</strong></p>
+<p>更让我意外的是：它官方就带了 Claude Code、Codex、OpenCode 的集成——仓库里躺着 <code>.claude-plugin</code>、<code>.codex-plugin</code>，还有一行命令就能挂上的 MCP server。这正好接上前一篇"自己搭 MCP + Skill"的话题：<strong>原来这条路，人家已经铺好了。</strong></p>
+<p>这篇分三段：<strong>它到底是什么、架构怎么设计的、怎么用；然后重点讲怎么深度接进三个编码工具。</strong> 老规矩，代码都是照官方文档核对过的，不是我瞎编。</p>
+<hr>
+<h2 id="mem0">一、mem0 是什么：一个"记忆即服务"的中间层</h2>
+<p>先给个一句话定位：</p>
+<blockquote>
+<p><strong>mem0 坐在你的 Agent 和存储之间，帮你把"从对话里该记什么、怎么存、怎么找回来"这套脏活全包了。</strong></p>
+</blockquote>
+<p>你只管调两个动作——<code>add</code>（把这段对话喂给它）和 <code>search</code>（按当前问题捞回相关记忆）。中间那些"用 LLM 抽事实、算 embedding、去重、加权排序"的活儿，它在内部替你干了。对照前两篇你就懂了：<strong>我手写的 <code>remember()</code> / <code>recall()</code>，就是 mem0 的 <code>add</code> / <code>search</code> 的简化版。</strong></p>
+<p>它给自己划了三类典型用户：</p>
+<ul>
+<li><strong>AI 助手/聊天机器人</strong>：跨会话记住用户偏好，越用越懂你。</li>
+<li><strong>客服/医疗等</strong>：调取历史工单、病人偏好，给个性化回应。</li>
+<li><strong>自主 Agent</strong>：从过去的运行里学经验，别每次从零开始。</li>
+</ul>
+<p>一个最小的"带记忆的对话"长这样（OSS 版，官方 README 示例，我做了裁剪）：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">openai</span> <span class="kn">import</span> <span class="n">OpenAI</span>
+<span class="kn">from</span> <span class="nn">mem0</span> <span class="kn">import</span> <span class="n">Memory</span>
+
+<span class="n">openai_client</span> <span class="o">=</span> <span class="n">OpenAI</span><span class="p">()</span>
+<span class="n">memory</span> <span class="o">=</span> <span class="n">Memory</span><span class="p">()</span>
+
+<span class="k">def</span> <span class="nf">chat_with_memories</span><span class="p">(</span><span class="n">message</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">user_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;default_user&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="c1"># 1) 先按当前问题检索相关记忆</span>
+    <span class="n">hits</span> <span class="o">=</span> <span class="n">memory</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">query</span><span class="o">=</span><span class="n">message</span><span class="p">,</span> <span class="n">filters</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;user_id&quot;</span><span class="p">:</span> <span class="n">user_id</span><span class="p">},</span> <span class="n">top_k</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+    <span class="n">mem_str</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;- </span><span class="si">{</span><span class="n">e</span><span class="p">[</span><span class="s1">&#39;memory&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">hits</span><span class="p">[</span><span class="s2">&quot;results&quot;</span><span class="p">])</span>
+
+    <span class="c1"># 2) 把记忆拼进 system prompt，生成回答</span>
+    <span class="n">messages</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;system&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;你是助手。参考已知记忆回答。</span><span class="se">\n</span><span class="si">{</span><span class="n">mem_str</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">},</span>
+        <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="n">message</span><span class="p">},</span>
+    <span class="p">]</span>
+    <span class="n">reply</span> <span class="o">=</span> <span class="n">openai_client</span><span class="o">.</span><span class="n">chat</span><span class="o">.</span><span class="n">completions</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
+        <span class="n">model</span><span class="o">=</span><span class="s2">&quot;gpt-5-mini&quot;</span><span class="p">,</span> <span class="n">messages</span><span class="o">=</span><span class="n">messages</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">choices</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">message</span><span class="o">.</span><span class="n">content</span>
+
+    <span class="c1"># 3) 把这轮对话喂回 mem0，让它自己决定记什么</span>
+    <span class="n">messages</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;assistant&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="n">reply</span><span class="p">})</span>
+    <span class="n">memory</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">messages</span><span class="p">,</span> <span class="n">user_id</span><span class="o">=</span><span class="n">user_id</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">reply</span>
+</code></pre></div>
+
+<p>注意第 3 步：你把<strong>整段对话</strong>丢给 <code>add</code>，<strong>记什么、怎么提炼、要不要记，是 mem0 内部用 LLM 决定的</strong>——你不用自己写打分逻辑。这就是它和"裸向量库"最大的区别：<strong>向量库只负责存和查，mem0 多了"理解和提炼"这一层。</strong></p>
+<hr>
+<h2 id="_1">二、架构拆解：它内部到底做了什么</h2>
+<p>mem0 的 <code>add</code> 不是简单 <code>INSERT</code>。官方把它描述成一条<strong>抽取 → 累加存储 → 检索</strong>的管线。我按它 2026 年 4 月那版新算法梳理一下（细节以官方<a href="https://mem0.ai/research">研究页</a>和文档为准）：</p>
+<div class="highlight"><pre><span></span><code>flowchart TD
+    IN[&quot;add(messages)&quot;] --&gt; EX[&quot;信息抽取&lt;br/&gt;LLM 提炼出事实/决定/偏好&quot;]
+    EX --&gt; EL[&quot;实体链接&lt;br/&gt;抽实体、embedding、跨记忆关联&quot;]
+    EL --&gt; ST[&quot;累加存储 ADD-only&lt;br/&gt;只增不覆盖&quot;]
+    ST --&gt; V[(&quot;向量库&lt;br/&gt;Qdrant / pgvector&quot;)]
+    ST --&gt; H[(&quot;历史库&lt;br/&gt;SQLite&quot;)]
+
+    Q[&quot;search(query)&quot;] --&gt; MS[&quot;多信号检索&quot;]
+    MS --&gt;|语义相似| V
+    MS --&gt;|BM25 关键词| V
+    MS --&gt;|实体匹配| V
+    MS --&gt; TR[&quot;时间推理&lt;br/&gt;选对&#39;当前/过去/将来&#39;那条&quot;]
+    TR --&gt; OUT[&quot;排序融合后的 top-k&quot;]
+</code></pre></div>
+
+<p>几个设计点，我觉得值得单独说说，因为它们正好回应了前两篇里的取舍：</p>
+<ul>
+<li><strong>ADD-only，只增不改</strong>。新版算法一次 LLM 调用就抽完，不做 UPDATE/DELETE，记忆只累加。这和我前一篇里"命中就 UPDATE 去重"的思路不同——它靠检索端的排序和时间推理来处理"旧事实过时"，而不是写入端覆盖。各有取舍：累加式实现简单、可追溯，代价是库会长得快，更依赖检索质量。</li>
+<li><strong>多信号检索</strong>。语义相似 + BM25 关键词 + 实体匹配，三路并行打分再融合。这正是前一篇我强调的"别只看向量相似度"，它做成了默认能力。</li>
+<li><strong>时间推理</strong>。同一个事实的不同时间版本，它能按"你问的是现状、往事、还是计划"选对那一条。这解决了"用户上周改了架构、别翻两个月前老配置"那个痛点。</li>
+<li><strong>作用域三件套</strong>：<code>user_id</code>、<code>agent_id</code>、<code>run_id</code>。分别对应"哪个用户、哪个 Agent、哪一次运行"——天然就是前一篇强调的"用户/项目/会话隔离"，不用你自己拼命名空间。</li>
+</ul>
+<h3 id="server">三种形态：库 / 自建 server / 云平台</h3>
+<p>这点对落地很关键，别选错：</p>
+<table>
+<thead>
+<tr>
+<th>形态</th>
+<th>怎么起</th>
+<th>存储默认</th>
+<th>适合</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>库（OSS）</strong></td>
+<td><code>pip install mem0ai</code> → <code>Memory()</code></td>
+<td>本地 Qdrant + SQLite 历史库</td>
+<td>试水、原型、自己玩</td>
+</tr>
+<tr>
+<td><strong>自建 server</strong></td>
+<td><code>cd server &amp;&amp; make bootstrap</code></td>
+<td>Postgres + pgvector</td>
+<td>团队、要 dashboard 和 API key</td>
+</tr>
+<tr>
+<td><strong>云平台</strong></td>
+<td>注册 app.mem0.ai 拿 key</td>
+<td>托管</td>
+<td>不想运维、直接上生产</td>
+</tr>
+</tbody>
+</table>
+<p>API 上的区别就一行：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># OSS：本地跑，自带向量库</span>
+<span class="kn">from</span> <span class="nn">mem0</span> <span class="kn">import</span> <span class="n">Memory</span>
+<span class="n">m</span> <span class="o">=</span> <span class="n">Memory</span><span class="p">()</span>
+<span class="n">m</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">&quot;我用 Go，不要给我推 Java 方案&quot;</span><span class="p">,</span> <span class="n">user_id</span><span class="o">=</span><span class="s2">&quot;walter&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s2">&quot;推荐个后端技术栈&quot;</span><span class="p">,</span> <span class="n">filters</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;user_id&quot;</span><span class="p">:</span> <span class="s2">&quot;walter&quot;</span><span class="p">}))</span>
+
+<span class="c1"># 云平台：连托管服务，换个 client</span>
+<span class="kn">from</span> <span class="nn">mem0</span> <span class="kn">import</span> <span class="n">MemoryClient</span>
+<span class="n">client</span> <span class="o">=</span> <span class="n">MemoryClient</span><span class="p">(</span><span class="n">api_key</span><span class="o">=</span><span class="s2">&quot;m0-xxx&quot;</span><span class="p">)</span>
+<span class="n">client</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">&quot;我用 Go，不要给我推 Java 方案&quot;</span><span class="p">,</span> <span class="n">user_id</span><span class="o">=</span><span class="s2">&quot;walter&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">client</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s2">&quot;推荐个后端技术栈&quot;</span><span class="p">,</span> <span class="n">filters</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;user_id&quot;</span><span class="p">:</span> <span class="s2">&quot;walter&quot;</span><span class="p">}))</span>
+</code></pre></div>
+
+<p>一句话选型：<strong>自己玩用库，团队用自建 server，怕运维上云平台。</strong> 你会发现自建 server 的默认存储就是 Postgres + pgvector——和我前一篇手搓的那套底子一模一样，只是人家在上面盖了完整的房子。</p>
+<hr>
+<h2 id="_2">三、深度集成：一行命令接进三个编码工具</h2>
+<p>这是重头戏，也是 mem0 让我眼前一亮的地方。它对编码 Agent 的集成不是"你自己看 SDK 文档去接"，而是<strong>官方做好了 skill 和 MCP，一行命令挂上</strong>。而且明确支持 Claude Code、Codex、Cursor、Windsurf、OpenCode 等一票工具。</p>
+<p>集成分两个层次，正好对应前一篇讲的"<strong>手（Tools/MCP）+ 规矩（Skill）</strong>"：</p>
+<h3 id="skill-mem0-mem0">层次一：装 Skill，让工具"会写 mem0 代码 / 会用 mem0"</h3>
+<p>mem0 提供两类 skill，都走 <code>npx skills add</code> 这个标准命令：</p>
+<p><strong>参考型 skill（常驻，教工具正确使用 mem0 的 SDK）：</strong></p>
+<div class="highlight"><pre><span></span><code><span class="c1"># 教它 mem0 的 Python/TS SDK 用法，写集成代码不再瞎猜</span>
+npx<span class="w"> </span>skills<span class="w"> </span>add<span class="w"> </span>https://github.com/mem0ai/mem0<span class="w"> </span>--skill<span class="w"> </span>mem0
+<span class="c1"># 教它 mem0 CLI 的终端用法</span>
+npx<span class="w"> </span>skills<span class="w"> </span>add<span class="w"> </span>https://github.com/mem0ai/mem0<span class="w"> </span>--skill<span class="w"> </span>mem0-cli
+</code></pre></div>
+
+<p><strong>流水线型 skill（按需触发，跑一整套工作流，用斜杠命令调用）：</strong></p>
+<div class="highlight"><pre><span></span><code>npx<span class="w"> </span>skills<span class="w"> </span>add<span class="w"> </span>https://github.com/mem0ai/mem0<span class="w"> </span>--skill<span class="w"> </span>mem0-integrate
+npx<span class="w"> </span>skills<span class="w"> </span>add<span class="w"> </span>https://github.com/mem0ai/mem0<span class="w"> </span>--skill<span class="w"> </span>mem0-test-integration
+</code></pre></div>
+
+<ul>
+<li><code>/mem0-integrate</code>：在你现有仓库里，<strong>测试先行</strong>地把 mem0 接进去——它会自动探测技术栈、问你用云还是自建、先写失败测试、再让集成保持"可开关的增量"。</li>
+<li><code>/mem0-test-integration</code>：验证上一步接得对不对，跑你仓库原生测试 + 真实端到端冒烟，最后出一张打分卡。</li>
+</ul>
+<p>这套设计挺有意思：<strong>它把"如何正确集成一个库"本身，也做成了 Agent 能执行的 skill。</strong> 你在 Claude Code 里敲一句 <code>/mem0-integrate</code>，它就照着这套流程帮你把 mem0 焊进项目，还带测试兜底。</p>
+<h3 id="mcp">层次二：挂 MCP，让工具"能直接存取记忆"</h3>
+<p>Skill 是"知识和流程"，MCP 才是"真正的手"。挂上 mem0 的 MCP server 之后，三个工具就能在对话里直接读写你的记忆库。官方给了一条命令搞定多个客户端：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># 先去 app.mem0.ai 拿 API key，然后一条命令挂到多个工具</span>
+npx<span class="w"> </span>mcp-add<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--name<span class="w"> </span>mem0-mcp<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--type<span class="w"> </span>http<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--url<span class="w"> </span><span class="s2">&quot;https://mcp.mem0.ai/mcp&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--clients<span class="w"> </span><span class="s2">&quot;claude,claude code,cursor,windsurf,vscode,opencode&quot;</span>
+</code></pre></div>
+
+<p>跑完之后的效果，和我前一篇自己搭 MCP 想达到的一模一样，但零代码：</p>
+<ul>
+<li>你在 <strong>Claude Code</strong> 里说"记住：这个项目 CI 用 GitLab，不是 GitHub"，它通过 mem0 MCP 把这条写进你的记忆库。</li>
+<li>第二天切到 <strong>OpenCode</strong> 干活，它通过同一个 mem0 MCP 检索，"想起"了这条——<strong>尽管这条不是它写的。</strong></li>
+</ul>
+<p>一张图收口整个集成：</p>
+<div class="highlight"><pre><span></span><code>flowchart TD
+    subgraph Tools[&quot;三个编码 Agent&quot;]
+        CC[Claude Code]
+        CX[Codex]
+        OC[OpenCode]
+    end
+    SK[&quot;mem0 Skills&lt;br/&gt;教它怎么用 / 何时用&quot;]
+    MCP[&quot;mem0 MCP&lt;br/&gt;mcp.mem0.ai/mcp&quot;]
+    ENG[&quot;mem0 记忆引擎&lt;br/&gt;抽取 · 累加 · 多信号检索&quot;]
+    DB[(&quot;同一份记忆后端&quot;)]
+
+    CC --&gt; SK
+    CX --&gt; SK
+    OC --&gt; SK
+    CC --&gt; MCP
+    CX --&gt; MCP
+    OC --&gt; MCP
+    SK -.指导.-&gt; MCP
+    MCP --&gt; ENG --&gt; DB
+</code></pre></div>
+
+<p>对比一下前一篇我自己搭的方案：我是"手写 MCP server + 手写 Skill + 自己维护 pgvector"，mem0 是"官方 skill + 官方 MCP + 托管或自建引擎"。<strong>如果你只是想快速让三个工具共享记忆，mem0 这条路省事得多；如果你想完全掌控数据和逻辑、或有特殊的记忆策略，前一篇那套自建方案给你的自由度更大。</strong> 两条路不冲突——你甚至可以用 mem0 的自建 server（底层也是 pgvector），既省了造轮子，又把数据留在自己机器上。</p>
+<hr>
+<h2 id="mem0_1">什么时候用 mem0，什么时候别用</h2>
+<p>工具再好也有边界，说几句实在的：</p>
+<p><strong>适合用 mem0 的场景：</strong></p>
+<ul>
+<li>你想快速给 Agent 加长期记忆，不想自己写抽取/去重/检索。</li>
+<li>你同时用多个编码工具，想让它们共享一份记忆——官方集成现成。</li>
+<li>你要跨会话的用户级个性化（助手、客服、教育类产品）。</li>
+</ul>
+<p><strong>可能不适合、或要谨慎的场景：</strong></p>
+<ul>
+<li><strong>数据敏感、合规要求高</strong>：云平台要把对话送到它那边抽取，涉密项目慎用；这种情况优先自建 server 或纯 OSS 库。</li>
+<li><strong>每次 add 都要过 LLM</strong>：抽取是有成本和延迟的（虽然新算法已优化到单次调用）。高频、低价值的写入，得掂量 Token 账。</li>
+<li><strong>你需要非常定制的记忆策略</strong>：比如特殊的重要性评分、领域专用的图结构——这时候前两篇那种自建方案反而更顺手。</li>
+<li><strong>强一致/事务性记忆</strong>：mem0 是 ADD-only 累加式，"实时精确覆盖旧值"不是它的强项，得靠检索端时间推理绕。</li>
+</ul>
+<p>一句话：</p>
+<blockquote>
+<p><strong>mem0 帮你把"记忆的通用脏活"外包掉；但"记什么、值不值得记、数据放哪"这些决策，仍然是你的责任。</strong></p>
+</blockquote>
+<hr>
+<h2 id="_3">收个尾：三篇串起来的记忆地图</h2>
+<p>这三篇其实是一条线：</p>
+<ol>
+<li><strong><a href="./2026-08-07-ai-agent-memory.html">第一篇</a></strong>：记忆为什么要分层（工作/情景/语义/程序），生命周期怎么管，自己用 pgvector 手搓一套——<strong>懂原理</strong>。</li>
+<li><strong><a href="./2026-08-07-ai-coding-shared-memory.html">第二篇</a></strong>：怎么让 Claude Code、Codex、OpenCode 共享同一份记忆（单一事实源 + MCP）——<strong>懂协作</strong>。</li>
+<li><strong>本篇</strong>：直接用成熟的 mem0，架构、用法、官方集成一条龙——<strong>懂选型</strong>。</li>
+</ol>
+<p>给你一张落地 checklist：</p>
+<ul>
+<li>[ ] 先想清楚：你要的是"快速可用"还是"完全掌控"？前者选 mem0，后者可自建。</li>
+<li>[ ] 试水用 <code>pip install mem0ai</code> + <code>Memory()</code>，几行代码跑通 add/search。</li>
+<li>[ ] 团队/生产：自建 server（<code>make bootstrap</code>，底层 pgvector）或上云平台。</li>
+<li>[ ] 给编码工具装 skill：<code>npx skills add ... --skill mem0</code>（+ <code>mem0-integrate</code> 按需）。</li>
+<li>[ ] 挂 MCP 让三个工具共享记忆：<code>npx mcp-add --url https://mcp.mem0.ai/mcp --clients "..."</code>。</li>
+<li>[ ] 上线前想清楚数据合规：敏感项目别用云平台的抽取，走自建。</li>
+</ul>
+<p>如果要比较 mem0 和自建 pgvector，建议使用同一批脱敏样本、同一个模型和同一组问题，分别记录：安装与升级成本、写入时延、检索时延、返回候选数量、事实更新后的处理方式、删除是否彻底，以及模型调用次数。没有实测数字时，就明确写“待验证”，不要用项目 star 数或宣传语替代质量评估。</p>
+<p>还应单独写清数据边界：云端方案会把哪些内容送出本地，自建方案由谁维护模型和数据库，用户如何查看、导出和删除记忆。通用记忆层最容易被忽略的不是 API，而是数据隔离、租户边界和“忘记我”能否真的生效。</p>
+<h2 id="_4">最后一句</h2>
+<p>我自己是"先手搓、再用轮子"这个顺序过来的，反而觉得值——<strong>先手搓一遍，你才知道 mem0 每个设计点在解决什么问题；直接用轮子，容易把它当黑盒，出了问题一脸懵。</strong></p>
+<p>所以我的建议是：前两篇的原理别跳过，但真要上项目、尤其想让三个编码工具共享记忆时，不必重复造轮子——<code>pip install mem0ai</code> 加两行 <code>npx</code>，你前一篇想要的效果，基本就有了。</p>
+<p>工具会迭代，mem0 的 API 和集成命令也可能变（落地前记得看它最新文档）；但"给 Agent 一层会提炼、会遗忘、能共享的记忆"这个方向，是确定的。</p>
+<h2 id="_5">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* Mem0 通用记忆层
+** 是什么
+*** Agent 和存储之间的中间层
+*** add / search 两个动作
+*** 内部包办抽取/去重/检索
+*** 我手搓的 remember/recall 的加强版
+** 架构
+*** add: 抽取→实体链接→累加存储
+*** ADD-only 只增不覆盖
+*** search: 语义+BM25+实体 多信号
+*** 时间推理选对版本
+*** 作用域 user/agent/run
+** 三种形态
+*** 库 OSS: Memory() 本地 Qdrant
+*** 自建 server: pgvector + 面板
+*** 云平台: MemoryClient + key
+** 深度集成
+*** 装 Skill: npx skills add
+*** mem0-integrate 测试先行
+*** 挂 MCP: npx mcp-add
+*** 三个工具共享同一记忆
+** 边界
+*** 敏感数据慎用云
+*** 每次 add 过 LLM 有成本
+*** 定制策略不如自建
+*** 累加式非强一致
+** 系列串联
+*** 一懂原理(手搓)
+*** 二懂协作(共享)
+*** 三懂选型(mem0)
+@endmindmap
+</code></pre></div>
+
+<p><img alt="Mem0 通用记忆层 - 思维导图" src="./images/tech_20260808_mem0_memory_layer_mindmap.png"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/2026-08-08-mem0-memory-layer.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/journal.html">journal</a>
+      <a href="https://www.fanyamin.com/blog/tag/ai.html">AI</a>
+      <a href="https://www.fanyamin.com/blog/tag/agent.html">agent</a>
+      <a href="https://www.fanyamin.com/blog/tag/memory.html">memory</a>
+      <a href="https://www.fanyamin.com/blog/tag/mem0.html">mem0</a>
+      <a href="https://www.fanyamin.com/blog/tag/claude-code.html">claude-code</a>
+      <a href="https://www.fanyamin.com/blog/tag/codex.html">codex</a>
+      <a href="https://www.fanyamin.com/blog/tag/opencode.html">opencode</a>
+      <a href="https://www.fanyamin.com/blog/tag/mcp.html">MCP</a>
+      <a href="https://www.fanyamin.com/blog/tag/rag.html">RAG</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/rbac-vs-abac.html" title="如何解决角色爆炸问题：从 RBAC 到 ABAC">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/2026-08-10-stay-curious.html" title="永远不要失去好奇心">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/2026-08-07-ai-coding-shared-memory.html">如何管理 AI Agent 的记忆之二：让 Claude Code、Codex、OpenCode 共享同一份记忆</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-07-ai-agent-memory.html">如何管理 AI Agent 的记忆之一：既记得牢、想得起，又不烧钱</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-02-mcp-2026-stateless-spec.html">MCP 大改版：从"打电话"变成"发快递"，附一个高德天气 MCP Server</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-07-17-mcp-or-cli.html">MCP 还是 CLI：AI Agent 到底怎么跟已有服务打通</a></li>
+      <li><a href="https://www.fanyamin.com/blog/loop-engineering.html">Loop Engineering：别再手摇 AI 了，去设计那台摇柄</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

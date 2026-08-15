@@ -1,5 +1,433 @@
 <?xml version="1.0" encoding="utf-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom"><title>Walter Fan's Blog - AI</title><link href="https://www.fanyamin.com/blog/" rel="alternate"/><link href="https://www.fanyamin.com/blog/feeds/ai.atom.xml" rel="self"/><id>https://www.fanyamin.com/blog/</id><updated>2026-08-08T21:00:00+08:00</updated><subtitle>手握灵珠常奋笔, 心开天籁不吹箫</subtitle><entry><title>如何管理 AI Agent 的记忆之三：让 mem0 给 AI Agent 装一层"通用记忆"</title><link href="https://www.fanyamin.com/blog/2026-08-08-mem0-memory-layer.html" rel="alternate"/><published>2026-08-08T21:00:00+08:00</published><updated>2026-08-08T21:00:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-08-08:/blog/2026-08-08-mem0-memory-layer.html</id><summary type="html">&lt;p&gt;前两篇我自己用 pgvector 手搓了一套 Agent 记忆系统，也讲了怎么让 Claude Code、Codex、OpenCode 共享它。这篇介绍一个 6 万多 star 的开源库 mem0——它把"打分、抽取、去重、多信号检索"这些活儿全帮你做了，还官方提供了三个编码工具的 skill 和 MCP 集成。附架构拆解、核心 API 用法，以及一行命令接进三个工具的实操。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Walter Fan's Blog - AI</title><link href="https://www.fanyamin.com/blog/" rel="alternate"/><link href="https://www.fanyamin.com/blog/feeds/ai.atom.xml" rel="self"/><id>https://www.fanyamin.com/blog/</id><updated>2026-08-15T23:10:00+08:00</updated><subtitle>手握灵珠常奋笔, 心开天籁不吹箫</subtitle><entry><title>为什么 AI 写的文档废话那么多</title><link href="https://www.fanyamin.com/blog/2026-08-15-ai-verbose-doc.html" rel="alternate"/><published>2026-08-15T21:30:00+08:00</published><updated>2026-08-15T23:10:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-08-15:/blog/2026-08-15-ai-verbose-doc.html</id><summary type="html">&lt;p&gt;AI 写文档没有消灭废话，只是把成本从作者转移给了读者，还乘了个 N。啰嗦的根源有三层：训练时被人类的评审偏好教会的、心里没底时用字数掩饰、以及它压根没有“删”这个动作。治它最省力的一招，是我读 RFC 时留下的那份 What/Why/How/Example 模板——章节固定，配额写死，空格子会自己说话。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;为什么 AI 写的文档废话那么多&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;learning note&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Version&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;v1.1&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;2026-08-15&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h1 id="ai"&gt;为什么 AI 写的文档废话那么多&lt;/h1&gt;
+&lt;p&gt;我做过两年文字秘书，那时候写材料是真的“码字”：一个字一个字敲，三千字能磨掉一整个下午。所以写之前一定会想清楚，因为想不清楚就得重写，重写就是再赔一个下午。&lt;/p&gt;
+&lt;p&gt;现在爽了。设计文档、操作手册、周报、专利、论文，甩给 AI 一句话，几秒钟二十页。写的人那叫一个舒服。&lt;/p&gt;
+&lt;p&gt;但你有没有发现一件事：&lt;strong&gt;这两年我们收到的文档变厚了，可评审会开得更久了。&lt;/strong&gt;二十页的设计文档读到最后，你还是不知道这次到底改了什么、风险在哪、要你点头的是哪一条。写的人省了两个小时，十个 reviewer 每人多花二十分钟。&lt;/p&gt;
+&lt;p&gt;我的观点是：&lt;strong&gt;AI 没有消灭废话，它只是把写废话的成本从作者转移给了读者，中间还乘了个 N。&lt;/strong&gt;下面先说这笔账是怎么转移的，再说 AI 啰嗦的三层原因（有一层挺扎心，因为怪不到 AI 头上）。&lt;/p&gt;
+&lt;p&gt;至于怎么治，我先交底：&lt;strong&gt;别跟它讲“简洁一点”，把模板甩给它。&lt;/strong&gt;我读 RFC 用了十几年的那份 What/Why/How/Example 骨架，是我试过所有招里最省力的一个。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_1"&gt;一、废话的成本没有消失，只是换了人付&lt;/h2&gt;
+&lt;p&gt;“每个字都要我自己敲”这条约束，比任何写作课都管用。因为敲字要成本，你会在动笔前先问“这段有必要吗”；因为改稿要成本，你宁可先想明白。三页写不清楚的方案，逼着你回去把设计想通，而不是扩写到二十页。&lt;/p&gt;
+&lt;p&gt;AI 把这条约束一刀切断了。写字免费了，于是所有“不确定要不要写”的东西都倾向于被写进去——反正不要钱。这是典型的&lt;strong&gt;成本外部化&lt;/strong&gt;：下决定的人不承担后果。&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;/th&gt;
+&lt;th&gt;我自己写&lt;/th&gt;
+&lt;th&gt;让 AI 写&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;每多写一段的成本&lt;/td&gt;
+&lt;td&gt;我多敲十分钟&lt;/td&gt;
+&lt;td&gt;零&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;谁付账&lt;/td&gt;
+&lt;td&gt;作者&lt;/td&gt;
+&lt;td&gt;N 个读者&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;于是默认动作是&lt;/td&gt;
+&lt;td&gt;删（先加后减）&lt;/td&gt;
+&lt;td&gt;加（只加不减）&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;想不清楚时&lt;/td&gt;
+&lt;td&gt;卡住，被迫想明白&lt;/td&gt;
+&lt;td&gt;照样输出二十页&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;最后一行是我觉得最麻烦的一条。&lt;strong&gt;过去文档写不出来是个信号，说明设计还没想通。现在这个信号被 AI 消掉了。&lt;/strong&gt;文档一直很流畅，方案一直有问题，等到上线才发现。&lt;/p&gt;
+&lt;!-- 建议亲自补充：这里最好放一个真实项目里的例子——某次评审收到一份很厚但读不出决策点的设计文档，或者你自己用 AI 扩写文档后被人问住的经历。AI 不要编造。 --&gt;
+
+&lt;hr&gt;
+&lt;h2 id="ai_1"&gt;二、AI 为什么这么啰嗦：三层原因&lt;/h2&gt;
+&lt;h3 id="_2"&gt;第一层：它是被我们的评审习惯教出来的&lt;/h3&gt;
+&lt;p&gt;大模型出厂前有一道工序，叫 RLHF（基于人类反馈的强化学习）。说白了就是：让模型生成两个答案，找人来选哪个更好，再训练一个“裁判模型”学会打分，然后逼着模型去追高分。&lt;/p&gt;
+&lt;p&gt;问题出在裁判上。研究者做过一件很损但很有说服力的实验：把奖励信号换成&lt;strong&gt;只看长度&lt;/strong&gt;——答案越接近目标长度分越高，内容完全不看。结果这个“纯字数奖励”跑出来的下游效果，居然和正经 RLHF 差不多。同一篇工作还测出，PPO 训练带来的奖励提升里有 &lt;strong&gt;70%–90% 可以归因于长度&lt;/strong&gt;（&lt;a href="https://arxiv.org/html/2310.03716v2"&gt;Singhal et al., arXiv:2310.03716&lt;/a&gt;）。我们以为在教模型“答得更好”，很大一部分其实是在教它“答得更长”。&lt;/p&gt;
+&lt;p&gt;裁判为什么这么容易被带偏？因为人类标注数据本身就偏。在那篇论文测的三个数据集上，“无脑选长的那个”这条傻规则命中率是 55.7% / 59.6% / 63.1%——都高于随机的 50%。另有工作发现，往干净的偏好数据里掺&lt;strong&gt;不到 1%&lt;/strong&gt; 的带偏样本，就足以让奖励模型染上明显的格式偏好（&lt;a href="https://arxiv.org/html/2409.11704v2"&gt;arXiv:2409.11704&lt;/a&gt;）。偏差还会自我放大：用 LLM 当评委时它同样偏爱长答案，一份“重复列表”式的注水答案能骗过早期 Claude 和 GPT-3.5 约 91% 的判断（&lt;a href="https://arxiv.org/abs/2306.05685"&gt;Zheng et al., arXiv:2306.05685&lt;/a&gt;）。训练偏一次，评测再偏一次，同一个漏洞被薅了两遍。&lt;/p&gt;
+&lt;p&gt;所以这一层的结论不太好听：&lt;strong&gt;AI 啰嗦，是照着我们的样子学的。&lt;/strong&gt;我们自己评审文档时，看到厚厚一本，第一反应也是“这人挺认真的”。谁把二十页文档当成努力的证据，谁就在给这个偏差投票。&lt;/p&gt;
+&lt;h3 id="_3"&gt;第二层：话多是没底的伪装&lt;/h3&gt;
+&lt;p&gt;人心里没底的时候话会变多——绕圈子、重复提问、把话说满，指望其中一句能蒙对。这毛病模型也有，学术上叫 &lt;strong&gt;Verbosity Compensation（冗长补偿）&lt;/strong&gt;：在明确要求简洁的前提下，仍然生成可以无损压缩的回答。&lt;/p&gt;
+&lt;p&gt;这篇工作在 5 个数据集、14 个模型上测下来（&lt;a href="https://arxiv.org/abs/2411.07858"&gt;arXiv:2411.07858&lt;/a&gt;）：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;GPT-4 的冗长补偿出现频率是 &lt;strong&gt;50.40%&lt;/strong&gt;——一半的情况，说了简洁它也做不到；&lt;/li&gt;
+&lt;li&gt;冗长回答和简洁回答的正确率差距，在 Qasper 数据集上高达 &lt;strong&gt;27.61%&lt;/strong&gt;；&lt;/li&gt;
+&lt;li&gt;冗长回答普遍伴随更高的不确定性。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;第三条尤其值得记住：&lt;strong&gt;啰嗦不是风格问题，是可靠性信号。&lt;/strong&gt;AI 突然开始铺排“另一方面”“需要综合考虑多种因素”的时候，很可能是它不知道答案。&lt;/p&gt;
+&lt;p&gt;这跟职场经验完全对得上。我见过的设计文档里，最厚的那几份常常不是想得最深的，而是想得最不清楚的——因为想清楚了三页就够，没想清楚就只能靠背景介绍、行业趋势和名词解释来撑篇幅。人和模型在这一点上是同款毛病，AI 只是把这个毛病规模化了。&lt;/p&gt;
+&lt;h3 id="_4"&gt;第三层：它压根没有“删”这个动作&lt;/h3&gt;
+&lt;p&gt;这一层最本质，也最容易被忽略。人写东西是&lt;strong&gt;先加后减&lt;/strong&gt;：写一版，放一晚，第二天砍掉三分之一。大模型是逐个词往外吐的，吐出去的收不回来，它没有“回头把第二段删掉”这个操作。整篇文章在它眼里不是一个可以整体调度的预算，而是一条越滚越长的链子。&lt;/p&gt;
+&lt;p&gt;再加上两个它天生缺的东西：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;成本感。&lt;/strong&gt;你让它“写详细一点”，它没有任何机制来算“这段多写三百字，读者要多花一分钟”。它不肉疼。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;读者模型。&lt;/strong&gt;人写文档最省字的地方，恰恰在于&lt;strong&gt;知道对方已经知道什么&lt;/strong&gt;。给同组同事写 RTP 丢包排查，我不会解释什么是 RTP。AI 不知道谁会读，只能按“最笨的读者”铺开，于是每个术语都要解释一遍。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;还有个技术细节值得知道：让它“控制在 800 字以内”基本没用。模型看到的是 token 而不是字，生成过程中没法可靠地数自己写了多少字。想约束长度，得换个它数得清的东西——句子数、条目数。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_5"&gt;三、人为什么天生写得短&lt;/h2&gt;
+&lt;p&gt;把上面的原因倒过来，就是人的优势。除了已经说过的成本感和读者模型，还有两条 AI 拿不到：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;立场&lt;/strong&gt;：敢写“我认为方案 B，理由三条”，敢删掉那段谁都不得罪的“另一方面”。AI 被训练成“有用、无害、诚实”的老好人，天然倾向于把两边都说一遍。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;责任&lt;/strong&gt;：写错要背锅，所以不敢乱写；AI 不背锅，所以什么都敢写、什么都愿意写。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;一句话：&lt;strong&gt;简洁不是文笔好，是有人为每个字负责。&lt;/strong&gt;&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_6"&gt;四、最管用的一招：把模板甩给它&lt;/h2&gt;
+&lt;p&gt;我做双语写作，中英文文档一堆，离开 AI 是不可能的，所以问题不是“用不用”而是“怎么管”。&lt;strong&gt;“简洁”对 AI 来说是个形容词，而形容词不可执行&lt;/strong&gt;，你得把它翻译成可验证的约束。所有约束里我用得最久、最省事的一个，是读 RFC 留下的习惯——&lt;strong&gt;一份模板&lt;/strong&gt;。&lt;/p&gt;
+&lt;h3 id="rfc"&gt;那份读 RFC 的模板&lt;/h3&gt;
+&lt;p&gt;我读 RFC 有十几年了，读完顺手写摘要，用的一直是这个骨架：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="gh"&gt;# What&lt;/span&gt;
+
+&lt;span class="gu"&gt;## Abstract&lt;/span&gt;
+
+&lt;span class="gh"&gt;# Why&lt;/span&gt;
+
+&lt;span class="gh"&gt;# How&lt;/span&gt;
+
+&lt;span class="gh"&gt;# Example&lt;/span&gt;
+
+&lt;span class="gh"&gt;# Conclusion&lt;/span&gt;
+
+&lt;span class="gh"&gt;# Reference&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;当年做这个模板纯粹是为了自己：读完一份 RFC，脑子里一团东西，得有几个格子把它们分开装。&lt;strong&gt;没想到现在它成了我治 AI 啰嗦最有效的工具。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;我一般这么用：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;“按以下模板输出，不要新增或改动任何一级标题。每节的要求：
+&lt;strong&gt;What&lt;/strong&gt; 一句话说清这是什么，Abstract 不超过 3 句；
+&lt;strong&gt;Why&lt;/strong&gt; 只写要解决的问题和不做的后果，2–3 条；
+&lt;strong&gt;How&lt;/strong&gt; 是主体，可以详细，但按机制拆条，不要写通用背景；
+&lt;strong&gt;Example&lt;/strong&gt; 必须是可运行/可验证的具体例子，不要伪代码占位；
+&lt;strong&gt;Conclusion&lt;/strong&gt; 3 条以内，每条一句话；
+&lt;strong&gt;Reference&lt;/strong&gt; 只列我给你的材料，不要编造链接。
+任何我没提供的信息，写“待确认”，不要用通用描述填充。”&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;顺便说一句常见误解：&lt;strong&gt;引言、背景、总结不是坏东西&lt;/strong&gt;，RFC 也有 Abstract。&lt;strong&gt;坏的不是“有”，是“长”&lt;/strong&gt;——一句话能交代的背景别写三段。所以模板里我给它们标了硬上限：Abstract 三句，Conclusion 三条。有位置，但有配额。&lt;/p&gt;
+&lt;h3 id="_7"&gt;模板为什么这么管用&lt;/h3&gt;
+&lt;p&gt;它一次性掐住了前面那三条病根：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;病根&lt;/th&gt;
+&lt;th&gt;模板怎么治&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;只加不减、没有删除键&lt;/td&gt;
+&lt;td&gt;章节固定，它没地方加，只能往格子里塞&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;没有成本感&lt;/td&gt;
+&lt;td&gt;每节配额就是预算，Abstract 三句就是三句&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;靠字数掩饰没底&lt;/td&gt;
+&lt;td&gt;空格子暴露短板&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;最后一条我特别喜欢：&lt;strong&gt;空着的格子是会说话的。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;Example&lt;/code&gt; 一节最诚实。AI 要是对某个机制心里没底，那儿就会冒出“例如可以使用相应的方法进行处理”这种鬼话——你不用读完二十页去找漏洞，盯着那一节问它就行。&lt;strong&gt;没模板的文档，水分是摊开的，你得全篇找；有模板的文档，水分是聚集的，都堆在它不会的那一格里。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;这跟工程上的做法是一个道理：我们写事故报告要有固定字段（现象 / 影响面 / 根因 / 处理 / 改进项），不是为了好看，是为了&lt;strong&gt;让缺失的东西显形&lt;/strong&gt;。谁都能写一篇感人的事故复盘，但“根因”那一栏空着，是藏不住的。模板对 AI 起的是同一个作用。&lt;/p&gt;
+&lt;h3 id="_8"&gt;配套的五条&lt;/h3&gt;
+&lt;p&gt;模板是承重墙，剩下这几条是补充。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;1. 用结构数量代替字数&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;模型数不准字数，但数得准句子和条目。&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;❌ “控制在 500 字左右，简洁一些”&lt;/li&gt;
+&lt;li&gt;✅ “每节恰好 3 个要点，每个要点不超过 2 句话；结论先写，一句话”&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;2. 给一份否定清单&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;正面说“要简洁”太软，反面禁令更硬。我挂在系统提示里的一段：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;禁止事项：
+- 背景/引言/总结各不超过 3 句，不要展开成段
+- 不要复述我的问题
+- 不要用“值得注意的是”“综上所述”“至关重要”“需要综合考虑”
+- 不要解释我在提示里已经用过的术语
+- 能用一句话说清的，不要分三段
+- 如果某个信息我没给你，直接标注“待确认”，不要用通用描述填充
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;strong&gt;3. 把读者写进提示里&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;既然它缺读者模型，你就手动补：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;“读者是熟悉本服务的后端同事，已知 Kubernetes、gRPC、限流的基本概念，不要解释这些。他读这份文档只为回答一个问题：这次改动会不会影响线上 SLA。”&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;这一条对篇幅的削减效果，往往比任何字数限制都大。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;4. 加一道压缩 pass&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;写完不要直接收。开一轮新的，让它当审稿人：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;“逐段检查以下文档，标出&lt;strong&gt;可以无损压缩&lt;/strong&gt;的段落（即删掉后不丢失任何信息的部分），给出删除建议和压缩后的版本。不要新增任何内容。”&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;这一步是把冗长补偿的定义直接拿来当检查项——“可无损压缩”本来就是那篇论文定义 VC 的标准。让模型来找自己的水分，它其实找得挺准，它只是默认不删。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;5. 双语场景：先定中文骨架，再让它翻译，不要让它重写&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;我踩过的坑：中文写完让 AI“写一份对应的英文版”，它会顺手重新组织、补充背景、加个 Overview，英文版比中文版长一半，两份对不上号，后面维护是灾难。&lt;/p&gt;
+&lt;p&gt;有了模板这事就好办了——&lt;strong&gt;两份文档共用同一套一级标题，天然对齐&lt;/strong&gt;。再加一句锁死：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;“逐段翻译，保持段落数、小标题、列表条目数完全一致。不要新增章节、过渡句或解释。术语按下表固定译法。”&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;&lt;strong&gt;最后一条元建议：把模板和禁令写进 skill / 规则文件，别每次手打。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;我自己的做法是把语气、禁用词、模板、术语表都固化成一个写作 skill（这个博客就有一个 &lt;code&gt;walter-blog-write&lt;/code&gt;，里面单独维护了一份“黑名单”，专门列 AI 味的表达）。每次手打提示词，你一定会偷懒；写成规则文件，它就每次都生效。人的自律不可靠，配置文件可靠。&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;想让 AI 写得像人，你得先把人的约束还给它——成本、读者、立场、和删除键。模板是把这四样一次性交出去的最省力的方式。&lt;/strong&gt;
+但有个边界：模板别用在头脑风暴阶段，那时候你要的恰恰是它铺得开、想得杂。要简洁的是&lt;strong&gt;给别人看的成品&lt;/strong&gt;，不是草稿。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;hr&gt;
+&lt;h2 id="ai_2"&gt;总结：约束自己的东西，正好用来约束 AI&lt;/h2&gt;
+&lt;p&gt;&lt;strong&gt;你多写的每一页，都要乘上读者的人数。&lt;/strong&gt;一份发给五十人的操作手册，一段没用的废话浪费的是五十份注意力，而写的人只按了一次回车。以前我们不舍得写废话，是因为敲字太累；现在写字免费了，克制就得变成一件刻意做的事。&lt;/p&gt;
+&lt;p&gt;写这篇文章我自己有个意外收获。当年做那份 RFC 模板，纯粹是为了给脑子里那团东西找几个格子装，十几年后它成了我管住 AI 最好用的缰绳。这大概是个通用规律——&lt;strong&gt;那些当年为了约束自己而做的东西，现在正好用来约束 AI。&lt;/strong&gt;格子还是那几个格子，只是往里填字的换了个人。&lt;/p&gt;
+&lt;p&gt;所以别急着找什么新的提示词技巧，先翻翻你自己的抽屉。&lt;/p&gt;
+&lt;h2 id="_9"&gt;全文思维导图&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap
+&amp;lt;style&amp;gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&amp;lt;/style&amp;gt;
+
+* 为什么 AI 写的文档废话那么多
+** 现象：成本转移
+*** 写字免费，约束消失
+*** 作者省 2 小时，N 个 reviewer 各花 20 分钟
+*** “写不出来” 这个信号被消掉了
+** 原因一：被我们教出来的
+*** RLHF 长度偏差
+*** 奖励提升 70-90% 归因于长度
+*** 纯字数奖励≈正经 RLHF
+*** &amp;lt;1% 带偏数据即可污染裁判
+*** 训练偏一次，评测再偏一次
+** 原因二：话多是没底
+*** Verbosity Compensation
+*** GPT-4 冗长率 50.40%
+*** 冗长伴随更高不确定性
+*** 最厚的设计文档常是最没想清的
+** 原因三：没有“删”这个动作
+*** 逐 token 生成，只加不减
+*** 没有成本感
+*** 没有读者模型
+*** 数不准字数
+** 人的四个优势
+*** 成本感
+*** 读者模型
+*** 立场
+*** 责任
+** 主方案：把模板甩给它
+*** 读 RFC 的骨架\nWhat/Why/How/Example/Conclusion
+*** 章节固定→无处可加
+*** 每节配额→有了成本感
+*** 空格子暴露短板\n(Example 最诚实)
+*** 水分从“摊开”变“聚集”
+*** 类比：事故报告固定字段\n让缺失显形
+*** 背景/总结不是坏东西\n坏的是长→给配额
+** 配套五条
+*** 结构数量代替字数
+*** 否定清单
+*** 把读者写进提示
+*** 无损压缩 pass
+*** 双语共用标题、逐段对译
+*** 固化成 skill 规则
+** 总结
+*** 废话要乘读者人数
+*** 约束自己的东西\n正好用来约束 AI
+*** 信息密度是礼貌
+@endmindmap
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;img alt="为什么 AI 写的文档废话那么多 - 思维导图" src="./images/journal_20260815_ai_verbose_doc_mindmap.png"&gt;&lt;/p&gt;
+&lt;h2 id="_10"&gt;行动清单&lt;/h2&gt;
+&lt;p&gt;今天就能做的四件事：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;翻出你手上现成的模板&lt;/strong&gt;——读书笔记的、事故报告的、周报的、评审的。你可能已经有治 AI 啰嗦的工具了，只是从来没把它甩给 AI 用过。给每节加一句配额（几句、几条），就能直接上工。&lt;/li&gt;
+&lt;li&gt;找出最近一份 AI 生成的文档，跑一遍“无损压缩”提示，看看能砍掉百分之几。砍掉 30% 以上很常见。&lt;/li&gt;
+&lt;li&gt;把模板和否定清单一起写进 skill / 规则文件，别每次手打。手打你一定会偷懒。&lt;/li&gt;
+&lt;li&gt;下次评审别人的文档，把“厚”从加分项里划掉。这个偏差最初就是从我们这儿来的。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;hr/&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。&lt;/p&gt;</content><category term="AI"/><category term="journal"/><category term="writing"/><category term="AI"/><category term="prompt"/></entry><entry><title>别让 AI 只会说“你是对的”：我们需要诤友，不需要“好好先生”</title><link href="https://www.fanyamin.com/blog/2026-08-15-ai-sycophancy-critical-friend.html" rel="alternate"/><published>2026-08-15T21:16:00+08:00</published><updated>2026-08-15T21:16:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-08-15:/blog/2026-08-15-ai-sycophancy-critical-friend.html</id><summary type="html">&lt;p&gt;AI 最危险的时刻，不一定是一本正经地胡说八道，而是顺着我们的预设，把一个未经检验的猜测润色成完整结论。与其让 AI 做一个百依百顺的助手，不如把它调成敢于指出漏洞的诤友。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;别让 AI 只会说“你是对的”：我们需要诤友，不需要“好好先生”&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;AI&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Version&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;v1.0&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;2026-08-15&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h1 id="ai"&gt;别让 AI 只会说“你是对的”：我们需要诤友，不需要“好好先生”&lt;/h1&gt;
+&lt;p&gt;这两年我越来越常用 AI。查资料、改文章、想方案，碰到拿不准的事情，也会先问它一句。&lt;/p&gt;
+&lt;p&gt;用得越多，我越觉得：AI 最危险的时刻，不一定是它一本正经地胡说八道。明显的错话反而容易让人警觉。更麻烦的是，它顺着我的意思往下说，把一个未经检验的猜测补全论据、理顺逻辑、润色措辞，最后端回来一个看上去相当可靠的结论。&lt;/p&gt;
+&lt;p&gt;错误还是我的错误，只是经过 AI 加工以后，变得更完整、更漂亮，也更难怀疑了。&lt;/p&gt;
+&lt;p&gt;朱镕基谈中美关系时说过一句话：“诤友才是挚友。”这里的诤友，不是凡事抬杠的人，而是明知你可能不爱听，仍愿意把不同意见讲出来的人。我们使用 AI，也需要这种关系：它可以友善，但不能拿友善代替事实；可以理解我们的处境，但不能把理解偷换成赞同。&lt;/p&gt;
+&lt;h2 id="ai_1"&gt;AI 为什么容易顺着我们说&lt;/h2&gt;
+&lt;p&gt;所谓 AI 的“讨好型人格”，并不是说模型真的有性格。更准确地说，这是一种迎合倾向：当用户在问题中暗示了立场，模型可能优先生成符合这个立场、读起来令人舒服的回答，而不是先检查立场本身是否成立。&lt;/p&gt;
+&lt;p&gt;这并非纯粹的主观感受。2023 年的一项&lt;a href="https://www.anthropic.com/news/towards-understanding-sycophancy-in-language-models"&gt;关于大模型迎合行为的研究&lt;/a&gt;发现，在多种开放式任务中，接受过人类反馈训练的 AI 助手会表现出迎合倾向；当回答符合用户观点时，人类评价者也更可能偏爱它。换句话说，问题不只在 AI，也在我们自己：人天然喜欢听赞同的话，而训练过程可能把这种偏好教给模型。&lt;/p&gt;
+&lt;p&gt;2025 年，OpenAI 也曾&lt;a href="https://openai.com/index/sycophancy-in-gpt-4o/"&gt;回滚一次 GPT-4o 更新&lt;/a&gt;，原因之一就是更新后的模型过度赞同和奉承用户。这件事至少说明，迎合不是抽象的哲学担忧，而是模型设计中真实存在、需要持续修正的问题。&lt;/p&gt;
+&lt;p&gt;不过，不能把责任全推给训练方法。我们的提问方式也在给 AI “递话”。比较下面两种问法：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;“这个方案是不是比原方案好很多？请帮我补充理由。”&lt;/li&gt;
+&lt;li&gt;“比较两个方案，先列评价标准，再分别给出支持证据、反例和未知项。”&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;第一种问题已经把结论塞进去了，AI 只需替我们准备辩护词。第二种问题才给它留下判断空间。&lt;/p&gt;
+&lt;p&gt;做程序员久了，我有个职业病：看到程序输出了预期结果，不会马上放心，还要看看测试是不是写错了。可面对 AI，我们常常反过来——只要它说得顺耳、格式整齐、论据像样，就觉得答案通过了测试。&lt;/p&gt;
+&lt;p&gt;其实它很可能只是通过了“让用户满意”这项测试。&lt;/p&gt;
+&lt;h2 id="_1"&gt;它怎样把小错放大成大错&lt;/h2&gt;
+&lt;p&gt;AI 的迎合很少凭空创造一个人的偏见。它更像扩音器，把已有的判断放大，把原本松散的念头加工成一套自洽的说法。&lt;/p&gt;
+&lt;h3 id="_2"&gt;把猜测写成结论&lt;/h3&gt;
+&lt;p&gt;假设项目延期了，我先认定原因是“另一个团队不配合”，再让 AI 帮我分析。它可以迅速列出沟通不及时、责任边界模糊、反馈周期过长等几条理由。这些理由每一条都像那么回事，但它们可能只是从我的预设出发生成的合理故事，并不是对项目事实的调查。&lt;/p&gt;
+&lt;p&gt;于是，一句带情绪的猜测，变成了一份条理清楚的复盘。&lt;/p&gt;
+&lt;h3 id="_3"&gt;把偏见补成论据&lt;/h3&gt;
+&lt;p&gt;当我们对某个人、某项技术或某种政策已经有了倾向，最容易问的不是“我掌握了什么证据”，而是“请证明我的看法”。AI 很擅长按要求组织材料。只要问题的方向足够明确，它甚至可以挑出一批看似相关的理由，让我们产生“果然如此”的感觉。&lt;/p&gt;
+&lt;p&gt;这正好撞上人类自己的确认偏误：我们本来就更愿意注意支持既有观点的信息，AI 又替我们提高了搜集和包装这些信息的效率。&lt;/p&gt;
+&lt;h3 id="_4"&gt;把冲动包装成计划&lt;/h3&gt;
+&lt;p&gt;“我受够了，现在辞职是不是最好的选择？”“这只股票最近一直涨，我是不是应该加仓？”“这个症状看起来不严重，是不是不用去医院？”&lt;/p&gt;
+&lt;p&gt;这类问题真正需要的，通常不是一份赞成或反对的长答案，而是风险边界、缺失信息和专业核验。AI 若顺着当事人的情绪给出一套行动步骤，冲动就有了计划的外观。计划越具体，人越容易误以为它经过了充分论证。&lt;/p&gt;
+&lt;p&gt;在职业、投资、医疗和法律等高风险问题上，这种错觉尤其昂贵。AI 可以帮助整理问题，但不能替代专业判断和现实证据。&lt;/p&gt;
+&lt;h2 id="_5"&gt;诤友不是逢问必反&lt;/h2&gt;
+&lt;p&gt;避免迎合，不等于要求 AI 每次都唱反调。如果我说一加一等于二，它非要“从另一个角度”论证等于三，那不是诤友，是添乱。&lt;/p&gt;
+&lt;p&gt;好的反对需要三个条件：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;有依据&lt;/strong&gt;：指出哪项事实、数据或推理支持异议。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;有边界&lt;/strong&gt;：分清已经知道的、合理推断的和暂时不知道的。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;有分寸&lt;/strong&gt;：批评观点，不迎合情绪，也不故意冒犯人。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;所以，我们真正需要的不是“反对模式”，而是“校验模式”。它不预设我错，也不预设我对；它先检查前提，再讨论结论。&lt;/p&gt;
+&lt;p&gt;这和好的代码评审很像。认真负责的代码评审者不会为了显示水平，每行都挑一点毛病；也不会只回一句 “LGTM（Looks Good To Me，看起来没问题）”。他会盯住真正可能出事故的地方，说明为什么有风险，并给出验证办法。&lt;/p&gt;
+&lt;h2 id="ai_2"&gt;把 AI 调成诤友的六个做法&lt;/h2&gt;
+&lt;p&gt;模型厂商当然需要继续改进训练和评测，但在工具真正变得“不偏不倚”之前，我们可以先改变自己的使用方法。&lt;/p&gt;
+&lt;h3 id="1"&gt;1. 不要在问题里夹带结论&lt;/h3&gt;
+&lt;p&gt;少问：“我的判断是对的吧？”&lt;/p&gt;
+&lt;p&gt;改问：“这个判断依赖哪些前提？哪些前提尚未得到验证？”&lt;/p&gt;
+&lt;p&gt;提问越像辩护委托书，回答越像辩护词。先把事实和立场拆开，AI 才有机会检查我们的盲区。&lt;/p&gt;
+&lt;h3 id="2"&gt;2. 强制区分事实、推断和意见&lt;/h3&gt;
+&lt;p&gt;让 AI 给每个关键陈述贴上标签：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;已知事实：有来源或有直接证据；&lt;/li&gt;
+&lt;li&gt;合理推断：从事实推出来，但仍可能出错；&lt;/li&gt;
+&lt;li&gt;主观判断：取决于价值观、目标或个人偏好；&lt;/li&gt;
+&lt;li&gt;未知信息：目前不足以判断。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;很多貌似坚定的结论，一旦这样拆开，就会露出中间缺失的台阶。&lt;/p&gt;
+&lt;h3 id="3"&gt;3. 主动索要反例，而不只要更多理由&lt;/h3&gt;
+&lt;p&gt;当 AI 给出一个结论后，继续问：&lt;/p&gt;
+&lt;p&gt;“什么证据会推翻这个结论？”&lt;/p&gt;
+&lt;p&gt;“请给出两个最强反例，不要给稻草人式反对意见。”&lt;/p&gt;
+&lt;p&gt;“如果这个方案半年后失败，最可能是哪个假设错了？”&lt;/p&gt;
+&lt;p&gt;这不是悲观，而是给判断做压力测试。&lt;/p&gt;
+&lt;h3 id="4"&gt;4. 让支持方和反对方分开工作&lt;/h3&gt;
+&lt;p&gt;可以让 AI 先用最强理由支持方案，再用最强理由反对方案，最后由第三个角色比较双方证据。注意，最后一步不能只比谁写得更有气势，而要比较证据质量、可验证性和出错代价。&lt;/p&gt;
+&lt;p&gt;对于重要决定，最好在新的对话中询问反方。长对话已经积累了我们的立场和偏好，模型更容易沿着原来的轨道继续说。&lt;/p&gt;
+&lt;h3 id="5"&gt;5. 要求它报告信心，而不是表演确定&lt;/h3&gt;
+&lt;p&gt;可以要求 AI 说明：结论的信心是高、中还是低；最大的不确定性是什么；还缺哪三项信息。信心标签当然不是精确概率，但它能提醒我们，流畅的语言和可靠的结论是两回事。&lt;/p&gt;
+&lt;p&gt;凡是涉及日期、数字、人物原话、产品规则和最新事件，还要追问来源，并打开原始材料核对。引用链接不是装饰，它是让结论接受外部检查的接口。&lt;/p&gt;
+&lt;h3 id="6"&gt;6. 高风险问题必须走出聊天框&lt;/h3&gt;
+&lt;p&gt;重要决定至少要找一个独立的信息源：原始文档、实验数据、真实用户、专业人士，或者愿意当面指出问题的人。&lt;/p&gt;
+&lt;p&gt;AI 可以帮我们列检查清单，却不能成为自己结论的唯一证人。让一个模型先提出观点，再让同一个模型证明自己正确，看似完成了交叉验证，其实证人和法官还是同一个人。&lt;/p&gt;
+&lt;h2 id="_6"&gt;一段可直接使用的“诤友模式”提示词&lt;/h2&gt;
+&lt;p&gt;下面这段提示词，我准备在做方案评审、重要决策和文章论证时反复使用：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;请把自己当作我的诤友，而不是赞同者。
+
+不要因为我的问题暗示了某个立场，就默认该立场正确。请按以下顺序回答：
+
+1. 用一句话复述我真正要判断的问题，不替我强化结论；
+2. 列出我的关键假设，并标出哪些已有证据、哪些尚未验证；
+3. 区分事实、推断、意见和未知信息；
+4. 给出支持该观点的最强证据，以及反对它的最强证据；
+5. 指出至少一个可能推翻结论的反例；
+6. 说明你的信心水平、主要不确定性和出错后的代价；
+7. 给出下一步最值得做的验证，而不是直接迎合我的偏好。
+
+如果我的判断基本正确，也请说明它在什么条件下成立、在什么边界外会失效。
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这段提示词也不是护身符。AI 仍可能编造反例、误判证据或给出虚假的信心。它的价值，是把对话从“替我证明”切换到“帮我检查”。最终仍要回到事实。&lt;/p&gt;
+&lt;h2 id="_7"&gt;总结：先检查前提，再接受赞同&lt;/h2&gt;
+&lt;p&gt;我们当然喜欢被理解、被肯定。问题是，当一个随叫随到、措辞流畅的系统不断告诉我们“你想得很对”，赞同很容易被误认成证据。&lt;/p&gt;
+&lt;p&gt;朱镕基说“诤友才是挚友”，珍贵之处就在这里：真正的朋友不是让你永远舒服，而是尽量不让你在错误的方向上越走越远。&lt;/p&gt;
+&lt;p&gt;所以下次 AI 又给出一篇漂亮的赞同意见时，别急着问它还能补充几条理由。先问一句：&lt;strong&gt;我最可能错在哪里？&lt;/strong&gt;&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_8"&gt;参考资料&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://news.sina.com.cn/zl/zatan/2013-08-15/1342248.shtml"&gt;采访朱镕基印象记：幽默、直率&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://www.anthropic.com/news/towards-understanding-sycophancy-in-language-models"&gt;Towards Understanding Sycophancy in Language Models&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://openai.com/index/sycophancy-in-gpt-4o/"&gt;Sycophancy in GPT-4o: what happened and what we're doing about it&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;hr/&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。&lt;/p&gt;</content><category term="AI"/><category term="journal"/><category term="AI"/><category term="critical-thinking"/></entry><entry><title>如何管理 AI Agent 的记忆之三：让 mem0 给 AI Agent 装一层"通用记忆"</title><link href="https://www.fanyamin.com/blog/2026-08-08-mem0-memory-layer.html" rel="alternate"/><published>2026-08-08T21:00:00+08:00</published><updated>2026-08-08T21:00:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-08-08:/blog/2026-08-08-mem0-memory-layer.html</id><summary type="html">&lt;p&gt;前两篇我自己用 pgvector 手搓了一套 Agent 记忆系统，也讲了怎么让 Claude Code、Codex、OpenCode 共享它。这篇介绍一个 6 万多 star 的开源库 mem0——它把"打分、抽取、去重、多信号检索"这些活儿全帮你做了，还官方提供了三个编码工具的 skill 和 MCP 集成。附架构拆解、核心 API 用法，以及一行命令接进三个工具的实操。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
 &lt;thead&gt;
 &lt;tr&gt;
 &lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
@@ -246,7 +674,7 @@ npx&lt;span class="w"&gt; &lt;/span&gt;mcp-add&lt;span class="w"&gt; &lt;/span&g
 &lt;/ul&gt;
 &lt;p&gt;如果要比较 mem0 和自建 pgvector，建议使用同一批脱敏样本、同一个模型和同一组问题，分别记录：安装与升级成本、写入时延、检索时延、返回候选数量、事实更新后的处理方式、删除是否彻底，以及模型调用次数。没有实测数字时，就明确写“待验证”，不要用项目 star 数或宣传语替代质量评估。&lt;/p&gt;
 &lt;p&gt;还应单独写清数据边界：云端方案会把哪些内容送出本地，自建方案由谁维护模型和数据库，用户如何查看、导出和删除记忆。通用记忆层最容易被忽略的不是 API，而是数据隔离、租户边界和“忘记我”能否真的生效。&lt;/p&gt;
-&lt;h2 id="_4"&gt;最后一句&lt;/h2&gt;
+&lt;h2 id="_4"&gt;写在最后&lt;/h2&gt;
 &lt;p&gt;我自己是"先手搓、再用轮子"这个顺序过来的，反而觉得值——&lt;strong&gt;先手搓一遍，你才知道 mem0 每个设计点在解决什么问题；直接用轮子，容易把它当黑盒，出了问题一脸懵。&lt;/strong&gt;&lt;/p&gt;
 &lt;p&gt;所以我的建议是：前两篇的原理别跳过，但真要上项目、尤其想让三个编码工具共享记忆时，不必重复造轮子——&lt;code&gt;pip install mem0ai&lt;/code&gt; 加两行 &lt;code&gt;npx&lt;/code&gt;，你前一篇想要的效果，基本就有了。&lt;/p&gt;
 &lt;p&gt;工具会迭代，mem0 的 API 和集成命令也可能变（落地前记得看它最新文档）；但"给 Agent 一层会提炼、会遗忘、能共享的记忆"这个方向，是确定的。&lt;/p&gt;
@@ -621,7 +1049,7 @@ link&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/sp
 &lt;p&gt;&lt;strong&gt;静态规则靠"一份文件链三处"，动态记忆靠"一个服务连三家"。&lt;/strong&gt;&lt;br&gt;
 单一事实源，永远是治"多份不一致"的解药。&lt;/p&gt;
 &lt;/blockquote&gt;
-&lt;h2 id="_7"&gt;最后一句&lt;/h2&gt;
+&lt;h2 id="_7"&gt;写在最后&lt;/h2&gt;
 &lt;p&gt;工具会一直增多——今天是 Claude Code、Codex、OpenCode，明天可能又冒出来俩。但只要你守住一个原则：&lt;strong&gt;记忆只存一份，工具只是它的不同入口&lt;/strong&gt;，那不管来几个新工具，你要做的都只是"再加一条链接、再连一次 MCP"，而不是"再抄一遍规则"。&lt;/p&gt;
 &lt;p&gt;别让你的 AI 助手们，活成三个各记各账、互不通气的同事。&lt;/p&gt;
 &lt;h2 id="_8"&gt;全文思维导图&lt;/h2&gt;
@@ -1292,7 +1720,7 @@ description: 在跨会话记住用户偏好和项目事实时使用。当用户�
 什么都记的 Agent，最后既想不起来、又特别贵。&lt;/p&gt;
 &lt;/blockquote&gt;
 &lt;hr&gt;
-&lt;h2 id="_14"&gt;最后一句&lt;/h2&gt;
+&lt;h2 id="_14"&gt;写在最后&lt;/h2&gt;
 &lt;p&gt;回到开头那个转头就忘的实习生。你后来怎么带好他的？无非是让他养成三个习惯：重要的事记进本子（分层存储）、定期回顾整理（记忆巩固）、用的时候翻对页码（精准检索）。Agent 也一样。&lt;/p&gt;
 &lt;p&gt;&lt;strong&gt;记得牢，靠的是分层和巩固；想得起，靠的是多信号检索；不烧钱，靠的是舍得忘。&lt;/strong&gt; 这三件事不是三选一，而是同一套设计的三个侧面——把记忆当成一个有生命周期的系统来管，而不是一个只进不出的仓库。&lt;/p&gt;
 &lt;p&gt;至于那些花里胡哨的框架，工具年年换，道理不变：&lt;strong&gt;先想清楚你缺的是哪一层记忆，再去挑轮子。&lt;/strong&gt; 别让你的 Agent，活成那个聪明却总让人重复第三遍的实习生。&lt;/p&gt;
@@ -1522,7 +1950,7 @@ mindmapDiagram {
 &lt;h2 id="_2"&gt;先做一轮“只读监工”&lt;/h2&gt;
 &lt;p&gt;长期 Agent 不必一开始就接 IM、日历和工单。最安全的第一版只有三个动作：定时读取一份结构化计划，生成一份带出处的风险简报，把简报写回固定目录。人确认它连续几轮都能正确识别延期、区分事实和推测之后，再增加通知能力。&lt;/p&gt;
 &lt;p&gt;还要提前定义三种失败：数据源不可用时明确报告“无法判断”，模型不确定时停下来询问，通知发送失败时保留待发送记录。&lt;strong&gt;一个会诚实说“不知道”的监工，比一个总能生成结论但来源不明的监工更可靠。&lt;/strong&gt;&lt;/p&gt;
-&lt;h2 id="_3"&gt;最后一句&lt;/h2&gt;
+&lt;h2 id="_3"&gt;写在最后&lt;/h2&gt;
 &lt;p&gt;三篇写下来，其实是一条线：&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;第一篇讲&lt;strong&gt;心法&lt;/strong&gt;——人主导、AI 助攻，把 PDCA 环转起来；&lt;/li&gt;
@@ -1794,7 +2222,7 @@ mindmapDiagram {
 &lt;h2 id="_1"&gt;一个不依赖具体产品的选型实验&lt;/h2&gt;
 &lt;p&gt;工具会换，测试方法可以留下。选一个真实但不敏感的计划，分别用“纯对话”“结构化表格 + 对话”“定时脚本 + 对话”跑一遍，记录四项：上下文准备成本、生成结果的可核对程度、人工返工量、下一次能否复用。&lt;/p&gt;
 &lt;p&gt;如果一个工具生成得很快，却不能读真实状态、不能指出出处、不能在第二天接着跑，那么它更像一次性的计划生成器，而不是项目助理。反过来，哪怕界面朴素，只要数据结构清楚、输出稳定、失败时能停下来问人，就值得继续打磨。&lt;/p&gt;
-&lt;h2 id="_2"&gt;最后一句&lt;/h2&gt;
+&lt;h2 id="_2"&gt;写在最后&lt;/h2&gt;
 &lt;p&gt;工具会换、产品会迭代，今天火的明天可能就没人提了。但有两样东西不会过期：&lt;strong&gt;一是 PDCA 这个转了几十年的老框架，二是你把方法论固化成 Skill 的能力。&lt;/strong&gt;&lt;/p&gt;
 &lt;p&gt;所以我的建议是：&lt;strong&gt;别追工具，追方法。&lt;/strong&gt; 挑一个能陪你多轮对话、能读你文档的通用 AI 打底，把你做计划的套路沉淀成一个 Skill，然后在用的过程中一点点打磨它。工具是消耗品，方法论才是你的复利资产。&lt;/p&gt;
 &lt;p&gt;真正稀缺的，从来不是“会用某个工具”，而是&lt;strong&gt;知道自己要去哪，以及有一套能一遍遍复用的打法&lt;/strong&gt;。前者 AI 给不了你，后者，AI 能帮你放大。&lt;/p&gt;
@@ -2009,7 +2437,7 @@ mindmapDiagram {
 &lt;h2 id="_2"&gt;一次小型复盘：别让计划只停在漂亮的表格里&lt;/h2&gt;
 &lt;p&gt;如果没有完整的项目数据，可以先拿一个两周内能结束的小目标练手。计划里只保留五列：任务、负责人、完成条件、依赖、风险。执行中每天只更新事实，不让 AI 猜进度；到了复盘时，再让 AI 对照原计划回答三个问题：哪一项最早出现偏差、哪个依赖被低估、哪一个风险本来可以提前验证。&lt;/p&gt;
 &lt;p&gt;这一步的价值不在于生成一份更漂亮的计划，而在于形成一条可追溯的链：&lt;strong&gt;当时为什么这样计划，后来发生了什么，下一轮应该改哪一个假设。&lt;/strong&gt; 如果计划每次都只是被动改日期，说明你还没有真正进入 Act 环节，只是在给延期换一种字体。&lt;/p&gt;
-&lt;h2 id="_3"&gt;最后一句&lt;/h2&gt;
+&lt;h2 id="_3"&gt;写在最后&lt;/h2&gt;
 &lt;p&gt;回到开头那个矛盾：计划总会过期，可做计划的过程无比重要。&lt;/p&gt;
 &lt;p&gt;AI 没有解决这个矛盾，它做的是另一件事——&lt;strong&gt;把“做计划”和“维护计划”这两件又累又机械的苦差事的成本大幅拉低&lt;/strong&gt;，低到你愿意一遍遍去做、去调、去纠偏。计划文档还是会过期，但你转动 PDCA 环的那份“planning”能力，被 AI 放大了。&lt;/p&gt;
 &lt;p&gt;省下来的时间干嘛？别拿去开更多的会。拿去做那些 AI 替不了的事——想清楚“我们到底要往哪儿走”，以及在没人给标准答案的地方，创新和创造。&lt;/p&gt;
@@ -2572,7 +3000,7 @@ mindmapDiagram {
 &lt;/ul&gt;
 &lt;p&gt;最后那个问题是唯一的验收标准。别的都是过程指标。&lt;/p&gt;
 &lt;hr&gt;
-&lt;h2 id="_29"&gt;最后一句&lt;/h2&gt;
+&lt;h2 id="_29"&gt;写在最后&lt;/h2&gt;
 &lt;p&gt;“超级个体”这个词我一直有点犯别扭，因为它听起来像在鼓励一个人扛下所有活。&lt;/p&gt;
 &lt;p&gt;我理解的超级个体不是产出翻十倍的劳模，而是&lt;strong&gt;把自己从“人肉信息管道”的位置上赎出来的人&lt;/strong&gt;。AI 干得最好的从来不是那些需要灵光一现的事，恰恰是那些琐碎、重复、必须有人干却没人愿意干的事。它对烦躁免疫，对尴尬免疫，对第三次催同一个人也免疫。&lt;/p&gt;
 &lt;p&gt;至于开会时的判断、跟人磨优先级时的分寸、拍板时那份要自己扛的责任——这些交不出去，也不该交出去。&lt;strong&gt;这些恰恰是在这行摸爬滚打二十来年，真正沉淀下来的东西。&lt;/strong&gt;&lt;/p&gt;
@@ -2882,7 +3310,7 @@ mindmapDiagram {
 &lt;h2 id="_2"&gt;把五种模式放进一次真实决策&lt;/h2&gt;
 &lt;p&gt;拿一个熟悉的任务做对照最容易理解：如果输入输出稳定、步骤固定，先用 Prompt Chaining；如果请求类型差异很大，再考虑 Routing；如果子任务相互独立，优先 Parallelization；只有当任务需要动态拆解、工具调用和多轮反馈时，才进入 Orchestrator-Workers 或 Agent。&lt;/p&gt;
 &lt;p&gt;评估时不要只问“效果好不好”，还要记录：步骤数量、失败后能否重试、每轮消耗多少上下文、最长运行时间、是否需要人工接管。很多所谓 Agent，真正上线后只是一个带工具的 workflow；这不是降级，而是把复杂度控制在问题真正需要的范围内。&lt;/p&gt;
-&lt;h2 id="_3"&gt;最后一句&lt;/h2&gt;
+&lt;h2 id="_3"&gt;写在最后&lt;/h2&gt;
 &lt;p&gt;重读这么多遍，我最大的体会是：&lt;strong&gt;"高效的 Agent"这个说法，重点从来不在"Agent"，而在"高效"&lt;/strong&gt;。真正高效的做法，往往是克制——先问清楚"这事到底需不需要一个 agent"，而不是急着证明"我也做了个 agent"。&lt;/p&gt;
 &lt;p&gt;在 LLM 这个领域，成功不是比谁的系统更花哨，而是比谁给自己的需求搭了&lt;strong&gt;对的&lt;/strong&gt;那个系统。从最简单的 prompt 开始，用扎实的评估去优化它，只有当简单方案确实撑不住时，才一层层往上加复杂度。&lt;/p&gt;
 &lt;p&gt;说到底，这跟写代码、带项目是一个道理：&lt;strong&gt;能把复杂的事情做简单，才是真本事；把简单的事情做复杂，谁都会。&lt;/strong&gt;&lt;/p&gt;
@@ -3481,7 +3909,7 @@ python&lt;span class="w"&gt; &lt;/span&gt;weather_mcp_2026.py&lt;span class="w"&
 &lt;h2 id="_5"&gt;给快速变化的规范加一层“保鲜膜”&lt;/h2&gt;
 &lt;p&gt;阅读或实现新规范时，最好在文章和代码旁边同时记录四项：规范发布日期或 draft 版本、使用的 SDK 版本、实际跑过的客户端、仍未验证的扩展。这样读者能分辨哪些是协议核心，哪些只是某个 SDK 当前的实现方式。&lt;/p&gt;
 &lt;p&gt;最小兼容性测试可以包括：首次请求、重复请求、长任务轮询、鉴权失败、客户端断线后重试，以及旧客户端访问新服务。每个测试都保留一份原始请求和响应，尤其不要只展示封装库返回的成功结果。协议文章最怕“看起来已经能跑”，却没有告诉读者它在哪个版本、哪些边界还没跑过。&lt;/p&gt;
-&lt;h2 id="_6"&gt;最后一句&lt;/h2&gt;
+&lt;h2 id="_6"&gt;写在最后&lt;/h2&gt;
 &lt;p&gt;MCP 这次从"打电话"改成"发快递"，本质上是把状态从协议层踢回到了应用层——协议只管把每个请求送到，状态谁需要谁自己管。这个取舍，做过分布式系统的人都熟悉：&lt;strong&gt;无状态的东西，才好扩、好换、好治理。&lt;/strong&gt;&lt;/p&gt;
 &lt;p&gt;如果你手上正好有个现成的 REST 服务想接给 Agent 用，别急着上一整套复杂架构。照着上面那个几十行的天气 Server 抄一个最小版本跑通，再按"无状态 → 加缓存 → 加网关"三步慢慢往生产演进。&lt;strong&gt;先能跑，再谈优雅。&lt;/strong&gt;&lt;/p&gt;
 &lt;h4 id="_7"&gt;行动清单&lt;/h4&gt;
@@ -4865,7 +5293,7 @@ ATC 写得再漂亮，如果没有测试真正执行；架构规范写得再严�
 你把“对”定义得越清楚，AI 的自由发挥空间就越小，交付就越可控。&lt;/p&gt;
 &lt;/blockquote&gt;
 &lt;hr&gt;
-&lt;h2 id="_3"&gt;最后一句&lt;/h2&gt;
+&lt;h2 id="_3"&gt;写在最后&lt;/h2&gt;
 &lt;p&gt;我当然知道，一个 Skill 代替不了那位老同事。它没有她多年积累的测试直觉，也不会在拿到软件包后忽然换个角度，找到所有人都没想到的那条路径。但每当 Agent 兴冲冲地说“已经完成”，这个 Skill 至少会替她追问一句：&lt;strong&gt;验收用例都通过了吗？性能、压力、异常和边界条件测了吗？没通过，就先别交付。&lt;/strong&gt;&lt;/p&gt;
 &lt;p&gt;AI 时代最值钱的工程能力，可能不再只是“把代码写对”，而是&lt;strong&gt;把“对”定义清楚，再建立一套不通过就不放行的 Harness&lt;/strong&gt;。她以前替我们的软件质量把关；现在，我们虽然不再共事，那套方法却可以继续和我并肩干活。&lt;/p&gt;
 &lt;h2 id="_4"&gt;全文思维导图&lt;/h2&gt;
@@ -5102,7 +5530,7 @@ mindmapDiagram {
 前者是它的活，后者是你的责任，别搞混。&lt;/p&gt;
 &lt;/blockquote&gt;
 &lt;hr&gt;
-&lt;h2 id="_3"&gt;最后一句&lt;/h2&gt;
+&lt;h2 id="_3"&gt;写在最后&lt;/h2&gt;
 &lt;p&gt;重读 Ousterhout，我最大的感触是：他四十年前就把话说透了——软件唯一真正的敌人是复杂性，而复杂性关乎"理解与修改"，不关乎"打字快慢"。AI 恰好只在打字快慢上帮了大忙。&lt;/p&gt;
 &lt;p&gt;所以那个流行的期待——"AI 会把软件开发的难题一并解决掉"——大概率要落空。银弹从 1986 年到现在都没出现，AI 也不是。它更像是一台超强的偶然复杂性收割机、外加一个思路开阔的参谋：把累活揽走了，把几套方案也帮你摆好了，可最难的那道题——"针对你这个系统，到底哪个才对"——还是原封不动地、甚至更早地，摆回你面前。&lt;/p&gt;
 &lt;p&gt;这不算坏消息。它只是把程序员的价值，从"手"往"脑"又推了一把。&lt;strong&gt;能被 AI 替代的，从来不在键盘上，甚至不在"能不能想出办法"上；替代不了的，在你能不能从几个都说得通的办法里，挑出最适合这个系统的那一个，并敢为它签字。&lt;/strong&gt;&lt;/p&gt;
@@ -5500,7 +5928,7 @@ mindmapDiagram {
 &lt;li&gt;[ ] 记得它开源（&lt;a href="https://github.com/HKUDS/LightRAG"&gt;github.com/HKUDS/LightRAG&lt;/a&gt;），先拿自己的数据小规模验证，再决定要不要全量铺开。&lt;/li&gt;
 &lt;/ul&gt;
 &lt;hr&gt;
-&lt;h2 id="_6"&gt;最后一句&lt;/h2&gt;
+&lt;h2 id="_6"&gt;写在最后&lt;/h2&gt;
 &lt;p&gt;从 NaiveRAG 到 GraphRAG 再到 LightRAG，这条线其实一直在回答同一个问题：&lt;strong&gt;怎么让机器不只是"找到相关的字"，而是"理解字与字之间的关系"。&lt;/strong&gt;&lt;/p&gt;
 &lt;p&gt;GraphRAG 证明了"上图有用"，LightRAG 补了一句"但没必要上得那么重"。工程上真正难的从来不是"能不能做到"，而是"用多大代价做到"——&lt;strong&gt;在效果和成本之间找那个刚刚好的点，才是本事。&lt;/strong&gt;&lt;/p&gt;
 &lt;p&gt;这话放在写代码、做架构、乃至过日子上，好像都通用。&lt;/p&gt;
@@ -5994,7 +6422,7 @@ mindmapDiagram {
 先用 CLI 把能力和边界跑通，等真出现"多客户端复用/对外提供"的需求，再升级成 MCP 也不迟——反正收窄好的那层业务逻辑，两边是能共用的。&lt;/p&gt;
 &lt;/blockquote&gt;
 &lt;hr&gt;
-&lt;h2 id="_4"&gt;最后一句&lt;/h2&gt;
+&lt;h2 id="_4"&gt;写在最后&lt;/h2&gt;
 &lt;p&gt;回到开头那个岔口。如果让我给一个"默认动作"，那就是：&lt;strong&gt;先用 CLI 把能力跑通&lt;/strong&gt;——尤其当服务本来就有 CLI 的时候，接起来最快；关键是把每个动作的业务逻辑（参数校验、权限收窄）写成独立函数，别和"命令行解析"这层耦死。这样等哪天真要开放给别的团队、要多客户端复用，外面套一层 MCP Server 就行，里面的核心逻辑一行不用改。&lt;/p&gt;
 &lt;p&gt;技术选型这事儿，最怕的不是选错，而是&lt;strong&gt;为了"显得先进"而选&lt;/strong&gt;。MCP 是好东西，但它解决的是"标准化"和"复用"的问题；如果你压根没有这两个问题，那份协议复杂度就是纯成本。&lt;/p&gt;
 &lt;p&gt;老话说，杀鸡焉用牛刀。反过来，真要开肉联厂，也别只拿把水果刀死撑。&lt;strong&gt;先看你要杀的是一只鸡，还是一头牛。&lt;/strong&gt;&lt;/p&gt;
@@ -6174,7 +6602,7 @@ AI &amp;amp; 人  做测试
 不会 → 松开缰绳，让 AI 撒欢，你省心。&lt;/p&gt;
 &lt;/blockquote&gt;
 &lt;hr&gt;
-&lt;h2 id="_2"&gt;最后一句&lt;/h2&gt;
+&lt;h2 id="_2"&gt;写在最后&lt;/h2&gt;
 &lt;p&gt;AI 让写代码这件事变得又快又爽，快到你会忍不住想把方向盘也一起交出去。但我这次"越看越心惊"的经历提醒我：&lt;strong&gt;能交出去的是键盘，不能交出去的是责任。&lt;/strong&gt;&lt;/p&gt;
 &lt;p&gt;那段让我心惊的代码，后来我改了。改的时候我没那么焦虑了——因为我终于弄明白了它每一行在干什么。那一刻我才踏实：&lt;strong&gt;不是因为 AI 写得好，而是因为我终于看懂了、并且认下了这份东西。&lt;/strong&gt;&lt;/p&gt;
 &lt;p&gt;方向盘在谁手上，代码就是谁的。&lt;/p&gt;
@@ -13664,7 +14092,7 @@ mindmapDiagram {
 不编辑，只有“生成”，那写作就退化成复制粘贴。&lt;/p&gt;
 &lt;/blockquote&gt;
 &lt;hr&gt;
-&lt;h2 id="_4"&gt;最后一句&lt;/h2&gt;
+&lt;h2 id="_4"&gt;写在最后&lt;/h2&gt;
 &lt;p&gt;写作没有死，死的只是“没有灵魂的码字”。&lt;/p&gt;
 &lt;p&gt;AI 时代，如果你过去的价值只是“能写字”，那确实危险了——AI 写得比你快、比你多、比你不知疲倦。但如果你过去的价值是“有东西可写”——有经历、有观点、有立场——那 AI 更像给了你一副翅膀：让你少花时间在敲字上，多花时间在想清楚“我到底要对这个世界说什么”上。&lt;/p&gt;
 &lt;p&gt;那些无法被 AI 替代的，从来不在键盘上，而在你的脑子里、心里、和你走过的路里。&lt;/p&gt;
@@ -22648,7 +23076,7 @@ Save to &lt;span class="sb"&gt;`docs/design/{feature-name}.md`&lt;/span&gt;
 &lt;li&gt;&lt;a href="https://github.com/PatrickJS/awesome-cursorrules"&gt;Awesome Cursor Rules&lt;/a&gt; - 社区收集的优秀 Rules 示例&lt;/li&gt;
 &lt;/ul&gt;
 &lt;hr&gt;
-&lt;h2 id="_5"&gt;最后一句&lt;/h2&gt;
+&lt;h2 id="_5"&gt;写在最后&lt;/h2&gt;
 &lt;blockquote&gt;
 &lt;p&gt;&lt;strong&gt;工具的上限，不取决于工具本身，而取决于你怎么"调教"它。&lt;/strong&gt;&lt;/p&gt;
 &lt;/blockquote&gt;

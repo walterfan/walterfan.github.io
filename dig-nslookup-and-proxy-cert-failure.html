@@ -1,0 +1,1238 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="nslookup 回答&#34;这个域名解析成什么&#34;，dig 回答&#34;这个答案是谁给的、凭什么&#34;。本文先讲清两者的分工，再用一段可复制粘贴的脚本，在本机复现&#34;公司代理劫持 HTTPS 导致证书校验失败&#34;，然后按 openssl 看证书、dig 看解析的顺序把凶手指出来，最后给一份排查清单，并把这套方法收成了 AI skill lazy-tls-doctor。" />
+<meta name="keywords" content="dns, dig, nslookup, tls, openssl, https, proxy, mitm, 排查, 网络, skill">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "nslookup 与 dig 的区别，以及一次代理引起的证书校验失败",
+  "description": "nslookup 回答&#34;这个域名解析成什么&#34;，dig 回答&#34;这个答案是谁给的、凭什么&#34;。本文先讲清两者的分工，再用一段可复制粘贴的脚本，在本机复现&#34;公司代理劫持 HTTPS 导致证书校验失败&#34;，然后按 openssl 看证书、dig 看解析的顺序把凶手指出来，最后给一份排查清单，并把这套方法收成了 AI skill lazy-tls-doctor。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-08-15T11:30:00+08:00",
+  "dateModified": "2026-08-15T17:55:00+08:00",
+  "url": "https://www.fanyamin.com/blog/dig-nslookup-and-proxy-cert-failure.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/dig-nslookup-and-proxy-cert-failure.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "dns, dig, nslookup, tls, openssl, https, proxy, mitm, 排查, 网络, skill"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="nslookup 与 dig 的区别，以及一次代理引起的证书校验失败"/>
+  <meta property="og:description" content="nslookup 回答&#34;这个域名解析成什么&#34;，dig 回答&#34;这个答案是谁给的、凭什么&#34;。本文先讲清两者的分工，再用一段可复制粘贴的脚本，在本机复现&#34;公司代理劫持 HTTPS 导致证书校验失败&#34;，然后按 openssl 看证书、dig 看解析的顺序把凶手指出来，最后给一份排查清单，并把这套方法收成了 AI skill lazy-tls-doctor。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/dig-nslookup-and-proxy-cert-failure.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-08-15 11:30:00+08:00"/>
+  <meta property="article:modified_time" content="2026-08-15 17:55:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="dns"/>
+  <meta property="article:tag" content="dig"/>
+  <meta property="article:tag" content="nslookup"/>
+  <meta property="article:tag" content="tls"/>
+  <meta property="article:tag" content="openssl"/>
+  <meta property="article:tag" content="https"/>
+  <meta property="article:tag" content="proxy"/>
+  <meta property="article:tag" content="mitm"/>
+  <meta property="article:tag" content="排查"/>
+  <meta property="article:tag" content="网络"/>
+  <meta property="article:tag" content="skill"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; nslookup 与 dig 的区别，以及一次代理引起的证书校验失败</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="dig-nslookup-and-proxy-cert-failure">nslookup 与 dig 的区别，以及一次代理引起的证书校验失败</h1>
+    <p>
+      Posted on 六 15 8月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>nslookup 与 dig 的区别，以及一次代理引起的证书校验失败</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Network / Security</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.1</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-08-15</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h1 id="nslookup-dig">nslookup 与 dig 的区别，以及一次代理引起的证书校验失败</h1>
+<p>有一类问题，我一年要碰上好几回：某个服务在我机器上跑得好好的，换到另一台机器就报证书错误；或者反过来，在公司网里跑不通，回家连自己的 WiFi 就通了。同事发来的截图通常只有一行红字：<code>certificate verify failed</code>。</p>
+<p>大部分人接着做的第一件事，是去改代码——加 <code>verify=False</code>，或者把 <code>NODE_TLS_REJECT_UNAUTHORIZED</code> 设成 <code>0</code>。这一步确实能让报错消失，但也顺手把 HTTPS 里"防止别人冒充服务器"的那部分保护给关掉了。更要紧的是，你到最后也不知道刚才那个错到底是谁造成的。</p>
+<p>我的经验是，这类问题有个很省事的顺序：<strong>先用 <code>openssl</code> 看服务器给了你什么证书，再用 <code>dig</code> 看你连的到底是不是你以为的那台机器。</strong> 前者告诉你"是谁签的",后者告诉你"你在跟谁说话"。这篇文章把这两步讲透——顺带把 <code>nslookup</code> 和 <code>dig</code> 的分工掰扯清楚，因为它俩看着像，用起来差别不小。文末有复现脚本、排查清单，以及把这套顺序收成的 AI skill <a href="https://github.com/walterfan/lazy-rabbit-skills/blob/master/skills/lazy-tls-doctor/SKILL.md"><code>lazy-tls-doctor</code></a>。</p>
+<ul>
+<li>讲什么：两个 DNS 工具的定位差异、代理劫持 HTTPS 的原理、<code>openssl s_client</code> 的读法、按顺序定位的排查法、以及对应的 AI skill</li>
+<li>不讲什么：DNSSEC 验签细节、证书链修复的各种语言写法（我在<a href="https://www.fanyamin.com/blog/2026-04-22-python-ssl-unable-to-get-local-issuer-certificate.html">《一次 HTTPS 证书报错排查》</a>里写过客户端侧的修法）</li>
+</ul>
+<p>下文的命令输出都是我在 macOS 上真实跑出来的（DiG 9.10.6、OpenSSL 3.6.2），只把内网 DNS 的 IP 和内部主机名做了脱敏，行为和结论没动。</p>
+<hr>
+<h2 id="nslookup-dig_1">一、先说 nslookup 和 dig 到底差在哪</h2>
+<p>两个工具都能把域名换成 IP。区别在于<strong>它们默认愿意告诉你多少事</strong>。</p>
+<p>先看 <code>nslookup</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>nslookup<span class="w"> </span>www.fanyamin.com
+<span class="go">Server:     10.0.0.53</span>
+<span class="go">Address:    10.0.0.53#53</span>
+
+<span class="go">Non-authoritative answer:</span>
+<span class="go">Name:   www.fanyamin.com</span>
+<span class="go">Address: 47.96.84.118</span>
+</code></pre></div>
+
+<p>干净、好读，一眼就知道 IP 是 <code>47.96.84.118</code>。它把结论端到你面前，中间过程一概不提。</p>
+<p>再看 <code>dig</code> 查同一个域名：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>dig<span class="w"> </span>www.fanyamin.com
+
+<span class="go">; &lt;&lt;&gt;&gt; DiG 9.10.6 &lt;&lt;&gt;&gt; www.fanyamin.com</span>
+<span class="go">;; global options: +cmd</span>
+<span class="go">;; Got answer:</span>
+<span class="go">;; -&gt;&gt;HEADER&lt;&lt;- opcode: QUERY, status: NOERROR, id: 32297</span>
+<span class="go">;; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1</span>
+
+<span class="go">;; OPT PSEUDOSECTION:</span>
+<span class="go">; EDNS: version: 0, flags:; udp: 4000</span>
+<span class="go">;; QUESTION SECTION:</span>
+<span class="go">;www.fanyamin.com.      IN  A</span>
+
+<span class="go">;; ANSWER SECTION:</span>
+<span class="go">www.fanyamin.com.   4   IN  A   47.96.84.118</span>
+
+<span class="go">;; Query time: 33 msec</span>
+<span class="go">;; SERVER: 10.0.0.53#53(10.0.0.53)</span>
+<span class="go">;; WHEN: Sat Aug 15 11:04:15 CST 2026</span>
+<span class="go">;; MSG SIZE  rcvd: 61</span>
+</code></pre></div>
+
+<p>同样一个 IP，<code>dig</code> 多说了一堆。这堆东西不是啰嗦，每一行在排查时都能派上用场：</p>
+<ul>
+<li><code>status: NOERROR</code> —— DNS 层面的返回码。查不到会是 <code>NXDOMAIN</code>，服务端出错会是 <code>SERVFAIL</code>。这三者的处置方式完全不同。</li>
+<li><code>flags: qr rd ra</code> —— <code>ra</code> 表示"这台服务器帮我做了递归查询"；如果没有 <code>aa</code>，说明这答案不是权威服务器亲口说的，是从缓存里拿的。</li>
+<li><code>www.fanyamin.com. 4 IN A</code> —— 那个 <code>4</code> 是 TTL，单位是秒。<strong>这一个数字在排查缓存问题时值一百句话</strong>：TTL 只剩 4 秒，说明这条记录马上要过期重查；如果你刚改了 DNS 却不生效，先看 TTL 还剩多少。</li>
+<li><code>SERVER: 10.0.0.53#53</code> —— 这个答案是谁给你的。公司网里这一行尤其重要，它经常是内网 DNS，跟公网给的答案不一样。</li>
+</ul>
+<p>一句话总结这个差别：</p>
+<blockquote>
+<p><strong><code>nslookup</code> 回答"解析成什么"，<code>dig</code> 回答"这个答案是谁给的、凭什么、还能活多久"。</strong>
+前者适合确认，后者适合追责。</p>
+</blockquote>
+<h3 id="_1">一张对照表</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>nslookup</th>
+<th>dig</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>设计年代</td>
+<td>早年随 BIND 发布，曾被官方标记为废弃，后又恢复维护</td>
+<td>BIND 9 主推的查询工具</td>
+</tr>
+<tr>
+<td>默认输出</td>
+<td>结论式，干净</td>
+<td>完整 DNS 报文，含 header、flags、TTL</td>
+</tr>
+<tr>
+<td>交互模式</td>
+<td>有（直接敲 <code>nslookup</code> 进入）</td>
+<td>无，一次一条命令</td>
+</tr>
+<tr>
+<td>看得到 TTL</td>
+<td>看不到</td>
+<td>看得到</td>
+</tr>
+<tr>
+<td>看得到返回码</td>
+<td>只能从文字推测</td>
+<td><code>status:</code> 直接给</td>
+</tr>
+<tr>
+<td>追踪完整解析链</td>
+<td>不支持</td>
+<td><code>+trace</code></td>
+</tr>
+<tr>
+<td>适合写脚本</td>
+<td>输出格式不稳定，不推荐</td>
+<td><code>+short</code>、<code>+noall +answer</code> 很好切</td>
+</tr>
+<tr>
+<td>学习成本</td>
+<td>低</td>
+<td>略高，但值得</td>
+</tr>
+</tbody>
+</table>
+<p>有一点要澄清：网上常说 <code>nslookup</code> "已经废弃了"。这个说法有出处——BIND 9 早期，ISC 确实计划废弃 <code>nslookup</code>，改推 <code>host</code> 和 <code>dig</code>。但<strong>这个决定在 2004 年随 BIND 9.3 发布时被撤销了，此后 <code>nslookup</code> 一直是被完整支持的</strong>。所以不必刻意躲着它，尤其在 Windows 上——那儿默认只有 <code>nslookup</code>，<code>dig</code> 得自己装。</p>
+<p>不过 ISC 当年想废弃它的理由至今仍然成立：<code>nslookup</code> 的交互模式行为古怪，输出格式不稳定，而且它藏起了协议细节。所以我的习惯是：<strong>确认一个 IP 用 <code>nslookup</code> 随手一敲，一旦要排查故障就换 <code>dig</code>。</strong></p>
+<h3 id="dig">dig 真正拉开差距的三个场景</h3>
+<p><strong>第一个：指定问哪台 DNS 服务器。</strong> 这是排查"为什么我这儿不通他那儿通"的核心动作。</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>dig<span class="w"> </span>+short<span class="w"> </span>www.fanyamin.com
+<span class="go">47.96.84.118</span>
+
+<span class="gp">$ </span>dig<span class="w"> </span>@8.8.8.8<span class="w"> </span>+short<span class="w"> </span>www.fanyamin.com
+<span class="go">47.96.84.118</span>
+</code></pre></div>
+
+<p>两个答案一致，说明解析没被改。<strong>如果这两个不一致，问题基本就锁定在 DNS 上了</strong>——要么内网做了域名覆盖，要么有人劫持。<code>nslookup</code> 也能指定服务器（<code>nslookup 域名 服务器</code>），但参数顺序反人类，我总记错。</p>
+<p><strong>第二个：<code>+trace</code> 从根域名服务器一级级往下问。</strong></p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>dig<span class="w"> </span>+trace<span class="w"> </span>www.fanyamin.com
+<span class="go">.           78437   IN  NS  h.root-servers.net.</span>
+<span class="go">.           78437   IN  NS  a.root-servers.net.</span>
+<span class="go">...</span>
+<span class="go">;; Received 683 bytes from 10.0.0.53#53(10.0.0.53) in 34 ms</span>
+
+<span class="go">com.            172800  IN  NS  c.gtld-servers.net.</span>
+<span class="go">com.            172800  IN  NS  m.gtld-servers.net.</span>
+<span class="go">...</span>
+</code></pre></div>
+
+<p>这个模式绕过本地缓存，从根服务器开始一跳跳往下走。域名刚改完 NS、或者怀疑某一级委派配错了，用它最直接。</p>
+<p><strong>第三个：输出好切，适合塞进脚本。</strong></p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>dig<span class="w"> </span>+short<span class="w"> </span>www.fanyamin.com
+<span class="go">47.96.84.118</span>
+
+<span class="gp">$ </span>dig<span class="w"> </span>+noall<span class="w"> </span>+answer<span class="w"> </span>www.fanyamin.com<span class="w"> </span>A
+<span class="go">www.fanyamin.com.   4   IN  A   47.96.84.118</span>
+</code></pre></div>
+
+<p><code>+short</code> 只给值，<code>+noall +answer</code> 给结构化的一行。</p>
+<h3 id="_2">两个我踩过的坑</h3>
+<p><strong>坑一：<code>dig</code> 查不到东西时，退出码仍然是 0。</strong></p>
+<p>这一条害过我。我曾经写过一个健康检查脚本，用 <code>dig</code> 判断域名是否可解析，靠退出码判断成败——结果域名早就没了，脚本还一直报成功：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>dig<span class="w"> </span>no-such-domain-xyz987654.com<span class="w"> </span>+short<span class="w"> </span>&gt;/dev/null<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="p">;</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;dig exit=</span><span class="nv">$?</span><span class="s2">&quot;</span>
+<span class="go">dig exit=0</span>
+
+<span class="gp">$ </span>nslookup<span class="w"> </span>no-such-domain-xyz987654.com<span class="w"> </span>&gt;/dev/null<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="p">;</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;nslookup exit=</span><span class="nv">$?</span><span class="s2">&quot;</span>
+<span class="go">nslookup exit=1</span>
+</code></pre></div>
+
+<p><code>dig</code> 的逻辑是"我成功地完成了一次查询，只不过答案是没有"，所以返回 0。它只在自己出问题时才给非零码（比如连不上服务器时给 9）。写脚本要判断"到底解析出来了没有"，得看内容或返回码，别看退出码：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># 判断有没有解析结果</span>
+<span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>-z<span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span>dig<span class="w"> </span>+short<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$name</span><span class="s2">&quot;</span><span class="w"> </span>A<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;解析不到&quot;</span><span class="p">;</span><span class="w"> </span><span class="k">fi</span>
+
+<span class="c1"># 或者直接看 DNS 返回码</span>
+dig<span class="w"> </span>+noall<span class="w"> </span>+comments<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$name</span><span class="s2">&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-o<span class="w"> </span><span class="s1">&#39;status: [A-Z]*&#39;</span>
+<span class="c1"># =&gt; status: NXDOMAIN</span>
+</code></pre></div>
+
+<p><strong>坑二：两个工具都不看 <code>/etc/hosts</code>。</strong></p>
+<p>这个坑最阴，因为它让工具和程序的看法出现分歧。我这台机器的 <code>/etc/hosts</code> 里有一行内部服务的映射（下面把主机名和 IP 做了脱敏，行为是真实的）：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>grep<span class="w"> </span>internal-svc<span class="w"> </span>/etc/hosts
+<span class="go">10.0.0.9  internal-svc.corp.example</span>
+</code></pre></div>
+
+<p>用两个 DNS 工具去查，都说查不到：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>dig<span class="w"> </span>+short<span class="w"> </span>internal-svc.corp.example
+<span class="go">（空，NXDOMAIN）</span>
+
+<span class="gp">$ </span>nslookup<span class="w"> </span>internal-svc.corp.example
+<span class="go">** server can&#39;t find internal-svc.corp.example: NXDOMAIN</span>
+</code></pre></div>
+
+<p>但程序连得上：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>ping<span class="w"> </span>-c1<span class="w"> </span>internal-svc.corp.example
+<span class="go">PING internal-svc.corp.example (10.0.0.9): 56 data bytes</span>
+<span class="go">64 bytes from 10.0.0.9: icmp_seq=0 ttl=60 time=41.117 ms</span>
+</code></pre></div>
+
+<p>原因是 <code>dig</code> 和 <code>nslookup</code> 都是<strong>直接对 DNS 服务器发包</strong>，走的是纯 DNS 协议；而绝大多数程序走的是操作系统的名字解析（<code>getaddrinfo</code> / <code>gethostbyname</code>），那一套会按本地策略依次查——Linux 上由 <code>/etc/nsswitch.conf</code> 里的 <code>hosts: files dns</code> 决定"先查文件再查 DNS"，macOS 上则由系统的 <code>DirectoryService</code> 一套规则决定。所以：</p>
+<blockquote>
+<p><strong><code>dig</code> 说查不到，不代表程序连不上；<code>dig</code> 说是这个 IP，也不代表程序连的是这个 IP。</strong></p>
+</blockquote>
+<p>要看"程序眼里"的解析结果，Linux 上用 <code>getent hosts 域名</code>，macOS 上用 <code>dscacheutil -q host -a name 域名</code>。这个区别待会儿排查证书问题时还要再用一次。</p>
+<hr>
+<h2 id="_3">二、代理是怎么把证书搞坏的</h2>
+<p>现在换到证书这条线。先把原理讲明白，不然后面的实验只是敲命令。</p>
+<p>HTTPS 的信任建立在一条链上：服务器给你一张证书，这张证书由某个中间 CA 签发，中间 CA 又由某个根 CA 签发，而那个根 CA 的证书<strong>预先装在你的操作系统或浏览器里</strong>。你的客户端顺着这条链往上找，只要能找到一个自己信任的根，就认。</p>
+<p>公司的上网代理（各种 SSL 检查、上网行为管理、零信任网关都属于这类）要看 HTTPS 里的内容，就必须拆开加密。而 TLS 的设计不允许旁观者解密，所以代理只能扮演"中间人"：</p>
+<div class="highlight"><pre><span></span><code>flowchart LR
+    subgraph 正常
+        A[客户端] --&gt;|&quot;TLS，验证到公共 CA&quot;| B[真实服务器]
+    end
+    subgraph 被代理拆开
+        C[客户端] --&gt;|&quot;TLS 第一段&lt;br/&gt;证书由代理 CA 签&quot;| D[代理]
+        D --&gt;|&quot;TLS 第二段&lt;br/&gt;代理自己去验真实证书&quot;| E[真实服务器]
+    end
+</code></pre></div>
+
+<p>代理站在中间，对服务器扮演客户端，对客户端扮演服务器。为了扮演成 <code>api.example.com</code>，它必须<strong>当场伪造一张 <code>api.example.com</code> 的证书</strong>，用自己的私有 CA 去签。</p>
+<p>这张伪造证书的域名是对的、有效期是新的、格式完全合法——唯一的问题是<strong>签它的那个 CA，不在你的信任列表里</strong>。于是客户端顺着链往上找根，找不到，报错：</p>
+<div class="highlight"><pre><span></span><code>unable to get local issuer certificate
+</code></pre></div>
+
+<p>这句话直译是"找不到本地的签发者证书"，说人话就是：<strong>"这张证书的爹我不认识。"</strong></p>
+<p>公司发的电脑通常由 IT 提前把代理的 CA 装进了系统信任库，所以员工日常上网毫无察觉。出问题的往往是这几种情况：</p>
+<ul>
+<li>你自己装的 Python / Node / Java / Go，用的是<strong>自带的证书库</strong>，而不是系统证书库——IT 装的那个 CA 它压根看不见</li>
+<li>容器里的程序，镜像里只有一套精简的公共 CA 列表</li>
+<li>CI 跑在一台没做过信任配置的构建机上</li>
+<li>你换了网络（比如从公司网切到访客网），走的代理变了</li>
+</ul>
+<p>这也解释了那个经典现象：<strong>浏览器打得开，代码连不上。</strong> 不是代码写错了，是两者查的信任库不是同一个。</p>
+<hr>
+<h2 id="_4">三、动手复现：在本机造一个"代理劫持"</h2>
+<p>光讲原理容易忘。下面这段脚本在你自己机器上完整复现一次，只用 <code>openssl</code>，不装任何东西，不改系统信任库，跑完自动清理。</p>
+<p>它做四件事：造一个假装是公司代理的 CA、用它伪造一张 <code>api.example.com</code> 的证书、用这张证书起一个本地服务、然后用客户端去连并看报错。</p>
+<div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env bash</span>
+<span class="c1"># 复现&quot;代理导致证书校验失败&quot;的最小实验</span>
+<span class="nb">set</span><span class="w"> </span>-euo<span class="w"> </span>pipefail
+<span class="nv">WORK</span><span class="o">=</span><span class="k">$(</span>mktemp<span class="w"> </span>-d<span class="k">)</span><span class="p">;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$WORK</span><span class="s2">&quot;</span>
+<span class="nv">TARGET</span><span class="o">=</span><span class="s2">&quot;api.example.com&quot;</span>
+<span class="nv">PORT</span><span class="o">=</span><span class="m">4444</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;工作目录: </span><span class="nv">$WORK</span><span class="s2">&quot;</span>
+
+<span class="c1"># 1. 造一个&quot;公司代理&quot;的根 CA —— 现实中它由代理设备自动生成</span>
+openssl<span class="w"> </span>req<span class="w"> </span>-x509<span class="w"> </span>-newkey<span class="w"> </span>rsa:2048<span class="w"> </span>-sha256<span class="w"> </span>-days<span class="w"> </span><span class="m">30</span><span class="w"> </span>-nodes<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-keyout<span class="w"> </span>proxyCA.key<span class="w"> </span>-out<span class="w"> </span>proxyCA.crt<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-subj<span class="w"> </span><span class="s2">&quot;/C=CN/O=Acme Corp IT/CN=Acme Corp Proxy Root CA&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-addext<span class="w"> </span><span class="s2">&quot;basicConstraints=critical,CA:TRUE&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-addext<span class="w"> </span><span class="s2">&quot;keyUsage=critical,keyCertSign,cRLSign&quot;</span><span class="w"> </span><span class="m">2</span>&gt;/dev/null
+
+<span class="c1"># 2. 代理用自己的 CA，现签一张 api.example.com 的证书</span>
+cat<span class="w"> </span>&gt;<span class="w"> </span>leaf.cnf<span class="w"> </span><span class="s">&lt;&lt;EOF</span>
+<span class="s">[req]</span>
+<span class="s">distinguished_name = dn</span>
+<span class="s">prompt = no</span>
+<span class="s">[dn]</span>
+<span class="s">CN = $TARGET</span>
+<span class="s">[ext]</span>
+<span class="s">subjectAltName = DNS:$TARGET</span>
+<span class="s">basicConstraints = CA:FALSE</span>
+<span class="s">extendedKeyUsage = serverAuth</span>
+<span class="s">EOF</span>
+openssl<span class="w"> </span>req<span class="w"> </span>-new<span class="w"> </span>-newkey<span class="w"> </span>rsa:2048<span class="w"> </span>-nodes<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-keyout<span class="w"> </span>leaf.key<span class="w"> </span>-out<span class="w"> </span>leaf.csr<span class="w"> </span>-config<span class="w"> </span>leaf.cnf<span class="w"> </span><span class="m">2</span>&gt;/dev/null
+openssl<span class="w"> </span>x509<span class="w"> </span>-req<span class="w"> </span>-in<span class="w"> </span>leaf.csr<span class="w"> </span>-CA<span class="w"> </span>proxyCA.crt<span class="w"> </span>-CAkey<span class="w"> </span>proxyCA.key<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-CAcreateserial<span class="w"> </span>-out<span class="w"> </span>leaf.crt<span class="w"> </span>-days<span class="w"> </span><span class="m">30</span><span class="w"> </span>-sha256<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-extfile<span class="w"> </span>leaf.cnf<span class="w"> </span>-extensions<span class="w"> </span>ext<span class="w"> </span><span class="m">2</span>&gt;/dev/null
+
+<span class="c1"># 3. 用这张伪造证书起一个假的 api.example.com</span>
+openssl<span class="w"> </span>s_server<span class="w"> </span>-accept<span class="w"> </span><span class="nv">$PORT</span><span class="w"> </span>-cert<span class="w"> </span>leaf.crt<span class="w"> </span>-key<span class="w"> </span>leaf.key<span class="w"> </span>-www<span class="w"> </span>-quiet<span class="w"> </span>&gt;/dev/null<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">&amp;</span>
+<span class="nv">SRV</span><span class="o">=</span><span class="nv">$!</span><span class="p">;</span><span class="w"> </span><span class="nb">trap</span><span class="w"> </span><span class="s1">&#39;kill $SRV 2&gt;/dev/null&#39;</span><span class="w"> </span>EXIT
+sleep<span class="w"> </span><span class="m">1</span>
+
+<span class="nb">echo</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;===== 第一步：客户端视角，报错长什么样 =====&quot;</span>
+<span class="nb">echo</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>openssl<span class="w"> </span>s_client<span class="w"> </span>-connect<span class="w"> </span><span class="m">127</span>.0.0.1:<span class="nv">$PORT</span><span class="w"> </span>-servername<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$TARGET</span><span class="s2">&quot;</span><span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-E<span class="w"> </span><span class="s2">&quot;verify error|subject=|issuer=|Verify return code&quot;</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">true</span>
+
+<span class="nb">echo</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;===== 第二步：只看 issuer，就知道是谁在中间 =====&quot;</span>
+<span class="nb">echo</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>openssl<span class="w"> </span>s_client<span class="w"> </span>-connect<span class="w"> </span><span class="m">127</span>.0.0.1:<span class="nv">$PORT</span><span class="w"> </span>-servername<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$TARGET</span><span class="s2">&quot;</span><span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>openssl<span class="w"> </span>x509<span class="w"> </span>-noout<span class="w"> </span>-issuer<span class="w"> </span>-subject<span class="w"> </span>-dates<span class="w"> </span><span class="m">2</span>&gt;/dev/null
+
+<span class="nb">echo</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;===== 第三步：拿代理 CA 去验，一次就验过 —— 罪证 =====&quot;</span>
+<span class="nb">echo</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>openssl<span class="w"> </span>s_client<span class="w"> </span>-connect<span class="w"> </span><span class="m">127</span>.0.0.1:<span class="nv">$PORT</span><span class="w"> </span>-servername<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$TARGET</span><span class="s2">&quot;</span><span class="w"> </span>-CAfile<span class="w"> </span>proxyCA.crt<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-E<span class="w"> </span><span class="s2">&quot;Verify return code&quot;</span>
+</code></pre></div>
+
+<p>我在 macOS 上用 OpenSSL 3.6.2 跑出来的实际输出：</p>
+<div class="highlight"><pre><span></span><code><span class="go">工作目录: /var/folders/xk/.../tmp.KyipedvLHD</span>
+
+<span class="go">===== 第一步：客户端视角，报错长什么样 =====</span>
+<span class="go">verify error:num=20:unable to get local issuer certificate</span>
+<span class="go">verify error:num=21:unable to verify the first certificate</span>
+<span class="go">subject=CN=api.example.com</span>
+<span class="go">issuer=C=CN, O=Acme Corp IT, CN=Acme Corp Proxy Root CA</span>
+<span class="go">Verify return code: 21 (unable to verify the first certificate)</span>
+
+<span class="go">===== 第二步：只看 issuer，就知道是谁在中间 =====</span>
+<span class="go">issuer=C=CN, O=Acme Corp IT, CN=Acme Corp Proxy Root CA</span>
+<span class="go">subject=CN=api.example.com</span>
+<span class="go">notBefore=Aug 15 03:06:26 2026 GMT</span>
+<span class="go">notAfter=Sep 14 03:06:26 2026 GMT</span>
+
+<span class="go">===== 第三步：拿代理 CA 去验，一次就验过 —— 罪证 =====</span>
+<span class="go">Verify return code: 0 (ok)</span>
+</code></pre></div>
+
+<p>这三段输出，每一段都在回答一个具体问题。</p>
+<p><strong>第一段</strong>是你在应用日志里会看到的那个错。注意 <code>subject=CN=api.example.com</code>——<strong>域名是对的</strong>。很多人一看到证书报错就以为是域名不匹配，其实这里域名完全正确，坏的是签发者。</p>
+<p><strong>第二段</strong>是整个排查里性价比最高的一行。<code>issuer</code> 写着 <code>Acme Corp IT</code> / <code>Acme Corp Proxy Root CA</code>——真实的 <code>api.example.com</code> 绝不可能用一个叫"Acme Corp IT"的 CA。<strong>issuer 里出现公司名、设备品牌名（Zscaler、Netskope、Palo Alto、Fortinet、Blue Coat 之类），基本就可以确认是代理在拆包了。</strong> 顺便看一眼 <code>notBefore</code>：代理签的证书往往是"今天刚签的"，因为它是连接时现场生成的。</p>
+<p><strong>第三段</strong>是坐实结论。把代理的 CA 显式传给 <code>-CAfile</code>，验证立刻从 <code>21</code> 变成 <code>0 (ok)</code>。这说明证书本身没坏，链条也是完整的——<strong>只是这条链的根不在系统的信任列表里</strong>。问题不在证书，在信任配置。</p>
+<p>同一个连接，<code>curl</code> 的说法是这样：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>curl<span class="w"> </span>-sS<span class="w"> </span>--resolve<span class="w"> </span>api.example.com:4444:127.0.0.1<span class="w"> </span>https://api.example.com:4444/
+<span class="go">curl: (60) SSL certificate problem: unable to get local issuer certificate</span>
+</code></pre></div>
+
+<h3 id="_5">那几个数字是什么意思</h3>
+<p><code>openssl</code> 的 verify 错误码看着像天书，其实常见的就几个，记住能省不少时间：</p>
+<table>
+<thead>
+<tr>
+<th>错误码</th>
+<th>文字</th>
+<th>说的是什么</th>
+<th>典型原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>18</td>
+<td>self signed certificate</td>
+<td>自签名证书</td>
+<td>测试环境、设备自带证书</td>
+</tr>
+<tr>
+<td>19</td>
+<td>self signed certificate in certificate chain</td>
+<td>链里有自签根</td>
+<td>私有 CA，且根不被信任</td>
+</tr>
+<tr>
+<td>20</td>
+<td>unable to get local issuer certificate</td>
+<td><strong>找不到签发者</strong></td>
+<td>代理劫持、缺中间证书、信任库不对</td>
+</tr>
+<tr>
+<td>21</td>
+<td>unable to verify the first certificate</td>
+<td>第一张就验不下去</td>
+<td>服务器没发中间证书，或链断了</td>
+</tr>
+<tr>
+<td>62</td>
+<td>hostname mismatch</td>
+<td>域名不匹配</td>
+<td>连错了机器、SNI 没发对、证书域名写错</td>
+</tr>
+</tbody>
+</table>
+<p>（这几个数字对应 OpenSSL 头文件里的 <code>X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT</code>、<code>X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN</code>、<code>X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY</code>、<code>X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE</code>、<code>X509_V_ERR_HOSTNAME_MISMATCH</code>。）</p>
+<p>20 和 21 经常一起出现，像上面的例子那样。要区分"是代理插进来了"还是"服务器忘了发中间证书"，看 <code>-showcerts</code> 给出的链有几张。伪造的那张是孤零零一张：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span><span class="nb">echo</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>openssl<span class="w"> </span>s_client<span class="w"> </span>-connect<span class="w"> </span><span class="m">127</span>.0.0.1:4444<span class="w"> </span>-servername<span class="w"> </span>api.example.com<span class="w"> </span>-showcerts<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-E<span class="w"> </span><span class="s2">&quot;^ [0-9] s:|^ *i:&quot;</span>
+<span class="go"> 0 s:CN=api.example.com</span>
+<span class="go">   i:C=CN, O=Acme Corp IT, CN=Acme Corp Proxy Root CA</span>
+</code></pre></div>
+
+<p>正常站点会给你一串：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span><span class="nb">echo</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>openssl<span class="w"> </span>s_client<span class="w"> </span>-connect<span class="w"> </span>www.fanyamin.com:443<span class="w"> </span>-servername<span class="w"> </span>www.fanyamin.com<span class="w"> </span>-showcerts<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-E<span class="w"> </span><span class="s2">&quot;^ [0-9] s:|^ *i:&quot;</span>
+<span class="go"> 0 s:CN=www.fanyamin.com</span>
+<span class="go">   i:C=US, O=Let&#39;s Encrypt, CN=YE2</span>
+<span class="go"> 1 s:C=US, O=Let&#39;s Encrypt, CN=YE2</span>
+<span class="go">   i:C=US, O=ISRG, CN=Root YE</span>
+<span class="go"> 2 s:C=US, O=ISRG, CN=Root YE</span>
+<span class="go">   i:C=US, O=Internet Security Research Group, CN=ISRG Root X2</span>
+</code></pre></div>
+
+<p>所以：只有一张、且 issuer 是个陌生的公司名，是代理；只有一张、issuer 是正常的公共 CA（Let's Encrypt、DigiCert 之类），那多半是服务器少配了中间证书。</p>
+<h3 id="s_client">一个容易误判的地方：s_client 默认不校验域名</h3>
+<p>这一条得单独说，因为它会让你得出错误结论。<code>-servername</code> 只负责<strong>发送</strong> SNI，它并不让 <code>openssl s_client</code> 去核对"证书上的域名是否与我要访问的一致"。我用刚才那张 <code>api.example.com</code> 的证书试了一下，故意把 SNI 写成一个完全无关的域名：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span><span class="nb">echo</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>openssl<span class="w"> </span>s_client<span class="w"> </span>-connect<span class="w"> </span><span class="m">127</span>.0.0.1:4444<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-servername<span class="w"> </span>totally-wrong.example.org<span class="w"> </span>-CAfile<span class="w"> </span>proxyCA.crt<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-E<span class="w"> </span><span class="s2">&quot;subject=|Verify return code&quot;</span>
+<span class="go">subject=CN=api.example.com</span>
+<span class="go">Verify return code: 0 (ok)</span>
+</code></pre></div>
+
+<p>域名压根对不上，<code>openssl</code> 却说 <code>0 (ok)</code>。要让它真的查这一项，得显式加 <code>-verify_hostname</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span><span class="nb">echo</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>openssl<span class="w"> </span>s_client<span class="w"> </span>-connect<span class="w"> </span><span class="m">127</span>.0.0.1:4444<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-CAfile<span class="w"> </span>proxyCA.crt<span class="w"> </span>-verify_hostname<span class="w"> </span>totally-wrong.example.org<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-E<span class="w"> </span><span class="s2">&quot;verify error|Verify return code&quot;</span>
+<span class="go">verify error:num=62:hostname mismatch</span>
+<span class="go">Verify return code: 62 (hostname mismatch)</span>
+</code></pre></div>
+
+<p>这就是为什么 <code>openssl</code> 说 ok、浏览器和 <code>curl</code> 仍然报错——<strong>它们默认查域名，<code>s_client</code> 默认不查。</strong> 排查时如果要把域名这一项也纳入，记得加 <code>-verify_hostname</code>；否则请以 <code>curl</code> 的结论为准。</p>
+<p>作为对照，同一台机器上连一个<strong>没被拆包</strong>的站点是这样：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span><span class="nb">echo</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>openssl<span class="w"> </span>s_client<span class="w"> </span>-connect<span class="w"> </span>www.fanyamin.com:443<span class="w"> </span>-servername<span class="w"> </span>www.fanyamin.com<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-E<span class="w"> </span><span class="s2">&quot;subject=|issuer=|Verify return code&quot;</span>
+<span class="go">subject=CN=www.fanyamin.com</span>
+<span class="go">issuer=C=US, O=Let&#39;s Encrypt, CN=YE2</span>
+<span class="go">Verify return code: 0 (ok)</span>
+</code></pre></div>
+
+<p><code>issuer</code> 是 Let's Encrypt，返回码 0。一眼就能和上面的假证书区分开。</p>
+<h3 id="_6">真实环境里怎么连</h3>
+<p>上面的实验用本地端口模拟。真实排查时，直接对目标发起连接就行：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># 直连（若环境本身走透明代理，这条就会暴露问题）</span>
+<span class="nb">echo</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>openssl<span class="w"> </span>s_client<span class="w"> </span>-connect<span class="w"> </span>api.example.com:443<span class="w"> </span>-servername<span class="w"> </span>api.example.com
+
+<span class="c1"># 显式经过一个 HTTP 代理（openssl 自己会发 CONNECT）</span>
+<span class="nb">echo</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>openssl<span class="w"> </span>s_client<span class="w"> </span>-proxy<span class="w"> </span><span class="m">10</span>.0.0.1:8080<span class="w"> </span>-connect<span class="w"> </span>api.example.com:443<span class="w"> </span>-servername<span class="w"> </span>api.example.com
+</code></pre></div>
+
+<p>两个参数别省：<code>-servername</code> 发的是 SNI，现在同一个 IP 上跑几十个站点是常态，不发 SNI 很可能拿到一张完全无关的证书，白折腾半天；<code>echo |</code> 是给它一个立即的 EOF，否则命令会挂在那儿等你输入。</p>
+<hr>
+<h2 id="_7">四、把两条线接起来：完整的排查顺序</h2>
+<p>现在回到最开始那个场景：程序报证书错误。按下面的顺序走，通常三四步就能定位。</p>
+<p><strong>第一步，看服务器给了什么证书。</strong></p>
+<div class="highlight"><pre><span></span><code><span class="nb">echo</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>openssl<span class="w"> </span>s_client<span class="w"> </span>-connect<span class="w"> </span>api.example.com:443<span class="w"> </span>-servername<span class="w"> </span>api.example.com<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-E<span class="w"> </span><span class="s2">&quot;subject=|issuer=|Verify return code&quot;</span>
+</code></pre></div>
+
+<p>看 <code>issuer</code>。是熟悉的公共 CA，跳到第三步；是公司名或安全设备品牌名，代理拆包已经确认，跳到第四步。</p>
+<p><strong>第二步，如果域名和你预期的不一样，转去查 DNS。</strong></p>
+<p>如果报的是 62（hostname mismatch），或者证书里的域名压根不是你要连的那个，说明<strong>你连的机器可能不是你以为的那台</strong>。这时候 <code>dig</code> 上场：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># 本地解析结果</span>
+dig<span class="w"> </span>+short<span class="w"> </span>api.example.com
+
+<span class="c1"># 换一个公共 DNS 对照</span>
+dig<span class="w"> </span>@8.8.8.8<span class="w"> </span>+short<span class="w"> </span>api.example.com
+
+<span class="c1"># 看权威服务器怎么说</span>
+dig<span class="w"> </span>+short<span class="w"> </span>NS<span class="w"> </span>example.com
+dig<span class="w"> </span>@<span class="k">$(</span>dig<span class="w"> </span>+short<span class="w"> </span>NS<span class="w"> </span>example.com<span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-1<span class="k">)</span><span class="w"> </span>api.example.com<span class="w"> </span>+noall<span class="w"> </span>+answer
+</code></pre></div>
+
+<p>三个答案一致，DNS 没问题，回到证书这条线。<strong>不一致，问题就在 DNS</strong>——内网做了覆盖，或者被劫持了。</p>
+<p>还有一个容易忽略的情况：CNAME 链。<code>dig</code> 会把整条链摊开给你看：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>dig<span class="w"> </span>+noall<span class="w"> </span>+answer<span class="w"> </span>www.baidu.com
+<span class="go">www.baidu.com.      197 IN  CNAME   www.a.shifen.com.</span>
+<span class="go">www.a.shifen.com.   33  IN  A   180.101.49.44</span>
+<span class="go">www.a.shifen.com.   33  IN  A   180.101.51.73</span>
+</code></pre></div>
+
+<p>域名指向了另一个域名。<strong>如果最终那台服务器的证书只签了 CNAME 目标的名字、没签你访问的名字，就会报域名不匹配</strong>——CDN 和各种托管服务配错时，这是高频原因。</p>
+<p><strong>第三步，别忘了 <code>/etc/hosts</code>。</strong> 这就是前面那个坑的用处。<code>dig</code> 看不到 hosts 文件，所以两个工具的答案可能对不上。程序连的是 hosts 里那个 IP，你却在拿 <code>dig</code> 的结果推理：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># dig 说的（纯 DNS）</span>
+dig<span class="w"> </span>+short<span class="w"> </span>api.example.com
+
+<span class="c1"># 程序眼里的（含 /etc/hosts）</span>
+getent<span class="w"> </span>hosts<span class="w"> </span>api.example.com<span class="w">          </span><span class="c1"># Linux</span>
+dscacheutil<span class="w"> </span>-q<span class="w"> </span>host<span class="w"> </span>-a<span class="w"> </span>name<span class="w"> </span>api.example.com<span class="w">   </span><span class="c1"># macOS</span>
+
+<span class="c1"># 别漏了这个</span>
+grep<span class="w"> </span>api.example.com<span class="w"> </span>/etc/hosts
+</code></pre></div>
+
+<p>我见过好几次"证书域名对不上"，最后发现是某位同事几个月前为了联调，往 hosts 里加了一行，然后忘了删。</p>
+<p><strong>第四步，确认是代理，然后决定怎么处理。</strong></p>
+<p>拿到代理的 CA 证书（IT 那儿有，或者从上面 <code>-showcerts</code> 的输出里抠出来），验一下：</p>
+<div class="highlight"><pre><span></span><code><span class="nb">echo</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>openssl<span class="w"> </span>s_client<span class="w"> </span>-connect<span class="w"> </span>api.example.com:443<span class="w"> </span>-servername<span class="w"> </span>api.example.com<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-CAfile<span class="w"> </span>/path/to/proxyCA.crt<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">&quot;Verify return code&quot;</span>
+</code></pre></div>
+
+<p>变成 <code>0 (ok)</code>，结论就定了：证书没坏，是你的程序不信任这个 CA。剩下的是把 CA 告诉程序——各个运行时认的路子不一样：</p>
+<table>
+<thead>
+<tr>
+<th>运行时</th>
+<th>怎么告诉它</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>curl / git</td>
+<td><code>CURL_CA_BUNDLE</code> 或 <code>git config http.sslCAInfo</code></td>
+</tr>
+<tr>
+<td>Python requests</td>
+<td><code>REQUESTS_CA_BUNDLE</code> 环境变量</td>
+</tr>
+<tr>
+<td>Python 标准库 ssl</td>
+<td><code>SSL_CERT_FILE</code>，或代码里 <code>ssl.SSLContext.load_verify_locations()</code></td>
+</tr>
+<tr>
+<td>Node.js</td>
+<td><code>NODE_EXTRA_CA_CERTS</code> 指向 PEM 文件</td>
+</tr>
+<tr>
+<td>Java</td>
+<td><code>keytool -importcert</code> 导进 truststore</td>
+</tr>
+<tr>
+<td>Go</td>
+<td>读系统信任库，把 CA 装进系统即可</td>
+</tr>
+<tr>
+<td>Docker 镜像</td>
+<td>CA 拷进 <code>/usr/local/share/ca-certificates/</code>，再跑 <code>update-ca-certificates</code></td>
+</tr>
+</tbody>
+</table>
+<p>注意最后两行的差别：Go 读系统库，所以系统装好就行；Node 和 Python 各有自己的一套，得单独喂。这正是"浏览器行、代码不行"的根源。</p>
+<p><strong>至于 <code>verify=False</code>：</strong> 调试时临时用一下可以，但别留在代码里、更别提交。关掉校验之后，你不再能确认对面是不是真的服务器，加密还在、身份认证没了——而身份认证恰恰是 HTTPS 防中间人的那一半。真要临时跑通，宁可用 <code>-CAfile</code> 显式指定 CA，那样至少你知道自己在信任谁。</p>
+<hr>
+<h2 id="_8">五、一份可以照着走的清单</h2>
+<p><strong>遇到证书报错，按这个顺序：</strong></p>
+<ol>
+<li><code>openssl s_client -connect 域名:443 -servername 域名</code>，先看 <code>issuer</code> 和 <code>Verify return code</code></li>
+<li><code>issuer</code> 是公司名 / 安全设备名 → 代理拆包，跳到第 6 条</li>
+<li><code>issuer</code> 正常但报 21 → 服务器可能少发中间证书，用 <code>-showcerts</code> 数一下链有几张</li>
+<li>报 62（域名不匹配）→ 用 <code>dig +short</code> 对比本地和公共 DNS 的解析结果</li>
+<li>两个 DNS 答案不一致，或 <code>dig</code> 与 <code>getent</code> 不一致 → 查内网覆盖、CNAME 链、<code>/etc/hosts</code></li>
+<li>拿代理 CA 加 <code>-CAfile</code> 验一次，变成 <code>0 (ok)</code> 就坐实了</li>
+<li>按运行时的方式把 CA 配进去，别用 <code>verify=False</code> 收尾</li>
+<li>嫌手工敲命令？用 <a href="https://github.com/walterfan/lazy-rabbit-skills/blob/master/skills/lazy-tls-doctor/SKILL.md"><code>lazy-tls-doctor</code></a> 按同一顺序跑一遍</li>
+</ol>
+<p><strong>两个 DNS 工具怎么选：</strong></p>
+<ul>
+<li>只想快速确认一个 IP，随手 <code>nslookup</code> 或者 <code>dig +short</code></li>
+<li>要判断"答案是谁给的"、"缓存还剩多久"、"哪一级委派错了" → <code>dig</code>，尤其是 <code>@服务器</code> 和 <code>+trace</code></li>
+<li>写脚本 → 用 <code>dig +short</code>，但<strong>别信它的退出码</strong>，要看输出内容或 <code>status:</code></li>
+<li>排查"程序和工具说法不一致" → 记住两个工具都跳过 <code>/etc/hosts</code>，用 <code>getent hosts</code> 或 <code>dscacheutil</code> 看程序视角</li>
+</ul>
+<p><strong>三个记得住的判断：</strong></p>
+<blockquote>
+<p>证书报错先看 <code>issuer</code>，不看 <code>subject</code>。域名对不对是次要的，谁签的才是关键。</p>
+<p><code>dig</code> 查不到不等于程序连不上。工具走纯 DNS，程序走系统解析，两条路。</p>
+<p>关掉证书校验不是修好了，是把报警器拆了。</p>
+</blockquote>
+<hr>
+<h2 id="ai-skilllazy-tls-doctor">六、把这套方法收成一个 AI skill：lazy-tls-doctor</h2>
+<p>文章写到这儿，顺序已经齐了：看 <code>issuer</code>、数证书链、对照 <code>dig</code>、区分信任库。但每次从文章里抠命令再敲一遍，还是费事。所以我把上面这套排查法收成了一个 skill：<a href="https://github.com/walterfan/lazy-rabbit-skills/blob/master/skills/lazy-tls-doctor/SKILL.md"><code>lazy-tls-doctor</code></a>。</p>
+<p>它的定位很明确——把一句红字 <code>certificate verify failed</code> 变成一个可执行的结论：<strong>谁有问题，该改哪一侧。</strong> 不会建议你关掉校验。四种常见原因各自对应不同修法：</p>
+<table>
+<thead>
+<tr>
+<th>原因</th>
+<th>怎么认</th>
+<th>该谁改</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>代理拆包</td>
+<td>issuer 是公司名或安全设备品牌</td>
+<td>信任库——装上代理 CA</td>
+</tr>
+<tr>
+<td>缺中间证书</td>
+<td>链只有一张，issuer 却是公共 CA</td>
+<td>服务器——发 fullchain</td>
+</tr>
+<tr>
+<td>私有根不被信任</td>
+<td>链终点是陌生的自签根</td>
+<td>信任库——装上那个根</td>
+</tr>
+<tr>
+<td>连错了主机</td>
+<td>域名不匹配，证书本身合法</td>
+<td>DNS 或路由</td>
+</tr>
+</tbody>
+</table>
+<p>在支持 skill 的 AI coding 工具里，说一句就行：</p>
+<div class="highlight"><pre><span></span><code>please use lazy-tls-doctor to check www.fanyamin.com
+</code></pre></div>
+
+<p>对我自己的站点跑出来是这样的（截取关键部分）：</p>
+<div class="highlight"><pre><span></span><code>Checked `www.fanyamin.com:443`.
+
+- TLS: 1.3, `TLS_AES_256_GCM_SHA384`
+- Verification: `0 (ok)`
+- DNS: `47.96.84.118`
+- Verdict: `ok` — high confidence
+</code></pre></div>
+
+<table>
+<thead>
+<tr>
+<th style="text-align: right;">Depth</th>
+<th>Certificate</th>
+<th>Issuer</th>
+<th>Validity</th>
+<th>SAN</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: right;">0</td>
+<td><code>www.fanyamin.com</code></td>
+<td>Let's Encrypt <code>YE2</code></td>
+<td>Jul 29–Oct 27, 2026</td>
+<td><code>DNS:www.fanyamin.com</code></td>
+</tr>
+<tr>
+<td style="text-align: right;">1</td>
+<td>Let's Encrypt <code>YE2</code></td>
+<td><code>Root YE</code></td>
+<td>Sep 2025–Sep 2028</td>
+<td>—</td>
+</tr>
+<tr>
+<td style="text-align: right;">2</td>
+<td><code>Root YE</code></td>
+<td><code>ISRG Root X2</code></td>
+<td>May 2026–Sep 2032</td>
+<td>—</td>
+</tr>
+<tr>
+<td style="text-align: right;">3</td>
+<td><code>ISRG Root X2</code></td>
+<td><code>ISRG Root X1</code></td>
+<td>May 2026–Sep 2032</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p>证书链会画成：</p>
+<div class="highlight"><pre><span></span><code>www.fanyamin.com
+  -&gt; Let&#39;s Encrypt YE2
+  -&gt; Root YE
+  -&gt; ISRG Root X2
+  -&gt; ISRG Root X1
+     [issuer not sent by server]
+</code></pre></div>
+
+<p>它还会给出可复制的手工命令，方便你自己复现（注意用了 `</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/dig-nslookup-and-proxy-cert-failure.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/dns.html">dns</a>
+      <a href="https://www.fanyamin.com/blog/tag/dig.html">dig</a>
+      <a href="https://www.fanyamin.com/blog/tag/nslookup.html">nslookup</a>
+      <a href="https://www.fanyamin.com/blog/tag/tls.html">tls</a>
+      <a href="https://www.fanyamin.com/blog/tag/openssl.html">openssl</a>
+      <a href="https://www.fanyamin.com/blog/tag/https.html">https</a>
+      <a href="https://www.fanyamin.com/blog/tag/proxy.html">proxy</a>
+      <a href="https://www.fanyamin.com/blog/tag/mitm.html">mitm</a>
+      <a href="https://www.fanyamin.com/blog/tag/pai-cha.html">排查</a>
+      <a href="https://www.fanyamin.com/blog/tag/wang-luo.html">网络</a>
+      <a href="https://www.fanyamin.com/blog/tag/skill.html">skill</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-08-13-zhu-rongji.html" title="一个时代的背影：写在朱镕基总理逝世之际">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/2026-08-15-age-discrimination.html" title="为什么职场年龄歧视愈演愈烈">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/2026-04-22-python-ssl-unable-to-get-local-issuer-certificate.html">一次 HTTPS 证书报错排查：为什么会出现 `unable to get local issuer certificate`</a></li>
+      <li><a href="https://www.fanyamin.com/blog/zai-kubernetes-li-yong-cert-manager-venafi-zi-dong-qian-fa-he-lun-huan-zheng-shu.html">在 Kubernetes 里用 cert-manager + Venafi 自动签发和轮换证书</a></li>
+      <li><a href="https://www.fanyamin.com/blog/zheng-shu-zhe-huo-er-pemjksp12-zen-yao-xuan-mian-fei-zheng-shu-na-jia-qiang-zi-dong-lun-huan-zen-yao-gao.html">证书这活儿：PEM/JKS/P12 怎么选、免费证书哪家强、自动轮换怎么搞</a></li>
+      <li><a href="https://www.fanyamin.com/blog/claude-code-ping-ti-opencode-deepseekqwen.html">claude code 平替: opencode + deepseek/qwen</a></li>
+      <li><a href="https://www.fanyamin.com/blog/go-cryptotls-configclone-session-resumption-pitfalls-cve-2025-68121.html">Go crypto/tls Config.Clone session resumption pitfalls (CVE-2025-68121)</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

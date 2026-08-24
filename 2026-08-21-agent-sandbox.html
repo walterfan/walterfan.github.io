@@ -1,0 +1,1174 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="LLM 会写代码，但你敢直接在生产机器上跑它写的 rm -rf 吗？AI Agent 真正缺的不是更聪明的脑子，而是一个能随时开、随时扔、跑坏了也不伤及无辜的“盒子”。本文以 Kubernetes SIG 的 agent-sandbox 项目为例，讲清楚 Agent 运行环境的技术栈、原理、用法、实例、横向比较与未来走向。" />
+<meta name="keywords" content="AI, agent, kubernetes, sandbox, container">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "AI Agent 需要一个 box",
+  "description": "LLM 会写代码，但你敢直接在生产机器上跑它写的 rm -rf 吗？AI Agent 真正缺的不是更聪明的脑子，而是一个能随时开、随时扔、跑坏了也不伤及无辜的“盒子”。本文以 Kubernetes SIG 的 agent-sandbox 项目为例，讲清楚 Agent 运行环境的技术栈、原理、用法、实例、横向比较与未来走向。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-08-21T21:30:00+08:00",
+  "dateModified": "2026-08-21T21:30:00+08:00",
+  "url": "https://www.fanyamin.com/blog/2026-08-21-agent-sandbox.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/2026-08-21-agent-sandbox.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "AI, agent, kubernetes, sandbox, container"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="AI Agent 需要一个 box"/>
+  <meta property="og:description" content="LLM 会写代码，但你敢直接在生产机器上跑它写的 rm -rf 吗？AI Agent 真正缺的不是更聪明的脑子，而是一个能随时开、随时扔、跑坏了也不伤及无辜的“盒子”。本文以 Kubernetes SIG 的 agent-sandbox 项目为例，讲清楚 Agent 运行环境的技术栈、原理、用法、实例、横向比较与未来走向。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/2026-08-21-agent-sandbox.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-08-21 21:30:00+08:00"/>
+  <meta property="article:modified_time" content="2026-08-21 21:30:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="AI"/>
+  <meta property="article:tag" content="agent"/>
+  <meta property="article:tag" content="kubernetes"/>
+  <meta property="article:tag" content="sandbox"/>
+  <meta property="article:tag" content="container"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; AI Agent 需要一个 box</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="2026-08-21-agent-sandbox">AI Agent 需要一个 box</h1>
+    <p>
+      Posted on 五 21 8月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>AI Agent 需要一个 box</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Version</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-08-21</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<p>去年我第一次让一个 coding agent 帮我改一段脚本，它写得挺利索，然后自作主张跑了一句清理命令，把我一个临时目录连带没备份的测试数据一起删了。数据不重要，但那一下让我出了身冷汗——如果这是在一台能碰到生产的机器上呢？</p>
+<p>这就是 AI Agent 落地时绕不开的一道坎：<strong>大模型现在很会写代码、很会调工具，但它写出来的东西，你不敢闭着眼睛在自己的机器上执行。</strong> 它可能死循环把 CPU 打满，可能 <code>pip install</code> 一个投毒的包，可能顺着网络摸到你的内网。你需要一个地方，让它随便折腾——跑坏了,把盒子一扔就行，伤不到外面。</p>
+<p>这篇文章讲的就是这个“盒子”。我会以 Kubernetes 官方孵化的 <a href="https://github.com/kubernetes-sigs/agent-sandbox">agent-sandbox</a> 项目为主线，把 Agent 运行环境的<strong>技术栈、原理、用法、实例、横向比较和未来趋势</strong>一次说清楚。读完你能带走的是：什么时候该自己搭、什么时候直接买服务，以及一套能落地的判断标准。</p>
+<ul>
+<li>一句话结论：Agent 缺的不是更强的模型，是一个<strong>隔离、有状态、能秒起秒关</strong>的执行环境。</li>
+<li>一个提醒：容器 ≠ 安全边界。跑不可信代码，普通 Docker 容器是不够的。</li>
+</ul>
+<hr>
+<h2 id="_1">先讲清楚：这里说的“沙箱”到底是什么</h2>
+<p>“沙箱”这个词被用滥了，先划清楚边界。这里说的沙箱，指的是一个<strong>运行不可信代码的隔离执行环境</strong>，它要同时满足几个条件：</p>
+<ul>
+<li><strong>强隔离</strong>:里面的代码碰不到宿主机的内核和文件,也串不到隔壁的沙箱。这是安全底线。</li>
+<li><strong>有状态</strong>:你写进去的文件、装好的依赖,在一次会话里能留住,不像无状态函数那样每次都从零开始。</li>
+<li><strong>单例、有稳定身份</strong>:一个 Agent 会话对应一个盒子,有固定的主机名和网络地址,方便你连上去发指令。</li>
+<li><strong>能秒起秒关</strong>:Agent 用完就扔,创建太慢体验就垮了。</li>
+</ul>
+<p>Kubernetes 本来擅长的是两类活:一类是无状态、可水平复制的 Deployment;另一类是编了号、有序的 StatefulSet。但上面这种“一次性、有状态、单容器、要强隔离”的活,两边都不太贴。硬用 <code>StatefulSet(副本数=1) + Service + PVC</code> 拼出来,能跑,但很别扭,而且缺了休眠、定时销毁这类专门的生命周期管理。</p>
+<blockquote>
+<p><strong>agent-sandbox 做的事,就是把这套拼装活儿封装成一个叫 <code>Sandbox</code> 的一等公民。</strong>
+它是 Kubernetes SIG Apps 下的项目,给你一个声明式的 CRD,专门管这种“像轻量单容器虚拟机”的工作负载。</p>
+</blockquote>
+<p>有一点要特别强调:<strong>agent-sandbox 自己不做底层的容器隔离。</strong> 它是个“沙箱编排器”,真正的隔离交给 gVisor、Kata Containers 这类“安全运行时”,通过 Kubernetes 的 <code>RuntimeClass</code> 挂上去。这个分工很关键,后面讲原理和安全时还会回到它。</p>
+<hr>
+<h2 id="_2">技术栈:这个盒子是用什么搭起来的</h2>
+<p>agent-sandbox 整体是标准的 Kubernetes 生态选型,没有另起炉灶:</p>
+<table>
+<thead>
+<tr>
+<th>层次</th>
+<th>技术</th>
+<th>干什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>编排 API</td>
+<td><code>Sandbox</code> CRD + Controller(Go 写的)</td>
+<td>声明式地管一个有状态单 Pod 的生命周期</td>
+</tr>
+<tr>
+<td>扩展 API</td>
+<td><code>SandboxTemplate</code> / <code>SandboxClaim</code> / <code>SandboxWarmPool</code></td>
+<td>模板复用、按需申领、预热池</td>
+</tr>
+<tr>
+<td>隔离运行时</td>
+<td>gVisor / Kata Containers(经 <code>RuntimeClass</code>)</td>
+<td>真正的内核 + 网络隔离</td>
+</tr>
+<tr>
+<td>存储</td>
+<td>PVC / <code>volumeClaimTemplates</code></td>
+<td>持久化,支持挂起后再恢复</td>
+</tr>
+<tr>
+<td>网络</td>
+<td>Headless Service + NetworkPolicy</td>
+<td>稳定 DNS 身份 + 出入流量管控</td>
+</tr>
+<tr>
+<td>接入层</td>
+<td>sandbox-router(HTTP 代理)</td>
+<td>让 SDK 不碰 K8s 原语就能连到沙箱</td>
+</tr>
+<tr>
+<td>SDK</td>
+<td>Python / Go(TypeScript 在路上)</td>
+<td>应用层用几行代码创建、执行、销毁</td>
+</tr>
+</tbody>
+</table>
+<p>这张表里名词密度有点高,先挑几个最关键的用大白话解释一遍,免得后面看不懂(全部术语的速查表在文末):</p>
+<ul>
+<li><strong>容器(Container)</strong>:把程序和它需要的一切打包成的一个独立运行单元,像个"集装箱"——搬到哪台机器,拆开都能一样地跑。<strong>Pod</strong> 是 Kubernetes 里装容器的最小单位,你可以先粗略地把"Pod"当成"一个跑着代码的容器"。</li>
+<li><strong>CRD(Custom Resource Definition,自定义资源定义)</strong>:Kubernetes 内置了 Pod、Service 这些"物种",CRD 允许你<strong>发明一个新物种</strong>。<code>Sandbox</code> 就是这么造出来的,于是你能像 <code>kubectl get pods</code> 一样 <code>kubectl get sandboxes</code>。<strong>打个比方</strong>:K8s 本来只认"苹果、香蕉",CRD 让你教会它认识一种新水果"沙箱",从此它也会打理这种水果。</li>
+<li><strong>Controller(控制器)/ 声明式</strong>:"声明式"是指你只说"我想要的最终样子"(我要一个跑着的 Sandbox),不用交代"每一步怎么做"。<strong>Controller</strong> 就是那个替你干活的管家——它不停地对比"你要的"和"现状",努力把现状拉到你要的样子。你说一句"我要个 Sandbox",它就默默把底层的 Pod、Service、PVC 全建好。<strong>打个比方</strong>:你在恒温器上设 26 度(声明),空调自己不停调节(控制器),你不用管它怎么开关压缩机。</li>
+<li><strong>gVisor / Kata(安全运行时)</strong>:普通容器都共享宿主机的<strong>内核</strong>(操作系统最核心、直接管硬件的那层),坏代码钻内核漏洞就可能"越狱"到宿主机。这两个是加固方案:<strong>gVisor</strong> 在容器和真内核之间插一层"用户态内核",像个中间人安检,拦下容器发出的系统调用;<strong>Kata</strong> 更狠,给每个容器套一个轻量虚拟机、配独立内核。<strong>打个比方</strong>:普通容器是"合租,共用一个厨房";gVisor 是"合租但请了个管家帮你转达、不让你直接进公共厨房";Kata 是"干脆给你一套独立公寓"。</li>
+<li><strong>PVC(PersistentVolumeClaim,持久卷声明)</strong>:容器默认"用完即弃",里面写的文件重启就没。PVC 是你"申请一块能跨重启活下来的硬盘"。沙箱挂起时数据存这儿,恢复时再挂回去。<strong>打个比方</strong>:容器是酒店房间(退房就清空),PVC 是你自带的行李箱(走哪带哪)。</li>
+</ul>
+<p>技术栈本身不新奇,巧妙在于<strong>组合</strong>:用 CRD 把这套复杂拼装收成一个声明式 API,把安全隔离外包给专门的运行时,把冷启动的痛用预热池抹平。</p>
+<hr>
+<h2 id="yaml">原理:从一行 YAML 到一个能跑代码的盒子</h2>
+<p>agent-sandbox 走的是经典的 Kubernetes 控制器模式(就是上面"恒温器"那个比方):<strong>用户声明想要什么,控制器负责变成现实。</strong></p>
+<p>最小的一个 Sandbox 长这样:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">agents.x-k8s.io/v1beta1</span>
+<span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Sandbox</span>
+<span class="nt">metadata</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-sandbox</span>
+<span class="nt">spec</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">podTemplate</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">spec</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">containers</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-container</span>
+<span class="w">        </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;YOUR_IMAGE&gt;</span>
+</code></pre></div>
+
+<p>你 <code>kubectl apply</code> 之后,控制器接手,大致做这么几件事:</p>
+<ol>
+<li>按 <code>podTemplate</code> 建一个 Pod,这是真正跑代码的地方。</li>
+<li>需要的话建一个 Headless Service,给它一个稳定的集群内 DNS 名字(比如 <code>my-sandbox</code>),这样别人能稳定地找到它。(Pod 会重启、IP 会变,<strong>Service</strong> 就是给它一个不变的"门牌号";Headless 是其中一种,直接把门牌号指到 Pod 本身。)</li>
+<li>有 <code>volumeClaimTemplates</code> 就建 PVC,把持久存储挂上。</li>
+<li>持续更新状态,直到 <code>Ready</code> 条件为真——Pod 真的起来、有 IP、Service 也就绪了。</li>
+</ol>
+<p>这里有个容易踩的坑,项目文档也特意点出来:<strong>“running”和“ready”是两回事。</strong> <code>operatingMode: Running</code> 只是你的意图(“请保持一个 Pod 在跑”),不代表 Pod 已经起来了;真正“能干活了”要看 <code>Ready</code> 这个观测条件。程序里要判断沙箱可用,认 <code>Ready</code>,别认 <code>operatingMode</code>。</p>
+<h3 id="_3">挂起与恢复:让空闲的盒子不烧钱</h3>
+<p>Agent 经常是“聊几句、跑一下、又空着”。让盒子一直占着 CPU 太浪费。agent-sandbox 支持基于 PVC 的挂起/恢复:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">spec</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">operatingMode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Suspended</span><span class="w">   </span><span class="c1"># 从 Running 改成 Suspended</span>
+</code></pre></div>
+
+<p>改成 <code>Suspended</code>,控制器会<strong>终止 Pod,但保留 Sandbox 对象和它的存储卷</strong>。等你要用了再切回 <code>Running</code>,存储原样挂回来。计算资源释放了,状态还在。</p>
+<h3 id="_4">生命周期:到点自动收尾</h3>
+<p>Agent 场景里有大量“用一次就该扔”的沙箱(比如强化学习的一轮评测)。手动清理不现实,靠的是声明式的生命周期:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">spec</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">shutdownTime</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;2026-08-22T00:00:00Z&quot;</span><span class="w">   </span><span class="c1"># 到这个绝对时间就过期</span>
+<span class="w">  </span><span class="nt">shutdownPolicy</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Delete</span><span class="w">                  </span><span class="c1"># 过期后连 Sandbox 对象一起删;Retain 则保留</span>
+</code></pre></div>
+
+<p>到点了,控制器自动拆掉底层资源。<code>Delete</code> 是彻底删,<code>Retain</code> 是留个壳、把状态标成过期,方便事后审计。</p>
+<hr>
+<h2 id="crd">应用:三个 CRD 撑起真实的用法</h2>
+<p>光有 <code>Sandbox</code> 还不够顺手。真到了要给成百上千个 Agent 会话开盒子的时候,靠三个扩展 CRD 分工:</p>
+<ul>
+<li><strong><code>SandboxTemplate</code></strong>:管理员定义的蓝图。把镜像、运行时、存储、安全策略写死在模板里,普通用户不用关心细节。</li>
+<li><strong><code>SandboxClaim</code></strong>:用户侧的“申领单”。我不关心底层怎么配的,我只说“给我来一个”。</li>
+<li><strong><code>SandboxWarmPool</code></strong>:预热池。提前把 N 个盒子暖好放着,来单子直接从池子里拿。</li>
+</ul>
+<p>预热池解决的是<strong>冷启动</strong>这个体验杀手。项目文档给的数字很直白:</p>
+<ul>
+<li><strong>不用预热池</strong>:冷创建要 10–30 秒(拉镜像 + 起容器/虚拟机)。</li>
+<li><strong>用预热池</strong>:2 秒以内就能拿到一个已经在跑的盒子。</li>
+</ul>
+<p>原理也不绕:WarmPool 直接建一批带特定 label 的 Pod 挂在那儿;你提 <code>SandboxClaim</code> 的时候,控制器从池子里挑一个已经跑起来的 Pod 认领过去,同时<strong>自动再补一个新的</strong>进池子,维持水位。你等的不是“建一个新盒子”,而只是“把一个现成盒子的名牌换成你的”。</p>
+<p>安全上,预热的一个隐含好处:通过模板创建时,如果没显式设置 <code>automountServiceAccountToken</code>,控制器会默认把它设成 <code>false</code>——也就是<strong>默认不把 K8s 的凭证塞进沙箱</strong>,避免里面的不可信代码拿着 token 去调 API Server(K8s 的"总控制台",能操控整个集群)。这里的 token 相当于"集群管理员的钥匙",默认不塞进盒子,就是不给不可信代码翻墙进总控制台的机会。安全默认值,值得点个赞。</p>
+<hr>
+<h2 id="agent">实例:让 Agent 真的把代码跑进盒子里</h2>
+<p>讲了半天 YAML,来看应用层怎么用。agent-sandbox 提供了 Python 和 Go 的 SDK,好处是<strong>你不用直接碰 Kubernetes 原语</strong>——SDK 通过 sandbox-router 这个 HTTP 代理和盒子通信。</p>
+<p>Python 侧最小可用的样子:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">k8s_agent_sandbox</span> <span class="kn">import</span> <span class="n">SandboxClient</span>
+
+<span class="n">client</span> <span class="o">=</span> <span class="n">SandboxClient</span><span class="p">()</span>  <span class="c1"># 默认走 tunnel 模式,本地 kubectl port-forward,KinD/Minikube 都行</span>
+
+<span class="n">sandbox</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">create_sandbox</span><span class="p">(</span>
+    <span class="n">warmpool</span><span class="o">=</span><span class="s2">&quot;python-sandbox-pool&quot;</span><span class="p">,</span>
+    <span class="n">namespace</span><span class="o">=</span><span class="s2">&quot;default&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="c1"># 写一个文件进沙箱,再在里面执行</span>
+    <span class="n">sandbox</span><span class="o">.</span><span class="n">files</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;hello.py&quot;</span><span class="p">,</span> <span class="s1">&#39;print(&quot;Hello from inside the sandbox!&quot;)</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">sandbox</span><span class="o">.</span><span class="n">commands</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="s2">&quot;python3 hello.py&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">stdout</span><span class="p">)</span>   <span class="c1"># Hello from inside the sandbox!</span>
+<span class="k">finally</span><span class="p">:</span>
+    <span class="n">sandbox</span><span class="o">.</span><span class="n">terminate</span><span class="p">()</span>    <span class="c1"># 用完就扔</span>
+</code></pre></div>
+
+<p>这段代码把 Agent 沙箱的核心动作全占了:<strong>创建 → 写文件 → 执行命令 → 读结果 → 销毁</strong>。<code>try/finally</code> 保证不管中间报没报错,盒子最后都会被回收——这是省钱也是省心的关键。</p>
+<p>再进一步,把它接进一个真正的 Agent。下面是官方用 Google ADK(Agent Development Kit,Google 开源的搭 Agent 的框架)做的一个 coding agent,把“执行 Python”封装成一个工具函数交给大模型调:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">google.adk.agents.llm_agent</span> <span class="kn">import</span> <span class="n">Agent</span>
+<span class="kn">from</span> <span class="nn">k8s_agent_sandbox</span> <span class="kn">import</span> <span class="n">SandboxClient</span>
+
+
+<span class="k">def</span> <span class="nf">execute_python</span><span class="p">(</span><span class="n">code</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+    <span class="n">sb</span> <span class="o">=</span> <span class="n">SandboxClient</span><span class="p">()</span>
+    <span class="n">sandbox</span> <span class="o">=</span> <span class="n">sb</span><span class="o">.</span><span class="n">create_sandbox</span><span class="p">(</span><span class="n">warmpool</span><span class="o">=</span><span class="s2">&quot;python-sandbox-pool&quot;</span><span class="p">,</span> <span class="n">namespace</span><span class="o">=</span><span class="s2">&quot;default&quot;</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">sandbox</span><span class="o">.</span><span class="n">files</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;run.py&quot;</span><span class="p">,</span> <span class="n">code</span><span class="p">)</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">sandbox</span><span class="o">.</span><span class="n">commands</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="s2">&quot;python3 run.py&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">result</span><span class="o">.</span><span class="n">stdout</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="n">sandbox</span><span class="o">.</span><span class="n">terminate</span><span class="p">()</span>
+
+
+<span class="n">root_agent</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;gemini-3.7-flash&quot;</span><span class="p">,</span>
+    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;coding_agent&quot;</span><span class="p">,</span>
+    <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Writes Python code and executes it in a sandbox.&quot;</span><span class="p">,</span>
+    <span class="n">instruction</span><span class="o">=</span><span class="s2">&quot;你是一个助手,会写 Python 代码并在沙箱里执行,用 execute_python 工具来跑。&quot;</span><span class="p">,</span>
+    <span class="n">tools</span><span class="o">=</span><span class="p">[</span><span class="n">execute_python</span><span class="p">],</span>
+<span class="p">)</span>
+</code></pre></div>
+
+<p>逻辑一目了然:模型负责“写代码”,<code>execute_python</code> 负责“把代码扔进盒子跑,把结果拿回来”。模型再离谱,<code>rm -rf</code> 也只能删到盒子里,<code>finally</code> 一到,盒子灰飞烟灭。开头那身冷汗,到这儿就出不来了。</p>
+<p>如果要生产级的强隔离,给模板加上 gVisor 运行时和收紧的网络策略:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">extensions.agents.x-k8s.io/v1beta1</span>
+<span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">SandboxTemplate</span>
+<span class="nt">metadata</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">secure-datascience-template</span>
+<span class="nt">spec</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">podTemplate</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">spec</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">runtimeClassName</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">gvisor</span><span class="w">          </span><span class="c1"># 用 gVisor 做运行时隔离</span>
+<span class="w">      </span><span class="nt">securityContext</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">runAsNonRoot</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">              </span><span class="c1"># 非 root 运行</span>
+<span class="w">        </span><span class="nt">runAsUser</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1000</span>
+<span class="w">      </span><span class="nt">containers</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-container</span>
+<span class="w">        </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">busybox</span>
+<span class="w">  </span><span class="nt">networkPolicy</span><span class="p">:</span>
+<span class="w">    </span><span class="c1"># 只放行 DNS(53 端口),其余出站一律默认拒绝——</span>
+<span class="w">    </span><span class="c1"># 顺带把访问 K8s API Server 的路也堵死了</span>
+<span class="w">    </span><span class="nt">egress</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">ports</span><span class="p">:</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">protocol</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">UDP</span>
+<span class="w">          </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">53</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">protocol</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">TCP</span>
+<span class="w">          </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">53</span>
+</code></pre></div>
+
+<p>这份模板同时做了三件“把盒子焊死”的事:<strong>gVisor 做内核隔离、非 root 运行、默认拒绝出站只留 DNS</strong>。不可信代码在里面既碰不到宿主内核,也摸不到内网和 API Server。这才是“敢让 LLM 随便跑”的底气来源。</p>
+<hr>
+<h2 id="agent-sandbox-e2b">比较:重点说说 agent-sandbox 和 E2B</h2>
+<p>这个赛道选手一大把——E2B、Daytona、Modal、Vercel Sandbox、Cloudflare Sandbox。但最值得和 agent-sandbox 摆在一起细看的是 <strong>E2B</strong>:它俩都打“开源、可自建、认真做隔离”这张牌,却是<strong>两种完全不同的活法</strong>。搞懂它俩的区别,基本就摸清了整个赛道的分界线。</p>
+<p>先看全景,再单独掰扯 E2B(数字来自厂商文档和 2025–2026 独立评测,会随时间变,当参考值):</p>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>隔离方式</th>
+<th>冷启动</th>
+<th>部署形态</th>
+<th>特点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>agent-sandbox</strong></td>
+<td>gVisor / Kata(自选)</td>
+<td>预热池 2 秒内</td>
+<td>自建 K8s</td>
+<td>开源、K8s 原生、厂商中立</td>
+</tr>
+<tr>
+<td><strong>E2B</strong></td>
+<td>Firecracker microVM</td>
+<td>~125–200ms 冷启 / 快照恢复 5–30ms</td>
+<td>托管 / 可自建(Apache-2.0)</td>
+<td>SDK 成熟,内存级 pause/resume</td>
+</tr>
+<tr>
+<td><strong>Daytona</strong></td>
+<td>容器(默认)/ Kata 可选</td>
+<td>官方称 ~90ms</td>
+<td>托管 / 企业自建</td>
+<td>面向 dev 环境,支持 GPU</td>
+</tr>
+<tr>
+<td><strong>Modal</strong></td>
+<td>gVisor</td>
+<td>~2.4 秒创建</td>
+<td>托管</td>
+<td>serverless,按活跃 CPU 计费,scale to zero</td>
+</tr>
+<tr>
+<td><strong>Vercel Sandbox</strong></td>
+<td>Firecracker microVM</td>
+<td>快速</td>
+<td>托管</td>
+<td>默认持久,和 Vercel 生态绑</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_5">一句话概括这对差异</h3>
+<p><strong>E2B 是一个“成品平台”,agent-sandbox 是一套“积木”。</strong></p>
+<p>E2B 给你的是一整个自成体系的系统:它自带控制面、调度器(orchestrator),底下跑着一队 Firecracker microVM(AWS 开源的"微虚拟机",启动毫秒级,专为一次性 serverless 负载设计),自建时靠 Terraform + Nomad + Consul(一套"基础设施即代码"和集群调度的工具组合,可以理解为"K8s 之外的另一套集群管理体系")起一整套集群。你要么直接用它的托管云,要么把这整套东西搬到自己的云上。</p>
+<p>agent-sandbox 不是一个“系统”,它是 Kubernetes 里的一组 CRD。它不自带控制面——<strong>它直接复用你已有的 K8s 控制面</strong>,隔离外包给 gVisor/Kata。如果你手上已经有 K8s 集群,加上 agent-sandbox 几乎是零增量;如果没有,那你得先有个 K8s。</p>
+<p>这条分界线决定了后面所有的差异。</p>
+<h3 id="vs">隔离:独立内核 vs 自选运行时</h3>
+<p>E2B 每个沙箱是一个 <strong>Firecracker microVM</strong>,有<strong>自己独立的内核</strong>。跑不可信的 LLM 代码,这是很硬的边界——沙箱里的内核崩了、被攻破了,也伤不到宿主和别的租户。代价是启动要付虚拟机的“开机税”,冷启动约 125–200ms(用内存快照恢复能压到 5–30ms)。</p>
+<p>agent-sandbox 自己<strong>不做隔离</strong>,它只是编排 Pod,把隔离这件事交给你在 <code>RuntimeClass</code> 里选的运行时:gVisor(用户态内核,拦系统调用)或 Kata(轻量虚拟机,和 Firecracker 一个思路)。<strong>灵活是灵活,但也意味着隔离强度由你自己负责</strong>——你要是图省事没配 gVisor/Kata,那就退化成普通容器隔离,跑不可信代码是不够的。E2B 把这个决定替你做了,agent-sandbox 把方向盘交回你手里。</p>
+<h3 id="vs-pvc">状态:内存快照 vs PVC 挂起</h3>
+<p>这是两者体感差最大的地方,也最容易踩坑。</p>
+<p>E2B 的 pause/resume <strong>连内存一起存</strong>:文件系统、正在跑的进程、加载好的变量,全都保下来,恢复时原样回来,约 1 秒。对“聊到一半、上下文都在内存里”的 Agent 会话特别友好。代价是 pause 本身有成本(约每 GiB 内存 4 秒),而且 beta 期沙箱有 30 天上限。</p>
+<p>agent-sandbox 的挂起是<strong>基于 PVC 的</strong>:切到 <code>Suspended</code>,它终止 Pod、<strong>保住存储卷</strong>,恢复时把卷挂回来。<strong>注意:它保的是磁盘状态,不保内存状态</strong>——Pod 一终止,内存里的东西就没了。你得自己把要留的东西落盘。这不是缺陷,是不同的取舍:E2B 替你把内存也快照了(所以有成本、有时限),agent-sandbox 只保你明确写进 PVC 的东西(更省、更可控,但要你自己管)。</p>
+<h3 id="_6">自建成本:这才是真正的分水岭</h3>
+<p>两家都号称“开源可自建”,但自建的门槛差着量级。</p>
+<p>E2B 自建是真自建:它的 <code>e2b-dev/infra</code> 仓库确实是 Apache-2.0,控制面都在里面,但你要跑起来得备齐 Terraform / Nomad / Consul,还有 GCP 最低配额(约 2500 GB SSD + 24 CPU),按 list price 光这个底座每月就 <strong>~1250 美元起</strong>,一个沙箱还没跑呢。独立分析给的经验值:CPU-only 负载下,自建要到大约 <strong>11000 沙箱小时/月</strong>(约等于 15 个沙箱常年不停)才比托管划算。<strong>量不到,老老实实买托管。</strong></p>
+<p>agent-sandbox 的自建成本,取决于你有没有 K8s。<strong>已经在用 K8s 的团队,它几乎是白送的增量</strong>——<code>kubectl apply</code> 一个 manifest 就装上了,复用现有集群、现有监控、现有权限体系。反过来,如果你没有 K8s,那你要付的是“运维一个 K8s 集群”的长期成本,这可不便宜。</p>
+<h3 id="_7">到底该选哪个</h3>
+<p>我的判断,拿几个具体场景说:</p>
+<ul>
+<li><strong>快速验证一个 Agent 想法,量不大</strong> → 直接上 E2B 托管云,几行 SDK 就能跑,别碰基础设施。</li>
+<li><strong>要内存级的会话恢复</strong>(比如长对话、REPL 状态要留住) → E2B 的内存快照是现成的,agent-sandbox 得你自己想办法落盘。</li>
+<li><strong>团队已经重度用 K8s,要数据不出门、要厂商中立</strong> → agent-sandbox 几乎是顺理成章的选择,复用一切现有 K8s 能力。</li>
+<li><strong>要极致隔离但不想自己扛虚拟机运维</strong> → E2B 的 Firecracker 是默认强隔离;agent-sandbox 你得自己配 Kata 才能到同一档。</li>
+<li><strong>超大规模、要把单位成本压到最低</strong> → 两边都得自建,这时比的是你更熟 K8s 还是更熟 Nomad/Consul,以及谁能给你一个“有人背 pager”的运维团队。</li>
+</ul>
+<blockquote>
+<p><strong>一句话:E2B 用“替你决定”换省心,agent-sandbox 用“交给你决定”换控制权。</strong>
+前者适合还没有基础设施包袱、想快的团队;后者适合已经站在 Kubernetes 上、要把主动权攥在手里的团队。</p>
+</blockquote>
+<p>最后提醒一句所有方案都躲不掉的坑:<strong>隔离不是打个勾就完事。</strong> 独立评测里提过一个真实教训——某云厂商的 Agent 运行时出过 DNS 隧道逃逸漏洞。隔离是一整套栈(运行时 + 网络策略 + 权限),选了“支持隔离”的产品不等于万事大吉,该收紧的网络策略、该关的 token,一样都不能省。</p>
+<hr>
+<h2 id="_8">展望:盒子会越来越“隐形”</h2>
+<p>从 agent-sandbox 的 roadmap 能看出这个领域的几个方向,我挑几个我觉得最实在的:</p>
+<ul>
+<li><strong>冷启动继续压。</strong> 目标是把认领延迟从 200ms 压到 100ms 再到 50ms,还提出了 TFFI(Time to First Instruction,从调用到跑出第一条指令的时间)这个更贴近体感的指标。盒子起得越快,Agent 用起来越像“本地就有”。</li>
+<li><strong>Scale to Zero + 自动挂起/恢复。</strong> 空闲自动挂起、来流量自动唤醒。理想状态是:你几乎感觉不到盒子的存在,它按需出现、按需消失,账单只算真正用的那点。</li>
+<li><strong>MCP 原生接入。</strong> roadmap 里计划让 agent-sandbox 直接变成 MCP(Model Context Protocol,模型上下文协议——Anthropic 提出的开放标准,给大模型和外部工具定义一套"通用插头")的一个原生工具。这意味着支持 MCP 的大模型运行时能把“开个沙箱跑代码”当成一个标准工具直接调,不用再手写胶水。</li>
+<li><strong>和 Agent 框架打通。</strong> LangChain、CrewAI、Ray(RLlib)这些框架的原生集成都在推进。强化学习(RL,让 AI 通过"不断试错 + 奖惩反馈"来学习)的评测循环(比如 SWE-bench——衡量"AI 能不能自动修真实 GitHub bug"的评测基准)对高吞吐、低延迟的一次性沙箱需求极大,这块是 agent-sandbox 明确瞄准的场景。</li>
+</ul>
+<p>往大了说,我的判断是:<strong>沙箱正在从“一个你要手动管理的组件”,变成“Agent 运行时里一个默认存在、你基本无感的底座”。</strong> 就像今天没人会为“进程要不要隔离地址空间”纠结一样,再过一阵,“Agent 跑代码要不要放沙箱”也会变成不用问的默认选项。</p>
+<hr>
+<h2 id="agent_1">总结:Agent 缺的不是脑子,是一个能随便扔的盒子</h2>
+<p>回到开头那身冷汗。让 AI Agent 真正敢在生产里干活,关键不在把模型调得更聪明,而在给它一个<strong>隔离、有状态、秒起秒关</strong>的执行环境——出了事,损失被死死圈在盒子里。</p>
+<p>agent-sandbox 的价值,是把这件原本要靠 <code>StatefulSet + Service + PVC</code> 手动拼装的苦活,收成一个 Kubernetes 原生、厂商中立、开源的声明式 API,再把安全隔离外包给 gVisor / Kata,把冷启动的痛用预热池抹平。</p>
+<p>给你一份可以照着走的判断清单:</p>
+<ol>
+<li><strong>先问隔离够不够。</strong> 跑不可信代码,普通容器不行,得上 gVisor 或 Kata——用 agent-sandbox 记得自己配,别退化成裸容器。</li>
+<li><strong>想清楚要不要内存级恢复。</strong> 要留住内存里的会话状态,E2B 现成;agent-sandbox 只保 PVC,得自己落盘。</li>
+<li><strong>按“有没有 K8s”决定自建还是买。</strong> 已重度用 K8s、要数据自主 → agent-sandbox;没基础设施、想快 → E2B 托管;超大规模再谈自建 E2B。</li>
+<li><strong>默认收紧权限。</strong> 非 root、关掉 service account token 自动挂载、默认拒绝出站只留必要端口。</li>
+<li><strong>一定要 <code>finally</code> 里销毁。</strong> 用完就扔,是省钱也是安全。</li>
+</ol>
+<blockquote>
+<p><strong>给 Agent 一个盒子,不是限制它,是给它松绑——有了兜底,它才敢真的动手。</strong></p>
+</blockquote>
+<p>如果你正打算把某个 coding agent 或 RL 评测搬上生产,不妨先花半天,用 KinD 跟着官方 quickstart 把 agent-sandbox 跑一遍。真正理解一个“盒子”长什么样,比读十篇选型文章都管用。</p>
+<hr>
+<h2 id="_9">附录:术语速查表</h2>
+<p>本文名词不少,这里按"从基础到上层"排一张速查表,每个配一句大白话和权威参考。第一次读不用全记,用到哪个查哪个。</p>
+<h3 id="_10">一、容器基础</h3>
+<table>
+<thead>
+<tr>
+<th>术语</th>
+<th>一句话解释</th>
+<th>参考</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>容器 Container</strong></td>
+<td>把程序和它的依赖打包成的独立运行单元,像"集装箱",搬到哪都一样跑</td>
+<td><a href="https://www.docker.com/resources/what-container/">Docker: What is a Container</a></td>
+</tr>
+<tr>
+<td><strong>镜像 Image</strong></td>
+<td>容器的"母盘/模板",容器是母盘生成的运行实例</td>
+<td><a href="https://docs.docker.com/get-started/docker-concepts/the-basics/what-is-an-image/">Docker Docs: Image</a></td>
+</tr>
+<tr>
+<td><strong>内核 Kernel / 系统调用</strong></td>
+<td>操作系统最核心、直接管硬件的那层;程序要用硬件得"喊一声"(系统调用)让内核代劳</td>
+<td><a href="https://en.wikipedia.org/wiki/System_call">Wikipedia: System call</a></td>
+</tr>
+</tbody>
+</table>
+<h3 id="_11">二、隔离运行时(安全核心,隔离一个比一个狠)</h3>
+<table>
+<thead>
+<tr>
+<th>术语</th>
+<th>一句话解释</th>
+<th>参考</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>runc</strong></td>
+<td>默认容器运行时,直接共享宿主机内核,快但不适合跑不可信代码</td>
+<td><a href="https://github.com/opencontainers/runc">runc GitHub</a></td>
+</tr>
+<tr>
+<td><strong>gVisor</strong></td>
+<td>在容器和真内核间插一层"用户态内核",拦系统调用,像中间人安检</td>
+<td><a href="https://gvisor.dev/docs/">gVisor Docs</a></td>
+</tr>
+<tr>
+<td><strong>Kata Containers</strong></td>
+<td>给每个容器套一个轻量虚拟机、配独立内核,隔离最强</td>
+<td><a href="https://katacontainers.io/">Kata 官网</a> · <a href="https://katacontainers.org/docs/">Docs</a></td>
+</tr>
+<tr>
+<td><strong>Firecracker microVM</strong></td>
+<td>AWS 开源的"微虚拟机",毫秒级启动,E2B 底层就用它</td>
+<td><a href="https://github.com/firecracker-microvm/firecracker">Firecracker GitHub</a> · <a href="https://aws.amazon.com/blogs/opensource/firecracker-open-source-secure-fast-microvm-serverless/">AWS 博客</a></td>
+</tr>
+</tbody>
+</table>
+<h3 id="kubernetes">三、Kubernetes 相关</h3>
+<table>
+<thead>
+<tr>
+<th>术语</th>
+<th>一句话解释</th>
+<th>参考</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Kubernetes / K8s</strong></td>
+<td>管理成百上千容器的"操作系统",你说要什么状态,它自动实现</td>
+<td><a href="https://kubernetes.io/zh-cn/docs/concepts/overview/">K8s 概念(中文)</a></td>
+</tr>
+<tr>
+<td><strong>Pod</strong></td>
+<td>K8s 最小调度单位,里面装一个或几个容器,是"真正跑代码的地方"</td>
+<td><a href="https://kubernetes.io/zh-cn/docs/concepts/workloads/pods/">K8s: Pod(中文)</a></td>
+</tr>
+<tr>
+<td><strong>CRD</strong></td>
+<td>让你在 K8s 里"发明一个新物种"(比如 Sandbox)</td>
+<td><a href="https://kubernetes.io/zh-cn/docs/concepts/extend-kubernetes/api-extension/custom-resources/">K8s: CRD(中文)</a></td>
+</tr>
+<tr>
+<td><strong>Controller / 声明式</strong></td>
+<td>你声明"最终样子",控制器像恒温器一样不停把现状拉到目标</td>
+<td><a href="https://kubernetes.io/zh-cn/docs/concepts/architecture/controller/">K8s: 控制器(中文)</a></td>
+</tr>
+<tr>
+<td><strong>Deployment / StatefulSet</strong></td>
+<td>K8s 原有的两类工作负载:无状态可复制 / 有状态有编号;沙箱两者都不贴</td>
+<td><a href="https://kubernetes.io/zh-cn/docs/concepts/workloads/controllers/deployment/">Deployment</a> · <a href="https://kubernetes.io/zh-cn/docs/concepts/workloads/controllers/statefulset/">StatefulSet</a></td>
+</tr>
+<tr>
+<td><strong>Service / Headless</strong></td>
+<td>给会变 IP 的 Pod 一个稳定"门牌号"</td>
+<td><a href="https://kubernetes.io/zh-cn/docs/concepts/services-networking/service/">K8s: Service(中文)</a></td>
+</tr>
+<tr>
+<td><strong>PV / PVC</strong></td>
+<td>申请一块跨重启活下来的硬盘,像"自带的行李箱"</td>
+<td><a href="https://kubernetes.io/zh-cn/docs/concepts/storage/persistent-volumes/">K8s: 持久卷(中文)</a></td>
+</tr>
+<tr>
+<td><strong>NetworkPolicy</strong></td>
+<td>Pod 的"防火墙规则",管它能连谁、谁能连它</td>
+<td><a href="https://kubernetes.io/zh-cn/docs/concepts/services-networking/network-policies/">K8s: 网络策略(中文)</a></td>
+</tr>
+<tr>
+<td><strong>RuntimeClass</strong></td>
+<td>K8s 里"选运行时"的开关,写 <code>runtimeClassName: gvisor</code> 就用 gVisor 跑</td>
+<td><a href="https://kubernetes.io/zh-cn/docs/concepts/containers/runtime-class/">K8s: RuntimeClass(中文)</a></td>
+</tr>
+<tr>
+<td><strong>ServiceAccount / Token</strong></td>
+<td>Pod 的"身份证 + 密码",能调 K8s 总控制台;跑不可信代码要默认不塞进去</td>
+<td><a href="https://kubernetes.io/zh-cn/docs/concepts/security/service-accounts/">K8s: ServiceAccount(中文)</a></td>
+</tr>
+</tbody>
+</table>
+<h3 id="agent_2">四、Agent 生态与工具</h3>
+<table>
+<thead>
+<tr>
+<th>术语</th>
+<th>一句话解释</th>
+<th>参考</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>AI Agent</strong></td>
+<td>能自己决定调用工具、执行动作去完成任务的大模型程序</td>
+<td><a href="https://www.anthropic.com/engineering/building-effective-agents">Anthropic: Building Effective Agents</a></td>
+</tr>
+<tr>
+<td><strong>SDK</strong></td>
+<td>现成的代码库,几行代码就能用某个服务,不用懂底层</td>
+<td><a href="https://github.com/kubernetes-sigs/agent-sandbox/tree/main/clients/python/agentic-sandbox-client">agent-sandbox Python SDK</a></td>
+</tr>
+<tr>
+<td><strong>MCP</strong></td>
+<td>大模型和外部工具之间的"通用插头"标准</td>
+<td><a href="https://modelcontextprotocol.io/">MCP 官网</a> · <a href="https://www.anthropic.com/news/model-context-protocol">Anthropic 介绍</a></td>
+</tr>
+<tr>
+<td><strong>ADK</strong></td>
+<td>Google 开源的搭 Agent 的框架</td>
+<td><a href="https://google.github.io/adk-docs/">Google ADK Docs</a></td>
+</tr>
+<tr>
+<td><strong>RL / SWE-bench</strong></td>
+<td>试错+奖惩的学习方法 / 衡量"AI 能否自动修真实 GitHub bug"的基准</td>
+<td><a href="https://www.swebench.com/">SWE-bench 官网</a></td>
+</tr>
+<tr>
+<td><strong>Nomad / Consul / Terraform</strong></td>
+<td>K8s 之外的另一套集群调度 + 基础设施即代码工具,E2B 自建用它们</td>
+<td><a href="https://www.hashicorp.com/">HashiCorp</a></td>
+</tr>
+</tbody>
+</table>
+<h3 id="_12">五、本地上手工具</h3>
+<table>
+<thead>
+<tr>
+<th>术语</th>
+<th>一句话解释</th>
+<th>参考</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>KinD</strong></td>
+<td>Kubernetes in Docker,把 K8s 跑在 Docker 容器里,本地学习/测试首选</td>
+<td><a href="https://kind.sigs.k8s.io/">KinD 官网</a></td>
+</tr>
+<tr>
+<td><strong>minikube</strong></td>
+<td>单机版 K8s,支持更多运行时(比如 Kata)</td>
+<td><a href="https://minikube.sigs.k8s.io/">minikube 官网</a></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>建议学习顺序</strong>:容器/内核 → K8s/Pod/Service/PVC → CRD/Controller/声明式 → runc/gVisor/Kata → Agent/SDK/MCP。别一次全啃,按这个梯子爬。</p>
+</blockquote>
+<hr>
+<h2 id="_13">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* AI Agent 需要一个 box
+** 为什么需要
+*** 不敢直接跑 LLM 写的代码
+*** 隔离 / 有状态 / 秒起秒关
+** 技术栈
+*** Sandbox CRD + Controller
+*** gVisor / Kata 运行时
+*** PVC / NetworkPolicy / Router / SDK
+** 原理
+*** 声明式控制器模式
+*** running vs ready
+*** 挂起恢复 / 生命周期
+** 应用
+*** Template / Claim / WarmPool
+*** 预热池抹平冷启动
+** 实例
+*** Python/Go SDK
+*** 接入 ADK Agent
+*** gVisor + 收紧网络策略
+** 比较(重点 vs E2B)
+*** 成品平台 vs 一套积木
+*** 独立内核 vs 自选运行时
+*** 内存快照 vs PVC 挂起
+*** 自建门槛:有没有 K8s
+** 展望
+*** 冷启动 / Scale to Zero
+*** MCP 原生 / 框架集成
+*** 沙箱变成隐形底座
+@endmindmap
+</code></pre></div>
+
+<p><img alt="AI Agent 需要一个 box - 思维导图" src="./images/tech_20260821_agent-sandbox_mindmap.png"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/2026-08-21-agent-sandbox.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/ai.html">AI</a>
+      <a href="https://www.fanyamin.com/blog/tag/agent.html">agent</a>
+      <a href="https://www.fanyamin.com/blog/tag/kubernetes.html">kubernetes</a>
+      <a href="https://www.fanyamin.com/blog/tag/sandbox.html">sandbox</a>
+      <a href="https://www.fanyamin.com/blog/tag/container.html">container</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-08-21-deno-strengths.html" title="Deno 有什么过人之处">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/juan-bu-dong-tang-bu-ping.html" title="卷不动又躺不平：AI 时代，普通技术人的破局姿势">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/2026-08-17-typescript-in-ai-era.html">TypeScript 凭什么成了 AI 时代的新宠：一个不写 TS 的老程序员的读码笔记</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-08-mem0-memory-layer.html">如何管理 AI Agent 的记忆之三：让 mem0 给 AI Agent 装一层"通用记忆"</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-07-ai-coding-shared-memory.html">如何管理 AI Agent 的记忆之二：让 Claude Code、Codex、OpenCode 共享同一份记忆</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-07-ai-agent-memory.html">如何管理 AI Agent 的记忆之一：既记得牢、想得起，又不烧钱</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-06-ai-planning-agent.html">用 AI 做好计划之三：配个不睡觉的监工</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

@@ -1,5 +1,995 @@
 <?xml version="1.0" encoding="utf-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom"><title>Walter Fan's Blog - Tech</title><link href="https://www.fanyamin.com/blog/" rel="alternate"/><link href="https://www.fanyamin.com/blog/feeds/tech.atom.xml" rel="self"/><id>https://www.fanyamin.com/blog/</id><updated>2026-08-20T22:45:00+08:00</updated><subtitle>手握灵珠常奋笔, 心开天籁不吹箫</subtitle><entry><title>边缘节点的妙用：把服务搬到离用户最近的地方</title><link href="https://www.fanyamin.com/blog/2026-08-20-edge-node.html" rel="alternate"/><published>2026-08-20T21:00:00+08:00</published><updated>2026-08-20T22:45:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-08-20:/blog/2026-08-20-edge-node.html</id><summary type="html">&lt;p&gt;当性能卡在延迟上、当可靠性被跨国网络拖垮、当突发流量把源站压垮时，边缘节点常常是那个"离用户最近、最稳、最快"的解法。这篇从我做音视频就近接入的经历讲起，理清边缘节点到底适合哪些场景、有哪些经典案例、落地时怎么做、又容易踩哪些坑——核心是一句：边缘换来的是延迟和稳定，代价是一致性和运维复杂度，时间和空间从来不可兼得。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Walter Fan's Blog - Tech</title><link href="https://www.fanyamin.com/blog/" rel="alternate"/><link href="https://www.fanyamin.com/blog/feeds/tech.atom.xml" rel="self"/><id>https://www.fanyamin.com/blog/</id><updated>2026-08-21T21:30:00+08:00</updated><subtitle>手握灵珠常奋笔, 心开天籁不吹箫</subtitle><entry><title>AI Agent 需要一个 box</title><link href="https://www.fanyamin.com/blog/2026-08-21-agent-sandbox.html" rel="alternate"/><published>2026-08-21T21:30:00+08:00</published><updated>2026-08-21T21:30:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-08-21:/blog/2026-08-21-agent-sandbox.html</id><summary type="html">&lt;p&gt;LLM 会写代码，但你敢直接在生产机器上跑它写的 &lt;code&gt;rm -rf&lt;/code&gt; 吗？AI Agent 真正缺的不是更聪明的脑子，而是一个能随时开、随时扔、跑坏了也不伤及无辜的“盒子”。本文以 Kubernetes SIG 的 agent-sandbox 项目为例，讲清楚 Agent 运行环境的技术栈、原理、用法、实例、横向比较与未来走向。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;AI Agent 需要一个 box&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;Tech&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Version&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;v1.0&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;2026-08-21&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;去年我第一次让一个 coding agent 帮我改一段脚本，它写得挺利索，然后自作主张跑了一句清理命令，把我一个临时目录连带没备份的测试数据一起删了。数据不重要，但那一下让我出了身冷汗——如果这是在一台能碰到生产的机器上呢？&lt;/p&gt;
+&lt;p&gt;这就是 AI Agent 落地时绕不开的一道坎：&lt;strong&gt;大模型现在很会写代码、很会调工具，但它写出来的东西，你不敢闭着眼睛在自己的机器上执行。&lt;/strong&gt; 它可能死循环把 CPU 打满，可能 &lt;code&gt;pip install&lt;/code&gt; 一个投毒的包，可能顺着网络摸到你的内网。你需要一个地方，让它随便折腾——跑坏了,把盒子一扔就行，伤不到外面。&lt;/p&gt;
+&lt;p&gt;这篇文章讲的就是这个“盒子”。我会以 Kubernetes 官方孵化的 &lt;a href="https://github.com/kubernetes-sigs/agent-sandbox"&gt;agent-sandbox&lt;/a&gt; 项目为主线，把 Agent 运行环境的&lt;strong&gt;技术栈、原理、用法、实例、横向比较和未来趋势&lt;/strong&gt;一次说清楚。读完你能带走的是：什么时候该自己搭、什么时候直接买服务，以及一套能落地的判断标准。&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;一句话结论：Agent 缺的不是更强的模型，是一个&lt;strong&gt;隔离、有状态、能秒起秒关&lt;/strong&gt;的执行环境。&lt;/li&gt;
+&lt;li&gt;一个提醒：容器 ≠ 安全边界。跑不可信代码，普通 Docker 容器是不够的。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;hr&gt;
+&lt;h2 id="_1"&gt;先讲清楚：这里说的“沙箱”到底是什么&lt;/h2&gt;
+&lt;p&gt;“沙箱”这个词被用滥了，先划清楚边界。这里说的沙箱，指的是一个&lt;strong&gt;运行不可信代码的隔离执行环境&lt;/strong&gt;，它要同时满足几个条件：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;强隔离&lt;/strong&gt;:里面的代码碰不到宿主机的内核和文件,也串不到隔壁的沙箱。这是安全底线。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;有状态&lt;/strong&gt;:你写进去的文件、装好的依赖,在一次会话里能留住,不像无状态函数那样每次都从零开始。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;单例、有稳定身份&lt;/strong&gt;:一个 Agent 会话对应一个盒子,有固定的主机名和网络地址,方便你连上去发指令。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;能秒起秒关&lt;/strong&gt;:Agent 用完就扔,创建太慢体验就垮了。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Kubernetes 本来擅长的是两类活:一类是无状态、可水平复制的 Deployment;另一类是编了号、有序的 StatefulSet。但上面这种“一次性、有状态、单容器、要强隔离”的活,两边都不太贴。硬用 &lt;code&gt;StatefulSet(副本数=1) + Service + PVC&lt;/code&gt; 拼出来,能跑,但很别扭,而且缺了休眠、定时销毁这类专门的生命周期管理。&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;agent-sandbox 做的事,就是把这套拼装活儿封装成一个叫 &lt;code&gt;Sandbox&lt;/code&gt; 的一等公民。&lt;/strong&gt;
+它是 Kubernetes SIG Apps 下的项目,给你一个声明式的 CRD,专门管这种“像轻量单容器虚拟机”的工作负载。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;有一点要特别强调:&lt;strong&gt;agent-sandbox 自己不做底层的容器隔离。&lt;/strong&gt; 它是个“沙箱编排器”,真正的隔离交给 gVisor、Kata Containers 这类“安全运行时”,通过 Kubernetes 的 &lt;code&gt;RuntimeClass&lt;/code&gt; 挂上去。这个分工很关键,后面讲原理和安全时还会回到它。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_2"&gt;技术栈:这个盒子是用什么搭起来的&lt;/h2&gt;
+&lt;p&gt;agent-sandbox 整体是标准的 Kubernetes 生态选型,没有另起炉灶:&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;层次&lt;/th&gt;
+&lt;th&gt;技术&lt;/th&gt;
+&lt;th&gt;干什么&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;编排 API&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;Sandbox&lt;/code&gt; CRD + Controller(Go 写的)&lt;/td&gt;
+&lt;td&gt;声明式地管一个有状态单 Pod 的生命周期&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;扩展 API&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;SandboxTemplate&lt;/code&gt; / &lt;code&gt;SandboxClaim&lt;/code&gt; / &lt;code&gt;SandboxWarmPool&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;模板复用、按需申领、预热池&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;隔离运行时&lt;/td&gt;
+&lt;td&gt;gVisor / Kata Containers(经 &lt;code&gt;RuntimeClass&lt;/code&gt;)&lt;/td&gt;
+&lt;td&gt;真正的内核 + 网络隔离&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;存储&lt;/td&gt;
+&lt;td&gt;PVC / &lt;code&gt;volumeClaimTemplates&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;持久化,支持挂起后再恢复&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;网络&lt;/td&gt;
+&lt;td&gt;Headless Service + NetworkPolicy&lt;/td&gt;
+&lt;td&gt;稳定 DNS 身份 + 出入流量管控&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;接入层&lt;/td&gt;
+&lt;td&gt;sandbox-router(HTTP 代理)&lt;/td&gt;
+&lt;td&gt;让 SDK 不碰 K8s 原语就能连到沙箱&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;SDK&lt;/td&gt;
+&lt;td&gt;Python / Go(TypeScript 在路上)&lt;/td&gt;
+&lt;td&gt;应用层用几行代码创建、执行、销毁&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;这张表里名词密度有点高,先挑几个最关键的用大白话解释一遍,免得后面看不懂(全部术语的速查表在文末):&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;容器(Container)&lt;/strong&gt;:把程序和它需要的一切打包成的一个独立运行单元,像个"集装箱"——搬到哪台机器,拆开都能一样地跑。&lt;strong&gt;Pod&lt;/strong&gt; 是 Kubernetes 里装容器的最小单位,你可以先粗略地把"Pod"当成"一个跑着代码的容器"。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;CRD(Custom Resource Definition,自定义资源定义)&lt;/strong&gt;:Kubernetes 内置了 Pod、Service 这些"物种",CRD 允许你&lt;strong&gt;发明一个新物种&lt;/strong&gt;。&lt;code&gt;Sandbox&lt;/code&gt; 就是这么造出来的,于是你能像 &lt;code&gt;kubectl get pods&lt;/code&gt; 一样 &lt;code&gt;kubectl get sandboxes&lt;/code&gt;。&lt;strong&gt;打个比方&lt;/strong&gt;:K8s 本来只认"苹果、香蕉",CRD 让你教会它认识一种新水果"沙箱",从此它也会打理这种水果。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Controller(控制器)/ 声明式&lt;/strong&gt;:"声明式"是指你只说"我想要的最终样子"(我要一个跑着的 Sandbox),不用交代"每一步怎么做"。&lt;strong&gt;Controller&lt;/strong&gt; 就是那个替你干活的管家——它不停地对比"你要的"和"现状",努力把现状拉到你要的样子。你说一句"我要个 Sandbox",它就默默把底层的 Pod、Service、PVC 全建好。&lt;strong&gt;打个比方&lt;/strong&gt;:你在恒温器上设 26 度(声明),空调自己不停调节(控制器),你不用管它怎么开关压缩机。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;gVisor / Kata(安全运行时)&lt;/strong&gt;:普通容器都共享宿主机的&lt;strong&gt;内核&lt;/strong&gt;(操作系统最核心、直接管硬件的那层),坏代码钻内核漏洞就可能"越狱"到宿主机。这两个是加固方案:&lt;strong&gt;gVisor&lt;/strong&gt; 在容器和真内核之间插一层"用户态内核",像个中间人安检,拦下容器发出的系统调用;&lt;strong&gt;Kata&lt;/strong&gt; 更狠,给每个容器套一个轻量虚拟机、配独立内核。&lt;strong&gt;打个比方&lt;/strong&gt;:普通容器是"合租,共用一个厨房";gVisor 是"合租但请了个管家帮你转达、不让你直接进公共厨房";Kata 是"干脆给你一套独立公寓"。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;PVC(PersistentVolumeClaim,持久卷声明)&lt;/strong&gt;:容器默认"用完即弃",里面写的文件重启就没。PVC 是你"申请一块能跨重启活下来的硬盘"。沙箱挂起时数据存这儿,恢复时再挂回去。&lt;strong&gt;打个比方&lt;/strong&gt;:容器是酒店房间(退房就清空),PVC 是你自带的行李箱(走哪带哪)。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;技术栈本身不新奇,巧妙在于&lt;strong&gt;组合&lt;/strong&gt;:用 CRD 把这套复杂拼装收成一个声明式 API,把安全隔离外包给专门的运行时,把冷启动的痛用预热池抹平。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="yaml"&gt;原理:从一行 YAML 到一个能跑代码的盒子&lt;/h2&gt;
+&lt;p&gt;agent-sandbox 走的是经典的 Kubernetes 控制器模式(就是上面"恒温器"那个比方):&lt;strong&gt;用户声明想要什么,控制器负责变成现实。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;最小的一个 Sandbox 长这样:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nt"&gt;apiVersion&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l l-Scalar l-Scalar-Plain"&gt;agents.x-k8s.io/v1beta1&lt;/span&gt;
+&lt;span class="nt"&gt;kind&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l l-Scalar l-Scalar-Plain"&gt;Sandbox&lt;/span&gt;
+&lt;span class="nt"&gt;metadata&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;name&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l l-Scalar l-Scalar-Plain"&gt;my-sandbox&lt;/span&gt;
+&lt;span class="nt"&gt;spec&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;podTemplate&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;spec&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="nt"&gt;containers&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="p p-Indicator"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;name&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l l-Scalar l-Scalar-Plain"&gt;my-container&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nt"&gt;image&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l l-Scalar l-Scalar-Plain"&gt;&amp;lt;YOUR_IMAGE&amp;gt;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;你 &lt;code&gt;kubectl apply&lt;/code&gt; 之后,控制器接手,大致做这么几件事:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;按 &lt;code&gt;podTemplate&lt;/code&gt; 建一个 Pod,这是真正跑代码的地方。&lt;/li&gt;
+&lt;li&gt;需要的话建一个 Headless Service,给它一个稳定的集群内 DNS 名字(比如 &lt;code&gt;my-sandbox&lt;/code&gt;),这样别人能稳定地找到它。(Pod 会重启、IP 会变,&lt;strong&gt;Service&lt;/strong&gt; 就是给它一个不变的"门牌号";Headless 是其中一种,直接把门牌号指到 Pod 本身。)&lt;/li&gt;
+&lt;li&gt;有 &lt;code&gt;volumeClaimTemplates&lt;/code&gt; 就建 PVC,把持久存储挂上。&lt;/li&gt;
+&lt;li&gt;持续更新状态,直到 &lt;code&gt;Ready&lt;/code&gt; 条件为真——Pod 真的起来、有 IP、Service 也就绪了。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;这里有个容易踩的坑,项目文档也特意点出来:&lt;strong&gt;“running”和“ready”是两回事。&lt;/strong&gt; &lt;code&gt;operatingMode: Running&lt;/code&gt; 只是你的意图(“请保持一个 Pod 在跑”),不代表 Pod 已经起来了;真正“能干活了”要看 &lt;code&gt;Ready&lt;/code&gt; 这个观测条件。程序里要判断沙箱可用,认 &lt;code&gt;Ready&lt;/code&gt;,别认 &lt;code&gt;operatingMode&lt;/code&gt;。&lt;/p&gt;
+&lt;h3 id="_3"&gt;挂起与恢复:让空闲的盒子不烧钱&lt;/h3&gt;
+&lt;p&gt;Agent 经常是“聊几句、跑一下、又空着”。让盒子一直占着 CPU 太浪费。agent-sandbox 支持基于 PVC 的挂起/恢复:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nt"&gt;spec&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;operatingMode&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l l-Scalar l-Scalar-Plain"&gt;Suspended&lt;/span&gt;&lt;span class="w"&gt;   &lt;/span&gt;&lt;span class="c1"&gt;# 从 Running 改成 Suspended&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;改成 &lt;code&gt;Suspended&lt;/code&gt;,控制器会&lt;strong&gt;终止 Pod,但保留 Sandbox 对象和它的存储卷&lt;/strong&gt;。等你要用了再切回 &lt;code&gt;Running&lt;/code&gt;,存储原样挂回来。计算资源释放了,状态还在。&lt;/p&gt;
+&lt;h3 id="_4"&gt;生命周期:到点自动收尾&lt;/h3&gt;
+&lt;p&gt;Agent 场景里有大量“用一次就该扔”的沙箱(比如强化学习的一轮评测)。手动清理不现实,靠的是声明式的生命周期:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nt"&gt;spec&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;shutdownTime&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;2026-08-22T00:00:00Z&amp;quot;&lt;/span&gt;&lt;span class="w"&gt;   &lt;/span&gt;&lt;span class="c1"&gt;# 到这个绝对时间就过期&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;shutdownPolicy&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l l-Scalar l-Scalar-Plain"&gt;Delete&lt;/span&gt;&lt;span class="w"&gt;                  &lt;/span&gt;&lt;span class="c1"&gt;# 过期后连 Sandbox 对象一起删;Retain 则保留&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;到点了,控制器自动拆掉底层资源。&lt;code&gt;Delete&lt;/code&gt; 是彻底删,&lt;code&gt;Retain&lt;/code&gt; 是留个壳、把状态标成过期,方便事后审计。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="crd"&gt;应用:三个 CRD 撑起真实的用法&lt;/h2&gt;
+&lt;p&gt;光有 &lt;code&gt;Sandbox&lt;/code&gt; 还不够顺手。真到了要给成百上千个 Agent 会话开盒子的时候,靠三个扩展 CRD 分工:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;SandboxTemplate&lt;/code&gt;&lt;/strong&gt;:管理员定义的蓝图。把镜像、运行时、存储、安全策略写死在模板里,普通用户不用关心细节。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;SandboxClaim&lt;/code&gt;&lt;/strong&gt;:用户侧的“申领单”。我不关心底层怎么配的,我只说“给我来一个”。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;SandboxWarmPool&lt;/code&gt;&lt;/strong&gt;:预热池。提前把 N 个盒子暖好放着,来单子直接从池子里拿。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;预热池解决的是&lt;strong&gt;冷启动&lt;/strong&gt;这个体验杀手。项目文档给的数字很直白:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;不用预热池&lt;/strong&gt;:冷创建要 10–30 秒(拉镜像 + 起容器/虚拟机)。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;用预热池&lt;/strong&gt;:2 秒以内就能拿到一个已经在跑的盒子。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;原理也不绕:WarmPool 直接建一批带特定 label 的 Pod 挂在那儿;你提 &lt;code&gt;SandboxClaim&lt;/code&gt; 的时候,控制器从池子里挑一个已经跑起来的 Pod 认领过去,同时&lt;strong&gt;自动再补一个新的&lt;/strong&gt;进池子,维持水位。你等的不是“建一个新盒子”,而只是“把一个现成盒子的名牌换成你的”。&lt;/p&gt;
+&lt;p&gt;安全上,预热的一个隐含好处:通过模板创建时,如果没显式设置 &lt;code&gt;automountServiceAccountToken&lt;/code&gt;,控制器会默认把它设成 &lt;code&gt;false&lt;/code&gt;——也就是&lt;strong&gt;默认不把 K8s 的凭证塞进沙箱&lt;/strong&gt;,避免里面的不可信代码拿着 token 去调 API Server(K8s 的"总控制台",能操控整个集群)。这里的 token 相当于"集群管理员的钥匙",默认不塞进盒子,就是不给不可信代码翻墙进总控制台的机会。安全默认值,值得点个赞。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="agent"&gt;实例:让 Agent 真的把代码跑进盒子里&lt;/h2&gt;
+&lt;p&gt;讲了半天 YAML,来看应用层怎么用。agent-sandbox 提供了 Python 和 Go 的 SDK,好处是&lt;strong&gt;你不用直接碰 Kubernetes 原语&lt;/strong&gt;——SDK 通过 sandbox-router 这个 HTTP 代理和盒子通信。&lt;/p&gt;
+&lt;p&gt;Python 侧最小可用的样子:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="kn"&gt;from&lt;/span&gt; &lt;span class="nn"&gt;k8s_agent_sandbox&lt;/span&gt; &lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="n"&gt;SandboxClient&lt;/span&gt;
+
+&lt;span class="n"&gt;client&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;SandboxClient&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;  &lt;span class="c1"&gt;# 默认走 tunnel 模式,本地 kubectl port-forward,KinD/Minikube 都行&lt;/span&gt;
+
+&lt;span class="n"&gt;sandbox&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;client&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;create_sandbox&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+    &lt;span class="n"&gt;warmpool&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;python-sandbox-pool&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="n"&gt;namespace&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;default&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="k"&gt;try&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+    &lt;span class="c1"&gt;# 写一个文件进沙箱,再在里面执行&lt;/span&gt;
+    &lt;span class="n"&gt;sandbox&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;files&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;write&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;hello.py&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;print(&amp;quot;Hello from inside the sandbox!&amp;quot;)&lt;/span&gt;&lt;span class="se"&gt;\n&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="n"&gt;result&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;sandbox&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;commands&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;run&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;python3 hello.py&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="nb"&gt;print&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;result&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;stdout&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;   &lt;span class="c1"&gt;# Hello from inside the sandbox!&lt;/span&gt;
+&lt;span class="k"&gt;finally&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;sandbox&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;terminate&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;    &lt;span class="c1"&gt;# 用完就扔&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这段代码把 Agent 沙箱的核心动作全占了:&lt;strong&gt;创建 → 写文件 → 执行命令 → 读结果 → 销毁&lt;/strong&gt;。&lt;code&gt;try/finally&lt;/code&gt; 保证不管中间报没报错,盒子最后都会被回收——这是省钱也是省心的关键。&lt;/p&gt;
+&lt;p&gt;再进一步,把它接进一个真正的 Agent。下面是官方用 Google ADK(Agent Development Kit,Google 开源的搭 Agent 的框架)做的一个 coding agent,把“执行 Python”封装成一个工具函数交给大模型调:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="kn"&gt;from&lt;/span&gt; &lt;span class="nn"&gt;google.adk.agents.llm_agent&lt;/span&gt; &lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="n"&gt;Agent&lt;/span&gt;
+&lt;span class="kn"&gt;from&lt;/span&gt; &lt;span class="nn"&gt;k8s_agent_sandbox&lt;/span&gt; &lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="n"&gt;SandboxClient&lt;/span&gt;
+
+
+&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;execute_python&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;code&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+    &lt;span class="n"&gt;sb&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;SandboxClient&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+    &lt;span class="n"&gt;sandbox&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;sb&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;create_sandbox&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;warmpool&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;python-sandbox-pool&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;namespace&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;default&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;try&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;sandbox&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;files&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;write&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;run.py&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;code&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="n"&gt;result&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;sandbox&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;commands&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;run&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;python3 run.py&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;result&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;stdout&lt;/span&gt;
+    &lt;span class="k"&gt;finally&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="n"&gt;sandbox&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;terminate&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+
+
+&lt;span class="n"&gt;root_agent&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;Agent&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+    &lt;span class="n"&gt;model&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;gemini-3.7-flash&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;coding_agent&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="n"&gt;description&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;Writes Python code and executes it in a sandbox.&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="n"&gt;instruction&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;你是一个助手,会写 Python 代码并在沙箱里执行,用 execute_python 工具来跑。&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="n"&gt;tools&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="n"&gt;execute_python&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;
+&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;逻辑一目了然:模型负责“写代码”,&lt;code&gt;execute_python&lt;/code&gt; 负责“把代码扔进盒子跑,把结果拿回来”。模型再离谱,&lt;code&gt;rm -rf&lt;/code&gt; 也只能删到盒子里,&lt;code&gt;finally&lt;/code&gt; 一到,盒子灰飞烟灭。开头那身冷汗,到这儿就出不来了。&lt;/p&gt;
+&lt;p&gt;如果要生产级的强隔离,给模板加上 gVisor 运行时和收紧的网络策略:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nt"&gt;apiVersion&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l l-Scalar l-Scalar-Plain"&gt;extensions.agents.x-k8s.io/v1beta1&lt;/span&gt;
+&lt;span class="nt"&gt;kind&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l l-Scalar l-Scalar-Plain"&gt;SandboxTemplate&lt;/span&gt;
+&lt;span class="nt"&gt;metadata&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;name&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l l-Scalar l-Scalar-Plain"&gt;secure-datascience-template&lt;/span&gt;
+&lt;span class="nt"&gt;spec&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;podTemplate&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;spec&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="nt"&gt;runtimeClassName&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l l-Scalar l-Scalar-Plain"&gt;gvisor&lt;/span&gt;&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="c1"&gt;# 用 gVisor 做运行时隔离&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="nt"&gt;securityContext&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nt"&gt;runAsNonRoot&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l l-Scalar l-Scalar-Plain"&gt;true&lt;/span&gt;&lt;span class="w"&gt;              &lt;/span&gt;&lt;span class="c1"&gt;# 非 root 运行&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nt"&gt;runAsUser&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l l-Scalar l-Scalar-Plain"&gt;1000&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="nt"&gt;containers&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="p p-Indicator"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;name&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l l-Scalar l-Scalar-Plain"&gt;my-container&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nt"&gt;image&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l l-Scalar l-Scalar-Plain"&gt;busybox&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;networkPolicy&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="c1"&gt;# 只放行 DNS(53 端口),其余出站一律默认拒绝——&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="c1"&gt;# 顺带把访问 K8s API Server 的路也堵死了&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;egress&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="p p-Indicator"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;ports&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p p-Indicator"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;protocol&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l l-Scalar l-Scalar-Plain"&gt;UDP&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="nt"&gt;port&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l l-Scalar l-Scalar-Plain"&gt;53&lt;/span&gt;
+&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p p-Indicator"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;protocol&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l l-Scalar l-Scalar-Plain"&gt;TCP&lt;/span&gt;
+&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="nt"&gt;port&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l l-Scalar l-Scalar-Plain"&gt;53&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这份模板同时做了三件“把盒子焊死”的事:&lt;strong&gt;gVisor 做内核隔离、非 root 运行、默认拒绝出站只留 DNS&lt;/strong&gt;。不可信代码在里面既碰不到宿主内核,也摸不到内网和 API Server。这才是“敢让 LLM 随便跑”的底气来源。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="agent-sandbox-e2b"&gt;比较:重点说说 agent-sandbox 和 E2B&lt;/h2&gt;
+&lt;p&gt;这个赛道选手一大把——E2B、Daytona、Modal、Vercel Sandbox、Cloudflare Sandbox。但最值得和 agent-sandbox 摆在一起细看的是 &lt;strong&gt;E2B&lt;/strong&gt;:它俩都打“开源、可自建、认真做隔离”这张牌,却是&lt;strong&gt;两种完全不同的活法&lt;/strong&gt;。搞懂它俩的区别,基本就摸清了整个赛道的分界线。&lt;/p&gt;
+&lt;p&gt;先看全景,再单独掰扯 E2B(数字来自厂商文档和 2025–2026 独立评测,会随时间变,当参考值):&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;方案&lt;/th&gt;
+&lt;th&gt;隔离方式&lt;/th&gt;
+&lt;th&gt;冷启动&lt;/th&gt;
+&lt;th&gt;部署形态&lt;/th&gt;
+&lt;th&gt;特点&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;agent-sandbox&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;gVisor / Kata(自选)&lt;/td&gt;
+&lt;td&gt;预热池 2 秒内&lt;/td&gt;
+&lt;td&gt;自建 K8s&lt;/td&gt;
+&lt;td&gt;开源、K8s 原生、厂商中立&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;E2B&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;Firecracker microVM&lt;/td&gt;
+&lt;td&gt;~125–200ms 冷启 / 快照恢复 5–30ms&lt;/td&gt;
+&lt;td&gt;托管 / 可自建(Apache-2.0)&lt;/td&gt;
+&lt;td&gt;SDK 成熟,内存级 pause/resume&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Daytona&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;容器(默认)/ Kata 可选&lt;/td&gt;
+&lt;td&gt;官方称 ~90ms&lt;/td&gt;
+&lt;td&gt;托管 / 企业自建&lt;/td&gt;
+&lt;td&gt;面向 dev 环境,支持 GPU&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Modal&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;gVisor&lt;/td&gt;
+&lt;td&gt;~2.4 秒创建&lt;/td&gt;
+&lt;td&gt;托管&lt;/td&gt;
+&lt;td&gt;serverless,按活跃 CPU 计费,scale to zero&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Vercel Sandbox&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;Firecracker microVM&lt;/td&gt;
+&lt;td&gt;快速&lt;/td&gt;
+&lt;td&gt;托管&lt;/td&gt;
+&lt;td&gt;默认持久,和 Vercel 生态绑&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h3 id="_5"&gt;一句话概括这对差异&lt;/h3&gt;
+&lt;p&gt;&lt;strong&gt;E2B 是一个“成品平台”,agent-sandbox 是一套“积木”。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;E2B 给你的是一整个自成体系的系统:它自带控制面、调度器(orchestrator),底下跑着一队 Firecracker microVM(AWS 开源的"微虚拟机",启动毫秒级,专为一次性 serverless 负载设计),自建时靠 Terraform + Nomad + Consul(一套"基础设施即代码"和集群调度的工具组合,可以理解为"K8s 之外的另一套集群管理体系")起一整套集群。你要么直接用它的托管云,要么把这整套东西搬到自己的云上。&lt;/p&gt;
+&lt;p&gt;agent-sandbox 不是一个“系统”,它是 Kubernetes 里的一组 CRD。它不自带控制面——&lt;strong&gt;它直接复用你已有的 K8s 控制面&lt;/strong&gt;,隔离外包给 gVisor/Kata。如果你手上已经有 K8s 集群,加上 agent-sandbox 几乎是零增量;如果没有,那你得先有个 K8s。&lt;/p&gt;
+&lt;p&gt;这条分界线决定了后面所有的差异。&lt;/p&gt;
+&lt;h3 id="vs"&gt;隔离:独立内核 vs 自选运行时&lt;/h3&gt;
+&lt;p&gt;E2B 每个沙箱是一个 &lt;strong&gt;Firecracker microVM&lt;/strong&gt;,有&lt;strong&gt;自己独立的内核&lt;/strong&gt;。跑不可信的 LLM 代码,这是很硬的边界——沙箱里的内核崩了、被攻破了,也伤不到宿主和别的租户。代价是启动要付虚拟机的“开机税”,冷启动约 125–200ms(用内存快照恢复能压到 5–30ms)。&lt;/p&gt;
+&lt;p&gt;agent-sandbox 自己&lt;strong&gt;不做隔离&lt;/strong&gt;,它只是编排 Pod,把隔离这件事交给你在 &lt;code&gt;RuntimeClass&lt;/code&gt; 里选的运行时:gVisor(用户态内核,拦系统调用)或 Kata(轻量虚拟机,和 Firecracker 一个思路)。&lt;strong&gt;灵活是灵活,但也意味着隔离强度由你自己负责&lt;/strong&gt;——你要是图省事没配 gVisor/Kata,那就退化成普通容器隔离,跑不可信代码是不够的。E2B 把这个决定替你做了,agent-sandbox 把方向盘交回你手里。&lt;/p&gt;
+&lt;h3 id="vs-pvc"&gt;状态:内存快照 vs PVC 挂起&lt;/h3&gt;
+&lt;p&gt;这是两者体感差最大的地方,也最容易踩坑。&lt;/p&gt;
+&lt;p&gt;E2B 的 pause/resume &lt;strong&gt;连内存一起存&lt;/strong&gt;:文件系统、正在跑的进程、加载好的变量,全都保下来,恢复时原样回来,约 1 秒。对“聊到一半、上下文都在内存里”的 Agent 会话特别友好。代价是 pause 本身有成本(约每 GiB 内存 4 秒),而且 beta 期沙箱有 30 天上限。&lt;/p&gt;
+&lt;p&gt;agent-sandbox 的挂起是&lt;strong&gt;基于 PVC 的&lt;/strong&gt;:切到 &lt;code&gt;Suspended&lt;/code&gt;,它终止 Pod、&lt;strong&gt;保住存储卷&lt;/strong&gt;,恢复时把卷挂回来。&lt;strong&gt;注意:它保的是磁盘状态,不保内存状态&lt;/strong&gt;——Pod 一终止,内存里的东西就没了。你得自己把要留的东西落盘。这不是缺陷,是不同的取舍:E2B 替你把内存也快照了(所以有成本、有时限),agent-sandbox 只保你明确写进 PVC 的东西(更省、更可控,但要你自己管)。&lt;/p&gt;
+&lt;h3 id="_6"&gt;自建成本:这才是真正的分水岭&lt;/h3&gt;
+&lt;p&gt;两家都号称“开源可自建”,但自建的门槛差着量级。&lt;/p&gt;
+&lt;p&gt;E2B 自建是真自建:它的 &lt;code&gt;e2b-dev/infra&lt;/code&gt; 仓库确实是 Apache-2.0,控制面都在里面,但你要跑起来得备齐 Terraform / Nomad / Consul,还有 GCP 最低配额(约 2500 GB SSD + 24 CPU),按 list price 光这个底座每月就 &lt;strong&gt;~1250 美元起&lt;/strong&gt;,一个沙箱还没跑呢。独立分析给的经验值:CPU-only 负载下,自建要到大约 &lt;strong&gt;11000 沙箱小时/月&lt;/strong&gt;(约等于 15 个沙箱常年不停)才比托管划算。&lt;strong&gt;量不到,老老实实买托管。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;agent-sandbox 的自建成本,取决于你有没有 K8s。&lt;strong&gt;已经在用 K8s 的团队,它几乎是白送的增量&lt;/strong&gt;——&lt;code&gt;kubectl apply&lt;/code&gt; 一个 manifest 就装上了,复用现有集群、现有监控、现有权限体系。反过来,如果你没有 K8s,那你要付的是“运维一个 K8s 集群”的长期成本,这可不便宜。&lt;/p&gt;
+&lt;h3 id="_7"&gt;到底该选哪个&lt;/h3&gt;
+&lt;p&gt;我的判断,拿几个具体场景说:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;快速验证一个 Agent 想法,量不大&lt;/strong&gt; → 直接上 E2B 托管云,几行 SDK 就能跑,别碰基础设施。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;要内存级的会话恢复&lt;/strong&gt;(比如长对话、REPL 状态要留住) → E2B 的内存快照是现成的,agent-sandbox 得你自己想办法落盘。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;团队已经重度用 K8s,要数据不出门、要厂商中立&lt;/strong&gt; → agent-sandbox 几乎是顺理成章的选择,复用一切现有 K8s 能力。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;要极致隔离但不想自己扛虚拟机运维&lt;/strong&gt; → E2B 的 Firecracker 是默认强隔离;agent-sandbox 你得自己配 Kata 才能到同一档。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;超大规模、要把单位成本压到最低&lt;/strong&gt; → 两边都得自建,这时比的是你更熟 K8s 还是更熟 Nomad/Consul,以及谁能给你一个“有人背 pager”的运维团队。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;一句话:E2B 用“替你决定”换省心,agent-sandbox 用“交给你决定”换控制权。&lt;/strong&gt;
+前者适合还没有基础设施包袱、想快的团队;后者适合已经站在 Kubernetes 上、要把主动权攥在手里的团队。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;最后提醒一句所有方案都躲不掉的坑:&lt;strong&gt;隔离不是打个勾就完事。&lt;/strong&gt; 独立评测里提过一个真实教训——某云厂商的 Agent 运行时出过 DNS 隧道逃逸漏洞。隔离是一整套栈(运行时 + 网络策略 + 权限),选了“支持隔离”的产品不等于万事大吉,该收紧的网络策略、该关的 token,一样都不能省。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_8"&gt;展望:盒子会越来越“隐形”&lt;/h2&gt;
+&lt;p&gt;从 agent-sandbox 的 roadmap 能看出这个领域的几个方向,我挑几个我觉得最实在的:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;冷启动继续压。&lt;/strong&gt; 目标是把认领延迟从 200ms 压到 100ms 再到 50ms,还提出了 TFFI(Time to First Instruction,从调用到跑出第一条指令的时间)这个更贴近体感的指标。盒子起得越快,Agent 用起来越像“本地就有”。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Scale to Zero + 自动挂起/恢复。&lt;/strong&gt; 空闲自动挂起、来流量自动唤醒。理想状态是:你几乎感觉不到盒子的存在,它按需出现、按需消失,账单只算真正用的那点。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;MCP 原生接入。&lt;/strong&gt; roadmap 里计划让 agent-sandbox 直接变成 MCP(Model Context Protocol,模型上下文协议——Anthropic 提出的开放标准,给大模型和外部工具定义一套"通用插头")的一个原生工具。这意味着支持 MCP 的大模型运行时能把“开个沙箱跑代码”当成一个标准工具直接调,不用再手写胶水。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;和 Agent 框架打通。&lt;/strong&gt; LangChain、CrewAI、Ray(RLlib)这些框架的原生集成都在推进。强化学习(RL,让 AI 通过"不断试错 + 奖惩反馈"来学习)的评测循环(比如 SWE-bench——衡量"AI 能不能自动修真实 GitHub bug"的评测基准)对高吞吐、低延迟的一次性沙箱需求极大,这块是 agent-sandbox 明确瞄准的场景。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;往大了说,我的判断是:&lt;strong&gt;沙箱正在从“一个你要手动管理的组件”,变成“Agent 运行时里一个默认存在、你基本无感的底座”。&lt;/strong&gt; 就像今天没人会为“进程要不要隔离地址空间”纠结一样,再过一阵,“Agent 跑代码要不要放沙箱”也会变成不用问的默认选项。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="agent_1"&gt;总结:Agent 缺的不是脑子,是一个能随便扔的盒子&lt;/h2&gt;
+&lt;p&gt;回到开头那身冷汗。让 AI Agent 真正敢在生产里干活,关键不在把模型调得更聪明,而在给它一个&lt;strong&gt;隔离、有状态、秒起秒关&lt;/strong&gt;的执行环境——出了事,损失被死死圈在盒子里。&lt;/p&gt;
+&lt;p&gt;agent-sandbox 的价值,是把这件原本要靠 &lt;code&gt;StatefulSet + Service + PVC&lt;/code&gt; 手动拼装的苦活,收成一个 Kubernetes 原生、厂商中立、开源的声明式 API,再把安全隔离外包给 gVisor / Kata,把冷启动的痛用预热池抹平。&lt;/p&gt;
+&lt;p&gt;给你一份可以照着走的判断清单:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;先问隔离够不够。&lt;/strong&gt; 跑不可信代码,普通容器不行,得上 gVisor 或 Kata——用 agent-sandbox 记得自己配,别退化成裸容器。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;想清楚要不要内存级恢复。&lt;/strong&gt; 要留住内存里的会话状态,E2B 现成;agent-sandbox 只保 PVC,得自己落盘。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;按“有没有 K8s”决定自建还是买。&lt;/strong&gt; 已重度用 K8s、要数据自主 → agent-sandbox;没基础设施、想快 → E2B 托管;超大规模再谈自建 E2B。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;默认收紧权限。&lt;/strong&gt; 非 root、关掉 service account token 自动挂载、默认拒绝出站只留必要端口。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;一定要 &lt;code&gt;finally&lt;/code&gt; 里销毁。&lt;/strong&gt; 用完就扔,是省钱也是安全。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;给 Agent 一个盒子,不是限制它,是给它松绑——有了兜底,它才敢真的动手。&lt;/strong&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;如果你正打算把某个 coding agent 或 RL 评测搬上生产,不妨先花半天,用 KinD 跟着官方 quickstart 把 agent-sandbox 跑一遍。真正理解一个“盒子”长什么样,比读十篇选型文章都管用。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_9"&gt;附录:术语速查表&lt;/h2&gt;
+&lt;p&gt;本文名词不少,这里按"从基础到上层"排一张速查表,每个配一句大白话和权威参考。第一次读不用全记,用到哪个查哪个。&lt;/p&gt;
+&lt;h3 id="_10"&gt;一、容器基础&lt;/h3&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;术语&lt;/th&gt;
+&lt;th&gt;一句话解释&lt;/th&gt;
+&lt;th&gt;参考&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;容器 Container&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;把程序和它的依赖打包成的独立运行单元,像"集装箱",搬到哪都一样跑&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.docker.com/resources/what-container/"&gt;Docker: What is a Container&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;镜像 Image&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;容器的"母盘/模板",容器是母盘生成的运行实例&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://docs.docker.com/get-started/docker-concepts/the-basics/what-is-an-image/"&gt;Docker Docs: Image&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;内核 Kernel / 系统调用&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;操作系统最核心、直接管硬件的那层;程序要用硬件得"喊一声"(系统调用)让内核代劳&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://en.wikipedia.org/wiki/System_call"&gt;Wikipedia: System call&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h3 id="_11"&gt;二、隔离运行时(安全核心,隔离一个比一个狠)&lt;/h3&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;术语&lt;/th&gt;
+&lt;th&gt;一句话解释&lt;/th&gt;
+&lt;th&gt;参考&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;runc&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;默认容器运行时,直接共享宿主机内核,快但不适合跑不可信代码&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://github.com/opencontainers/runc"&gt;runc GitHub&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;gVisor&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;在容器和真内核间插一层"用户态内核",拦系统调用,像中间人安检&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://gvisor.dev/docs/"&gt;gVisor Docs&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Kata Containers&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;给每个容器套一个轻量虚拟机、配独立内核,隔离最强&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://katacontainers.io/"&gt;Kata 官网&lt;/a&gt; · &lt;a href="https://katacontainers.org/docs/"&gt;Docs&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Firecracker microVM&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;AWS 开源的"微虚拟机",毫秒级启动,E2B 底层就用它&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://github.com/firecracker-microvm/firecracker"&gt;Firecracker GitHub&lt;/a&gt; · &lt;a href="https://aws.amazon.com/blogs/opensource/firecracker-open-source-secure-fast-microvm-serverless/"&gt;AWS 博客&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h3 id="kubernetes"&gt;三、Kubernetes 相关&lt;/h3&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;术语&lt;/th&gt;
+&lt;th&gt;一句话解释&lt;/th&gt;
+&lt;th&gt;参考&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Kubernetes / K8s&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;管理成百上千容器的"操作系统",你说要什么状态,它自动实现&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://kubernetes.io/zh-cn/docs/concepts/overview/"&gt;K8s 概念(中文)&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Pod&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;K8s 最小调度单位,里面装一个或几个容器,是"真正跑代码的地方"&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://kubernetes.io/zh-cn/docs/concepts/workloads/pods/"&gt;K8s: Pod(中文)&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;CRD&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;让你在 K8s 里"发明一个新物种"(比如 Sandbox)&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://kubernetes.io/zh-cn/docs/concepts/extend-kubernetes/api-extension/custom-resources/"&gt;K8s: CRD(中文)&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Controller / 声明式&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;你声明"最终样子",控制器像恒温器一样不停把现状拉到目标&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://kubernetes.io/zh-cn/docs/concepts/architecture/controller/"&gt;K8s: 控制器(中文)&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Deployment / StatefulSet&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;K8s 原有的两类工作负载:无状态可复制 / 有状态有编号;沙箱两者都不贴&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://kubernetes.io/zh-cn/docs/concepts/workloads/controllers/deployment/"&gt;Deployment&lt;/a&gt; · &lt;a href="https://kubernetes.io/zh-cn/docs/concepts/workloads/controllers/statefulset/"&gt;StatefulSet&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Service / Headless&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;给会变 IP 的 Pod 一个稳定"门牌号"&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://kubernetes.io/zh-cn/docs/concepts/services-networking/service/"&gt;K8s: Service(中文)&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;PV / PVC&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;申请一块跨重启活下来的硬盘,像"自带的行李箱"&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://kubernetes.io/zh-cn/docs/concepts/storage/persistent-volumes/"&gt;K8s: 持久卷(中文)&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;NetworkPolicy&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;Pod 的"防火墙规则",管它能连谁、谁能连它&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://kubernetes.io/zh-cn/docs/concepts/services-networking/network-policies/"&gt;K8s: 网络策略(中文)&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;RuntimeClass&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;K8s 里"选运行时"的开关,写 &lt;code&gt;runtimeClassName: gvisor&lt;/code&gt; 就用 gVisor 跑&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://kubernetes.io/zh-cn/docs/concepts/containers/runtime-class/"&gt;K8s: RuntimeClass(中文)&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;ServiceAccount / Token&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;Pod 的"身份证 + 密码",能调 K8s 总控制台;跑不可信代码要默认不塞进去&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://kubernetes.io/zh-cn/docs/concepts/security/service-accounts/"&gt;K8s: ServiceAccount(中文)&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h3 id="agent_2"&gt;四、Agent 生态与工具&lt;/h3&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;术语&lt;/th&gt;
+&lt;th&gt;一句话解释&lt;/th&gt;
+&lt;th&gt;参考&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;AI Agent&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;能自己决定调用工具、执行动作去完成任务的大模型程序&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.anthropic.com/engineering/building-effective-agents"&gt;Anthropic: Building Effective Agents&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;SDK&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;现成的代码库,几行代码就能用某个服务,不用懂底层&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://github.com/kubernetes-sigs/agent-sandbox/tree/main/clients/python/agentic-sandbox-client"&gt;agent-sandbox Python SDK&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;MCP&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;大模型和外部工具之间的"通用插头"标准&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://modelcontextprotocol.io/"&gt;MCP 官网&lt;/a&gt; · &lt;a href="https://www.anthropic.com/news/model-context-protocol"&gt;Anthropic 介绍&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;ADK&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;Google 开源的搭 Agent 的框架&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://google.github.io/adk-docs/"&gt;Google ADK Docs&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;RL / SWE-bench&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;试错+奖惩的学习方法 / 衡量"AI 能否自动修真实 GitHub bug"的基准&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.swebench.com/"&gt;SWE-bench 官网&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Nomad / Consul / Terraform&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;K8s 之外的另一套集群调度 + 基础设施即代码工具,E2B 自建用它们&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.hashicorp.com/"&gt;HashiCorp&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h3 id="_12"&gt;五、本地上手工具&lt;/h3&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;术语&lt;/th&gt;
+&lt;th&gt;一句话解释&lt;/th&gt;
+&lt;th&gt;参考&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;KinD&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;Kubernetes in Docker,把 K8s 跑在 Docker 容器里,本地学习/测试首选&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://kind.sigs.k8s.io/"&gt;KinD 官网&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;minikube&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;单机版 K8s,支持更多运行时(比如 Kata)&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://minikube.sigs.k8s.io/"&gt;minikube 官网&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;建议学习顺序&lt;/strong&gt;:容器/内核 → K8s/Pod/Service/PVC → CRD/Controller/声明式 → runc/gVisor/Kata → Agent/SDK/MCP。别一次全啃,按这个梯子爬。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;hr&gt;
+&lt;h2 id="_13"&gt;全文思维导图&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap
+&amp;lt;style&amp;gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&amp;lt;/style&amp;gt;
+
+* AI Agent 需要一个 box
+** 为什么需要
+*** 不敢直接跑 LLM 写的代码
+*** 隔离 / 有状态 / 秒起秒关
+** 技术栈
+*** Sandbox CRD + Controller
+*** gVisor / Kata 运行时
+*** PVC / NetworkPolicy / Router / SDK
+** 原理
+*** 声明式控制器模式
+*** running vs ready
+*** 挂起恢复 / 生命周期
+** 应用
+*** Template / Claim / WarmPool
+*** 预热池抹平冷启动
+** 实例
+*** Python/Go SDK
+*** 接入 ADK Agent
+*** gVisor + 收紧网络策略
+** 比较(重点 vs E2B)
+*** 成品平台 vs 一套积木
+*** 独立内核 vs 自选运行时
+*** 内存快照 vs PVC 挂起
+*** 自建门槛:有没有 K8s
+** 展望
+*** 冷启动 / Scale to Zero
+*** MCP 原生 / 框架集成
+*** 沙箱变成隐形底座
+@endmindmap
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;img alt="AI Agent 需要一个 box - 思维导图" src="./images/tech_20260821_agent-sandbox_mindmap.png"&gt;&lt;/p&gt;
+&lt;hr/&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。&lt;/p&gt;</content><category term="Tech"/><category term="AI"/><category term="agent"/><category term="kubernetes"/><category term="sandbox"/><category term="container"/></entry><entry><title>Deno 有什么过人之处</title><link href="https://www.fanyamin.com/blog/2026-08-21-deno-strengths.html" rel="alternate"/><published>2026-08-21T21:00:00+08:00</published><updated>2026-08-21T21:00:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-08-21:/blog/2026-08-21-deno-strengths.html</id><summary type="html">&lt;p&gt;Deno 当年高调宣布"要修复 Node 的十宗罪"，结果差点被 npm 生态拒之门外。Deno 2 认怂并拥抱 npm 之后，它反而找到了自己真正的位置。这篇文章讲清楚 Deno 的长处、短处、适用场景和常见陷阱，帮你判断什么时候该用它、什么时候别碰它。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;Deno 有什么过人之处&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;Tech&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Version&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;v1.0&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;2026-08-21&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;写脚本这件事，我一直有个心理阴影。&lt;/p&gt;
+&lt;p&gt;十几年了，每次想用 Node 写一个小工具，流程都是这样的：&lt;code&gt;npm init&lt;/code&gt;、装 TypeScript、配 &lt;code&gt;tsconfig.json&lt;/code&gt;、再装 &lt;code&gt;ts-node&lt;/code&gt; 或者 &lt;code&gt;tsx&lt;/code&gt;、顺手加个 &lt;code&gt;.eslintrc&lt;/code&gt;、&lt;code&gt;.prettierrc&lt;/code&gt;，等这堆前戏折腾完，&lt;code&gt;node_modules&lt;/code&gt; 已经胖成一个黑洞，而我要写的那个"读一个文件、发一个请求"的小脚本还没动一行。更别提哪天 &lt;code&gt;npm install&lt;/code&gt; 一个不知名的包，它的某个五层深的传递依赖在 &lt;code&gt;postinstall&lt;/code&gt; 里偷偷读了我的环境变量——这种事在 JS 世界不是段子，是真实发生过的供应链攻击。&lt;/p&gt;
+&lt;p&gt;Deno 想解决的就是这两件事：&lt;strong&gt;开箱即用的 TypeScript 工具链&lt;/strong&gt;，和&lt;strong&gt;默认不信任任何代码的安全沙箱&lt;/strong&gt;。它出道时的姿态很高，号称要"修正 Node 的设计错误"，还带着一条"我们不要 npm"的执念，结果差点把自己饿死。直到 2024 年 10 月 Deno 2 认怂、全面拥抱 npm，它才算真正长大成人。&lt;/p&gt;
+&lt;p&gt;这篇文章想帮你回答一个实在的问题：&lt;strong&gt;Deno 到底强在哪、弱在哪，什么活该交给它，什么活千万别碰它。&lt;/strong&gt; 面向的是写过 Node、了解 npm 的后端和工具链开发者。&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;它的杀手锏是"零配置 TypeScript + 默认安全 + 一体化工具链"，不是性能。&lt;/li&gt;
+&lt;li&gt;它&lt;strong&gt;不是&lt;/strong&gt; Node 的替代品，而是特定场景下更省心的选择：脚本、CLI、边缘函数。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;hr&gt;
+&lt;h2 id="whatdeno-deno-2"&gt;What：Deno 是什么，Deno 2 又改了什么&lt;/h2&gt;
+&lt;p&gt;Deno 是 Ryan Dahl 搞的 JavaScript/TypeScript 运行时。有意思的是，Ryan Dahl 正是当年 Node.js 的作者——他做 Deno，本质上是在给自己十年前的作品打补丁。名字 &lt;code&gt;Deno&lt;/code&gt; 就是把 &lt;code&gt;Node&lt;/code&gt; 的音节倒过来念。&lt;/p&gt;
+&lt;p&gt;它和 Node 最本质的区别有三条：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;原生跑 TypeScript&lt;/strong&gt;：&lt;code&gt;deno run app.ts&lt;/code&gt; 直接就跑，不需要任何编译步骤、不需要 &lt;code&gt;tsconfig.json&lt;/code&gt;、不需要 &lt;code&gt;ts-node&lt;/code&gt;。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;默认没有任何权限&lt;/strong&gt;：一个 Deno 程序，你不显式授权，它就读不了文件、连不了网、看不了环境变量。这一点后面单独讲，是它最大的差异化。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;工具链全内置&lt;/strong&gt;：格式化(&lt;code&gt;deno fmt&lt;/code&gt;)、静态检查(&lt;code&gt;deno lint&lt;/code&gt;)、测试(&lt;code&gt;deno test&lt;/code&gt;)、打包成单文件可执行程序(&lt;code&gt;deno compile&lt;/code&gt;)、依赖管理(&lt;code&gt;deno add&lt;/code&gt;/&lt;code&gt;deno install&lt;/code&gt;)——一个 &lt;code&gt;deno&lt;/code&gt; 二进制全包了，不用再拼 Prettier + ESLint + Jest + webpack 这一大套。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;但 Deno 1.x 有个致命的傲慢：它想抛弃 npm，让大家改用 URL 导入(&lt;code&gt;import ... from "https://..."&lt;/code&gt;)。结果就是，你写业务代码一转身发现要用的库全在 npm 上，Deno 却不认。这个执念差点要了它的命。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Deno 2 的核心就一句话：认怂，全面兼容 Node 和 npm。&lt;/strong&gt; 官方博客说得很直白——"你无法在没有 npm 兼容性的情况下做一个 JavaScript 运行时"。具体来说：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;认识 &lt;code&gt;package.json&lt;/code&gt; 和 &lt;code&gt;node_modules&lt;/code&gt;，大部分基于 ESM 的 Node 项目可以零改动直接跑。&lt;/li&gt;
+&lt;li&gt;用 &lt;code&gt;npm:&lt;/code&gt; 前缀直接导入 npm 包：&lt;code&gt;import express from "npm:express"&lt;/code&gt;，无需 install 步骤。&lt;/li&gt;
+&lt;li&gt;用 &lt;code&gt;node:&lt;/code&gt; 前缀访问 Node 内置模块：&lt;code&gt;import fs from "node:fs"&lt;/code&gt;。&lt;/li&gt;
+&lt;li&gt;补齐了 &lt;code&gt;deno add&lt;/code&gt;、&lt;code&gt;deno install&lt;/code&gt;、&lt;code&gt;deno remove&lt;/code&gt;、&lt;code&gt;deno outdated&lt;/code&gt; 这些和 npm 手感一致的命令。官方数据：冷缓存下装依赖比 npm 快约 15%，热缓存下快约 90%。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;再加一个它自己力推的 &lt;strong&gt;JSR&lt;/strong&gt;（JavaScript Registry）——一个 TypeScript 优先、只收 ESM 的现代包仓库。作者直接发布 TS 源码不用先 &lt;code&gt;tsc&lt;/code&gt;，还能自动从 JSDoc 生成文档，而且发布时会自动转成 npm 能用的格式，Node 和 Bun 也能消费。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="why"&gt;Why：这几条长处为什么值钱&lt;/h2&gt;
+&lt;p&gt;工具的价值不在于功能列表多长，而在于它替你省掉了哪些反复出现的痛。Deno 值钱的地方就三条。&lt;/p&gt;
+&lt;h3 id="1"&gt;1. 默认安全，是真的和别人不一样&lt;/h3&gt;
+&lt;p&gt;这是 Deno 唯一一条别人抄不走的护城河。&lt;/p&gt;
+&lt;p&gt;Node 的模型是：你 &lt;code&gt;npm install&lt;/code&gt; 的任何一个包，跑起来就拥有和你本人一样的全部权限——读你的 &lt;code&gt;~/.ssh&lt;/code&gt;、发网络请求、翻你的环境变量，全都不用问你。你信任的是那个直接依赖，但你其实是在无条件信任它背后成百上千个你从没听说过的传递依赖。&lt;/p&gt;
+&lt;p&gt;Deno 反过来：&lt;strong&gt;代码默认什么都干不了。&lt;/strong&gt; 要读文件得 &lt;code&gt;--allow-read&lt;/code&gt;，要联网得 &lt;code&gt;--allow-net&lt;/code&gt;，要看环境变量得 &lt;code&gt;--allow-env&lt;/code&gt;。而且权限能收窄到具体资源：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# 只允许读 ./data 目录，只允许访问 API_KEY 这一个环境变量&lt;/span&gt;
+deno&lt;span class="w"&gt; &lt;/span&gt;run&lt;span class="w"&gt; &lt;/span&gt;--allow-read&lt;span class="o"&gt;=&lt;/span&gt;./data&lt;span class="w"&gt; &lt;/span&gt;--allow-env&lt;span class="o"&gt;=&lt;/span&gt;API_KEY&lt;span class="w"&gt; &lt;/span&gt;app.ts
+
+&lt;span class="c1"&gt;# 授予一大类权限，再挖掉敏感部分：能读任何地方，但 /etc 除外&lt;/span&gt;
+deno&lt;span class="w"&gt; &lt;/span&gt;run&lt;span class="w"&gt; &lt;/span&gt;--allow-read&lt;span class="w"&gt; &lt;/span&gt;--deny-read&lt;span class="o"&gt;=&lt;/span&gt;/etc&lt;span class="w"&gt; &lt;/span&gt;app.ts
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;对于要跑不可信输入、处理凭据的脚本和工具，这个模型是实打实的价值。Slack 就是冲着这条选的 Deno——他们的自动化平台要跑客户写的代码，"默认沙箱"是硬需求。&lt;/p&gt;
+&lt;p&gt;不过这里有个必须说清的边界：&lt;strong&gt;Deno 的沙箱不是万能的。&lt;/strong&gt; 同一线程内、同一权限级别的代码之间没有任何隔离，&lt;code&gt;eval&lt;/code&gt;、&lt;code&gt;new Function&lt;/code&gt;、动态 import 都能在同权限下执行任意代码。还有一条容易踩的坑——&lt;strong&gt;初始静态模块图的加载不走权限检查&lt;/strong&gt;：你 &lt;code&gt;import&lt;/code&gt; 进来的本地文件、npm 包、远程 URL，运行时会直接加载，不需要 &lt;code&gt;--allow-read&lt;/code&gt;。权限系统管的是"代码跑起来之后干什么"，不是"哪些代码能被加载进来"。别把它当成能防住恶意依赖被引入的银弹。&lt;/p&gt;
+&lt;h3 id="2-typescript"&gt;2. TypeScript 零配置，省下的是心智负担&lt;/h3&gt;
+&lt;p&gt;&lt;code&gt;deno run app.ts&lt;/code&gt; 直接跑 TS，不装 &lt;code&gt;ts-node&lt;/code&gt;、不写 &lt;code&gt;tsconfig&lt;/code&gt;、不配 build 步骤。听起来是小事，但你要是维护过十几个内部小工具就懂——每个工具都得配一遍 TS 工具链，那种重复的琐碎才是真正磨人的。Deno 把这份琐碎直接抹掉了。&lt;/p&gt;
+&lt;p&gt;Plaid 迁了 100 个服务，据称靠 Deno 的工具链让迁移速度快了 5 倍，省的主要就是这类配置和工具拼装的功夫。&lt;/p&gt;
+&lt;h3 id="3-deno-compile"&gt;3. &lt;code&gt;deno compile&lt;/code&gt;：把脚本变成一个能直接发出去的二进制&lt;/h3&gt;
+&lt;p&gt;这是我个人最喜欢的一个功能。你写了个 TS 命令行工具，想发给一个连 Node 都没装的同事，怎么办？&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# 编译成单文件可执行程序，权限被&amp;quot;焊死&amp;quot;进二进制里&lt;/span&gt;
+deno&lt;span class="w"&gt; &lt;/span&gt;compile&lt;span class="w"&gt; &lt;/span&gt;--allow-net&lt;span class="w"&gt; &lt;/span&gt;--output&lt;span class="w"&gt; &lt;/span&gt;check_site&lt;span class="w"&gt; &lt;/span&gt;server.ts
+
+&lt;span class="c1"&gt;# 甚至能交叉编译出 Windows 版本，还能带图标&lt;/span&gt;
+deno&lt;span class="w"&gt; &lt;/span&gt;compile&lt;span class="w"&gt; &lt;/span&gt;--allow-all&lt;span class="w"&gt; &lt;/span&gt;--target&lt;span class="w"&gt; &lt;/span&gt;x86_64-pc-windows-msvc&lt;span class="w"&gt; &lt;/span&gt;--icon&lt;span class="w"&gt; &lt;/span&gt;icon.ico&lt;span class="w"&gt; &lt;/span&gt;-o&lt;span class="w"&gt; &lt;/span&gt;runme.exe&lt;span class="w"&gt; &lt;/span&gt;main.ts
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;产出的二进制自带运行时，目标机器不需要装 Deno。更妙的是：&lt;strong&gt;编译时指定的权限会被固化进二进制&lt;/strong&gt;，运行的人既不会被弹权限提示，也永远无法让程序超出你编译时授予的权限范围。发工具给别人时，这既省心又安全。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="how-example"&gt;How &amp;amp; Example：上手就这几步&lt;/h2&gt;
+&lt;p&gt;不用装一大堆东西，一个二进制搞定。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# 安装（macOS / Linux）&lt;/span&gt;
+curl&lt;span class="w"&gt; &lt;/span&gt;-fsSL&lt;span class="w"&gt; &lt;/span&gt;https://deno.land/install.sh&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;|&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;sh
+
+&lt;span class="c1"&gt;# 直接跑一个 TS 文件，什么都不用配&lt;/span&gt;
+deno&lt;span class="w"&gt; &lt;/span&gt;run&lt;span class="w"&gt; &lt;/span&gt;app.ts
+
+&lt;span class="c1"&gt;# 加依赖：npm 和 JSR 混着来都行&lt;/span&gt;
+deno&lt;span class="w"&gt; &lt;/span&gt;add&lt;span class="w"&gt; &lt;/span&gt;npm:zod&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="c1"&gt;# 一个 npm 包&lt;/span&gt;
+deno&lt;span class="w"&gt; &lt;/span&gt;add&lt;span class="w"&gt; &lt;/span&gt;jsr:@std/assert&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="c1"&gt;# 一个 JSR 包&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;写一个"读环境变量、起 HTTP 服务"的小例子，能同时看到 npm 导入、JSR 导入和权限模型：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;// server.ts&lt;/span&gt;
+&lt;span class="k"&gt;import&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;express&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="kr"&gt;from&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;npm:express&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;&lt;span class="w"&gt;              &lt;/span&gt;&lt;span class="c1"&gt;// 直接用 npm 包&lt;/span&gt;
+&lt;span class="k"&gt;import&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;serveDir&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="kr"&gt;from&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;jsr:@std/http/file-server&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="c1"&gt;// JSR 标准库&lt;/span&gt;
+
+&lt;span class="kd"&gt;const&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;app&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;express&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;
+&lt;span class="nx"&gt;app&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;get&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;/&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nx"&gt;_req&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;res&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;=&amp;gt;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="c1"&gt;// 读环境变量需要显式授权，否则这里会报 PermissionDenied&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nx"&gt;res&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;send&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="sb"&gt;`hello from &lt;/span&gt;&lt;span class="si"&gt;${&lt;/span&gt;&lt;span class="nx"&gt;Deno&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;env&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;get&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;APP_NAME&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="sb"&gt;`&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+&lt;span class="p"&gt;});&lt;/span&gt;
+&lt;span class="nx"&gt;app&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;listen&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mf"&gt;8000&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;跑起来：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# 只授予&amp;quot;联网&amp;quot;和&amp;quot;读 APP_NAME 这个环境变量&amp;quot;两项权限&lt;/span&gt;
+deno&lt;span class="w"&gt; &lt;/span&gt;run&lt;span class="w"&gt; &lt;/span&gt;--allow-net&lt;span class="w"&gt; &lt;/span&gt;--allow-env&lt;span class="o"&gt;=&lt;/span&gt;APP_NAME&lt;span class="w"&gt; &lt;/span&gt;server.ts
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;如果你漏了 &lt;code&gt;--allow-env&lt;/code&gt;，程序会在读环境变量那一刻明确报错并告诉你缺哪个 flag——不是静默拿到 &lt;code&gt;undefined&lt;/code&gt;，而是当面拦住你。这种"该有权限才有"的确定性，正是它和 Node 手感上最大的不同。&lt;/p&gt;
+&lt;h3 id="_1"&gt;一个更实在的例子：遍历目录统计文件行数&lt;/h3&gt;
+&lt;p&gt;光起个 HTTP 服务看不出 Deno 写脚本的爽感。换个更接地气的活——&lt;strong&gt;递归遍历一个目录，统计每种扩展名的文件数和总行数&lt;/strong&gt;，这是我们平时想快速摸清一个陌生代码库大小时常干的事。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;// cloc.ts —— 递归统计目录下各扩展名的文件数与行数&lt;/span&gt;
+&lt;span class="k"&gt;import&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;walk&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="kr"&gt;from&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;jsr:@std/fs/walk&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="c1"&gt;// JSR 标准库，直接 import 就能用&lt;/span&gt;
+
+&lt;span class="kd"&gt;const&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;root&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;Deno&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;args&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mf"&gt;0&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;??&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;.&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="c1"&gt;// 第一个命令行参数，默认当前目录&lt;/span&gt;
+&lt;span class="kd"&gt;const&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;stats&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="ow"&gt;new&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nb"&gt;Map&lt;/span&gt;&lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="kt"&gt;string&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;files&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="kt"&gt;number&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;lines&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="kt"&gt;number&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;
+
+&lt;span class="c1"&gt;// walk 递归遍历，只要文件，跳过常见的噪音目录&lt;/span&gt;
+&lt;span class="k"&gt;for&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="k"&gt;await&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="kd"&gt;const&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;entry&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="k"&gt;of&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;walk&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nx"&gt;root&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nx"&gt;includeDirs&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="kt"&gt;false&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nx"&gt;skip&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="sr"&gt;/node_modules/&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="sr"&gt;/\.git/&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;
+&lt;span class="p"&gt;}))&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="kd"&gt;const&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;ext&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;entry&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;path&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;split&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;.&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;).&lt;/span&gt;&lt;span class="nx"&gt;pop&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;??&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;(无扩展名)&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="kd"&gt;const&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;text&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="k"&gt;await&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;Deno&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;readTextFile&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nx"&gt;entry&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;path&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="c1"&gt;// 读文件需要 --allow-read&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="kd"&gt;const&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;lines&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;text&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;split&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;\n&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;).&lt;/span&gt;&lt;span class="nx"&gt;length&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="kd"&gt;const&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;s&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;stats&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;get&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nx"&gt;ext&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;??&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;files&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="kt"&gt;0&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;lines&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="kt"&gt;0&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;};&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nx"&gt;s&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;files&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;+=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="mf"&gt;1&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nx"&gt;s&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;lines&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;+=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;lines&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nx"&gt;stats&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;set&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nx"&gt;ext&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;s&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+
+&lt;span class="c1"&gt;// 按行数从多到少排序输出&lt;/span&gt;
+&lt;span class="kd"&gt;const&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;rows&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[...&lt;/span&gt;&lt;span class="nx"&gt;stats&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;entries&lt;/span&gt;&lt;span class="p"&gt;()].&lt;/span&gt;&lt;span class="nx"&gt;sort&lt;/span&gt;&lt;span class="p"&gt;((&lt;/span&gt;&lt;span class="nx"&gt;a&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;b&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;=&amp;gt;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;b&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mf"&gt;1&lt;/span&gt;&lt;span class="p"&gt;].&lt;/span&gt;&lt;span class="nx"&gt;lines&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;-&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;a&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mf"&gt;1&lt;/span&gt;&lt;span class="p"&gt;].&lt;/span&gt;&lt;span class="nx"&gt;lines&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+&lt;span class="nx"&gt;console&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;log&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="sb"&gt;`扩展名\t文件数\t行数`&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+&lt;span class="k"&gt;for&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="kd"&gt;const&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="nx"&gt;ext&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;s&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="k"&gt;of&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;rows&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nx"&gt;console&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;log&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="sb"&gt;`&lt;/span&gt;&lt;span class="si"&gt;${&lt;/span&gt;&lt;span class="nx"&gt;ext&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="sb"&gt;\t&lt;/span&gt;&lt;span class="si"&gt;${&lt;/span&gt;&lt;span class="nx"&gt;s&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;files&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="sb"&gt;\t&lt;/span&gt;&lt;span class="si"&gt;${&lt;/span&gt;&lt;span class="nx"&gt;s&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;lines&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="sb"&gt;`&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;跑它，只给"读"这一项权限，而且&lt;strong&gt;收窄到你要统计的那个目录&lt;/strong&gt;：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# 只允许读 ./src，其它目录一律碰不到&lt;/span&gt;
+deno&lt;span class="w"&gt; &lt;/span&gt;run&lt;span class="w"&gt; &lt;/span&gt;--allow-read&lt;span class="o"&gt;=&lt;/span&gt;./src&lt;span class="w"&gt; &lt;/span&gt;cloc.ts&lt;span class="w"&gt; &lt;/span&gt;./src
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这个小例子把 Deno 的几条卖点全串起来了：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;import { walk } from "jsr:@std/fs/walk"&lt;/code&gt; —— &lt;strong&gt;JSR 标准库直接 import&lt;/strong&gt;，不用先 &lt;code&gt;npm install fs-extra&lt;/code&gt; 再配 TS。&lt;/li&gt;
+&lt;li&gt;全程 TypeScript，&lt;code&gt;Deno.args&lt;/code&gt;、&lt;code&gt;Deno.readTextFile&lt;/code&gt; 都是内置 API，&lt;code&gt;deno run cloc.ts&lt;/code&gt; 一把跑，零配置。&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;--allow-read=./src&lt;/code&gt; —— &lt;strong&gt;权限精确到目录&lt;/strong&gt;。就算这脚本是从网上抄来的，它也读不到 &lt;code&gt;./src&lt;/code&gt; 以外的任何文件，翻不了你的 &lt;code&gt;~/.ssh&lt;/code&gt;。&lt;/li&gt;
+&lt;li&gt;想发给别人？&lt;code&gt;deno compile --allow-read -o cloc cloc.ts&lt;/code&gt;，产出一个自带运行时的二进制，对方不装 Deno 也能用。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;同样的活在 Node 里，你得先 &lt;code&gt;npm init&lt;/code&gt;、装 TS 工具链、（大概率还要）装个 &lt;code&gt;glob&lt;/code&gt; 或 &lt;code&gt;fast-glob&lt;/code&gt;、配好 build——等这些弄完，Deno 这边结果都跑出来了。这就是"写脚本更省心"最具体的样子。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="deno-vs-bun-node"&gt;Deno vs Bun：都想干掉 Node，路子却完全不同&lt;/h2&gt;
+&lt;p&gt;聊 Deno 绕不开 Bun——这俩都是冲着"取代 Node"来的新运行时，但它们赌的是完全不同的东西。&lt;strong&gt;Bun 赌的是"快"，Deno 赌的是"稳和安全"。&lt;/strong&gt;&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;维度&lt;/th&gt;
+&lt;th&gt;Deno 2&lt;/th&gt;
+&lt;th&gt;Bun 1.x&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;JS 引擎&lt;/td&gt;
+&lt;td&gt;V8（和 Node 同款）&lt;/td&gt;
+&lt;td&gt;JavaScriptCore + Zig&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;冷启动&lt;/td&gt;
+&lt;td&gt;约二三十毫秒&lt;/td&gt;
+&lt;td&gt;个位数毫秒（最快）&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;HTTP 吞吐&lt;/td&gt;
+&lt;td&gt;中等&lt;/td&gt;
+&lt;td&gt;最高&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;装包速度&lt;/td&gt;
+&lt;td&gt;比 npm 快约 15%(冷)/90%(热)&lt;/td&gt;
+&lt;td&gt;比 npm 快 10~25 倍，最猛&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;默认安全&lt;/td&gt;
+&lt;td&gt;✅ 默认拒绝一切（护城河）&lt;/td&gt;
+&lt;td&gt;❌ 默认全开，和 Node 一样&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;TypeScript&lt;/td&gt;
+&lt;td&gt;✅ 原生零配置&lt;/td&gt;
+&lt;td&gt;✅ 原生零配置&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;一体化工具链&lt;/td&gt;
+&lt;td&gt;✅ fmt/lint/test/compile&lt;/td&gt;
+&lt;td&gt;✅ 更全，还自带 bundler&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;单文件二进制&lt;/td&gt;
+&lt;td&gt;✅ &lt;code&gt;deno compile&lt;/code&gt;（权限可焊死）&lt;/td&gt;
+&lt;td&gt;✅ &lt;code&gt;bun build --compile&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;边缘部署&lt;/td&gt;
+&lt;td&gt;Deno Deploy / Netlify Edge&lt;/td&gt;
+&lt;td&gt;Cloudflare / Vercel 等&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;npm 兼容&lt;/td&gt;
+&lt;td&gt;高（约 90%+）&lt;/td&gt;
+&lt;td&gt;高（约 95%），原生模块支持更好&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;从这张表能读出一句话结论：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;要极致的开发速度和跑分，选 Bun；要默认安全的沙箱，选 Deno。&lt;/strong&gt; 其余的（原生 TS、一体化工具链、单文件二进制、npm 兼容），两家已经打得难分伯仲，趋同了。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;具体到选择：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;你在写要跑不可信代码、要处理凭据的脚本或工具&lt;/strong&gt;——闭眼选 Deno，那个"默认什么都干不了"的沙箱是 Bun 给不了的。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;你要的是 CI 装包快、本地跑测试快、serverless 冷启动省钱&lt;/strong&gt;——选 Bun，它在"快"这个维度是碾压的。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;你有一堆带原生模块（&lt;code&gt;sharp&lt;/code&gt;、&lt;code&gt;node-gyp&lt;/code&gt; 之类）的依赖&lt;/strong&gt;——Bun 的兼容更稳，Deno 大概率当场翻车。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;顺带说个八卦但重要的信号：2025 年底 Anthropic 收购了 Bun 背后的团队（Bun 是 Claude Code 的核心基础设施）。这意味着 Bun 有了更硬的金主和更清晰的商业绑定，选型时值得把"背后是谁、活不活得下去"也算进去——Deno 背后是 Deno Land Inc.，靠 Deno Deploy 这类服务变现。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_2"&gt;短处：别被安利冲昏头&lt;/h2&gt;
+&lt;p&gt;一篇只讲优点的文章是软文。Deno 有几条实打实的短板，必须说在前面。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;1. 性能不是它的强项。&lt;/strong&gt; 很多人以为新运行时就等于快，Deno 恰恰不是靠这个赢的。前面那张对比表已经说得很清楚——冷启动和 HTTP 吞吐都不如 Bun，真要拼裸速度它排不上号。（提醒一句：这类跑分数字随版本浮动很大，且一旦请求路径里接上数据库，运行时之间的差距通常会缩到 5% 以内，别拿合成基准当选型的唯一依据。）&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;2. npm 兼容是"高"，不是"满"。&lt;/strong&gt; Deno 2 的 Node 兼容层已经相当完整，但仍有明确的黑名单：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;原生插件（&lt;code&gt;.node&lt;/code&gt; 的 C++ addon）不支持&lt;/strong&gt;——这会直接卡死 &lt;code&gt;sharp&lt;/code&gt;（图像处理）、部分数据库驱动、&lt;code&gt;bcrypt&lt;/code&gt; 的 C++ 版（好在纯 JS 的 &lt;code&gt;bcryptjs&lt;/code&gt; 能用）。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;需要 &lt;code&gt;node-gyp&lt;/code&gt; 在安装时编译的包彻底跑不了。&lt;/strong&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;cluster&lt;/code&gt;、&lt;code&gt;child_process&lt;/code&gt;、&lt;code&gt;worker_threads&lt;/code&gt; 有一些边角 case 有缺口。&lt;/li&gt;
+&lt;li&gt;依赖 Node 未公开内部实现的包可能出问题。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;对 API 服务、CLI、工具链这类应用，兼容性通常够用；但迁移前，凡是带原生模块的依赖都必须先实测。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;3. 生态和招人是硬伤。&lt;/strong&gt; 论周下载量，Node 在亿级，Deno 只有百来万这个量级。AWS Lambda、Google Cloud Functions 这些平台对 Node 是一等公民，对 Deno 还是自定义运行时层。团队里"我们用了个非主流运行时"这句话，一旦上了线上事故复盘报告，是要挨批的。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_3"&gt;应用场景与成功案例：什么活该交给它&lt;/h2&gt;
+&lt;p&gt;结合它的长短处，Deno 真正的甜区其实很清晰，绝不是"取代 Node 做业务主服务器"。&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;场景&lt;/th&gt;
+&lt;th&gt;适合 Deno 吗&lt;/th&gt;
+&lt;th&gt;为什么&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;一次性脚本 / 内部 CLI 工具&lt;/td&gt;
+&lt;td&gt;✅ 非常适合&lt;/td&gt;
+&lt;td&gt;零配置 TS + 默认安全 + &lt;code&gt;deno compile&lt;/code&gt; 发布，正中下怀&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;边缘函数（edge functions）&lt;/td&gt;
+&lt;td&gt;✅ 非常适合&lt;/td&gt;
+&lt;td&gt;Deno Deploy / Netlify Edge 底层就是 Deno，Web 标准 API 齐全&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;跑不可信代码的平台&lt;/td&gt;
+&lt;td&gt;✅ 非常适合&lt;/td&gt;
+&lt;td&gt;默认沙箱是刚需，Slack 就是这么选的&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;全新的 TypeScript 项目&lt;/td&gt;
+&lt;td&gt;✅ 可以考虑&lt;/td&gt;
+&lt;td&gt;想要零配置 TS 和一体化工具链&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;企业级生产主服务器&lt;/td&gt;
+&lt;td&gt;⚠️ 谨慎&lt;/td&gt;
+&lt;td&gt;生态、招人、云平台支持都是 Node 更稳&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;依赖大量原生模块的项目&lt;/td&gt;
+&lt;td&gt;❌ 别碰&lt;/td&gt;
+&lt;td&gt;原生 addon 和 &lt;code&gt;node-gyp&lt;/code&gt; 直接不兼容&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;真实用例（均来自公开报道，非厂商内部数据我无法核实，仅供参考）：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Slack&lt;/strong&gt;：自动化平台上跑客户代码，冲着默认安全沙箱选的 Deno。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Netlify Edge Functions&lt;/strong&gt;：底层运行时就是 Deno。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Supabase Edge Functions&lt;/strong&gt;：同样基于 Deno。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Plaid&lt;/strong&gt;：借 Deno 工具链把 100 个服务的迁移速度提了 5 倍。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;一句话概括业界共识：&lt;strong&gt;Node 做生产业务服务器，Deno 做工具和边缘，Bun 做构建管线和部分新项目。&lt;/strong&gt; 这不是骑墙，是三个工具确实各有各的位置。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_4"&gt;最佳实践与常见陷阱&lt;/h2&gt;
+&lt;p&gt;真要用起来，下面这几条是能帮你少走弯路的。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;最佳实践：&lt;/strong&gt;&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;权限从小往大加，别一上来就 &lt;code&gt;-A&lt;/code&gt;。&lt;/strong&gt; &lt;code&gt;-A&lt;/code&gt;（&lt;code&gt;--allow-all&lt;/code&gt;）等于把沙箱整个关掉，跟裸跑 Node 没区别，那你用 Deno 的意义就没了。先不给权限跑，缺什么报错就精确补什么。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;--allow-net&lt;/code&gt; 不写值就是放开整个网络&lt;/strong&gt;，能收窄就收窄到具体域名。其他权限同理，能带值就带值。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;迁移老项目前，先把带原生模块的依赖挑出来单测。&lt;/strong&gt; 别整个项目一把梭，撞上 &lt;code&gt;sharp&lt;/code&gt; 或 &lt;code&gt;node-gyp&lt;/code&gt; 会当场翻车。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;发工具给别人，优先 &lt;code&gt;deno compile&lt;/code&gt;&lt;/strong&gt;，把权限焊进二进制，对方既省事又出不了格。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;新项目可以试试 &lt;code&gt;deno.json&lt;/code&gt; + import map + 显式 &lt;code&gt;npm:&lt;/code&gt;/&lt;code&gt;jsr:&lt;/code&gt; 指定&lt;/strong&gt;，一个配置文件搞定依赖，比散落的 &lt;code&gt;npm:&lt;/code&gt; 前缀干净。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;&lt;strong&gt;常见陷阱：&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;误以为沙箱能防住恶意依赖被引入。&lt;/strong&gt; 前面说过，静态模块图的加载不走权限检查。沙箱管的是运行时行为，不是"什么能被 import 进来"。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;随手 &lt;code&gt;-A&lt;/code&gt; 图省事。&lt;/strong&gt; 一旦养成习惯，Deno 最大的卖点就废了。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;deno compile&lt;/code&gt; 的权限是编译时定的，不是运行时。&lt;/strong&gt; 忘了在 compile 命令上加 &lt;code&gt;--allow-write&lt;/code&gt;，产出的二进制运行时照样没写权限，还容易误以为是二进制的问题。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;拿裸跑分选型。&lt;/strong&gt; 冷启动、吞吐这类数字随版本变动大，接上数据库后差距还会大幅缩小。选型要看场景，不看 Twitter 上的跑分截图。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;指望原生模块能用。&lt;/strong&gt; 凡是 &lt;code&gt;.node&lt;/code&gt; addon、&lt;code&gt;node-gyp&lt;/code&gt; 编译的包，先默认不支持，实测通过再说。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;hr&gt;
+&lt;h2 id="deno"&gt;总结：Deno 的过人之处不在快，在省心和安全&lt;/h2&gt;
+&lt;p&gt;Deno 最出名的一段历史，是它先高调宣称要"抛弃 npm、修正 Node 的错误"，又在 Deno 2 里低头认怂、全面拥抱 npm。这段弯路反而让它想清楚了自己是谁：&lt;strong&gt;它不是来取代 Node 当业务主力的，它是那个让你写脚本、发工具、跑边缘函数时更省心、更安全的选择。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;它的过人之处从来不是性能——论快有 Bun，论生态有 Node。它的过人之处是那三样别人学不来又抄不齐的组合：&lt;strong&gt;零配置 TypeScript、默认拒绝一切的安全沙箱、一个二进制搞定的工具链。&lt;/strong&gt; 想清楚这三样对你的场景值不值，就知道该不该用它了。&lt;/p&gt;
+&lt;p&gt;选型这事，永远是看约束条件，不是看谁在热搜上喊得响。&lt;/p&gt;
+&lt;h2 id="_5"&gt;全文思维导图&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap
+&amp;lt;style&amp;gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&amp;lt;/style&amp;gt;
+
+* Deno 有什么过人之处
+** What
+*** 原生跑 TypeScript
+*** 默认无权限
+*** 工具链全内置
+*** Deno 2 认怂拥抱 npm/node
+*** JSR 现代包仓库
+** 长处(Why)
+*** 默认安全沙箱(护城河)
+*** TS 零配置省心智
+*** deno compile 单文件二进制
+** vs Bun
+*** Bun 赌快, Deno 赌安全
+*** 拼跑分选 Bun
+*** 要沙箱选 Deno
+*** Anthropic 收购了 Bun
+** 短处
+*** 性能不如 Bun
+*** npm 兼容高但不满
+*** 原生模块/node-gyp 不支持
+*** 生态与招人是硬伤
+** 应用场景
+*** 脚本 / CLI 工具
+*** 边缘函数
+*** 跑不可信代码
+*** 别碰: 生产主服务器/原生模块
+** 成功案例
+*** Slack
+*** Netlify / Supabase Edge
+*** Plaid
+** 最佳实践与陷阱
+*** 权限从小往大加
+*** 别随手 -A
+*** compile 权限是编译时定
+*** 别拿裸跑分选型
+@endmindmap
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;img alt="Deno 有什么过人之处 - 思维导图" src="../images/tech_20260821_deno-strengths_mindmap.png"&gt;&lt;/p&gt;
+&lt;hr/&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。&lt;/p&gt;</content><category term="Tech"/><category term="tech"/><category term="deno"/><category term="javascript"/><category term="typescript"/><category term="runtime"/></entry><entry><title>边缘节点的妙用：把服务搬到离用户最近的地方</title><link href="https://www.fanyamin.com/blog/2026-08-20-edge-node.html" rel="alternate"/><published>2026-08-20T21:00:00+08:00</published><updated>2026-08-20T22:45:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-08-20:/blog/2026-08-20-edge-node.html</id><summary type="html">&lt;p&gt;当性能卡在延迟上、当可靠性被跨国网络拖垮、当突发流量把源站压垮时，边缘节点常常是那个"离用户最近、最稳、最快"的解法。这篇从我做音视频就近接入的经历讲起，理清边缘节点到底适合哪些场景、有哪些经典案例、落地时怎么做、又容易踩哪些坑——核心是一句：边缘换来的是延迟和稳定，代价是一致性和运维复杂度，时间和空间从来不可兼得。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
 &lt;thead&gt;
 &lt;tr&gt;
 &lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
@@ -29,7 +1019,6 @@
 &lt;/tr&gt;
 &lt;/tbody&gt;
 &lt;/table&gt;
-&lt;h1 id="_1"&gt;边缘节点的妙用：把服务搬到离用户最近的地方&lt;/h1&gt;
 &lt;p&gt;先说个我做了很多年的活儿：音视频通信。两个人开视频会，一个在上海，一个在旧金山。如果所有的媒体流都必须先绕到某个中心机房再转发，那这趟路来回就是几万公里的光缆加上一堆路由跳数，单程一百多毫秒起步。人对声音延迟很敏感，超过三四百毫秒，两个人就会开始互相"你先说、不你先说"，会开得很难受。&lt;/p&gt;
 &lt;p&gt;我们能做的，说穿了就一件事：&lt;strong&gt;别让数据跑那么远。&lt;/strong&gt; 在离用户最近的城市放一个媒体转发节点，上海的人接上海的边缘，旧金山的人接旧金山的边缘，两个边缘之间走优化过的专线。用户到边缘这"最后一公里"又近又稳，跨国的那段则交给我们自己能掌控的骨干网。延迟下来了，丢包也好处理了。&lt;/p&gt;
 &lt;p&gt;这就是边缘节点（Edge Node）最朴素、也最值钱的用法：&lt;strong&gt;把服务、数据或计算，从遥远的中心机房，搬到物理上离用户最近的地方。&lt;/strong&gt; 这篇想讲清楚四件事——它适合哪些场景、有哪些经典案例、怎么落地、又容易在哪儿栽跟头。急的读者先记住一句话:&lt;/p&gt;
@@ -44,15 +1033,15 @@
 &lt;p&gt;术语先垫一句。&lt;strong&gt;边缘节点&lt;/strong&gt;指部署在靠近终端用户的接入点（POP，Point of Presence）上的服务器，相对的是集中式的&lt;strong&gt;源站 / 中心机房（Origin）&lt;/strong&gt;。&lt;strong&gt;CDN（内容分发网络）&lt;/strong&gt; 是边缘思想最成熟的产品化形态，本质就是"把内容缓存到离你最近的边缘节点"。下面会反复用到这几个词。&lt;/p&gt;
 &lt;/blockquote&gt;
 &lt;hr&gt;
-&lt;h2 id="_2"&gt;一、什么时候该想到边缘节点&lt;/h2&gt;
+&lt;h2 id="_1"&gt;一、什么时候该想到边缘节点&lt;/h2&gt;
 &lt;p&gt;不是所有系统都需要边缘。判断要不要上，先看你手里的痛是不是下面这三类之一。它们对应的正是你被"性能、可靠性、流量"三座大山压住的三种典型情形。&lt;/p&gt;
-&lt;h3 id="_3"&gt;痛点一：延迟下不来，而且是物理下不来&lt;/h3&gt;
+&lt;h3 id="_2"&gt;痛点一：延迟下不来，而且是物理下不来&lt;/h3&gt;
 &lt;p&gt;有些延迟是代码问题，加个缓存、改个 SQL 就好了。但有一类延迟是&lt;strong&gt;物理定律&lt;/strong&gt;——光在光纤里跑一公里要 5 微秒左右，北京到伦敦一个来回八千多公里，光速本身就得四五十毫秒，再叠加路由和排队，往返一百多毫秒是常态。这个数字，你优化再多代码也变不了，因为它是距离决定的。&lt;/p&gt;
 &lt;p&gt;&lt;strong&gt;只要你的痛是"距离带来的延迟"，边缘就是几乎唯一的解。&lt;/strong&gt; 音视频、在线游戏、实时协作、金融行情推送，都属于这一类。&lt;/p&gt;
-&lt;h3 id="_4"&gt;痛点二：链路太长，稳定性靠运气&lt;/h3&gt;
+&lt;h3 id="_3"&gt;痛点二：链路太长，稳定性靠运气&lt;/h3&gt;
 &lt;p&gt;跨国、跨运营商的公网链路，中间经过的每一跳都是一个可能抖动、丢包、甚至断掉的环节。链路越长，出问题的概率越高，这是简单的串联可靠性：十个 99% 串起来，整体只剩 90%。&lt;/p&gt;
 &lt;p&gt;边缘的价值在于&lt;strong&gt;把长链路拆成两段&lt;/strong&gt;：用户到边缘的"最后一公里"通常在同城甚至同运营商内，短、稳、可控；边缘之间的长途则走你自己能优化、能监控、能切换的骨干网。把不可控的公网段压到最短，可靠性自然上来。&lt;/p&gt;
-&lt;h3 id="_5"&gt;痛点三：流量太大，源站扛不住&lt;/h3&gt;
+&lt;h3 id="_4"&gt;痛点三：流量太大，源站扛不住&lt;/h3&gt;
 &lt;p&gt;一个热点视频、一次大促、一场直播，瞬时几百万人同时来拉同一份内容。如果全砸到源站，再壮的机器也会被打垮。边缘天然是个&lt;strong&gt;分流层和缓冲层&lt;/strong&gt;：内容在边缘缓存一份，几百万请求被分散到全球几百个边缘节点各自消化，真正回源的可能只有百分之一。源站从"扛洪峰"变成"扛涓流"。&lt;/p&gt;
 &lt;p&gt;一句话记住这三类信号：&lt;/p&gt;
 &lt;table&gt;
@@ -93,7 +1082,7 @@
 &lt;/table&gt;
 &lt;p&gt;最后两行是提醒：&lt;strong&gt;边缘不是万能药。&lt;/strong&gt; 如果你的延迟是数据库慢查询造成的，或者你的业务本质上要求强一致（比如账户扣款、库存扣减），硬往边缘搬只会让问题更糟。&lt;/p&gt;
 &lt;hr&gt;
-&lt;h2 id="_6"&gt;二、几个经典案例&lt;/h2&gt;
+&lt;h2 id="_5"&gt;二、几个经典案例&lt;/h2&gt;
 &lt;p&gt;抽象讲完，看几个真正把边缘用出花来的例子。它们覆盖了从"只缓存内容"到"把计算也搬过去"的完整光谱。&lt;/p&gt;
 &lt;p&gt;&lt;strong&gt;1. CDN——边缘的鼻祖。&lt;/strong&gt; 你访问一个网站，图片、JS、视频这些静态资源，绝大多数不是从源站直接来的，而是从离你最近的 CDN 边缘节点来的。这是边缘最成熟、最没有争议的用法：静态内容天生适合缓存，缓存天生适合放边缘。&lt;/p&gt;
 &lt;p&gt;&lt;strong&gt;2. 音视频的媒体就近接入。&lt;/strong&gt; 前面讲的那个上海—旧金山的例子就是。终端就近连边缘媒体服务器（媒体转发节点），跨区的媒体走优化骨干网。这里边缘搬的不只是数据，还有&lt;strong&gt;媒体转发这个计算动作&lt;/strong&gt;——混流、转码、丢包重传，都可能发生在边缘。&lt;/p&gt;
@@ -132,7 +1121,7 @@
 &lt;p&gt;&lt;strong&gt;5. 直播的边缘推拉流。&lt;/strong&gt; 主播推流到最近的边缘，观众从最近的边缘拉流，中间靠边缘之间的转推网络串起来。百万观众看同一场直播，靠的就是这张边缘网把压力摊开。&lt;/p&gt;
 &lt;p&gt;你会发现一条清晰的演进线：&lt;strong&gt;边缘搬的东西越来越“重”——从只搬静态内容（CDN），到搬数据+转发计算（音视频），再到搬完整计算逻辑（Edge Function、云游戏）。&lt;/strong&gt; 搬得越重，收益越大，代价也越大。音视频这条线还有个尽头：&lt;strong&gt;近到这间会议室、这台电脑。&lt;/strong&gt;&lt;/p&gt;
 &lt;hr&gt;
-&lt;h2 id="_7"&gt;三、最佳实践：怎么把边缘用对&lt;/h2&gt;
+&lt;h2 id="_6"&gt;三、最佳实践：怎么把边缘用对&lt;/h2&gt;
 &lt;p&gt;想清楚要上边缘之后，落地时下面这几条能帮你少走弯路。核心取向是一句：&lt;strong&gt;边缘只放"薄薄一层"，把复杂和权威留在中心。&lt;/strong&gt;&lt;/p&gt;
 &lt;ol&gt;
 &lt;li&gt;
@@ -161,7 +1150,7 @@
 &lt;p&gt;&lt;strong&gt;边缘做减法，中心做加法。边缘只放"必须靠近用户"的那薄薄一层，其余复杂度全部留在中心。&lt;/strong&gt;&lt;/p&gt;
 &lt;/blockquote&gt;
 &lt;hr&gt;
-&lt;h2 id="_8"&gt;四、常见陷阱&lt;/h2&gt;
+&lt;h2 id="_7"&gt;四、常见陷阱&lt;/h2&gt;
 &lt;p&gt;见过太多团队兴冲冲上了边缘，最后被下面这几个坑绊住。提前知道，能省很多夜。&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;
@@ -184,11 +1173,11 @@
 &lt;/li&gt;
 &lt;/ul&gt;
 &lt;hr&gt;
-&lt;h2 id="_9"&gt;总结：边缘买的是"近"，付的是"散"&lt;/h2&gt;
+&lt;h2 id="_8"&gt;总结：边缘买的是"近"，付的是"散"&lt;/h2&gt;
 &lt;p&gt;回到开头那个上海—旧金山的视频通话。边缘节点解决的从来不是"某段代码不够快"，而是"距离太远"这个物理问题。它把服务搬到离用户最近的地方，用低延迟、高可用、能分流，换来数据一致性、运维复杂度和成本这三笔账。&lt;/p&gt;
 &lt;p&gt;所以判断要不要上边缘，别看它多时髦，就问三个问题：&lt;strong&gt;我的痛是不是距离造成的？我能不能接受最终一致？我付得起这份"散"的账单吗？&lt;/strong&gt; 三个都是"是"，边缘就是那把最趁手的刀；有一个是"否"，先别急着搬。&lt;/p&gt;
 &lt;p&gt;时间和空间不可兼得，这是老话，也是边缘架构的底色。&lt;strong&gt;你想要更快地抵达用户，就得接受系统被摊得更开、更难管。&lt;/strong&gt; 认清这笔交易，再决定要不要做。&lt;/p&gt;
-&lt;h2 id="_10"&gt;全文思维导图&lt;/h2&gt;
+&lt;h2 id="_9"&gt;全文思维导图&lt;/h2&gt;
 &lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap
 &amp;lt;style&amp;gt;
 mindmapDiagram {
@@ -46948,575 +47937,4 @@ title 微服务之外：被忽视的 SDK 治理
 
 &lt;p&gt;&lt;img alt="思维导图" src="./images/tech_20260228_sdk_governance_mindmap.png"&gt;&lt;/p&gt;
 &lt;hr/&gt;
-&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Tech"/><category term="sdk"/><category term="微服务"/><category term="治理"/><category term="contract-testing"/><category term="semver"/></entry><entry><title>claude code 平替: opencode + deepseek/qwen</title><link href="https://www.fanyamin.com/blog/claude-code-ping-ti-opencode-deepseekqwen.html" rel="alternate"/><published>2026-02-25T23:27:00+08:00</published><updated>2026-02-25T23:41:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-02-25:/blog/claude-code-ping-ti-opencode-deepseekqwen.html</id><summary type="html">&lt;p&gt;用 opencode 接入公司私有部署的 Qwen/DeepSeek（OpenAI-compatible API），日常写代码、改文档基本够用，还能省掉订阅费与 token 焦虑；关键是把 TLS 自签证书这关过掉，别用“关掉校验”这种野路子。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
-&lt;th&gt;claude code 平替: opencode + deepseek/qwen&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;tech note&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Status&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;v1.0&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;2026-02-25&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;h1 id="claude-code-opencode-deepseekqwen"&gt;claude code 平替: opencode + deepseek/qwen&lt;/h1&gt;
-&lt;p&gt;我最近试了下 &lt;code&gt;opencode&lt;/code&gt;，配上私有部署的 Qwen（也能换成 DeepSeek 之类的模型），最大的感受很朴素：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;不再为 token 不够用焦虑&lt;/strong&gt;（至少不会像订阅版那样心里打鼓）&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;不再为订阅费心疼&lt;/strong&gt;（尤其是“用得不算少，但又没到重度依赖”的阶段）&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;效果确实差一点&lt;/strong&gt;，可应付日常工作，基本够用&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;这篇文章就写一件事：&lt;strong&gt;把它配到能稳定用&lt;/strong&gt;，尤其是 TLS/证书这道坎。&lt;/p&gt;
-&lt;h2 id="what"&gt;What&lt;/h2&gt;
-&lt;p&gt;这里说的 &lt;code&gt;opencode&lt;/code&gt;，指的是 &lt;a href="https://github.com/anomalyco/opencode"&gt;OpenCode（GitHub）&lt;/a&gt; 这个开源 AI coding agent，官方介绍在 &lt;a href="https://opencode.ai/"&gt;opencode.ai&lt;/a&gt;。&lt;/p&gt;
-&lt;h3 id="opencode"&gt;OpenCode 是什么（我按“能干啥”来理解它）&lt;/h3&gt;
-&lt;p&gt;一句话：&lt;strong&gt;把“像 Claude Code 那样的 coding agent”搬进终端里&lt;/strong&gt;。&lt;/p&gt;
-&lt;p&gt;它的定位不是“再做一个 Chat”，而是偏工程化的“工作台”：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;终端/TUI 优先&lt;/strong&gt;：你在 shell 里就能开工（当然也有桌面端、IDE 扩展）&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Provider-agnostic&lt;/strong&gt;：不绑定某一家模型/平台，你能接 Claude、GPT、Gemini，也能接公司私有部署（只要你们提供 OpenAI-compatible 入口）&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;LSP 支持&lt;/strong&gt;：它会尽量加载合适的语言服务，做补全/跳转/诊断这类“工程味”更重的活&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;多会话&lt;/strong&gt;：同一个项目你可以开多个 session 并行做事（比如一个写代码，一个查资料/改文档）&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;内置 agent&lt;/strong&gt;：它有不同权限/风格的 agent 可切（比如默认的全权限 &lt;code&gt;build&lt;/code&gt;，以及更克制的只读 &lt;code&gt;plan&lt;/code&gt;）&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;隐私取向&lt;/strong&gt;：官方宣称不存储你的代码/上下文（这点对“公司环境”尤其关键）&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3 id="_1"&gt;这篇文章里，我们来看看怎么用它&lt;/h3&gt;
-&lt;p&gt;更具体点，这篇文章就是把 OpenCode 当“壳”，把模型换成公司内网的 Qwen/DeepSeek：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;用 &lt;code&gt;opencode&lt;/code&gt; 当“终端里的 AI coding 工具”&lt;/li&gt;
-&lt;li&gt;通过 &lt;code&gt;@ai-sdk/openai-compatible&lt;/code&gt; 接一个 &lt;strong&gt;OpenAI-compatible&lt;/strong&gt; 的内部网关（例如 &lt;code&gt;https://my-llm.fanyamin.com/api&lt;/code&gt;）&lt;/li&gt;
-&lt;li&gt;选择内部提供的模型（例如 &lt;code&gt;Qwen3-235B-A22B-Thinking-2507&lt;/code&gt; / &lt;code&gt;Qwen3-235B-A22B-Instruct-2507&lt;/code&gt;）&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h2 id="why"&gt;Why&lt;/h2&gt;
-&lt;h3 id="1"&gt;1) 订阅费不是问题，心理负担才是&lt;/h3&gt;
-&lt;p&gt;你在写代码时不想算账：这段 prompt 值不值 0.2 美元，那段 diff 会不会把额度烧穿。能“放心用”，比“更聪明一点”对日常效率更重要。&lt;/p&gt;
-&lt;h3 id="2"&gt;2) 私有部署模型的收益：可控、便宜、能集成&lt;/h3&gt;
-&lt;p&gt;固然模型能力会略弱，但胜在：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;内网可达&lt;/strong&gt;，延迟更稳&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;权限可控&lt;/strong&gt;（公司做过审计/准入）&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;成本可控&lt;/strong&gt;（你不用自己掏腰包）&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h2 id="how"&gt;How&lt;/h2&gt;
-&lt;p&gt;下面以 &lt;code&gt;my-llm.fanyamin.com&lt;/code&gt; 这种 OpenAI-compatible 网关为例。&lt;/p&gt;
-&lt;h3 id="0-opencode"&gt;0) 安装 opencode&lt;/h3&gt;
-&lt;p&gt;你可以用官方安装脚本（最省事）：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;curl&lt;span class="w"&gt; &lt;/span&gt;-fsSL&lt;span class="w"&gt; &lt;/span&gt;https://opencode.ai/install&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;|&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;bash
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;或者用 npm 全局安装：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;npm&lt;span class="w"&gt; &lt;/span&gt;install&lt;span class="w"&gt; &lt;/span&gt;-g&lt;span class="w"&gt; &lt;/span&gt;opencode-ai
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;我个人的小习惯是：涉及 &lt;code&gt;curl | bash&lt;/code&gt; 的脚本，&lt;strong&gt;能先看一眼脚本内容再跑就先看一眼&lt;/strong&gt;，心里更踏实。&lt;/p&gt;
-&lt;h3 id="1-opencode-provider"&gt;1) 配置 &lt;code&gt;opencode&lt;/code&gt; 的 provider（推荐做法）&lt;/h3&gt;
-&lt;p&gt;把配置放在 &lt;code&gt;~/.config/opencode/opencode.json&lt;/code&gt;。&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="p"&gt;{&lt;/span&gt;
-&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;$schema&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;https://opencode.ai/config.json&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
-&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;provider&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
-&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;happycoding&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
-&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;npm&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;@ai-sdk/openai-compatible&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
-&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;name&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;happycoding&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
-&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;options&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
-&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;baseURL&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;https://my-llm.fanyamin.com/api&amp;quot;&lt;/span&gt;
-&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="p"&gt;},&lt;/span&gt;
-&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;models&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
-&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;Qwen3-235B-A22B-Thinking-2507&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
-&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;name&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;Qwen3-235B-A22B-Thinking-2507&amp;quot;&lt;/span&gt;
-&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p"&gt;},&lt;/span&gt;
-&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;Qwen3-235B-A22B-Instruct-2507&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
-&lt;span class="w"&gt;          &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;name&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;Qwen3-235B-A22B-Instruct-2507&amp;quot;&lt;/span&gt;
-&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
-&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
-&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
-&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
-&lt;span class="p"&gt;}&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;几点小提醒：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;JSON 一定要用英文双引号&lt;/strong&gt;。你贴的示例里出现了中文引号（“ ”），那种会直接解析失败。&lt;/li&gt;
-&lt;li&gt;你原文里 &lt;code&gt;Instruct&lt;/code&gt; 的 &lt;code&gt;name&lt;/code&gt; 写成了 &lt;code&gt;Thinking&lt;/code&gt;，我这里顺手纠正了。&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3 id="2-provider"&gt;2) 登录与连上 provider&lt;/h3&gt;
-&lt;p&gt;我这边的流程是：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;code&gt;/connect&lt;/code&gt;：按提示完成登录/授权&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;/models&lt;/code&gt;：确认能看到内部的模型列表（例如 &lt;code&gt;Qwen3-235B-A22B-A22B-Thinking-2507&lt;/code&gt; 这种）&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;注意：&lt;code&gt;~/.local/share/opencode/auth.json&lt;/code&gt; 这类文件里通常会有 token/凭据，&lt;strong&gt;别提交到仓库，也别贴到博客里&lt;/strong&gt;。&lt;/p&gt;
-&lt;h3 id="3-tls-ca"&gt;3) 处理 TLS 自签证书（推荐：加 CA，不要关校验）&lt;/h3&gt;
-&lt;p&gt;最常见的坑是：内部网关用了自签名证书/私有 CA，Node 侧会报 TLS 错。&lt;/p&gt;
-&lt;p&gt;正确姿势是把 CA 加进来。你可以用 &lt;code&gt;openssl s_client&lt;/code&gt; 把证书链导出来：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;openssl&lt;span class="w"&gt; &lt;/span&gt;s_client&lt;span class="w"&gt; &lt;/span&gt;-connect&lt;span class="w"&gt; &lt;/span&gt;my-llm.fanyamin.com:443&lt;span class="w"&gt; &lt;/span&gt;-showcerts&lt;span class="w"&gt; &lt;/span&gt;&amp;lt;/dev/null&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="se"&gt;\&lt;/span&gt;
-&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="p"&gt;|&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;openssl&lt;span class="w"&gt; &lt;/span&gt;x509&lt;span class="w"&gt; &lt;/span&gt;-outform&lt;span class="w"&gt; &lt;/span&gt;PEM&lt;span class="w"&gt; &lt;/span&gt;&amp;gt;&lt;span class="w"&gt; &lt;/span&gt;happycoding-ca.pem
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;然后让 Node 进程信任它：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nb"&gt;export&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nv"&gt;NODE_EXTRA_CA_CERTS&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;~/certs/happycoding-ca.pem
-opencode
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;h3 id="4-tls"&gt;4) 不推荐但你可能见过的做法：关闭 TLS 校验&lt;/h3&gt;
-&lt;p&gt;你可能见过：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nv"&gt;NODE_TLS_REJECT_UNAUTHORIZED&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="m"&gt;0&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;opencode
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;这招的确“能跑”，但代价是把 HTTPS 的安全底线一起关掉了——等于告诉程序：&lt;strong&gt;谁给我证书我都信&lt;/strong&gt;。&lt;/p&gt;
-&lt;p&gt;如果只是本地临时排障（确认问题确实在证书链），可以短时间用一下；&lt;strong&gt;长期使用不建议&lt;/strong&gt;，更不建议写进脚本或文档当“标准方案”。&lt;/p&gt;
-&lt;h2 id="example"&gt;Example&lt;/h2&gt;
-&lt;p&gt;一个我自己常用的“确认链路是否通了”的小步骤：&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;&lt;code&gt;opencode&lt;/code&gt; 里跑 &lt;code&gt;/models&lt;/code&gt; 能列出 &lt;code&gt;Qwen3-235B-A22B-*&lt;/code&gt;  &lt;/li&gt;
-&lt;li&gt;随便发个小请求让它回一句（例如让它总结 &lt;code&gt;git diff&lt;/code&gt; 的意图）  &lt;/li&gt;
-&lt;li&gt;如果卡住/报错，优先看 TLS、代理、baseURL 路径（&lt;code&gt;/api&lt;/code&gt; 有没有漏）&lt;/li&gt;
-&lt;/ol&gt;
-&lt;h2 id="summary"&gt;Summary&lt;/h2&gt;
-&lt;p&gt;&lt;code&gt;opencode + 私有 Qwen/DeepSeek&lt;/code&gt; 这条路，核心不是“模型有多强”，而是“工程上能不能稳稳当当地用起来”。&lt;/p&gt;
-&lt;p&gt;无他：&lt;strong&gt;先把证书、网络、配置这三板斧练熟&lt;/strong&gt;，你就能少掉一半的心火。&lt;/p&gt;
-&lt;h2 id="checklist"&gt;Checklist&lt;/h2&gt;
-&lt;ul&gt;
-&lt;li&gt;[ ] &lt;code&gt;~/.config/opencode/opencode.json&lt;/code&gt; 是合法 JSON（英文双引号、无多余逗号）&lt;/li&gt;
-&lt;li&gt;[ ] &lt;code&gt;baseURL&lt;/code&gt; 能在本机访问（内网/VPN/代理）&lt;/li&gt;
-&lt;li&gt;[ ] &lt;code&gt;/models&lt;/code&gt; 能列出你要用的模型&lt;/li&gt;
-&lt;li&gt;[ ] 自签证书问题用 &lt;code&gt;NODE_EXTRA_CA_CERTS&lt;/code&gt; 解决，而不是长期 &lt;code&gt;NODE_TLS_REJECT_UNAUTHORIZED=0&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;[ ] &lt;code&gt;auth.json&lt;/code&gt;/token 文件不外传、不进 git&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h2 id="references"&gt;References&lt;/h2&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;code&gt;opencode&lt;/code&gt; 配置 schema：&lt;code&gt;https://opencode.ai/config.json&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;Node 环境变量：&lt;code&gt;NODE_EXTRA_CA_CERTS&lt;/code&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;hr/&gt;
-&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Tech"/><category term="opencode"/><category term="claude-code"/><category term="qwen"/><category term="deepseek"/><category term="openai-compatible"/><category term="ai-sdk"/><category term="tls"/><category term="ca"/></entry><entry><title>Go crypto/tls Config.Clone session resumption pitfalls (CVE-2025-68121)</title><link href="https://www.fanyamin.com/blog/go-cryptotls-configclone-session-resumption-pitfalls-cve-2025-68121.html" rel="alternate"/><published>2026-02-25T13:30:00+08:00</published><updated>2026-02-25T13:55:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-02-25:/blog/go-cryptotls-configclone-session-resumption-pitfalls-cve-2025-68121.html</id><summary type="html">&lt;p&gt;CVE-2025-68121 涉及 Go &lt;code&gt;crypto/tls&lt;/code&gt; 的两个会话恢复（session resumption）问题：&lt;code&gt;Config.Clone&lt;/code&gt; 复制了自动生成的 session ticket keys，导致不同 &lt;code&gt;tls.Config&lt;/code&gt; 之间意外共享会话票据；以及服务端在判断会话是否可恢复时，只检查 leaf 证书过期而忽略完整证书链，可能让过期链条下的会话继续被恢复。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
-&lt;th&gt;Go crypto/tls Config.Clone session resumption pitfalls (CVE-2025-68121)&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;tech note&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Status&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;v1.0&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;2026-02-25&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;h1 id="go-cryptotls-configclone-session-resumption-cve-2025-68121"&gt;Go &lt;code&gt;crypto/tls&lt;/code&gt;: &lt;code&gt;Config.Clone&lt;/code&gt; + Session Resumption 的安全坑（CVE-2025-68121）&lt;/h1&gt;
-&lt;h2 id="what"&gt;What&lt;/h2&gt;
-&lt;p&gt;这次问题可以拆成两段（都和 session resumption 有关）：&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;&lt;strong&gt;&lt;code&gt;Config.Clone&lt;/code&gt; 意外复制自动生成的 session ticket keys&lt;/strong&gt;&lt;/li&gt;
-&lt;li&gt;如果你没显式设置 &lt;code&gt;Config.SessionTicketKey&lt;/code&gt;，也没调用过 &lt;code&gt;Config.SetSessionTicketKeys&lt;/code&gt;，Go 的 &lt;code&gt;crypto/tls&lt;/code&gt; 会在服务器侧自动生成并轮换 session ticket keys。&lt;/li&gt;
-&lt;li&gt;
-&lt;p&gt;在修复前，&lt;code&gt;Config.Clone()&lt;/code&gt; 会把这些&lt;strong&gt;自动生成的 keys 也复制&lt;/strong&gt;到新 Config 里，导致两个 Config &lt;strong&gt;共享同一套 ticket keys&lt;/strong&gt;。&lt;/p&gt;
-&lt;/li&gt;
-&lt;li&gt;
-&lt;p&gt;&lt;strong&gt;服务端恢复会话时未考虑完整证书链过期&lt;/strong&gt;&lt;/p&gt;
-&lt;/li&gt;
-&lt;li&gt;在修复前，服务端在决定一个会话是否能恢复时，只检查了（当初握手时）叶子证书（leaf）的过期情况。&lt;/li&gt;
-&lt;li&gt;如果证书链里的中间证书/根证书过期，仍可能发生 session resumption。&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;这两个点来自 Go issue：CVE-2025-68121 / &lt;code&gt;crypto/tls&lt;/code&gt; issue #77113。&lt;/p&gt;
-&lt;h2 id="why"&gt;Why（危害在哪里）&lt;/h2&gt;
-&lt;h3 id="1-key-config"&gt;1) “配置隔离”失效：票据 key 共享导致跨 Config 恢复&lt;/h3&gt;
-&lt;p&gt;在很多工程里，大家会自然把不同的 &lt;code&gt;tls.Config&lt;/code&gt; 当作“隔离边界”：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;不同端口 / 不同虚拟主机 / 不同租户&lt;/li&gt;
-&lt;li&gt;不同的 TLS 策略（cipher suites、最小版本、ClientAuth 之类）&lt;/li&gt;
-&lt;li&gt;不同的证书链（甚至不同的 CA/中间证书组合）&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;如果这些 Config 因为 &lt;code&gt;Clone()&lt;/code&gt; 而共享了自动生成的 session ticket keys，那么：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;某个 Config 下签发出来的 session ticket，另一个 Config 也可能解得开并接受恢复&lt;/li&gt;
-&lt;li&gt;你以为的“按 Config 切分的 session resumption 边界”，可能就被悄悄抹平了&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;这类 bug 最危险的地方在于：&lt;strong&gt;它不会让 TLS 直接报错&lt;/strong&gt;，很多时候只会让“本来不该发生的恢复”悄悄发生。&lt;/p&gt;
-&lt;h3 id="2"&gt;2) 证书链过期策略被绕开：过期中间证书/根证书下仍可恢复&lt;/h3&gt;
-&lt;p&gt;证书过期本来是 PKI 的硬边界：过期就应当失败。&lt;/p&gt;
-&lt;p&gt;如果 session resumption 在服务端只看 leaf，而不看完整链条，那么链条里某些关键证书（中间证书/根证书）过期后，会话可能仍被恢复：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;不符合你对证书生命周期的预期&lt;/li&gt;
-&lt;li&gt;在合规/审计语境下会很尴尬：证书链都过期了，连接却“看起来还能用”&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h2 id="how"&gt;How（如何重现）&lt;/h2&gt;
-&lt;p&gt;下面给一个“最小复现思路”。它不是为了写出最短代码，而是为了把触发条件说清楚。&lt;/p&gt;
-&lt;h3 id="1clone-config-session-ticket-keys"&gt;复现 1：&lt;code&gt;Clone()&lt;/code&gt; 后不同 Config 共享 session ticket keys&lt;/h3&gt;
-&lt;p&gt;前提：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;服务端使用 &lt;code&gt;tls.Config&lt;/code&gt;，但&lt;strong&gt;不显式设置&lt;/strong&gt; &lt;code&gt;SessionTicketKey&lt;/code&gt;，也不调用 &lt;code&gt;SetSessionTicketKeys&lt;/code&gt;（让 Go 自动生成 ticket keys）&lt;/li&gt;
-&lt;li&gt;先用 Config A 跑过一次握手（触发自动生成 keys）&lt;/li&gt;
-&lt;li&gt;然后对 Config A 调用 &lt;code&gt;Clone()&lt;/code&gt; 得到 Config B&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;步骤（概念版）：&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;用 Config A 启一个 TLS server（端口 8443）&lt;/li&gt;
-&lt;li&gt;客户端连接一次，拿到 session（客户端开启 &lt;code&gt;ClientSessionCache&lt;/code&gt;）&lt;/li&gt;
-&lt;li&gt;服务端对“已经用过的 Config A”做 &lt;code&gt;Clone()&lt;/code&gt; 得到 Config B，并用 Config B 再起一个 TLS server（端口 9443），同时让 Config B 改一些你希望隔离的策略（例如不同的 &lt;code&gt;ClientAuth&lt;/code&gt; / 不同的证书链等）&lt;/li&gt;
-&lt;li&gt;客户端改连 9443，并尝试 session resumption（同一个 &lt;code&gt;ClientSessionCache&lt;/code&gt;）&lt;/li&gt;
-&lt;li&gt;在修复前，你可能会观察到：&lt;strong&gt;在你以为“换了 Config/换了策略”后，session 仍然被恢复&lt;/strong&gt;&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;示例代码骨架（只展示关键点）：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;// 关键点：&lt;/span&gt;
-&lt;span class="c1"&gt;// - serverConfigA 不设置 SessionTicketKey / 不调用 SetSessionTicketKeys&lt;/span&gt;
-&lt;span class="c1"&gt;// - 先让 A 被用过（完成一次握手）&lt;/span&gt;
-&lt;span class="c1"&gt;// - 再 Clone() 得到 B&lt;/span&gt;
-&lt;span class="c1"&gt;// - client 使用 ClientSessionCache，第二次连接时才可能 resumption&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;h3 id="2_1"&gt;复现 2：完整证书链过期不生效（服务端仍恢复会话）&lt;/h3&gt;
-&lt;p&gt;这个复现更依赖证书链构造（比如让一个 intermediate 在较短时间内过期），思路是：&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;构造一条包含中间证书的链（leaf + intermediate + root）&lt;/li&gt;
-&lt;li&gt;建立一次握手并让客户端拿到可恢复的 session&lt;/li&gt;
-&lt;li&gt;等 intermediate（或 root）过期&lt;/li&gt;
-&lt;li&gt;再次连接，观察服务端是否仍允许 session resumption&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;在修复前，服务端可能只检查 leaf 的有效期，从而忽略链条的过期。&lt;/p&gt;
-&lt;h2 id="how_1"&gt;How（如何修复与避免）&lt;/h2&gt;
-&lt;h3 id="_1"&gt;官方修复（建议优先做）&lt;/h3&gt;
-&lt;p&gt;根据 issue 描述，Go 的修复点包括：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;code&gt;Config.Clone&lt;/code&gt; &lt;strong&gt;不再复制自动生成的 session ticket keys&lt;/strong&gt;（但仍会复制你显式提供的 keys）&lt;/li&gt;
-&lt;li&gt;服务端 session resumption 判断时，&lt;strong&gt;把完整证书链的过期纳入考虑&lt;/strong&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;最直接的建议就是：&lt;strong&gt;升级 Go 版本到 Go 1.25.7 以上&lt;/strong&gt;（或更高版本线中已包含该修复的版本）。这一点可以从 Go 的 backport issue 里看到该修复被纳入 1.25 分支发布节奏（见 References）。&lt;/p&gt;
-&lt;h3 id="_2"&gt;在升级前的规避手段（工程侧能做的）&lt;/h3&gt;
-&lt;ol&gt;
-&lt;li&gt;&lt;strong&gt;不要把“自动生成的 ticket keys”当作隔离边界&lt;/strong&gt;&lt;/li&gt;
-&lt;li&gt;
-&lt;p&gt;如果你有多个 &lt;code&gt;tls.Config&lt;/code&gt;，并且希望它们的 session resumption 互相隔离：请显式设置各自的 ticket keys。&lt;/p&gt;
-&lt;/li&gt;
-&lt;li&gt;
-&lt;p&gt;&lt;strong&gt;显式管理 session ticket keys（并且按 Config 做隔离）&lt;/strong&gt;&lt;/p&gt;
-&lt;/li&gt;
-&lt;li&gt;用 &lt;code&gt;Config.SetSessionTicketKeys(...)&lt;/code&gt; 或 &lt;code&gt;Config.SessionTicketKey&lt;/code&gt;（如你项目仍在用）显式配置 keys，并确保不同 Config 不共享同一套 keys。&lt;/li&gt;
-&lt;li&gt;
-&lt;p&gt;如果你确实想共享（比如多实例要共享会话恢复能力），那就共享得“明明白白”，并把风险写进设计文档。&lt;/p&gt;
-&lt;/li&gt;
-&lt;li&gt;
-&lt;p&gt;&lt;strong&gt;需要强隔离时，直接禁用 session tickets&lt;/strong&gt;&lt;/p&gt;
-&lt;/li&gt;
-&lt;li&gt;
-&lt;p&gt;对安全边界敏感的场景，可以设置 &lt;code&gt;Config.SessionTicketsDisabled = true&lt;/code&gt;，用一次完整握手换取更清晰的隔离语义。&lt;/p&gt;
-&lt;/li&gt;
-&lt;li&gt;
-&lt;p&gt;&lt;strong&gt;把证书链生命周期纳入你的“会话恢复策略”&lt;/strong&gt;&lt;/p&gt;
-&lt;/li&gt;
-&lt;li&gt;如果你对证书链过期非常敏感，建议在升级前先评估：是否需要主动缩短会话票据有效窗口、或在证书链轮换时主动失效旧 session（否则 resumption 的行为很难按“证书过期”直觉推断）。&lt;/li&gt;
-&lt;/ol&gt;
-&lt;h2 id="image-binary-cve-2025-68121"&gt;检测：如何检查 image / binary 是否包含 CVE-2025-68121&lt;/h2&gt;
-&lt;p&gt;除了“升级 Go”，你通常还需要回答另一个更落地的问题：&lt;strong&gt;我的 Docker image / 线上二进制，到底有没有带着这个 CVE？&lt;/strong&gt;&lt;/p&gt;
-&lt;p&gt;下面是几种常见工具的对比（按你给的表整理）：&lt;/p&gt;
-&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;Tool&lt;/th&gt;
-&lt;th style="text-align: right;"&gt;Detects CVE-2025-68121&lt;/th&gt;
-&lt;th style="text-align: right;"&gt;Works on binary&lt;/th&gt;
-&lt;th&gt;Notes&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;Trivy&lt;/td&gt;
-&lt;td style="text-align: right;"&gt;✔&lt;/td&gt;
-&lt;td style="text-align: right;"&gt;✔&lt;/td&gt;
-&lt;td&gt;容器/文件系统/二进制都常用，生态最广&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;Grype&lt;/td&gt;
-&lt;td style="text-align: right;"&gt;✔&lt;/td&gt;
-&lt;td style="text-align: right;"&gt;✔&lt;/td&gt;
-&lt;td&gt;覆盖面广，扫 image/dir/SBOM 都顺手&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;CVE Binary Tool&lt;/td&gt;
-&lt;td style="text-align: right;"&gt;👍&lt;/td&gt;
-&lt;td style="text-align: right;"&gt;✔&lt;/td&gt;
-&lt;td&gt;对 Go runtime 的覆盖相对有限，更多场景是“能扫但不一定准”&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;govulncheck&lt;/td&gt;
-&lt;td style="text-align: right;"&gt;✔&lt;/td&gt;
-&lt;td style="text-align: right;"&gt;❌&lt;/td&gt;
-&lt;td&gt;更适合扫源码/依赖（source code analysis），不是拿来扫产物的&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;Manual Version Check&lt;/td&gt;
-&lt;td style="text-align: right;"&gt;✔（heuristic）&lt;/td&gt;
-&lt;td style="text-align: right;"&gt;✔&lt;/td&gt;
-&lt;td&gt;看 binary 里嵌入的 Go 版本号，简单但不绝对&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;p&gt;你说实际用下来更推荐 &lt;strong&gt;Grype&lt;/strong&gt;，用它适合作为 CI / 镜像发布前的“守门员”。&lt;/p&gt;
-&lt;h2 id="grype"&gt;Grype 介绍与用法（我推荐）&lt;/h2&gt;
-&lt;p&gt;Grype 是 Anchore 开源的漏洞扫描器，主打 &lt;strong&gt;container images / filesystems / SBOMs&lt;/strong&gt;（三类目标都能扫）。项目主页见：&lt;code&gt;https://github.com/anchore/grype&lt;/code&gt;。&lt;/p&gt;
-&lt;h3 id="1"&gt;1) 安装&lt;/h3&gt;
-&lt;p&gt;官方安装方式里，我常用这两个（macOS/CI 都顺手）：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# 官方安装脚本（Linux/macOS/Windows）&lt;/span&gt;
-curl&lt;span class="w"&gt; &lt;/span&gt;-sSfL&lt;span class="w"&gt; &lt;/span&gt;https://get.anchore.io/grype&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;|&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;sudo&lt;span class="w"&gt; &lt;/span&gt;sh&lt;span class="w"&gt; &lt;/span&gt;-s&lt;span class="w"&gt; &lt;/span&gt;--&lt;span class="w"&gt; &lt;/span&gt;-b&lt;span class="w"&gt; &lt;/span&gt;/usr/local/bin
-
-&lt;span class="c1"&gt;# Homebrew（macOS）&lt;/span&gt;
-brew&lt;span class="w"&gt; &lt;/span&gt;tap&lt;span class="w"&gt; &lt;/span&gt;anchore/grype
-brew&lt;span class="w"&gt; &lt;/span&gt;install&lt;span class="w"&gt; &lt;/span&gt;grype
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;h3 id="2-docker-image"&gt;2) 最常用：扫 Docker image&lt;/h3&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# 扫本地 docker daemon 里的 image&lt;/span&gt;
-grype&lt;span class="w"&gt; &lt;/span&gt;alpine:latest
-
-&lt;span class="c1"&gt;# 直接从 registry 拉（不依赖本地容器运行时）&lt;/span&gt;
-grype&lt;span class="w"&gt; &lt;/span&gt;registry:yourrepo/yourimage:tag
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;常用参数（更适合 CI）：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# 只看有修复版本（fixed）的漏洞，降低噪音&lt;/span&gt;
-grype&lt;span class="w"&gt; &lt;/span&gt;yourimage:tag&lt;span class="w"&gt; &lt;/span&gt;--only-fixed
-
-&lt;span class="c1"&gt;# 输出为 table/json/sarif 等&lt;/span&gt;
-grype&lt;span class="w"&gt; &lt;/span&gt;yourimage:tag&lt;span class="w"&gt; &lt;/span&gt;-o&lt;span class="w"&gt; &lt;/span&gt;table
-grype&lt;span class="w"&gt; &lt;/span&gt;yourimage:tag&lt;span class="w"&gt; &lt;/span&gt;-o&lt;span class="w"&gt; &lt;/span&gt;json
-
-&lt;span class="c1"&gt;# 若发现 &amp;gt;= high 的漏洞，直接让命令返回非 0（用于 CI 阻断）&lt;/span&gt;
-grype&lt;span class="w"&gt; &lt;/span&gt;yourimage:tag&lt;span class="w"&gt; &lt;/span&gt;--fail-on&lt;span class="w"&gt; &lt;/span&gt;high
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;h3 id="3"&gt;3) 扫目录 / 扫单个文件（二进制）&lt;/h3&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# 扫目录&lt;/span&gt;
-grype&lt;span class="w"&gt; &lt;/span&gt;dir:/path/to/rootfs
-
-&lt;span class="c1"&gt;# 扫单个文件（比如某个可执行文件）&lt;/span&gt;
-grype&lt;span class="w"&gt; &lt;/span&gt;file:/path/to/your-binary
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;说明：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;对“二进制”的识别能力，取决于 Grype 的包识别与数据库匹配能力；在很多团队里，更稳的路线是 &lt;strong&gt;先出 SBOM，再扫 SBOM&lt;/strong&gt;（见下一节）。&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;这里的 &lt;strong&gt;SBOM&lt;/strong&gt; 是 &lt;em&gt;Software Bill of Materials&lt;/em&gt;，可以理解成“软件物料清单”：把一个镜像/文件系统/构建产物里包含的组件（OS 包、语言依赖、版本、PURL/CPE 等标识）结构化列出来。&lt;br&gt;
-先生成 SBOM 再做漏洞匹配，通常更稳、更快，也更容易在 CI 里复现与对比（你扫的目标不再是“某个不可见的文件集合”，而是一份明确的清单）。&lt;/p&gt;
-&lt;p&gt;一个极简的 SBOM 长这样（以 CycloneDX JSON 为例，真实文件会更长）：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="p"&gt;{&lt;/span&gt;
-&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;bomFormat&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;CycloneDX&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
-&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;specVersion&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;1.5&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
-&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;version&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
-&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;metadata&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
-&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;component&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
-&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;type&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;container&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
-&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;name&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;example/app&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
-&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;version&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;1.0.0&amp;quot;&lt;/span&gt;
-&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
-&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="p"&gt;},&lt;/span&gt;
-&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;components&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;
-&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
-&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;type&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;library&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
-&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;name&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;golang.org/x/crypto&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
-&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;version&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;v0.18.0&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
-&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;purl&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;pkg:golang/golang.org/x/crypto@v0.18.0&amp;quot;&lt;/span&gt;
-&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;},&lt;/span&gt;
-&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
-&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;type&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;library&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
-&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;name&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;github.com/anchore/grype&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
-&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;version&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;v0.104.1&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
-&lt;span class="w"&gt;      &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;purl&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;pkg:golang/github.com/anchore/grype@v0.104.1&amp;quot;&lt;/span&gt;
-&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
-&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
-&lt;span class="p"&gt;}&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;h3 id="4-sbom"&gt;4) 更稳更快：扫 SBOM&lt;/h3&gt;
-&lt;p&gt;先说“怎么生成 SBOM”。我推荐用 Syft（同样是 Anchore 的工具），它能对 image / dir / file 生成多种格式的 SBOM，最常见的是 CycloneDX 和 SPDX。&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# 安装 Syft（官方脚本）&lt;/span&gt;
-curl&lt;span class="w"&gt; &lt;/span&gt;-sSfL&lt;span class="w"&gt; &lt;/span&gt;https://get.anchore.io/syft&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;|&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;sudo&lt;span class="w"&gt; &lt;/span&gt;sh&lt;span class="w"&gt; &lt;/span&gt;-s&lt;span class="w"&gt; &lt;/span&gt;--&lt;span class="w"&gt; &lt;/span&gt;-b&lt;span class="w"&gt; &lt;/span&gt;/usr/local/bin
-
-&lt;span class="c1"&gt;# macOS 也可以用 Homebrew&lt;/span&gt;
-brew&lt;span class="w"&gt; &lt;/span&gt;install&lt;span class="w"&gt; &lt;/span&gt;syft
-
-&lt;span class="c1"&gt;# 1) 给镜像生成 SBOM（CycloneDX JSON）&lt;/span&gt;
-syft&lt;span class="w"&gt; &lt;/span&gt;yourimage:tag&lt;span class="w"&gt; &lt;/span&gt;-o&lt;span class="w"&gt; &lt;/span&gt;cyclonedx-json&lt;span class="o"&gt;=&lt;/span&gt;sbom.json
-
-&lt;span class="c1"&gt;# 2) 给目录/rootfs 生成 SBOM&lt;/span&gt;
-syft&lt;span class="w"&gt; &lt;/span&gt;dir:/path/to/rootfs&lt;span class="w"&gt; &lt;/span&gt;-o&lt;span class="w"&gt; &lt;/span&gt;cyclonedx-json&lt;span class="o"&gt;=&lt;/span&gt;sbom.json
-
-&lt;span class="c1"&gt;# 3) 给单个二进制生成 SBOM&lt;/span&gt;
-syft&lt;span class="w"&gt; &lt;/span&gt;file:/path/to/your-binary&lt;span class="w"&gt; &lt;/span&gt;-o&lt;span class="w"&gt; &lt;/span&gt;cyclonedx-json&lt;span class="o"&gt;=&lt;/span&gt;sbom.json
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;生成出来的 &lt;code&gt;sbom.json&lt;/code&gt; 再交给 Grype 扫：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# 直接扫一个 Syft JSON（SBOM）&lt;/span&gt;
-grype&lt;span class="w"&gt; &lt;/span&gt;sbom:./sbom.json
-
-&lt;span class="c1"&gt;# 或者把 SBOM 从 stdin pipe 进去&lt;/span&gt;
-cat&lt;span class="w"&gt; &lt;/span&gt;./sbom.json&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;|&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;grype
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;h3 id="5"&gt;5) 一些我常用的“非必需但好用”的参数&lt;/h3&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="c1"&gt;# 结果尽量按 CVE 聚合（能转成 CVE 时）&lt;/span&gt;
-grype&lt;span class="w"&gt; &lt;/span&gt;yourimage:tag&lt;span class="w"&gt; &lt;/span&gt;--by-cve
-
-&lt;span class="c1"&gt;# 扫全层（all-layers）而不只是 squashed（更严格，但结果可能更多）&lt;/span&gt;
-grype&lt;span class="w"&gt; &lt;/span&gt;yourimage:tag&lt;span class="w"&gt; &lt;/span&gt;--scope&lt;span class="w"&gt; &lt;/span&gt;all-layers
-
-&lt;span class="c1"&gt;# 对缺 CPE 的包尝试生成 CPE（有时能补齐匹配）&lt;/span&gt;
-grype&lt;span class="w"&gt; &lt;/span&gt;yourimage:tag&lt;span class="w"&gt; &lt;/span&gt;--add-cpes-if-none
-
-&lt;span class="c1"&gt;# 更新 vulnerability DB（排查“为啥扫不出某个 CVE”时很有用）&lt;/span&gt;
-grype&lt;span class="w"&gt; &lt;/span&gt;db&lt;span class="w"&gt; &lt;/span&gt;update
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;h2 id="cve-2025-68121"&gt;时序图：CVE-2025-68121 的触发流程（概念图）&lt;/h2&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startuml
-title CVE-2025-68121 (crypto/tls): Session Resumption Pitfalls
-
-actor Client
-participant &amp;quot;Server (Config A)\n(no explicit ticket keys)&amp;quot; as SrvA
-participant &amp;quot;Config.Clone()&amp;quot; as Clone
-participant &amp;quot;Server (Config B)\n(mutated policy/certs)&amp;quot; as SrvB
-participant &amp;quot;PKI Chain\n(leaf + intermediate + root)&amp;quot; as Chain
-
-== Issue 1: Config.Clone copies auto-generated ticket keys ==
-
-Client -&amp;gt; SrvA: 1) Full handshake (TLS)\n(session tickets enabled)
-note right of SrvA
-If SessionTicketKey is not set and
-SetSessionTicketKeys not called,
-crypto/tls auto-generates &amp;amp; rotates
-session ticket keys.
-end note
-SrvA --&amp;gt; Client: SessionTicket (encrypted with auto keys)
-
-SrvA -&amp;gt; Clone: 2) Clone used Config A\n( AFTER handshake )
-Clone --&amp;gt; SrvB: Config B contains\ncopied auto ticket keys (pre-fix)
-note right of SrvB
-Unexpected: Config A and Config B
-share the same ticket keys.
-end note
-
-Client -&amp;gt; SrvB: 3) Connect to B\n(with cached session)
-SrvB --&amp;gt; Client: Session resumption succeeds\n(should be isolated by policy)
-
-== Issue 2: Resumption checks leaf only (pre-fix) ==
-
-note over Client,SrvB
-Assume the original handshake used a certificate chain.
-Later, an intermediate/root expires.
-end note
-
-Client -&amp;gt; Chain: 4) Time passes\nintermediate/root expires
-Client -&amp;gt; SrvB: 5) Resume session
-SrvB -&amp;gt; Chain: Validate for resumption\n(pre-fix: leaf only)
-Chain --&amp;gt; SrvB: leaf OK, chain expired
-SrvB --&amp;gt; Client: Resumption allowed\n(should fail if full chain checked)
-
-== Fixed behavior (expected) ==
-note over SrvB
-- Clone() does NOT copy auto ticket keys
-  (only explicitly set keys are copied)
-- Resumption checks full certificate chain expiry
-end note
-@enduml
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;&lt;img alt="时序图" src="./images/tech_20260225_cve_68121_sequence.png"&gt;&lt;/p&gt;
-&lt;h2 id="summary-map"&gt;思维导图：全文要点（Summary Map）&lt;/h2&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap
-&amp;lt;style&amp;gt;
-mindmapDiagram {
-  node { BackgroundColor #FAFAFA }
-  :depth(0) { BackgroundColor #FFD700 }
-  :depth(1) { BackgroundColor #E3F2FD }
-  :depth(2) { BackgroundColor #F5F5F5 }
-}
-&amp;lt;/style&amp;gt;
-* CVE-2025-68121\nGo crypto/tls
-** What
-*** Clone 复制自动生成 ticket keys\n(跨 Config 共享)
-*** Resumption 只检查 leaf\n(忽略完整链过期)
-** Why / Impact
-*** 配置隔离语义被削弱
-*** 证书链过期策略被绕开\n(审计/合规风险)
-** Repro (思路)
-*** Config A 握手生成 keys
-*** Clone(A)-&amp;gt;B 并修改策略
-*** Client 用 cache 连接 B\n观察是否 resumption
-*** 构造链 + intermediate 过期\n观察是否仍可恢复
-** Fix / Avoid
-*** 升级 Go &amp;gt;= 1.25.7
-*** 显式隔离 ticket keys\n(SetSessionTicketKeys)
-*** 强隔离：禁用 tickets\n(SessionTicketsDisabled)
-*** 证书链轮换/过期\n结合 session 生命周期评估
-** Detect (推荐 Grype)
-*** 扫 image/dir/file
-*** 更稳：SBOM → scan SBOM
-**** Syft 生成 SBOM\n(CycloneDX/SPDX)
-**** Grype 扫 sbom.json
-** References
-*** Go issues: 77113 / 77115
-*** Anchore: Grype / Syft
-@endmindmap
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;&lt;img alt="思维导图" src="./images/tech_20260225_cve_68121_mindmap.png"&gt;&lt;/p&gt;
-&lt;h2 id="summary"&gt;Summary&lt;/h2&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;问题 1&lt;/strong&gt;：&lt;code&gt;Config.Clone&lt;/code&gt; 复制自动生成的 session ticket keys → 多个 &lt;code&gt;tls.Config&lt;/code&gt; 之间意外共享票据 key → session resumption 的隔离边界被削弱。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;问题 2&lt;/strong&gt;：服务端恢复会话只检查 leaf 证书 → 链条中间/根证书过期时，仍可能恢复会话。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;首选修复&lt;/strong&gt;：升级到包含 CVE-2025-68121 修复的 Go 版本。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;工程规避&lt;/strong&gt;：显式配置并隔离 ticket keys；必要时禁用 session tickets；把证书链过期与 session 生命周期一起考虑。&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h2 id="checklist"&gt;Checklist&lt;/h2&gt;
-&lt;ul&gt;
-&lt;li&gt;[ ] 盘点服务端是否调用 &lt;code&gt;Config.Clone()&lt;/code&gt;（尤其是对“已用于握手的 Config”做 Clone 的场景）&lt;/li&gt;
-&lt;li&gt;[ ] 盘点是否依赖多个 &lt;code&gt;tls.Config&lt;/code&gt; 的“隔离”语义（端口/租户/策略/证书链）&lt;/li&gt;
-&lt;li&gt;[ ] 是否显式配置了 session ticket keys（&lt;code&gt;SetSessionTicketKeys&lt;/code&gt; / &lt;code&gt;SessionTicketKey&lt;/code&gt;），并确保不同 Config 不意外共享&lt;/li&gt;
-&lt;li&gt;[ ] 是否需要 &lt;code&gt;SessionTicketsDisabled&lt;/code&gt;（安全边界优先的系统）&lt;/li&gt;
-&lt;li&gt;[ ] 升级 Go 版本并验证：session resumption 行为是否符合预期（含证书链轮换/过期场景）&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h2 id="references"&gt;References&lt;/h2&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://github.com/golang/go/issues/77113"&gt;Go issue #77113: crypto/tls Config.Clone + session resumption (CVE-2025-68121)&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://golang.org/issue/77115"&gt;Go issue #77115: CVE-2025-68121 1.25 backport tracking&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://github.com/anchore/grype"&gt;Grype (Anchore): vulnerability scanner for images/filesystems/SBOMs&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://oss.anchore.com/docs/installation/grype/"&gt;Installing Grype (Anchore OSS docs)&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://oss.anchore.com/docs/reference/grype/cli/"&gt;Grype CLI reference (Anchore OSS docs)&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://github.com/anchore/syft"&gt;Syft (Anchore): SBOM generator&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;hr/&gt;
-&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Tech"/><category term="go"/><category term="security"/><category term="tls"/><category term="cve"/></entry></feed>
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Tech"/><category term="sdk"/><category term="微服务"/><category term="治理"/><category term="contract-testing"/><category term="semver"/></entry></feed>

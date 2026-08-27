@@ -1,0 +1,895 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="上下文窗口再大，也不该一次性塞满。渐进式披露的核心是：先给模型一张薄薄的&#34;目录&#34;，让它按需去取详情。这既是省 token 的关键手段，也是让 Agent 少犯错的结构性做法。本文用我自己写的两个 skill 讲清它的做法、最佳实践和常见陷阱。" />
+<meta name="keywords" content="journal, AI, context-engineering, token, agent, skill, progressive-disclosure">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "上下文管理之渐进式披露：别把整座图书馆搬进模型的脑子",
+  "description": "上下文窗口再大，也不该一次性塞满。渐进式披露的核心是：先给模型一张薄薄的&#34;目录&#34;，让它按需去取详情。这既是省 token 的关键手段，也是让 Agent 少犯错的结构性做法。本文用我自己写的两个 skill 讲清它的做法、最佳实践和常见陷阱。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-08-25T21:30:00+08:00",
+  "dateModified": "2026-08-26T00:20:00+08:00",
+  "url": "https://www.fanyamin.com/blog/progressive-disclosure-context-management.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/progressive-disclosure-context-management.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "journal, AI, context-engineering, token, agent, skill, progressive-disclosure"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="上下文管理之渐进式披露：别把整座图书馆搬进模型的脑子"/>
+  <meta property="og:description" content="上下文窗口再大，也不该一次性塞满。渐进式披露的核心是：先给模型一张薄薄的&#34;目录&#34;，让它按需去取详情。这既是省 token 的关键手段，也是让 Agent 少犯错的结构性做法。本文用我自己写的两个 skill 讲清它的做法、最佳实践和常见陷阱。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/progressive-disclosure-context-management.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-08-25 21:30:00+08:00"/>
+  <meta property="article:modified_time" content="2026-08-26 00:20:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="AI"/>
+  <meta property="article:tag" content="journal"/>
+  <meta property="article:tag" content="AI"/>
+  <meta property="article:tag" content="context-engineering"/>
+  <meta property="article:tag" content="token"/>
+  <meta property="article:tag" content="agent"/>
+  <meta property="article:tag" content="skill"/>
+  <meta property="article:tag" content="progressive-disclosure"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 上下文管理之渐进式披露：别把整座图书馆搬进模型的脑子</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="progressive-disclosure-context-management">上下文管理之渐进式披露：别把整座图书馆搬进模型的脑子</h1>
+    <p>
+      Posted on 二 25 8月 2026 in <a href="https://www.fanyamin.com/blog/category/ai.html">AI</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>上下文管理之渐进式披露</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>AI</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-08-25</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">短大纲</h2>
+<details>
+<summary>展开看看</summary>
+
+- **核心观点**：渐进式披露是省 token 的关键手段——先给模型一张目录，让它按需取详情，而不是开局就把所有资料倒进去。
+- **一句话定义**：把上下文分层，默认只加载"够用的最少信息"，需要时再逐层展开。
+- **为什么有效**：省钱、少分心、可维护，三样一起来。
+- **两个真实例子**：我写的 `agents-md-generate` 和 `project-knowledge-base` 两个 skill，都是靠分层活下来的。
+- **落地做法**：目录层 → 索引层 → 详情层，配一个"先规则、后 LLM"的取材顺序。
+- **落到 AI Agent**：工具目录按需展开、skill 按 description 加载、长循环做 compaction、子 Agent 只回传结论。
+- **常见陷阱**：一次性倾倒、假分层、目录写太厚、层与层重复、该展开时不展开、把分层当纪律而不是运行时机制；Agent 侧还有每轮重喂历史、schema 全量注入、原始输出灌回。
+- **改进落地**：我给 PKB skill 加了 `pkb_query.py` 检索接口（目录→排名→按节取，`--budget` 挡全量倾倒），把"按需检索"从提醒变成机制。
+- **自查清单**：一张能直接抄走的上下文分层检查表。
+
+</details>
+
+<hr>
+<h2 id="_2">正文</h2>
+<p>先说一个我踩过的坑。</p>
+<p>有段时间我特别迷信"大上下文窗口"。模型能吃 20 万 token 了，那我就把整个项目的 README、架构文档、所有相关代码、还有上次对话的全部历史，一股脑喂进去——反正装得下，多给点总没错吧？</p>
+<p>结果是：账单肉眼可见地涨，而且模型还越来越"糊涂"。让它改一个函数,它能扯到三个无关模块;让它遵守某条规则,它偏偏漏掉埋在第 8000 行的那一句。我盯着那堆上下文,忽然想明白一件事——<strong>塞得多,不等于用得好。</strong></p>
+<p>这就是渐进式披露(Progressive Disclosure)要解决的问题。它不是什么新概念,交互设计里用了几十年:一个界面别把所有按钮一次性拍在用户脸上,先给最常用的,高级选项藏在"更多"后面。放到 LLM 的上下文管理上,道理一模一样——</p>
+<p><strong>不要开局就把所有资料倒进模型的脑子,先给它一张薄薄的目录,让它按需去取详情。</strong></p>
+<p>而在 token 就是钱、上下文就是注意力的今天,这不再只是"体验好一点"的锦上添花,它是省 token 的关键手段。这一点,是我想让你带走的核心结论。</p>
+<blockquote>
+<p>关于"token 是一种工程资源,要度量、预算、治理",我在另一篇 <a href="https://www.fanyamin.com/blog/llm-api-token-cost-control.html">《LLM API 越来越贵,别让 token 像自来水一样哗哗流》</a> 里讲过。这篇是那套思路在"上下文结构"上的落地。</p>
+</blockquote>
+<hr>
+<h2 id="_3">什么是渐进式披露:一张目录,而不是一整座图书馆</h2>
+<p>打个比方。你请了个很贵的专家来解决问题,他按小时收费,而且脑容量有限——看得越多越容易走神。</p>
+<p>笨办法是:把公司所有资料复印一份,堆他桌上,说"你自己找"。他得翻半天(费时费钱),还容易被无关材料带偏(分心出错)。</p>
+<p>聪明办法是:先给他一页目录——"这是我们的问题概要,详细的设计文档在 A 柜,历史事故记录在 B 柜,需要哪份跟我说"。他扫一眼目录,精准点名要 A 柜第 3 份,你再抽出来给他。</p>
+<p>渐进式披露就是后者。落到上下文管理,它把信息分成几层:</p>
+<table>
+<thead>
+<tr>
+<th>层级</th>
+<th>装什么</th>
+<th>什么时候加载</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>目录层</strong></td>
+<td>有哪些能力/文档/工具,一句话说清各自管什么</td>
+<td>永远加载,但要极薄</td>
+</tr>
+<tr>
+<td><strong>索引层</strong></td>
+<td>某个主题下有哪些具体条目、文件路径、字段说明</td>
+<td>模型判断相关时才展开</td>
+</tr>
+<tr>
+<td><strong>详情层</strong></td>
+<td>完整的代码、设计文档、runbook、长规则</td>
+<td>模型明确要用某一条时才取</td>
+</tr>
+</tbody>
+</table>
+<p>关键在"默认最少,按需展开"这八个字。目录层像餐馆菜单,索引层像某道菜的详细配料,详情层才是后厨的完整菜谱。没人点菜之前,你不会把所有菜谱都念一遍。</p>
+<hr>
+<h2 id="_4">为什么这招值得认真对待</h2>
+<p>省 token 是最直接的收益,但不止于此。我把它拆成三条,因为工程上它们经常一起兑现:</p>
+<ul>
+<li><strong>省钱</strong>:input token 是按量计费的。你不加载的那部分详情,就是不花的那部分钱。一个典型 Agent 的 system prompt 如果从 8000 token 瘦到 800 token,每一次调用都在省,累积起来相当可观。</li>
+<li><strong>少分心</strong>:这条常被忽略,但同样重要。上下文里无关的东西越多,模型越容易被带偏——这就是业界说的 "context rot"(上下文腐烂)。给它一张干净的目录,比给它一堆杂乱的全文,判断反而更准。</li>
+<li><strong>可维护</strong>:分层之后,每一层都短到"一眼能读完"。文档能被人和 AI 同时读懂,改起来也不怕牵一发动全身。臃肿的上下文,最后连写它的人自己都不敢动。</li>
+</ul>
+<p>一句话:<strong>渐进式披露不是为了少喂信息,而是为了让每一个 token 都花在刀刃上。</strong></p>
+<hr>
+<h2 id="skill">两个真实例子:我的 skill 是怎么靠分层活下来的</h2>
+<p>空讲原理没意思,讲两个我自己写的 skill。</p>
+<h3 id="agents-md-generate">例子一:<code>agents-md-generate</code>——目录、概览、深水区,各就各位</h3>
+<p>这个 skill 帮各种代码仓库生成 <code>AGENTS.md</code>(给 Codex、Claude Code、Cursor 这类 coding agent 读的"入职说明书")。它开宗明义就写了一句:"Use progressive disclosure"。具体分工是:</p>
+<ul>
+<li><code>AGENTS.md</code> 是<strong>操作地图</strong>:命令、边界、几条硬规则、还有指向别处的链接。目标压在 90 行以内,硬上限 100 行。</li>
+<li><code>README.md</code> 留给<strong>人看的总览</strong>。</li>
+<li><code>man/</code>、<code>docs/</code>、ADR、设计文档,才是架构、领域知识、runbook 的<strong>深水区</strong>。</li>
+</ul>
+<p>为什么要卡行数?因为 <code>AGENTS.md</code> 是每次 agent 干活都会读进上下文的。它要是膨胀成 500 行的百科全书,每次调用都在为那 400 行不相关的内容付费,真正重要的规则也会被淹没。所以这个 skill 的验收标准里写着:超过 100 行不给过,重复了 README/PKB 内容的段落必须换成链接。</p>
+<p>这就是渐进式披露最朴素的形态:<strong>常驻上下文的东西必须薄,深的东西链接出去,用到再读。</strong></p>
+<p>不过这条"100 行硬线"我自己回头看,是把双刃剑,值得批判一下:<strong>行数不是信息密度的好指标。</strong> 100 行全是废话,和 130 行全是关键规则,后者显然更该留下,可硬行数会把后者卡掉。用行数当闸门,好处是简单、逼人做减法;代价是可能逼人把该说清的规则删掉或挪走,反而伤了"该展开时要展开"。更靠谱的判据其实是那句朴素的话——<strong>每一行是否真的帮 agent 做出了正确决策</strong>,而不是数够不够 100 行。行数上限当"提醒"用挺好,当"铁律"就容易走偏。</p>
+<h3 id="project-knowledge-base">例子二:<code>project-knowledge-base</code>——写和读,两头都要分层</h3>
+<p>另一个 skill 帮项目建维护知识库(PKB)。它有意思的地方在于:<strong>PKB 的"写"(更新文档)和"读"(把文档喂给 LLM),两头都要渐进式披露,而后一头更容易被忽略。</strong></p>
+<p><strong>写这头:三级取材,先规则后 LLM。</strong></p>
+<p>文档会过时,而重新生成文档要烧 LLM 的 token。如果每次都把整个知识库喂给模型判断"哪里该更新",成本会失控。它的解法是把更新任务分成三级:</p>
+<ul>
+<li><strong>Level 1 — 零 token</strong>:文件路径变了、命令改名了、依赖版本升级了这类机械替换,先用一个确定性的脚本(<code>check_pkb_staleness.py</code> 之类)跑一遍。<strong>在规则能解决的地方,一个 token 都不花。</strong></li>
+<li><strong>Level 2 — 低 token</strong>:模块增删、API 契约变化这种需要"综合判断"的,才动用 LLM——但只喂给它 diff、受影响的那几页 PKB、以及相关的代码片段。不是整个仓库。</li>
+<li><strong>Level 3 — 高 token</strong>:真正需要大范围重写时才展开完整上下文。</li>
+</ul>
+<p>先跑零 token 的规则检查,只有规则搞不定才升级到 LLM,而且喂的还是精挑细选的最小集合——不该花 LLM 的钱,先用规则挡回去。</p>
+<p><strong>读这头:喂 PKB 给 LLM,同样不能一次倒完。</strong></p>
+<p>这是很多人会栽的地方。好不容易建了一套齐全的 PKB——overview、repo-map、架构、workflow、ADR、runbook……然后让 AI 上手项目时,顺手就是一句"把 <code>man/</code> 底下所有文档都读了"。这一下就把渐进式披露给废了:一个中等项目的 PKB 轻松上万 token,全塞进去,该省的没省,模型还被一堆当前任务用不上的细节带偏。</p>
+<p>我在写这个 skill 时试着把"喂给 AI"也做成分层——<code>/PKB-feed-ai</code> 命令按轮次(round)递进披露:</p>
+<ul>
+<li><strong>第一轮 — 建立全局</strong>:只喂 overview + repo-map(+ 架构),让 AI 先把项目轮廓、目录结构、入口点搞清楚,然后<strong>总结、列出它还缺哪些信息、提一个上手任务</strong>。这一轮只加载"目录级"的薄材料。</li>
+<li><strong>第二轮 — 深入链路</strong>:AI 点名说"我要看清楚下单流程",这时才把那 2-3 条关键 workflow 的文档展开给它。用到哪条给哪条。</li>
+<li><strong>第三轮 — 模块验收</strong>:逐个模块深入时,才把对应模块的详情、ADR、runbook 取进来。</li>
+</ul>
+<p>原则是同一条:<strong>给目录,给入口,让模型点名要,而不是一股脑倒。</strong> 无论是喂文档还是喂代码——skill 里另有一条规则,生成文档时每页最多读 5-10 个关键源文件,明确禁止"把整个仓库倒进上下文"。</p>
+<p><strong>但我得诚实说一句:这个例子方向对,做法却有明显的脆弱点,而且这些脆弱点本身就很有教育意义。</strong></p>
+<ul>
+<li><strong>它是"纪律",不是"机制"。</strong> <code>/PKB-feed-ai</code> 分轮、"别倒整个仓库"这些,说到底是写在文档里的<strong>规范</strong>,靠人和 agent 自觉遵守。真到了 agent 手里,它完全可以无视分轮,直接 <code>read man/**</code> 把所有文档一次读光——没有任何东西在运行时<strong>拦</strong>着它。<strong>这才是关键:靠文档里写一句"请按需读"来实现渐进式披露,是脆的;真正硬的分层,得靠工具层面只提供"按需检索"的接口,让模型想全量倒都倒不了。</strong></li>
+<li><strong>知识库自己可能变成那桶要倒的水。</strong> 一个为省上下文而建的 PKB,如果没人走 <code>/PKB-feed-ai</code>、习惯性地全量 <code>@man/</code>,它反而成了更大的一次性倾倒源。<strong>工具给了分层的能力,挡不住人用反模式。</strong></li>
+<li><strong>分层的成败,押在目录层的质量上。</strong> 模型按 repo-map 导航去取详情,可 repo-map 在这个 skill 里是脚本零 token 自动生成的。效率是高,但目录层恰恰是最该有人把关的一层——目录做水了,模型顺着它取,只会取到空气。</li>
+</ul>
+<p>所以这个例子最值得记的,不只是"要分层",还有它的反面:<strong>你把知识库建得再全、把分层规则写得再漂亮,只要运行时没有强制,渐进式披露随时会退化成一次性倾倒。</strong> 建库是为了让 AI 能"按需检索",不是为了"一次读完"——但光靠自觉,做不到这一点。</p>
+<p><strong>写完这篇之后,我照着这个教训把 skill 改掉了。</strong> 核心是给 PKB 加了一个按需检索脚本 <code>pkb_query.py</code>,把渐进式披露从"文档里的纪律"变成"运行时只提供检索接口"的机制:</p>
+<ul>
+<li><code>--list</code>:只回目录层——页面 id、标题、一句话摘要、token 估算。便宜,永远先加载这个。</li>
+<li><code>"&lt;topic&gt;"</code>:按主题给页面排名,只回命中的前几页标题和入口,让模型挑。</li>
+<li><code>--page &lt;id&gt; --section &lt;heading&gt;</code>:按需取某一页、甚至某一节。</li>
+<li><code>--budget N</code>(默认 6000):单次 <code>--page</code> 超过估算 token 就<strong>拒绝返回</strong>,逼模型用 <code>--section</code> 收窄。想"一次读光"这条路,在这个工具里直接走不通。</li>
+</ul>
+<p>配合 <code>make pkb-query</code> 和 <code>/PKB-query</code> 命令,agent 有了一个"想全量倒都倒不了"的入口。诚实地讲,这不算完美——一个够倔的 agent 还是可以绕开工具直接 <code>read</code>——但它把"按需检索"从一句提醒变成了默认路径,<strong>把省 token 从自律变成了结构。</strong> 这也正是这篇文章想说的:渐进式披露真正落地,靠的是机制,不是口号。</p>
+<hr>
+<h2 id="_5">怎么落地:三层加一个取材顺序</h2>
+<p>把上面的经验收拢成一套可抄的做法:</p>
+<ol>
+<li>
+<p><strong>搭目录层,并且逼自己压薄</strong>
+   列出"有哪些能力/文档/工具",每项一句话说清它管什么、什么时候用。这层永远加载,所以每多一行都要问:"这句话能帮模型做出正确的取用决策吗?不能就删。"</p>
+</li>
+<li>
+<p><strong>建索引层,给出可寻址的入口</strong>
+   目录层指向的每个主题,要有明确的入口——文件路径、章节标题、工具名。模型看完目录,得知道"下一步该去哪儿取",而不是干瞪眼。索引要能寻址,像图书馆的书架编号。</p>
+</li>
+<li>
+<p><strong>详情层按需加载,单独存放</strong>
+   完整代码、长文档、runbook、大段规则,放在详情层,平时不进上下文。只有模型明确要用某一条时才取那一条,而不是取整个分类。</p>
+</li>
+<li>
+<p><strong>取材顺序:先规则,后 LLM,再全量</strong>
+   这是最容易被跳过、但收益最大的一步。能用确定性规则(脚本、检索、路径匹配)解决的,别动 LLM;必须动 LLM 的,只喂最小必要集合;实在需要全量上下文的,才展开——而且要清楚自己在为什么买单。</p>
+</li>
+</ol>
+<p>一句话:</p>
+<blockquote>
+<p><strong>默认最少,按需展开;先规则,后模型。</strong>
+反过来——开局全量、事事问模型——就是在给账单和错误率同时充值。</p>
+</blockquote>
+<hr>
+<h2 id="ai-agent-agent">落到 AI Agent:一个多轮 Agent 的上下文,天生就在膨胀</h2>
+<p>前面讲的是"一次调用"里怎么分层。但真正把人逼疯的,是 <strong>Agent 的多轮循环</strong>——它会自己调工具、读结果、再调、再读,上下文像滚雪球一样,一轮比一轮胖。单次不做分层顶多贵一点;Agent 不做分层,是每一轮都在为前面所有轮的垃圾复利付费。</p>
+<p>所以在 Agent 的设计和实现上,渐进式披露不是可选项,是活下去的前提。下面几条是我自己写 skill、也是行业里逐渐成型的做法。</p>
+<h3 id="_6">最佳实践</h3>
+<ul>
+<li>
+<p><strong>工具用渐进式披露,别把 schema 全摊开</strong>
+  Agent 能调的工具一多(十几个几十个很常见),如果开局就把每个工具的完整参数 schema 全塞进 system prompt,光这一块就能吃掉几千 token,而且模型在一堆工具里更容易选错。更好的做法是分层:先给模型一张<strong>工具目录</strong>(工具名 + 一句话职责),它决定要用哪个,再按需展开那一个的详细 schema。这正是"目录层 → 详情层"在工具上的映射。</p>
+</li>
+<li>
+<p><strong>skill / 子能力按需加载,而不是全量注入</strong>
+  这就是我写 skill 的日常。每个 skill 的 <code>description</code> 是它的"目录条目"——一句话说清"什么时候该用我";只有当任务真的匹配上,完整的 SKILL.md(可能几百行)才被读进上下文。<code>agents-md-generate</code> 也好,<code>project-knowledge-base</code> 也好,平时都只以一行 description 存在于 Agent 眼前,用到才展开。几十个 skill 常驻是灾难,几十个 description 常驻才可控。</p>
+</li>
+<li>
+<p><strong>给长循环做上下文压缩(compaction)</strong>
+  Agent 跑了二三十轮之后,早期那些工具调用的原始输出,大多已经没用了。成熟的 Agent(比如 Claude Code 那类)会在上下文快满时做一次"压缩":把前面几十轮总结成一段结论,腾出空间继续跑。本质还是渐进式披露——<strong>旧详情降级成摘要,需要时再回头取原文。</strong></p>
+</li>
+<li>
+<p><strong>工具返回值也要分层</strong>
+  别让一个工具一次吐回 5000 行日志或整个文件。让它默认返回摘要 + 命中位置,模型想看细节时,再用带 offset/limit 的方式取那一段。<strong>工具的输出,同样遵守"默认最少,按需展开"。</strong></p>
+</li>
+<li>
+<p><strong>子 Agent 隔离上下文,只回传结论</strong>
+  复杂任务拆给子 Agent(sub-agent)去做,子 Agent 在自己的上下文里翻江倒海地探索,最后只把<strong>结论</strong>回传给主 Agent。主 Agent 的上下文因此始终干净——它拿到的是"答案",不是子 Agent 的全部草稿。这是分层思想在 Agent 编排层面的体现。</p>
+</li>
+</ul>
+<h3 id="_7">常见陷阱</h3>
+<ul>
+<li>
+<p><strong>每轮把完整历史重新喂一遍</strong>
+  最典型的 Agent 反模式。不做任何裁剪,把 N 轮的全部对话原样带进第 N+1 轮。token 成本是轮数的平方级增长,而且越往后模型越被早期的无关内容拖住。</p>
+</li>
+<li>
+<p><strong>工具 schema 一次性全量注入</strong>
+  几十个工具的完整定义常驻 system prompt。省了一点"按需加载"的工程,换来的是每轮都为用不上的工具付费,外加更高的选错工具概率。</p>
+</li>
+<li>
+<p><strong>把工具原始输出直接灌回上下文</strong>
+  <code>cat</code> 一个大文件、<code>grep</code> 出几百行、拉一整页 API 响应,原封不动塞回去。一次工具调用就能把上下文撑爆,后面几轮全在为这堆原始数据陪绑。</p>
+</li>
+<li>
+<p><strong>无限循环不设上下文预算</strong>
+  Agent 没有"上下文水位线"意识,不压缩、不截断,一路跑到撞窗口上限直接崩掉,或者越跑越贵还没人管。<strong>多轮 Agent 一定要有 compaction 触发点和轮数/预算上限。</strong></p>
+</li>
+<li>
+<p><strong>子 Agent 把草稿也回传</strong>
+  拆了子 Agent,却让它把探索过程的全部中间产物一股脑倒回主 Agent。分是分了,污染照旧——子 Agent 的价值恰恰在于"只回传结论,把过程留在自己那层"。</p>
+</li>
+</ul>
+<p>一句话:<strong>单次调用做分层是省钱,多轮 Agent 做分层是保命。</strong></p>
+<hr>
+<h2 id="_8">常见陷阱:我和身边人都栽过的几个坑</h2>
+<p>方法讲完了,更值钱的是那些"看起来做了分层,其实没做"的坑。</p>
+<ul>
+<li><strong>一次性倾倒(Context Dump)</strong>:最原始的反模式。仗着窗口大,把能塞的全塞进去。省事一时,分心一世,账单一月。</li>
+<li><strong>假分层</strong>:文档是分了几个文件,但每次还是全部 <code>@</code> 进上下文。分层的意义在"按需加载",不在"物理上放在几个文件里"。分了不用,等于没分。</li>
+<li><strong>目录层写太厚</strong>:目录本该是薄薄一页,结果为了"写全"把详情也塞了进去,目录本身变成了第二本百科。记住 <code>AGENTS.md</code> 那条 100 行的硬线——目录厚了,渐进式披露就名存实亡。</li>
+<li><strong>层与层重复</strong>:目录里写一遍、索引里又抄一遍、详情里再复述一遍。同一句话付三遍钱,还制造了三处需要同步维护的地方。每条信息只在它最该在的那一层出现一次。</li>
+<li><strong>该展开时死不展开</strong>:走到另一个极端——为了省 token,连关键详情都不给,让模型硬猜。渐进式披露不是"少给",是"按需给"。该给的详情扣着不给,模型只能编,那省下的 token 会以返工的形式加倍还回来。</li>
+<li><strong>没有取材顺序</strong>:所有判断都直接甩给 LLM,从不先问"这事儿规则能不能搞定"。能用一行脚本判断的过时检测,非要花一次模型调用,这是最隐蔽的浪费。</li>
+<li><strong>把分层当纪律,而不是运行时机制</strong>:这是最容易被忽略、也最致命的一个。你在文档里写了"请按需读""别倒整个仓库",然后指望人和 agent 自觉遵守——可运行时没有任何东西<strong>拦</strong>着谁全量倒。前面 PKB 的例子就栽在这:分轮喂料的规则写得再漂亮,agent 一句 <code>read man/**</code> 就绕过去了。<strong>真正硬的渐进式披露,得靠工具只提供"按需检索"的接口,让模型想全量倒都倒不了;写在文档里的自觉,顶多算个提醒。</strong></li>
+</ul>
+<p>前四个是"塞太多",第五个是"给太少",第六个是"用错工具",最后一个是"只立规矩、不设机制"。渐进式披露要同时躲开这几头。</p>
+<hr>
+<h2 id="token">总结:省 token 的本质,是把上下文当结构来管</h2>
+<p>绕了一圈,回到开头那个坑。我当初的错误不在于"用了大窗口",而在于把大窗口当成了"可以偷懒不做结构"的借口。</p>
+<p>渐进式披露给的答案很朴素:<strong>给模型一张目录,而不是一整座图书馆;先规则,后模型;默认最少,按需展开。</strong> 它省的不只是钱,还有模型的注意力和你自己的维护精力——这三样,恰恰是用 AI 干活时最稀缺的资源。</p>
+<p>下次你准备把一大坨上下文喂给模型之前,先停一秒,问自己一句:</p>
+<blockquote>
+<p>这里面,模型这一步真正用得上的,到底是哪几行?</p>
+</blockquote>
+<h3 id="_9">上下文分层自查清单</h3>
+<ul>
+<li>[ ] 常驻上下文(system prompt / AGENTS.md 之类)是否压到了"一眼能读完"?判断标准是每行是否帮 agent 做对决策,行数只是提醒、不是铁律?</li>
+<li>[ ] 深层内容(完整代码、长文档、runbook)是否链接/索引出去,而不是全文常驻?</li>
+<li>[ ] 每条信息是否只在它最该在的那一层出现一次,没有跨层重复?</li>
+<li>[ ] 是否有明确的取材顺序:先规则、后 LLM、再全量?</li>
+<li>[ ] 能用确定性脚本解决的判断,有没有先用脚本挡回去?</li>
+<li>[ ] 需要详情时,取的是"那一条",还是"那一整类"?</li>
+<li>[ ] 有没有在为了省 token 而扣着关键详情不给、逼模型硬猜?</li>
+<li>[ ] "按需检索"是工具层面的机制(有检索接口、有预算守卫),还是只写在文档里的一句提醒?</li>
+</ul>
+<h2 id="_10">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* 渐进式披露
+** 是什么
+*** 目录层(极薄,常驻)
+*** 索引层(可寻址入口)
+*** 详情层(按需加载)
+** 为什么
+*** 省钱(不加载=不花钱)
+*** 少分心(避免 context rot)
+*** 可维护(每层一眼读完)
+** 两个例子
+*** agents-md-generate(信息密度,行数只当提醒)
+*** project-knowledge-base(Level 1/2/3 取材)
+*** 加 pkb_query 检索接口(机制而非纪律)
+** 落地做法
+*** 目录压薄
+*** 索引可寻址
+*** 详情单独存放
+*** 先规则→后 LLM→再全量
+** AI Agent 落地
+*** 工具目录→按需展开 schema
+*** skill 按 description 加载
+*** 长循环 compaction
+*** 工具输出也分层
+*** 子 Agent 只回传结论
+** 常见陷阱
+*** 一次性倾倒
+*** 假分层
+*** 目录写太厚
+*** 层与层重复
+*** 该展开不展开
+*** 没有取材顺序
+*** 只立纪律不设机制
+@endmindmap
+</code></pre></div>
+
+<p><img alt="上下文管理之渐进式披露 - 思维导图" src="./images/journal_20260825_progressive_disclosure_context_mindmap.png"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/progressive-disclosure-context-management.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/journal.html">journal</a>
+      <a href="https://www.fanyamin.com/blog/tag/ai.html">AI</a>
+      <a href="https://www.fanyamin.com/blog/tag/context-engineering.html">context-engineering</a>
+      <a href="https://www.fanyamin.com/blog/tag/token.html">token</a>
+      <a href="https://www.fanyamin.com/blog/tag/agent.html">agent</a>
+      <a href="https://www.fanyamin.com/blog/tag/skill.html">skill</a>
+      <a href="https://www.fanyamin.com/blog/tag/progressive-disclosure.html">progressive-disclosure</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-08-24-step-out-comfort-zone.html" title="为什么要走出舒适区：换的是术，守的是道">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/2026-08-17-typescript-in-ai-era.html">TypeScript 凭什么成了 AI 时代的新宠：一个不写 TS 的老程序员的读码笔记</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-08-mem0-memory-layer.html">如何管理 AI Agent 的记忆之三：让 mem0 给 AI Agent 装一层"通用记忆"</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-07-ai-coding-shared-memory.html">如何管理 AI Agent 的记忆之二：让 Claude Code、Codex、OpenCode 共享同一份记忆</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-07-ai-agent-memory.html">如何管理 AI Agent 的记忆之一：既记得牢、想得起，又不烧钱</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-06-ai-planning-agent.html">用 AI 做好计划之三：配个不睡觉的监工</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

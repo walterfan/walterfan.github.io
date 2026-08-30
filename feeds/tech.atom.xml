@@ -1,5 +1,1067 @@
 <?xml version="1.0" encoding="utf-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom"><title>Walter Fan's Blog - Tech</title><link href="https://www.fanyamin.com/blog/" rel="alternate"/><link href="https://www.fanyamin.com/blog/feeds/tech.atom.xml" rel="self"/><id>https://www.fanyamin.com/blog/</id><updated>2026-08-21T21:30:00+08:00</updated><subtitle>手握灵珠常奋笔, 心开天籁不吹箫</subtitle><entry><title>AI Agent 需要一个 box</title><link href="https://www.fanyamin.com/blog/2026-08-21-agent-sandbox.html" rel="alternate"/><published>2026-08-21T21:30:00+08:00</published><updated>2026-08-21T21:30:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-08-21:/blog/2026-08-21-agent-sandbox.html</id><summary type="html">&lt;p&gt;LLM 会写代码，但你敢直接在生产机器上跑它写的 &lt;code&gt;rm -rf&lt;/code&gt; 吗？AI Agent 真正缺的不是更聪明的脑子，而是一个能随时开、随时扔、跑坏了也不伤及无辜的“盒子”。本文以 Kubernetes SIG 的 agent-sandbox 项目为例，讲清楚 Agent 运行环境的技术栈、原理、用法、实例、横向比较与未来走向。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Walter Fan's Blog - Tech</title><link href="https://www.fanyamin.com/blog/" rel="alternate"/><link href="https://www.fanyamin.com/blog/feeds/tech.atom.xml" rel="self"/><id>https://www.fanyamin.com/blog/</id><updated>2026-08-30T10:03:00+08:00</updated><subtitle>手握灵珠常奋笔, 心开天籁不吹箫</subtitle><entry><title>SIP 协议回顾：从一通电话到呼叫中心</title><link href="https://www.fanyamin.com/blog/2026-08-29-sip-protocol-contact-center.html" rel="alternate"/><published>2026-08-29T20:20:00+08:00</published><updated>2026-08-30T10:03:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-08-29:/blog/2026-08-29-sip-protocol-contact-center.html</id><summary type="html">&lt;p&gt;SIP 看起来像 HTTP，真正用起来却更像一套分布式状态机。本文系统回顾寻址注册、消息、事务、Dialog、SDP Offer/Answer 和重要扩展，再把它放进呼叫中心，拆解 SIP Trunk、SBC、IVR、ACD、转接、录音与典型排障案例。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;SIP 协议回顾：从一通电话到呼叫中心&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;Tech / learning note&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Version&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;v1.0&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;2026-08-30&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;客户拨通银行客服电话，先听到欢迎词，按键验证身份，排队两分钟，接通座席，又被转给信用卡专员。屏幕上自动弹出客户资料，通话全程录音，挂断后还有质检和报表。&lt;/p&gt;
+&lt;p&gt;对客户来说，这是一通电话。对系统来说，它可能经过运营商、SIP Trunk、SBC、IVR、媒体服务器、ACD、座席终端、录音平台和 CRM，中间还建立了不止一条 SIP Dialog。哪怕声音听起来一路没断，后台的 Call-ID 也可能早已换了几次。&lt;/p&gt;
+&lt;p&gt;这正是 SIP 容易被误解的地方：它负责建立、修改和结束会话，却不负责排队策略、客户身份、工单流转，也不直接搬运声音。&lt;strong&gt;SIP 是呼叫中心的通信骨架，不是呼叫中心的全部。&lt;/strong&gt;这篇文章先复习骨架，再看业务系统如何把血肉长上去。&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;本文以 VoIPmonitor 的 &lt;a href="https://www.voipmonitor.org/doc/Understanding_the_SIP_Protocol"&gt;Understanding the SIP Protocol&lt;/a&gt; 为复习入口，并用 IETF RFC 核对协议细节。呼叫中心案例是按常见信令问题整理的教学场景，不对应某个真实客户事故。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;我以前啃 SIP 时，还用 FreeMind 分别画过 Overview、Messages、Terminology、Transaction、REFER 和 Event Notification。现在回头看，这种拆开记笔记的方式并没有过时，只是 &lt;code&gt;.mm&lt;/code&gt; 文件不太适合直接放进网页。本文把那些旧节点重新核对、合并成三张 PlantUML 思维导图：一张复习 SIP 核心，一张梳理重要扩展，一张展开呼叫中心应用。&lt;/p&gt;
+&lt;p&gt;这篇比较长，可以按需要选路线：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;你想解决什么&lt;/th&gt;
+&lt;th&gt;建议阅读&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;十分钟恢复主干记忆&lt;/td&gt;
+&lt;td&gt;SIP 核心地图、Transaction/Dialog/Session、扩展协议地图&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;重新做 SIP 开发或排障&lt;/td&gt;
+&lt;td&gt;从寻址注册开始，读到 Offer/Answer 与重要扩展&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;做呼叫中心、SIP Trunk 或 SBC 互通&lt;/td&gt;
+&lt;td&gt;先看重要扩展，再看呼叫中心架构、案例和检查清单&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 id="sip"&gt;先把边界划清：SIP 管什么，不管什么&lt;/h2&gt;
+&lt;p&gt;&lt;a href="https://datatracker.ietf.org/doc/html/rfc3261"&gt;RFC 3261&lt;/a&gt; 对 SIP 的定位很克制：它是应用层控制协议，用于创建、修改和终止多媒体会话。一次 VoIP 呼叫通常至少涉及三类协议：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;协议&lt;/th&gt;
+&lt;th&gt;负责什么&lt;/th&gt;
+&lt;th&gt;不负责什么&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;SIP&lt;/td&gt;
+&lt;td&gt;找人、发起呼叫、路由、响铃、接听、修改和挂断&lt;/td&gt;
+&lt;td&gt;不直接传输语音&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;SDP&lt;/td&gt;
+&lt;td&gt;描述媒体地址、端口、Codec、方向等协商条件&lt;/td&gt;
+&lt;td&gt;自己不发送媒体，也不保证双方一定谈得拢&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;RTP / SRTP&lt;/td&gt;
+&lt;td&gt;传输语音或视频；SRTP 增加机密性、完整性和重放保护&lt;/td&gt;
+&lt;td&gt;不决定呼叫该转给谁&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;可以把它们想成约饭：SIP 负责联系、确认和取消，SDP 负责商量地点与接头方式，RTP 才是坐下来真正吃饭。呼叫中心还要多一位大堂经理——ACD 负责判断客人排哪队、由谁接待。这已经是业务逻辑，不是 SIP 本身。&lt;/p&gt;
+&lt;p&gt;SIP 的几个核心角色也值得重新对齐：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;角色&lt;/th&gt;
+&lt;th&gt;职责&lt;/th&gt;
+&lt;th&gt;在呼叫中心里的常见形态&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;User Agent（UA）&lt;/td&gt;
+&lt;td&gt;发送请求时是 UAC，响应请求时是 UAS；角色会随事务变化&lt;/td&gt;
+&lt;td&gt;软电话、IP Phone、浏览器座席、媒体服务器&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Proxy&lt;/td&gt;
+&lt;td&gt;转发和路由请求，可保持事务状态，也可无状态转发&lt;/td&gt;
+&lt;td&gt;SIP 路由层、边缘代理&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Redirect Server&lt;/td&gt;
+&lt;td&gt;不代转请求，而是用 3xx 告诉请求方去联系新的地址&lt;/td&gt;
+&lt;td&gt;号码迁移、服务重定向&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Registrar&lt;/td&gt;
+&lt;td&gt;接收 &lt;code&gt;REGISTER&lt;/code&gt;，把用户地址映射到当前 Contact&lt;/td&gt;
+&lt;td&gt;座席终端注册服务&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;B2BUA&lt;/td&gt;
+&lt;td&gt;面向上游像 UAS，面向下游像 UAC，终止一条 Dialog 再建立另一条&lt;/td&gt;
+&lt;td&gt;IP-PBX、SBC、呼叫控制器、CCaaS 语音平台&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;Proxy 更像转发快递，B2BUA 则像拆包、登记、重新包装再发出去。后者掌握完整呼叫状态，也能改写信令、锚定媒体和隐藏内部拓扑。因此，呼叫中心里的排队、转接、录音和容灾，大多绕不开 B2BUA。&lt;/p&gt;
+&lt;h2 id="sip-uridns-register"&gt;SIP 如何找到一个人：URI、DNS 与 REGISTER&lt;/h2&gt;
+&lt;p&gt;SIP 的寻址模型里，最重要的一组概念是 &lt;strong&gt;AOR 与 Contact&lt;/strong&gt;。&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;AOR（Address-of-Record）是长期公开地址，例如 &lt;code&gt;sip:alice@example.com&lt;/code&gt;，类似一个人的公司邮箱。&lt;/li&gt;
+&lt;li&gt;Contact 是某个 UA 实例此刻可以接收请求的地址，例如 &lt;code&gt;sip:alice@192.0.2.10:5060;transport=tcp&lt;/code&gt;。&lt;/li&gt;
+&lt;li&gt;Registrar 接收 &lt;code&gt;REGISTER&lt;/code&gt;，把 AOR 与一个或多个 Contact 绑定；Location Service 保存这些绑定，Proxy 再用它决定请求发到哪里。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;同一个 AOR 可以注册手机、桌面电话和软终端多个 Contact。来电时 Proxy 可以顺序尝试，也可以 Fork 到多个终端。&lt;strong&gt;注册解决的是“现在去哪找你”，不是“你这条媒体一定可用”。&lt;/strong&gt;&lt;code&gt;REGISTER 200 OK&lt;/code&gt; 不能代替端到端呼叫探测。&lt;/p&gt;
+&lt;h3 id="_1"&gt;一次带鉴权的注册&lt;/h3&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;sequenceDiagram
+    participant U as UA
+    participant R as Registrar
+    participant L as Location Service
+
+    U-&amp;gt;&amp;gt;R: REGISTER Contact + Expires
+    R--&amp;gt;&amp;gt;U: 401 Unauthorized + WWW-Authenticate
+    U-&amp;gt;&amp;gt;R: REGISTER + Authorization
+    R-&amp;gt;&amp;gt;L: 写入 AOR → Contact 绑定
+    R--&amp;gt;&amp;gt;U: 200 OK + 当前绑定
+    Note over U,R: 到期前刷新；Expires=0 删除绑定
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这里的 &lt;code&gt;401&lt;/code&gt; 是挑战，不是登录失败。Proxy 发起挑战时通常使用 &lt;code&gt;407 Proxy Authentication Required&lt;/code&gt; 与 &lt;code&gt;Proxy-Authenticate&lt;/code&gt;。传统 SIP Digest 来自 RFC 3261 引用的旧 HTTP Digest；&lt;a href="https://datatracker.ietf.org/doc/html/rfc8760"&gt;RFC 8760&lt;/a&gt; 后来为 SIP 增加 SHA-256、SHA-512/256 和 &lt;code&gt;qop&lt;/code&gt; 等现代能力，MD5 只为兼容保留，已经不推荐使用。&lt;/p&gt;
+&lt;h3 id="_2"&gt;从域名找到下一跳&lt;/h3&gt;
+&lt;p&gt;&lt;a href="https://datatracker.ietf.org/doc/html/rfc3263"&gt;RFC 3263&lt;/a&gt; 规定 SIP 如何用 DNS 找服务，典型思路是：&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;SIP URI → NAPTR 选择服务与传输 → SRV 选择主机、端口和优先级 → A/AAAA 得到地址&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;如果 URI 已明确传输、端口或主机，解析过程会相应缩短。企业 SIP Trunk 常直接配置运营商 SBC 地址，但 DNS 的优先级、权重、TTL 与失败切换仍值得测试；“主域名能解析”不代表备用目标真的接得住流量。&lt;/p&gt;
+&lt;h3 id="udp-5060"&gt;传输层不是只有 UDP 5060&lt;/h3&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;传输&lt;/th&gt;
+&lt;th&gt;特点&lt;/th&gt;
+&lt;th&gt;常见注意事项&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;UDP&lt;/td&gt;
+&lt;td&gt;无连接、消息边界天然保留，SIP 事务层负责重传&lt;/td&gt;
+&lt;td&gt;大消息分片、NAT 映射和重传风暴&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;TCP&lt;/td&gt;
+&lt;td&gt;可靠、有连接，适合较大消息&lt;/td&gt;
+&lt;td&gt;要正确处理连接复用、断线和消息边界&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;TLS over TCP&lt;/td&gt;
+&lt;td&gt;在相邻 SIP Hop 之间保护信令&lt;/td&gt;
+&lt;td&gt;证书、域名校验和 Trust Domain；不自动等于端到端加密&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;WebSocket / Secure WebSocket&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://datatracker.ietf.org/doc/html/rfc7118"&gt;RFC 7118&lt;/a&gt; 让浏览器等客户端承载 SIP&lt;/td&gt;
+&lt;td&gt;媒体仍不在 WebSocket SIP 规范范围内&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;&lt;code&gt;5060&lt;/code&gt; 和 &lt;code&gt;5061&lt;/code&gt; 是最常见的 SIP 与 SIP/TLS 端口，却不是判断协议的唯一依据。抓包时要看实际传输、Via 和连接方向，不能只按端口过滤。&lt;/p&gt;
+&lt;h2 id="sip_1"&gt;一通最基本的 SIP 电话怎样建立&lt;/h2&gt;
+&lt;p&gt;下面是最常见的 Offer/Answer 呼叫。为了突出主线，先省略鉴权、分叉、PRACK 和重传。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;sequenceDiagram
+    participant C as Caller / UAC
+    participant P as Proxy 或 B2BUA
+    participant A as Callee / UAS
+
+    C-&amp;gt;&amp;gt;P: INVITE + SDP Offer
+    P-&amp;gt;&amp;gt;A: INVITE + SDP Offer
+    P--&amp;gt;&amp;gt;C: 100 Trying
+    A--&amp;gt;&amp;gt;P: 180 Ringing 或 183 Session Progress
+    P--&amp;gt;&amp;gt;C: 180 或 183
+    A--&amp;gt;&amp;gt;P: 200 OK + SDP Answer
+    P--&amp;gt;&amp;gt;C: 200 OK + SDP Answer
+    C-&amp;gt;&amp;gt;P: ACK
+    P-&amp;gt;&amp;gt;A: ACK
+    C-&amp;gt;&amp;gt;A: RTP / SRTP 上行媒体
+    A-&amp;gt;&amp;gt;C: RTP / SRTP 下行媒体
+    C-&amp;gt;&amp;gt;P: BYE
+    P-&amp;gt;&amp;gt;A: BYE
+    A--&amp;gt;&amp;gt;P: 200 OK
+    P--&amp;gt;&amp;gt;C: 200 OK
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这张图看似简单，里面有几个经常混淆的点：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;INVITE&lt;/code&gt; 发起会话，&lt;code&gt;ACK&lt;/code&gt; 确认对 &lt;code&gt;INVITE&lt;/code&gt; 的最终成功响应；&lt;code&gt;200 OK&lt;/code&gt; 到了并不等于媒体一定可达。&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;CANCEL&lt;/code&gt; 取消尚未完成的 &lt;code&gt;INVITE&lt;/code&gt;，只在最终响应之前有效；会话已经建立，就应该用 &lt;code&gt;BYE&lt;/code&gt; 结束。&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;180 Ringing&lt;/code&gt; 通常表示被叫正在振铃，主叫端可以生成本地回铃音；&lt;code&gt;183 Session Progress&lt;/code&gt; 常配合 SDP 和 Early Media，由网络传回彩铃、排队提示或错误公告。&lt;/li&gt;
+&lt;li&gt;SIP 信令走通与 RTP 媒体走通是两回事，所以“能接通但单通”并不矛盾。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;图里把 RTP 画成端到端直达，是为了说明信令与媒体分离。实际部署中，媒体可能直达，也可能经过 SBC、媒体服务器或转码节点。&lt;/p&gt;
+&lt;h3 id="method-response-code"&gt;Method 是动词，Response Code 是结果&lt;/h3&gt;
+&lt;p&gt;SIP 消息分成 Request 和 Response。核心 Method 不多，呼叫中心常见的扩展却不少：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Method&lt;/th&gt;
+&lt;th&gt;用途&lt;/th&gt;
+&lt;th&gt;排障提示&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;INVITE&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;建立 Dialog 和会话，也可在 Dialog 内重新协商媒体&lt;/td&gt;
+&lt;td&gt;re-INVITE 不是第二通电话&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;ACK&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;确认 &lt;code&gt;INVITE&lt;/code&gt; 的最终响应&lt;/td&gt;
+&lt;td&gt;对 2xx 与非 2xx 的事务处理并不完全相同&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;BYE&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;结束已建立的 Dialog&lt;/td&gt;
+&lt;td&gt;谁都可以先挂断，不要默认 BYE 一定来自主叫&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;CANCEL&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;取消尚未完成的 &lt;code&gt;INVITE&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;随后看到 &lt;code&gt;487 Request Terminated&lt;/code&gt; 往往是结果，不是根因&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;REGISTER&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;把用户的 AOR 绑定到当前 Contact&lt;/td&gt;
+&lt;td&gt;过期或刷新失败会让座席“在线但打不进来”&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;OPTIONS&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;查询能力，也常被设备用作健康检查&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;200 OK&lt;/code&gt; 只能证明 SIP 可响应，不能证明业务和媒体都健康&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;PRACK&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;确认可可靠传输的临时响应&lt;/td&gt;
+&lt;td&gt;常与 &lt;code&gt;100rel&lt;/code&gt; 和 Early Media 一起出现&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;UPDATE&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;在 Early Dialog 或已建立 Dialog 中更新会话参数&lt;/td&gt;
+&lt;td&gt;要与 re-INVITE 的使用边界对齐&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;REFER&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;请求接收方联系第三方&lt;/td&gt;
+&lt;td&gt;常用于转接，结果通过 NOTIFY 报告&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;SUBSCRIBE&lt;/code&gt; / &lt;code&gt;NOTIFY&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;订阅并通知事件状态&lt;/td&gt;
+&lt;td&gt;除 Presence 外，REFER 结果通知也会用到这套机制&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;INFO&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;在已建立的 INVITE Dialog 中传递应用层信息&lt;/td&gt;
+&lt;td&gt;不能替代 Offer/Answer；内容语义必须事先约定&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;MESSAGE&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;发送 Pager Mode 即时消息&lt;/td&gt;
+&lt;td&gt;它不是语音呼叫里的通用数据通道&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;响应码沿用了大家熟悉的分组方式，但不能把所有 4xx 都理解成“客户发错了”：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;类别&lt;/th&gt;
+&lt;th&gt;含义&lt;/th&gt;
+&lt;th&gt;常见例子&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;1xx&lt;/td&gt;
+&lt;td&gt;临时响应，事务仍在进行&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;100 Trying&lt;/code&gt;、&lt;code&gt;180 Ringing&lt;/code&gt;、&lt;code&gt;183 Session Progress&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;2xx&lt;/td&gt;
+&lt;td&gt;请求成功&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;200 OK&lt;/code&gt;、&lt;code&gt;202 Accepted&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;3xx&lt;/td&gt;
+&lt;td&gt;重定向&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;301 Moved Permanently&lt;/code&gt;、&lt;code&gt;302 Moved Temporarily&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;4xx&lt;/td&gt;
+&lt;td&gt;本次请求在当前节点无法完成&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;401/407&lt;/code&gt; 鉴权挑战、&lt;code&gt;404&lt;/code&gt; 未找到、&lt;code&gt;486&lt;/code&gt; 忙、&lt;code&gt;488&lt;/code&gt; 媒体不兼容&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;5xx&lt;/td&gt;
+&lt;td&gt;服务器或上游处理失败&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;500 Server Internal Error&lt;/code&gt;、&lt;code&gt;503 Service Unavailable&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;6xx&lt;/td&gt;
+&lt;td&gt;全局失败&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;603 Decline&lt;/code&gt;、&lt;code&gt;604 Does Not Exist Anywhere&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;1xx 只是进度，2xx 到 6xx 才是最终响应。尤其别看到 &lt;code&gt;401 Unauthorized&lt;/code&gt; 就报警：Digest Authentication 的正常流程本来就可能先挑战，再由客户端带凭据重试。真正可疑的是挑战循环、Realm 不一致或重试后仍失败。&lt;/p&gt;
+&lt;p&gt;下面这些响应码在开发和排障中出现得最频繁，值得恢复到“看见就知道下一步查什么”的程度：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;响应码&lt;/th&gt;
+&lt;th&gt;通常表示什么&lt;/th&gt;
+&lt;th&gt;下一步重点&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;100 Trying&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;下一跳已经接手处理&lt;/td&gt;
+&lt;td&gt;它不代表被叫正在振铃，也不需要 PRACK&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;180 Ringing&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;被叫正在振铃&lt;/td&gt;
+&lt;td&gt;通常由主叫侧生成本地回铃音&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;183 Session Progress&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;呼叫仍在推进，常携带 Early Media SDP&lt;/td&gt;
+&lt;td&gt;检查 SDP、PRACK/100rel 与 RTP 首包&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;200 OK&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;当前请求成功&lt;/td&gt;
+&lt;td&gt;对 INVITE 还要确认 ACK 与媒体；对 REGISTER 要检查返回绑定&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;401 / 407&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;UAS 或 Proxy 发出鉴权挑战&lt;/td&gt;
+&lt;td&gt;比较 Realm、Nonce、算法、qop 与重试后的 Authorization&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;420 Bad Extension&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;对端不理解 Require 中的扩展&lt;/td&gt;
+&lt;td&gt;查看 &lt;code&gt;Unsupported&lt;/code&gt;，调整 Option Tag 或互通 Profile&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;422 Session Interval Too Small&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;Session Timer 间隔低于对端下限&lt;/td&gt;
+&lt;td&gt;按 &lt;code&gt;Min-SE&lt;/code&gt; 提高 &lt;code&gt;Session-Expires&lt;/code&gt; 后重试&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;423 Interval Too Brief&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;REGISTER 等请求的过期时间太短&lt;/td&gt;
+&lt;td&gt;按 &lt;code&gt;Min-Expires&lt;/code&gt; 调整注册周期&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;480 Temporarily Unavailable&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;当前暂时无法联系用户&lt;/td&gt;
+&lt;td&gt;查注册、路由、终端状态和失败分支&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;481 Call/Transaction Does Not Exist&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;对端找不到目标 Dialog 或 Transaction&lt;/td&gt;
+&lt;td&gt;查 Call-ID、tag、CSeq、Route Set 以及是否发错了 Call Leg&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;486 Busy Here&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;当前目标忙&lt;/td&gt;
+&lt;td&gt;区分真实终端忙、ACD 容量策略与网关映射&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;487 Request Terminated&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;INVITE 通常被 CANCEL 终止&lt;/td&gt;
+&lt;td&gt;往前找是谁、为什么发送 CANCEL&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;488 Not Acceptable Here&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;当前资源无法接受本次会话描述&lt;/td&gt;
+&lt;td&gt;对比 Codec、SRTP、媒体方向和 SDP 属性&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;491 Request Pending&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;同一 Dialog 上存在尚未完成的 INVITE&lt;/td&gt;
+&lt;td&gt;典型是 Offer Glare，按规范退避后重试&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;500 / 503&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;节点内部失败或暂时不可用&lt;/td&gt;
+&lt;td&gt;查看 &lt;code&gt;Retry-After&lt;/code&gt;、上游状态、容量与故障切换&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;SIP 扩展不是靠版本号一次性升级，而是通过 Method、Header、MIME Body 和 &lt;strong&gt;Option Tag&lt;/strong&gt; 逐项协商：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Header&lt;/th&gt;
+&lt;th&gt;含义&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;Supported: 100rel, timer&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;“我理解这些扩展，你可以用”&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;Require: 100rel&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;“要处理本请求，UAS 必须支持它”&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;Proxy-Require&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;要求路径中的 Proxy 支持某项扩展，使用要格外谨慎&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;Unsupported&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;在 &lt;code&gt;420 Bad Extension&lt;/code&gt; 中说明不支持哪些 Option Tag&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;这套机制解释了为什么同样是 &lt;code&gt;183&lt;/code&gt;，有的后面必须跟 PRACK，有的不用；也解释了 Session Timer 为什么有时出现、有时完全没有。排障时，别只搜 Method，还要看 &lt;code&gt;Supported&lt;/code&gt;、&lt;code&gt;Require&lt;/code&gt; 和 Option Tag 是否在经过 SBC 后被保留下来。&lt;/p&gt;
+&lt;h3 id="freemind-sip"&gt;从 FreeMind 旧笔记整理出的 SIP 核心地图&lt;/h3&gt;
+&lt;p&gt;这张图保留了旧笔记中“协议定位—实体—消息—术语—状态机”的骨架，同时补上 SDP/RTP 的边界、较新的常用扩展和几个排障时最容易混淆的点。&lt;/p&gt;
+&lt;p&gt;&lt;img alt="SIP 核心知识地图" src="./images/tech_20260829_sip_core_mindmap.svg"&gt;&lt;/p&gt;
+&lt;h3 id="transactiondialog-session"&gt;Transaction、Dialog 和 Session 不是一回事&lt;/h3&gt;
+&lt;p&gt;这三个词是 SIP 排障的地基：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;概念&lt;/th&gt;
+&lt;th&gt;看什么&lt;/th&gt;
+&lt;th&gt;典型标识与生命周期&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;Transaction&lt;/td&gt;
+&lt;td&gt;一次请求及其响应，例如一次 &lt;code&gt;INVITE&lt;/code&gt; 或 &lt;code&gt;BYE&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;主要靠 Via branch、CSeq 和 Method 匹配，通常很短&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Dialog&lt;/td&gt;
+&lt;td&gt;两个 UA 之间持续一段时间的信令关系&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;Call-ID + local tag + remote tag&lt;/code&gt;，从建立到结束&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Session&lt;/td&gt;
+&lt;td&gt;双方协商出来的媒体会话&lt;/td&gt;
+&lt;td&gt;由 SDP Offer/Answer 描述，可在 Dialog 内用 re-INVITE 或 UPDATE 修改&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;一个常见误区是把 Call-ID 当作整个客户旅程的唯一编号。它只在一条 SIP Dialog 的语境里有意义。呼叫经过 B2BUA、排队再接座席时，上下游常常是不同 Dialog，也可能使用不同 Call-ID。只拿一个 Call-ID 去搜全链路，搜不到并不代表呼叫凭空消失了。&lt;/p&gt;
+&lt;h3 id="invite"&gt;INVITE 事务为什么特殊&lt;/h3&gt;
+&lt;p&gt;SIP 为 INVITE 和非 INVITE 定义了不同事务状态机。名称不必死背，至少要记住这些差异：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;场景&lt;/th&gt;
+&lt;th&gt;关键行为&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;UDP 上发送请求&lt;/td&gt;
+&lt;td&gt;事务层按定时器重传；TCP/TLS/WebSocket 不做同样的 SIP 层重传&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;INVITE 收到 3xx–6xx&lt;/td&gt;
+&lt;td&gt;ACK 属于 INVITE 事务处理的一部分，逐跳沿原事务路径返回&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;INVITE 收到 2xx&lt;/td&gt;
+&lt;td&gt;ACK 由 UA Core 端到端生成，不属于原 INVITE 事务；2xx 会重传直到收到 ACK&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Forking 返回多个 2xx&lt;/td&gt;
+&lt;td&gt;每个 2xx 都可能建立一个 Dialog，UAC 必须分别 ACK，再按策略保留或 BYE 多余分支&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;非 INVITE 请求&lt;/td&gt;
+&lt;td&gt;使用 Trying、Proceeding、Completed、Terminated 这一类较简单状态&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;&lt;a href="https://datatracker.ietf.org/doc/html/rfc6026"&gt;RFC 6026&lt;/a&gt; 后来修正了 RFC 3261 对 INVITE 2xx 的事务处理，增加 Accepted 状态以正确吸收重传。实现 SIP Stack 时需要遵循更新后的状态机；做业务排障时，至少要知道“ACK 到底由事务层还是 UA Core 负责”会影响重传、路由和日志位置。&lt;/p&gt;
+&lt;p&gt;定时器也不用背成乘法口诀。记住 T1 是网络 RTT 的估计基准，A/E 控制不可靠传输上的重传，B/F 控制事务超时；看到固定节奏的 INVITE、BYE 或 OPTIONS 重复包，先判断它是协议重传，还是业务层真的发起了第二次请求。&lt;/p&gt;
+&lt;h3 id="dialog"&gt;Dialog 保存了哪些状态&lt;/h3&gt;
+&lt;p&gt;Dialog 由 &lt;code&gt;Call-ID + local tag + remote tag&lt;/code&gt; 标识，还保存两类经常被忽略的数据：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Route Set&lt;/strong&gt; 来自建立 Dialog 时的 &lt;code&gt;Record-Route&lt;/code&gt;，决定后续 BYE、re-INVITE、INFO 等请求经过哪些 Proxy。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Remote Target&lt;/strong&gt; 通常来自对端 Contact，决定下一个 Dialog 内请求最终送往哪个 UA；收到 Target Refresh Request 后可能更新。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Local/Remote CSeq&lt;/strong&gt; 保证各方向请求有序，防止旧请求覆盖新状态。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Secure 标志与本地/远端 URI&lt;/strong&gt; 记录 Dialog 的身份和安全属性。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Dialog 可以是 Early、Confirmed，最后 Terminated。一个 Forked INVITE 可以同时产生多个 Early Dialog；如果多个分支都返回 2xx，还会形成多个 Confirmed Dialog。B2BUA 通常把这种复杂度挡在平台内部，但抓端到端信令时不能假设“一次 INVITE 永远只有一个 To-tag”。&lt;/p&gt;
+&lt;h2 id="invite_1"&gt;读懂一条 INVITE，先抓住这些字段&lt;/h2&gt;
+&lt;p&gt;下面是一条缩减后的示例消息，地址使用文档保留网段：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;INVITE sip:service@example.com SIP/2.0
+Via: SIP/2.0/UDP 192.0.2.10:5060;branch=z9hG4bK-1234
+Max-Forwards: 70
+From: &amp;quot;Alice&amp;quot; &amp;lt;sip:alice@example.net&amp;gt;;tag=from-5678
+To: &amp;lt;sip:service@example.com&amp;gt;
+Call-ID: call-9abc@example.net
+CSeq: 101 INVITE
+Contact: &amp;lt;sip:alice@192.0.2.10:5060&amp;gt;
+Content-Type: application/sdp
+Content-Length: 164
+
+v=0
+o=alice 2890844526 2890844526 IN IP4 192.0.2.10
+s=-
+c=IN IP4 192.0.2.10
+t=0 0
+m=audio 49172 RTP/AVP 0 101
+a=rtpmap:0 PCMU/8000
+a=rtpmap:101 telephone-event/8000
+a=fmtp:101 0-16
+a=sendrecv
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;SIP 消息的结构固定为：Start Line、若干 Header、一个空行、可选 Body。Request Line 是 &lt;code&gt;Method + Request-URI + SIP-Version&lt;/code&gt;；Status Line 是 &lt;code&gt;SIP-Version + Status-Code + Reason-Phrase&lt;/code&gt;。排障时不用从第一行背到最后一行，先抓这些字段：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;字段&lt;/th&gt;
+&lt;th&gt;作用&lt;/th&gt;
+&lt;th&gt;常见误区&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;Request-URI&lt;/td&gt;
+&lt;td&gt;当前请求目标，每经过 Retargeting 都可能改变&lt;/td&gt;
+&lt;td&gt;它不等于最初拨打号码&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Via&lt;/td&gt;
+&lt;td&gt;每一跳添加一层，响应按相反方向返回；branch 用于事务匹配&lt;/td&gt;
+&lt;td&gt;不要把最上层 Via 当作最终被叫地址&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Record-Route / Route&lt;/td&gt;
+&lt;td&gt;Proxy 用 Record-Route 要求留在 Dialog 路径；后续请求按 Route Set 发送&lt;/td&gt;
+&lt;td&gt;与一次事务的 Via 路径不是同一个概念&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Contact&lt;/td&gt;
+&lt;td&gt;UA 可直接到达的地址，也是 Dialog 的 Remote Target 来源&lt;/td&gt;
+&lt;td&gt;不一定等于 From，也可能被 Target Refresh 更新&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;From / To + tag&lt;/td&gt;
+&lt;td&gt;Dialog 两端身份与 tag&lt;/td&gt;
+&lt;td&gt;From 是声明，不自动可信；To-tag 可能因 Forking 出现多个&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Call-ID&lt;/td&gt;
+&lt;td&gt;Dialog 标识的一部分&lt;/td&gt;
+&lt;td&gt;B2BUA 前后可能改变，不能单独代表完整客户旅程&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;CSeq&lt;/td&gt;
+&lt;td&gt;序号与 Method，维护 Dialog 内请求顺序&lt;/td&gt;
+&lt;td&gt;ACK/CANCEL 与 INVITE 的匹配规则需要按规范处理&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Max-Forwards&lt;/td&gt;
+&lt;td&gt;每一跳递减，防止路由环路&lt;/td&gt;
+&lt;td&gt;到 0 通常返回 &lt;code&gt;483 Too Many Hops&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Supported / Require&lt;/td&gt;
+&lt;td&gt;声明支持或强制使用 Option Tag&lt;/td&gt;
+&lt;td&gt;SBC 随意删除可能破坏 PRACK、Timer 等协商&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Content-Type / Length&lt;/td&gt;
+&lt;td&gt;说明 Body 类型与长度&lt;/td&gt;
+&lt;td&gt;TCP 上消息边界判断尤其依赖正确长度&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;SDP &lt;code&gt;c=&lt;/code&gt; / &lt;code&gt;m=&lt;/code&gt; / &lt;code&gt;a=&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;媒体地址端口、Payload 和属性&lt;/td&gt;
+&lt;td&gt;语法正确不代表网络可达&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;&lt;code&gt;m=audio ... 0 101&lt;/code&gt; 表示本次提议支持两个 Payload Type：静态编号 0 对应 PCMU，动态编号 101 在后面的 &lt;code&gt;a=rtpmap&lt;/code&gt; 中被定义为 &lt;code&gt;telephone-event&lt;/code&gt;。后者通常承载 IVR 按键；它遵循 &lt;a href="https://datatracker.ietf.org/doc/html/rfc4733"&gt;RFC 4733&lt;/a&gt;，而 RFC 4733 已取代经常被口头提到的 RFC 2833。&lt;/p&gt;
+&lt;h2 id="sdp-offeranswer"&gt;SDP 与 Offer/Answer：最像配置文件，也最容易谈崩&lt;/h2&gt;
+&lt;p&gt;SDP 的现行基础规范是 &lt;a href="https://datatracker.ietf.org/doc/html/rfc8866"&gt;RFC 8866&lt;/a&gt;，它取代了 RFC 4566。SDP 只是描述格式；真正规定“你先提议、我再回答”的是 &lt;a href="https://datatracker.ietf.org/doc/html/rfc3264"&gt;RFC 3264&lt;/a&gt;。&lt;/p&gt;
+&lt;p&gt;一次 Offer/Answer 至少要守住几条规则：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;同一时刻只能有一个尚未完成的 Offer，不能双方各谈各的。&lt;/li&gt;
+&lt;li&gt;Answer 必须保持与 Offer 相同数量和顺序的 &lt;code&gt;m=&lt;/code&gt; 行；拒绝某一路媒体时把端口设为 &lt;code&gt;0&lt;/code&gt;，不能直接删掉那一行。&lt;/li&gt;
+&lt;li&gt;动态 Payload Type 要通过 &lt;code&gt;a=rtpmap&lt;/code&gt; 对齐；Answer 选择的是 Offer 给出的交集，不是另开一份菜单。&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;a=sendrecv&lt;/code&gt; 是默认双向，&lt;code&gt;sendonly&lt;/code&gt;、&lt;code&gt;recvonly&lt;/code&gt;、&lt;code&gt;inactive&lt;/code&gt; 常用于 Hold、Music on Hold 和媒体暂停。&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;c=&lt;/code&gt; 地址和 &lt;code&gt;m=&lt;/code&gt; 端口描述媒体目的地。它们语法正确但网络不可达时，SIP 仍可能 200 OK，结果就是单通或无声。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;Offer 最常放在 INVITE，Answer 放在 200 OK；也可以 INVITE 不带 Offer，由 200 OK 发 Offer、ACK 回 Answer。可靠临时响应、PRACK 和 UPDATE 又增加了 Early Dialog 中的合法组合。&lt;a href="https://datatracker.ietf.org/doc/html/rfc6337"&gt;RFC 6337&lt;/a&gt; 专门把这些组合收拢成一份实践说明，写 SIP UA 或 B2BUA 时值得放在手边。&lt;/p&gt;
+&lt;h3 id="re-inviteupdate-glare"&gt;re-INVITE、UPDATE 与 Glare&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;re-INVITE 可以在 Confirmed Dialog 中修改媒体，也能让对端先发临时响应、留时间给用户决定；完成它需要 INVITE/响应/ACK。&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://datatracker.ietf.org/doc/html/rfc3311"&gt;RFC 3311&lt;/a&gt; 的 UPDATE 可在 Early 或 Confirmed Dialog 中更新 Session 参数，不改变 Dialog 状态，消息更少，但要求双方支持。&lt;/li&gt;
+&lt;li&gt;双方几乎同时发送新 Offer 称为 &lt;strong&gt;Glare&lt;/strong&gt;。此时 UPDATE 或 re-INVITE 可能收到 &lt;code&gt;491 Request Pending&lt;/code&gt; 或特定条件下的 &lt;code&gt;500&lt;/code&gt;，随后应按规则退避重试，而不是两边立即死循环互撞。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;当 Codec、加密套件、媒体方向或地址谈不拢时，常见结果是 &lt;code&gt;488 Not Acceptable Here&lt;/code&gt;。但 &lt;code&gt;488&lt;/code&gt; 只说“这份 Offer 我不能接受”，根因仍要回到双方 SDP 逐行比较。&lt;/p&gt;
+&lt;h2 id="_3"&gt;重要扩展协议：按问题记，比按编号背省脑子&lt;/h2&gt;
+&lt;p&gt;RFC 3261 是主干，却从来不是整棵树。下面把常见扩展和配套协议按它们解决的问题归类。不是每个系统都要实现全部 RFC，但互通双方必须明确各自支持哪一组、由谁终止或透传。&lt;/p&gt;
+&lt;h3 id="1-rfc-3262"&gt;1. 可靠临时响应：RFC 3262&lt;/h3&gt;
+&lt;p&gt;基础 SIP 不保证 1xx 临时响应可靠送达。&lt;a href="https://datatracker.ietf.org/doc/html/rfc3262"&gt;RFC 3262&lt;/a&gt; 用 &lt;code&gt;100rel&lt;/code&gt; Option Tag、&lt;code&gt;RSeq&lt;/code&gt;、&lt;code&gt;RAck&lt;/code&gt; 和 &lt;code&gt;PRACK&lt;/code&gt; 为非 100 的临时响应增加可靠性：&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;INVITE (Supported/Require: 100rel) → 183 (Require: 100rel, RSeq) → PRACK (RAck) → 200 PRACK&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;100 Trying&lt;/code&gt; 不能使用这套机制。PRACK 是一条正常的 Dialog 内非 INVITE 请求，不是 ACK 的另一种拼法。它在 PSTN 互通、Early Media、计费前置条件和需要可靠 SDP Answer 的场景里很常见。典型故障是 SBC 保留了 183，却删掉 &lt;code&gt;Require: 100rel&lt;/code&gt;、&lt;code&gt;RSeq&lt;/code&gt; 或 &lt;code&gt;RAck&lt;/code&gt;，导致一边等 PRACK，另一边根本不知道要发。&lt;/p&gt;
+&lt;h3 id="2-rfc-3311rfc-4028"&gt;2. 会话更新与保活：RFC 3311、RFC 4028&lt;/h3&gt;
+&lt;p&gt;UPDATE 解决 Early Dialog 中“最终 200 OK 之前就要更新 Session 参数”的需求，也可用于 Confirmed Dialog。Session Timer 则解决有状态设备如何发现“双方进程已经死了，Dialog 却没人收尸”。&lt;/p&gt;
+&lt;p&gt;&lt;a href="https://datatracker.ietf.org/doc/html/rfc4028"&gt;RFC 4028&lt;/a&gt; 定义：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;Session-Expires&lt;/code&gt;：当前 Session Interval，以及 &lt;code&gt;refresher=uac|uas&lt;/code&gt;；&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;Min-SE&lt;/code&gt;：可以接受的最小刷新间隔；&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;422 Session Interval Too Small&lt;/code&gt;：请求的间隔太短，带新的 &lt;code&gt;Min-SE&lt;/code&gt; 让对端重试；&lt;/li&gt;
+&lt;li&gt;re-INVITE 或 UPDATE：实际执行刷新。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Session Timer 不是 RTP Keepalive，也不是 NAT Keepalive。它证明的是 SIP Session 仍在被维护，不证明语音包一定双向可达。&lt;/p&gt;
+&lt;h3 id="3-rfc-6665"&gt;3. 事件订阅：RFC 6665&lt;/h3&gt;
+&lt;p&gt;旧笔记里常见的 RFC 3265 已被 &lt;a href="https://datatracker.ietf.org/doc/html/rfc6665"&gt;RFC 6665&lt;/a&gt; 取代。基本模型是：&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;SUBSCRIBE → 200 → NOTIFY(当前状态) → 200 → ... → NOTIFY(状态变化)&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;Event&lt;/code&gt; 决定订阅哪个 Event Package，&lt;code&gt;Subscription-State&lt;/code&gt; 表示 active、pending 或 terminated，订阅也有 Expires，需要刷新。Presence、Message Waiting、Dialog State、Registration State 都建立在这个框架上。&lt;code&gt;SUBSCRIBE 200 OK&lt;/code&gt; 表示订阅请求被接受，真正的当前状态由随后立即发送的 NOTIFY 给出。&lt;/p&gt;
+&lt;p&gt;REFER 历史上还会隐式创建 &lt;code&gt;refer&lt;/code&gt; Event Subscription，所以转接不是“发完 REFER 就完事”，还要处理 NOTIFY 中的 &lt;code&gt;message/sipfrag&lt;/code&gt; 结果、失败和超时。&lt;/p&gt;
+&lt;h3 id="4-nat-rfc-358156265627"&gt;4. NAT 与具体设备可达：RFC 3581、5626、5627&lt;/h3&gt;
+&lt;p&gt;NAT 问题至少分成信令响应、持续连接和媒体三层，不能只靠一个参数包治百病：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;机制&lt;/th&gt;
+&lt;th&gt;解决什么&lt;/th&gt;
+&lt;th&gt;不解决什么&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;a href="https://datatracker.ietf.org/doc/html/rfc3581"&gt;RFC 3581 rport&lt;/a&gt;&lt;/td&gt;
+&lt;td&gt;让响应发回请求实际来源的 IP 与端口&lt;/td&gt;
+&lt;td&gt;不建立长期可用的回程 Flow，也不解决 RTP&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;a href="https://datatracker.ietf.org/doc/html/rfc5626"&gt;RFC 5626 SIP Outbound&lt;/a&gt;&lt;/td&gt;
+&lt;td&gt;UA 主动建立并注册持久 Flow，支持 Keepalive、故障检测和多 Flow&lt;/td&gt;
+&lt;td&gt;不替代媒体 ICE/STUN/TURN&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;a href="https://datatracker.ietf.org/doc/html/rfc5627"&gt;RFC 5627 GRUU&lt;/a&gt;&lt;/td&gt;
+&lt;td&gt;为某个具体 UA 实例提供全局可路由 URI&lt;/td&gt;
+&lt;td&gt;不等于设备永远在线&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;RFC 7118 WebSocket&lt;/td&gt;
+&lt;td&gt;让浏览器或受限客户端通过持久 WebSocket 传 SIP&lt;/td&gt;
+&lt;td&gt;只定义信令传输，不承载 RTP 媒体&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;呼叫中心远程座席经常同时碰到这三层：WebSocket 或 Outbound 保住信令，SBC 维护边界策略，WebRTC/ICE 或媒体锚定解决 RTP。把单通归咎于 &lt;code&gt;REGISTER&lt;/code&gt;，通常是找错了楼层。&lt;/p&gt;
+&lt;h3 id="5-rfc-35153891"&gt;5. 转接与呼叫替换：RFC 3515、3891&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://datatracker.ietf.org/doc/html/rfc3515"&gt;RFC 3515&lt;/a&gt; 的 &lt;code&gt;REFER&lt;/code&gt; 请求接收方联系 &lt;code&gt;Refer-To&lt;/code&gt; 指定的资源，并用 NOTIFY 报告执行结果。&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://datatracker.ietf.org/doc/html/rfc3891"&gt;RFC 3891&lt;/a&gt; 的 &lt;code&gt;Replaces&lt;/code&gt; 让一个新 INVITE 替换由 Call-ID 和 To/From tag 标识的既有 Dialog，常用于咨询转、Call Park 取回和三方转两方。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;在点对点 SIP 里，这套机制很漂亮；在呼叫中心里，平台往往更愿意由 B2BUA 控制转接，避免把拓扑、权限、录音和失败恢复交给不同终端各自理解。支持 RFC 不等于必须采用同一种产品架构。&lt;/p&gt;
+&lt;h3 id="6-rfc-47336086"&gt;6. 媒体内事件与应用信息：RFC 4733、6086&lt;/h3&gt;
+&lt;p&gt;DTMF 有三种常见传法：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;方式&lt;/th&gt;
+&lt;th&gt;特点&lt;/th&gt;
+&lt;th&gt;建议&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;In-band&lt;/td&gt;
+&lt;td&gt;按键音混在语音 Codec 里&lt;/td&gt;
+&lt;td&gt;经过压缩和转码可能失真，不适合当默认方案&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;RTP Named Telephone Event&lt;/td&gt;
+&lt;td&gt;RFC 4733 的 &lt;code&gt;telephone-event&lt;/code&gt;，在 SDP 中协商动态 Payload Type&lt;/td&gt;
+&lt;td&gt;VoIP/IVR 互通的常见首选&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;SIP INFO&lt;/td&gt;
+&lt;td&gt;在 Dialog 信令路径发应用消息&lt;/td&gt;
+&lt;td&gt;必须确认双方约定的 MIME 与语义，不能看到 INFO 就默认是 DTMF&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;&lt;a href="https://datatracker.ietf.org/doc/html/rfc6086"&gt;RFC 6086&lt;/a&gt; 取代 RFC 2976，定义 INFO Method 和 Info Package Framework。它也明确指出历史上的 INFO DTMF 用法是厂商私有实践，并未因此被标准化。INFO 适合低频、已协商的应用信息；拿它搬大量实时数据，会让信令平面替应用层背流量。&lt;/p&gt;
+&lt;h3 id="7-rfc-33253326704474338224"&gt;7. 身份、原因与路由历史：RFC 3325、3326、7044、7433、8224&lt;/h3&gt;
+&lt;p&gt;这些 Header 都“看起来像上下文”，信任级别却完全不同：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;机制&lt;/th&gt;
+&lt;th&gt;语义&lt;/th&gt;
+&lt;th&gt;信任边界&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;P-Asserted-Identity&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;受信任网络断言并传递已认证身份&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://datatracker.ietf.org/doc/html/rfc3325"&gt;RFC 3325&lt;/a&gt; 的 Trust Domain 内使用&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;Reason&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;携带 SIP Status 或 Q.850 Cause，例如运营商释放原因&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://datatracker.ietf.org/doc/html/rfc3326"&gt;RFC 3326&lt;/a&gt;；可能被中间设备改写，不能单独当安全证据&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;History-Info&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;保存请求 Retargeting 的历史&lt;/td&gt;
+&lt;td&gt;受节点支持、隐私和裁剪影响，可能有缺口&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;User-to-User&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;在约定双方之间携带不透明 UUI 数据&lt;/td&gt;
+&lt;td&gt;需要事先约定编码与用途，不应塞长期敏感数据&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;Identity&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;对发起方身份声明做密码学签名与验证&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://datatracker.ietf.org/doc/html/rfc8224"&gt;RFC 8224&lt;/a&gt; 的 STIR 架构，仍依赖证书和策略&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;PAI 与 STIR Identity 不是同一回事：前者依赖受控网络的传递信任，后者提供可验证的密码学声明。呼叫中心可以用它们辅助显示主叫信息、反欺诈和路由，但都不能替代客户身份验证。&lt;/p&gt;
+&lt;h3 id="8-siprec-rfc-78657866"&gt;8. 录音：SIPREC RFC 7865、7866&lt;/h3&gt;
+&lt;p&gt;SIPREC 把客户通话称为 Communication Session，把送往录音平台的会话称为 Recording Session：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://datatracker.ietf.org/doc/html/rfc7865"&gt;RFC 7865&lt;/a&gt; 描述参与者、媒体流、Session 和关联关系等录音元数据；&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://datatracker.ietf.org/doc/html/rfc7866"&gt;RFC 7866&lt;/a&gt; 定义 SRC 与 SRS 之间怎样建立和维护 Recording Session。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这两个 Session 不是一回事。录音可用性也不能只看 SIPREC INVITE 是否 200：媒体是否完整、双声道是否映射正确、暂停恢复是否按策略执行、录音 ID 能否关联 Contact，才是呼叫中心真正关心的结果。&lt;/p&gt;
+&lt;h3 id="sip_2"&gt;SIP 重要扩展协议地图&lt;/h3&gt;
+&lt;p&gt;&lt;img alt="SIP 重要扩展协议地图" src="./images/tech_20260829_sip_extensions_mindmap.svg"&gt;&lt;/p&gt;
+&lt;p&gt;如果只想保留一张速查表，可以用下面这组优先级：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;使用场景&lt;/th&gt;
+&lt;th&gt;建议重点掌握&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;SIP Core / Stack&lt;/td&gt;
+&lt;td&gt;RFC 3261、3262、3263、3264、3311、4028、6026、6665&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;语音网关与 SIP Trunk&lt;/td&gt;
+&lt;td&gt;再加 RFC 3325、3326、3515、3891、4733、6086&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;移动端、浏览器、NAT&lt;/td&gt;
+&lt;td&gt;再加 RFC 3581、5626、5627、7118&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;呼叫中心&lt;/td&gt;
+&lt;td&gt;再加 RFC 7044、7433、7865、7866，以及身份验证相关 RFC 8224、8760&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;如果你和我一样是翻旧 Mindmap 或老代码回来复习，这几组替代关系最值得先更新：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;旧资料里常见&lt;/th&gt;
+&lt;th&gt;现在应优先看&lt;/th&gt;
+&lt;th&gt;变化&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;RFC 3265 Event Notification&lt;/td&gt;
+&lt;td&gt;RFC 6665&lt;/td&gt;
+&lt;td&gt;RFC 6665 已取代 RFC 3265&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;RFC 2976 SIP INFO&lt;/td&gt;
+&lt;td&gt;RFC 6086&lt;/td&gt;
+&lt;td&gt;增加 Info Package Framework，并保留 Legacy INFO 兼容&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;RFC 2833 DTMF&lt;/td&gt;
+&lt;td&gt;RFC 4733&lt;/td&gt;
+&lt;td&gt;RFC 4733 已取代 RFC 2833&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;RFC 4566 SDP&lt;/td&gt;
+&lt;td&gt;RFC 8866&lt;/td&gt;
+&lt;td&gt;RFC 8866 是现行 SDP 基础规范&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;RFC 2617 / MD5 Digest&lt;/td&gt;
+&lt;td&gt;RFC 8760 + RFC 7616&lt;/td&gt;
+&lt;td&gt;SIP 支持 SHA-256、SHA-512/256；MD5 不推荐&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;RFC 4474 SIP Identity&lt;/td&gt;
+&lt;td&gt;RFC 8224&lt;/td&gt;
+&lt;td&gt;STIR Identity 新规范取代 RFC 4474&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 id="sip_3"&gt;SIP 进入呼叫中心之后，事情复杂在哪里&lt;/h2&gt;
+&lt;p&gt;普通分机呼叫关心“找到对方并接通”。呼叫中心还要回答：客户从哪个号码进来、要办什么、是否验证过、排哪个队、由谁处理、如何录音、转接后上下文是否还在。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;flowchart LR
+    C[客户 / PSTN] --&amp;gt; T[运营商 / SIP Trunk]
+    T --&amp;gt; S[SBC]
+    S --&amp;gt; B[呼叫控制 / B2BUA]
+    B --&amp;gt; I[IVR / 媒体服务器]
+    I --&amp;gt; Q[ACD / Queue / Routing]
+    Q --&amp;gt; B
+    B --&amp;gt; A[座席终端]
+
+    B -. SIPREC .-&amp;gt; R[录音平台]
+    I -. DTMF / ASR .-&amp;gt; F[Contact Flow]
+    F &amp;lt;--&amp;gt; D[CRM / 身份 / 订单]
+    Q &amp;lt;--&amp;gt; D
+    A &amp;lt;--&amp;gt; D
+
+    B -. Call-ID 映射 .-&amp;gt; O[可观测性 / CDR]
+    R -. Recording ID .-&amp;gt; O
+    D -. Contact ID .-&amp;gt; O
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这套架构里，SIP 仍然负责各段会话，但很多“看起来像电话功能”的能力其实来自扩展协议或平台状态：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;呼叫中心能力&lt;/th&gt;
+&lt;th&gt;常见 SIP / 媒体机制&lt;/th&gt;
+&lt;th&gt;工程上的关键点&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;运营商接入&lt;/td&gt;
+&lt;td&gt;SIP Trunk、SBC、TLS、SRTP&lt;/td&gt;
+&lt;td&gt;号码格式、Codec、Early Media、拓扑隐藏和限流要统一&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;主叫身份&lt;/td&gt;
+&lt;td&gt;From、&lt;code&gt;P-Asserted-Identity&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;PAI 只应在受信任域内使用，不能把外部来值直接当成已验证身份&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;IVR 按键&lt;/td&gt;
+&lt;td&gt;SDP 协商的 RTP &lt;code&gt;telephone-event&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;Payload Type、时钟频率和事件范围必须匹配&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;排队与提示音&lt;/td&gt;
+&lt;td&gt;B2BUA、媒体服务器、Early Media 或已接听媒体&lt;/td&gt;
+&lt;td&gt;Queue 是业务状态，不是一个 SIP Method&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;会话保活&lt;/td&gt;
+&lt;td&gt;re-INVITE / UPDATE、Session Timer&lt;/td&gt;
+&lt;td&gt;双方要对 Session-Expires 和 refresher 角色有一致理解&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;盲转、咨询转&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;REFER&lt;/code&gt;、&lt;code&gt;Replaces&lt;/code&gt;，或平台内部 B2BUA 控制&lt;/td&gt;
+&lt;td&gt;转过去的不只是媒体，还要保住 Contact 上下文和录音关系&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;路由历史&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;History-Info&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;可记录请求被重定向、分叉和改写的历史，但要处理隐私与不完整链路&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;业务上下文&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;User-to-User&lt;/code&gt;、厂商头域，或独立 CTI/API&lt;/td&gt;
+&lt;td&gt;UUI 适合透传事先约定的少量不透明数据，不适合塞完整客户资料&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;合规录音&lt;/td&gt;
+&lt;td&gt;SIPREC + RTP/SRTP + Recording Metadata&lt;/td&gt;
+&lt;td&gt;录音会话与客户通话不是同一条 Session，要保存映射和策略&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h3 id="_4"&gt;把这些扩展落到呼叫中心&lt;/h3&gt;
+&lt;p&gt;单独支持某个 RFC 只是起点，呼叫中心更关心组合行为：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;转接时，REFER/Replaces 的成功状态能否与原 Contact ID、录音和座席状态一起迁移；&lt;/li&gt;
+&lt;li&gt;多次 Retargeting 后，History-Info、入口号码、原始被叫号码与当前 Queue 是否还能对上；&lt;/li&gt;
+&lt;li&gt;UUI 或私有 Header 经过运营商、SBC 和 B2BUA 后是否保留，敏感字段是否在离开 Trust Domain 前清理；&lt;/li&gt;
+&lt;li&gt;SIPREC 录音腿失败时，是放行客户通话、阻断通话，还是降级告警，必须有明确业务策略；&lt;/li&gt;
+&lt;li&gt;Reason/Q.850、SIP Response 与业务 Disposition 如何映射，避免把“客户取消”“座席忙”和“平台故障”统计成同一种失败。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;标准能力与产品架构不能混为一谈。平台可以选择让终端执行 REFER，也可以让 B2BUA 在内部完成同等业务动作；关键是信令、媒体、上下文、权限和失败回退必须形成一个整体。&lt;/p&gt;
+&lt;h3 id="sip_4"&gt;呼叫中心 SIP 扩展地图&lt;/h3&gt;
+&lt;p&gt;如果说第一张图是在复习 RFC 3261，这一张就是把 SIP 放回真实业务链路：接入、路由、交互、转接、上下文、录音和可观测性缺一块，客户都可能听见系统的“接缝”。&lt;/p&gt;
+&lt;p&gt;&lt;img alt="呼叫中心 SIP 扩展与应用地图" src="./images/tech_20260829_sip_contact_center_mindmap.svg"&gt;&lt;/p&gt;
+&lt;h2 id="_5"&gt;一个典型入呼，后台到底发生了什么&lt;/h2&gt;
+&lt;p&gt;以银行客服为例，下面不是某个产品的固定实现，而是一条常见逻辑链：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;客户拨打热线，运营商通过 SIP Trunk 向企业 SBC 发送 &lt;code&gt;INVITE&lt;/code&gt;。被叫号码用于选择租户、语言或业务入口；主叫号码只能作为查找客户的线索，不能替代身份验证。&lt;/li&gt;
+&lt;li&gt;SBC 校验来源、限制速率、规范号码和 Header，必要时锚定媒体，再把呼叫交给内部 B2BUA。&lt;/li&gt;
+&lt;li&gt;IVR 接听呼叫，播放提示词并通过 RTP &lt;code&gt;telephone-event&lt;/code&gt; 接收按键，或者把音频送给语音识别。此时客户已经处于已建立的媒体 Session，即使他还没有接通人工座席。&lt;/li&gt;
+&lt;li&gt;Contact Flow 调用身份、账户或订单服务，将意图、语言、客户等级和验证状态写入 Contact 属性；ACD 根据这些属性决定队列和座席。&lt;/li&gt;
+&lt;li&gt;平台向座席终端建立另一条 SIP Dialog。座席接听后，B2BUA 桥接客户腿与座席腿，同时让 CRM 通过 Contact ID 弹出资料。&lt;/li&gt;
+&lt;li&gt;如果需要咨询转接，平台可能先建立“座席 A—座席 B”会话，再把客户加入，最后释放座席 A。信令上会出现多条 Dialog，业务上却仍属于同一个 Contact。&lt;/li&gt;
+&lt;li&gt;录音平台通过 SIPREC 接收媒体和元数据；客户挂机后，系统还要完成 CDR、录音索引、话后整理、质检和审计。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;这里有个很实用的判断：&lt;strong&gt;客户听到的连续通话，不等于后台只有一条 SIP Call；后台出现多条 Call-ID，也不等于客户打了多次电话。&lt;/strong&gt;呼叫中心必须自己维护这两种视角之间的映射。&lt;/p&gt;
+&lt;p&gt;更完整的 Contact Center 技术栈、ACD、全渠道和 AI 应用，可接着看&lt;a href="https://www.fanyamin.com/blog/2026-08-24-ai-contact-center.html"&gt;《AI 时代的 Contact Center，正在从接电话变成解决问题》&lt;/a&gt;。&lt;/p&gt;
+&lt;h2 id="_6"&gt;八个典型案例：别只盯着最后一个错误码&lt;/h2&gt;
+&lt;p&gt;下面这些是常见故障模式的归纳。真正排障时要以完整信令、SDP、RTP 和平台事件为准，不能只凭一行日志下结论。&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;现象&lt;/th&gt;
+&lt;th&gt;先看什么&lt;/th&gt;
+&lt;th&gt;常见根因&lt;/th&gt;
+&lt;th&gt;处理方向&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;呼叫接通但单通&lt;/td&gt;
+&lt;td&gt;双方 SDP 的 &lt;code&gt;c=&lt;/code&gt; / &lt;code&gt;m=&lt;/code&gt;，RTP 实际源和目的地址&lt;/td&gt;
+&lt;td&gt;SDP 带了不可达私网地址、NAT 映射变化、防火墙只放通一侧&lt;/td&gt;
+&lt;td&gt;在 SBC 锚定媒体，校验 NAT、端口范围与对称 RTP 策略&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;183 后没有回铃音&lt;/td&gt;
+&lt;td&gt;183 是否带 SDP，183 后是否真的收到 RTP&lt;/td&gt;
+&lt;td&gt;中间设备把 180 改成 183，却没有提供 Early Media&lt;/td&gt;
+&lt;td&gt;保持 180 语义，或确保 183 后媒体及时可达&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;IVR 收不到按键&lt;/td&gt;
+&lt;td&gt;Offer/Answer 中是否都有 &lt;code&gt;telephone-event&lt;/code&gt;，Payload Type 是否一致&lt;/td&gt;
+&lt;td&gt;一端发 RTP Event，另一端只认带内 DTMF；转码或 SDP 改写丢失映射&lt;/td&gt;
+&lt;td&gt;统一 RFC 4733 协商，必要时在媒体网关做明确转换&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;转接成功但座席资料丢了&lt;/td&gt;
+&lt;td&gt;转接前后的 Call-ID、Contact ID、UUI/API 事件映射&lt;/td&gt;
+&lt;td&gt;电话腿转过去了，业务上下文仍绑在旧 Dialog；厂商私有 Header 被 SBC 删除&lt;/td&gt;
+&lt;td&gt;把上下文绑定到平台 Contact，SIP 只传关联 ID，并测试跨域 Header 策略&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;通话总在相近时长掉线&lt;/td&gt;
+&lt;td&gt;Session-Expires、Min-SE、refresher，re-INVITE/UPDATE 及响应&lt;/td&gt;
+&lt;td&gt;Session Timer 角色理解不一致、刷新请求被防火墙或路由丢弃&lt;/td&gt;
+&lt;td&gt;明确刷新方，监控刷新事务，避免用“调大超时”掩盖路由故障&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;REGISTER 成功但入呼找不到座席&lt;/td&gt;
+&lt;td&gt;Contact、Expires、Path、Outbound Flow 与 NAT 映射&lt;/td&gt;
+&lt;td&gt;注册绑定仍在，连接或 NAT Flow 已失效；多设备 Fork 策略错误&lt;/td&gt;
+&lt;td&gt;使用 Outbound Keepalive/故障检测，关联注册状态与真实 Flow&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;401/407 不断循环&lt;/td&gt;
+&lt;td&gt;Realm、Nonce、算法、qop、用户名格式与 Authorization&lt;/td&gt;
+&lt;td&gt;凭据不匹配、MD5/SHA 算法不兼容、SBC 改写鉴权域&lt;/td&gt;
+&lt;td&gt;对比每次 Challenge 和 Response，按 RFC 8760 对齐算法能力&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Hold 后恢复仍无声&lt;/td&gt;
+&lt;td&gt;re-INVITE/UPDATE 的 SDP 方向、地址、CSeq 与响应&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;inactive/sendonly&lt;/code&gt; 未恢复、Offer Glare、旧 SDP 覆盖新状态&lt;/td&gt;
+&lt;td&gt;按 Dialog 顺序还原每次 Offer/Answer，处理 491 后退避重试&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;第二个案例来自 VoIPmonitor 资料中特别提醒的 &lt;code&gt;180&lt;/code&gt; 与 &lt;code&gt;183&lt;/code&gt; 差异。它很有代表性：SIP 响应码本身没有错，错的是设备承诺了“媒体由网络提供”，却没有把声音送过来。通信故障常常不是谁完全不守协议，而是各自都守了一半。&lt;/p&gt;
+&lt;h2 id="sip_5"&gt;呼叫中心的可观测性，要跨过 SIP 这一层&lt;/h2&gt;
+&lt;p&gt;普通 SIP 抓包通常按 Call-ID 串起一条 Dialog。呼叫中心如果也只保存 Call-ID，到了排队、转接和录音就会断链。至少应建立下面的关联：&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;Customer Journey ID → Contact ID → SIP Leg / Call-ID → Recording Session ID → Agent ID → CRM Case ID&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;监控也要分三层看：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;信令层&lt;/strong&gt;：INVITE 成功率、各类响应码、Post-Dial Delay、重传、注册状态、Session Timer 刷新、转接成功率。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;媒体层&lt;/strong&gt;：RTP 丢包、抖动、时延、双向媒体是否存在、Codec 与转码、Early Media 首包时间。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;业务层&lt;/strong&gt;：Queue 等待时间、放弃率、座席接听率、转接次数、录音完整率、首次解决率。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;三层必须能在同一条时间线上对齐。比如“客户排队三分钟后挂机”，SIP 层可能只是一个完全正常的 &lt;code&gt;BYE&lt;/code&gt;；只有结合 Queue 事件，才知道这不是一次成功结束的短通话。反过来，SIP 返回 &lt;code&gt;486 Busy Here&lt;/code&gt; 也不一定代表系统故障，它可能正是座席容量策略的预期结果。&lt;/p&gt;
+&lt;h2 id="header"&gt;安全边界：Header 不是可信数据库&lt;/h2&gt;
+&lt;p&gt;SIP 是文本协议，方便阅读，也方便伪造。呼叫中心接入公网和运营商网络时，至少要守住几条线：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;用 SBC 建立明确的 Trust Domain，对来源、Method、Header、消息大小和呼叫速率做校验；默认不信任外部传入的 PAI、UUI 和私有 Header。&lt;/li&gt;
+&lt;li&gt;对信令使用 TLS，对媒体使用 SRTP；同时要明白 TLS 通常保护相邻 Hop，不自动等于端到端加密。&lt;/li&gt;
+&lt;li&gt;SIP Digest 是 Challenge/Response，不会加密消息内容；优先使用 RFC 8760 支持的 SHA-256 或 SHA-512/256，并防止降级到 MD5。&lt;/li&gt;
+&lt;li&gt;不在 SIP Header 和日志里传播完整账号、身份证号或长期有效 Token。关联 ID 要短期有效、不可猜，并在服务端重新授权。&lt;/li&gt;
+&lt;li&gt;对外呼、号码伪造、爆破注册和 Toll Fraud 设置速率限制、额度、异常目的地检测和告警。&lt;/li&gt;
+&lt;li&gt;录音必须有策略：何时开始、何时暂停、谁能访问、保存多久、如何删除，都要能审计。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;a href="https://datatracker.ietf.org/doc/html/rfc3325"&gt;RFC 3325&lt;/a&gt; 明确把 &lt;code&gt;P-Asserted-Identity&lt;/code&gt; 放在受信任 SIP 实体之间使用。离开信任域后还把它当“已认证客户”，等于把门卫胸牌当成身份证——看着挺正式，出事时并不顶用。&lt;/p&gt;
+&lt;p&gt;STIR 的 &lt;code&gt;Identity&lt;/code&gt; Header 可以对主叫身份声明做密码学验证，但验证通过只说明某个受信任主体为这次号码声明背书，并不证明电话另一端就是账户本人。银行客服仍然要做自己的身份核验。通信身份与业务身份，不能省略中间那道门。&lt;/p&gt;
+&lt;h2 id="_7"&gt;一张可直接拿去用的检查清单&lt;/h2&gt;
+&lt;p&gt;设计或验收呼叫中心 SIP 接入时，可以按下面顺序过一遍：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;接入与路由&lt;/strong&gt;：SIP Trunk 是否冗余；DNS、号码格式、主备路由和灾备入口是否演练过。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;信令互通&lt;/strong&gt;：UDP/TCP/TLS、PRACK、Session Timer、REFER/Replaces、180/183、失败码映射是否有双方确认的 Profile。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;媒体互通&lt;/strong&gt;：Codec、转码、SRTP、NAT、端口范围、Early Media、静音与保持方向是否测试完整。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;DTMF 与 IVR&lt;/strong&gt;：RFC 4733 Payload Type、事件范围、长按键、快速连续按键和跨转码场景是否通过。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;身份与隐私&lt;/strong&gt;：From、PAI、隐私号码、号码伪造和跨信任域 Header 清理规则是否明确。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;排队与转接&lt;/strong&gt;：客户腿、队列腿、座席腿的 Call-ID 如何映射；盲转、咨询转、失败回退和座席掉线怎么处理。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;录音与合规&lt;/strong&gt;：SIPREC 元数据、双声道、暂停恢复、加密、保留和删除是否端到端验证。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;可观测性&lt;/strong&gt;：能否从 Contact ID 一键跳到所有 SIP Leg、RTP 指标、录音和业务事件。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;安全与容量&lt;/strong&gt;：鉴权、TLS/SRTP、限流、异常外呼、峰值并发和故障降级是否压测过。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;上线前抓包&lt;/strong&gt;：至少保存一套成功入呼、外呼、转接、排队放弃和失败场景的脱敏基线。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h2 id="sip_6"&gt;总结：SIP 管会话，呼叫中心管结果&lt;/h2&gt;
+&lt;p&gt;复习 SIP，记住 &lt;code&gt;INVITE → 200 → ACK → RTP → BYE&lt;/code&gt; 只是入门。真正决定系统能否稳定工作的，是对 Transaction、Dialog、Session、Offer/Answer、Early Media 和信任边界的理解。&lt;/p&gt;
+&lt;p&gt;到了呼叫中心，还要再加一层业务视角：SIP 把电话接起来，ACD 决定交给谁，CRM 保存客户上下文，SIPREC留下可审计的记录，可观测性把多条 Call Leg 重新拼成一次完整 Contact。&lt;/p&gt;
+&lt;p&gt;所以排查一通客服电话，别只问“这个 Call-ID 怎么了”。先问一个更接近客户的问题：&lt;strong&gt;这次 Contact 经历了哪些会话、媒体和业务状态，它在哪一步失去了连续性？&lt;/strong&gt;&lt;/p&gt;
+&lt;h2 id="_8"&gt;延伸阅读&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://www.voipmonitor.org/doc/Understanding_the_SIP_Protocol"&gt;VoIPmonitor: Understanding the SIP Protocol&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://datatracker.ietf.org/doc/html/rfc3261"&gt;RFC 3261: SIP: Session Initiation Protocol&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;核心协作规范：&lt;a href="https://datatracker.ietf.org/doc/html/rfc3262"&gt;RFC 3262 PRACK&lt;/a&gt;、&lt;a href="https://datatracker.ietf.org/doc/html/rfc3263"&gt;RFC 3263 DNS&lt;/a&gt;、&lt;a href="https://datatracker.ietf.org/doc/html/rfc3264"&gt;RFC 3264 Offer/Answer&lt;/a&gt;、&lt;a href="https://datatracker.ietf.org/doc/html/rfc8866"&gt;RFC 8866 SDP&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;会话与事件：&lt;a href="https://datatracker.ietf.org/doc/html/rfc3311"&gt;RFC 3311 UPDATE&lt;/a&gt;、&lt;a href="https://datatracker.ietf.org/doc/html/rfc4028"&gt;RFC 4028 Session Timer&lt;/a&gt;、&lt;a href="https://datatracker.ietf.org/doc/html/rfc6337"&gt;RFC 6337 Offer/Answer Usage&lt;/a&gt;、&lt;a href="https://datatracker.ietf.org/doc/html/rfc6665"&gt;RFC 6665 Event Notification&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;呼叫控制与业务上下文：&lt;a href="https://datatracker.ietf.org/doc/html/rfc3515"&gt;RFC 3515 REFER&lt;/a&gt;、&lt;a href="https://datatracker.ietf.org/doc/html/rfc3891"&gt;RFC 3891 Replaces&lt;/a&gt;、&lt;a href="https://datatracker.ietf.org/doc/html/rfc4733"&gt;RFC 4733 DTMF Events&lt;/a&gt;、&lt;a href="https://datatracker.ietf.org/doc/html/rfc7044"&gt;RFC 7044 History-Info&lt;/a&gt;、&lt;a href="https://datatracker.ietf.org/doc/html/rfc7433"&gt;RFC 7433 UUI&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;安全与身份：&lt;a href="https://datatracker.ietf.org/doc/html/rfc8760"&gt;RFC 8760 SIP Digest&lt;/a&gt;、&lt;a href="https://datatracker.ietf.org/doc/html/rfc8224"&gt;RFC 8224 STIR Identity&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;录音：&lt;a href="https://datatracker.ietf.org/doc/html/rfc7865"&gt;RFC 7865 SIPREC Metadata&lt;/a&gt;、&lt;a href="https://datatracker.ietf.org/doc/html/rfc7866"&gt;RFC 7866 SIPREC Protocol&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;hr/&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。&lt;/p&gt;</content><category term="Tech"/><category term="SIP"/><category term="VoIP"/><category term="Contact Center"/><category term="SIPREC"/><category term="SBC"/></entry><entry><title>AI Agent 需要一个 box</title><link href="https://www.fanyamin.com/blog/2026-08-21-agent-sandbox.html" rel="alternate"/><published>2026-08-21T21:30:00+08:00</published><updated>2026-08-21T21:30:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-08-21:/blog/2026-08-21-agent-sandbox.html</id><summary type="html">&lt;p&gt;LLM 会写代码，但你敢直接在生产机器上跑它写的 &lt;code&gt;rm -rf&lt;/code&gt; 吗？AI Agent 真正缺的不是更聪明的脑子，而是一个能随时开、随时扔、跑坏了也不伤及无辜的“盒子”。本文以 Kubernetes SIG 的 agent-sandbox 项目为例，讲清楚 Agent 运行环境的技术栈、原理、用法、实例、横向比较与未来走向。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
 &lt;thead&gt;
 &lt;tr&gt;
 &lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
@@ -47682,259 +48744,4 @@ title BAC：访问控制失效（OWASP Top 10 A01）
 
 &lt;p&gt;&lt;img alt="思维导图" src="./images/tech_20260228_bac_owasp_mindmap.png"&gt;&lt;/p&gt;
 &lt;hr/&gt;
-&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Tech"/><category term="security"/><category term="owasp"/><category term="access-control"/><category term="bac"/><category term="安全"/><category term="访问控制"/></entry><entry><title>微服务之外：被忽视的 "SDK 治理"</title><link href="https://www.fanyamin.com/blog/wei-fu-wu-zhi-wai-bei-hu-shi-de-sdk-zhi-li.html" rel="alternate"/><published>2026-02-28T10:00:00+08:00</published><updated>2026-02-28T16:00:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-02-28:/blog/wei-fu-wu-zhi-wai-bei-hu-shi-de-sdk-zhi-li.html</id><summary type="html">&lt;p&gt;微服务要治理，SDK 同样要治理；区分业务 SDK（语义漂移）与基础设施 SDK（默认策略改变），二者均非零风险；只共享能力不共享决策，显式语义与三层防爆模型。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
-&lt;th&gt;微服务之外：被忽视的 "SDK 治理"&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;tech note&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Status&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;v1.0&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;2026-02-28&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;h1 id="sdk"&gt;微服务之外：被忽视的 "SDK 治理"&lt;/h1&gt;
-&lt;p&gt;微服务架构里，我们很熟悉这些事：API 版本管理、Contract Testing、灰度发布、服务网格、降级与熔断。但有一个地方事故频率很高，却很少被系统讨论：&lt;strong&gt;SDK 治理&lt;/strong&gt;。&lt;/p&gt;
-&lt;p&gt;本文讨论的 SDK 既包括&lt;strong&gt;业务 SDK&lt;/strong&gt;，也包括&lt;strong&gt;基础设施 SDK&lt;/strong&gt;（Feature Toggle、Secret、Config、Metrics、Search 等中间件客户端）。后者风险相对可控，但&lt;strong&gt;并非零风险&lt;/strong&gt;，同样需要治理。&lt;/p&gt;
-&lt;p&gt;一次看起来再普通不过的升级：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;B SDK: 1.2.3 → 1.3.0
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;没有接口变更、没有编译错误、CI 全绿。上线后却出了大事。原因往往只是一条：&lt;strong&gt;未配置的键以前返回默认值，新版本返回 null&lt;/strong&gt;。这不是 API 变更，而是 &lt;strong&gt;语义变更（Behavioral Change）&lt;/strong&gt;。这类事故的本质，是 &lt;strong&gt;缺乏 SDK 治理体系&lt;/strong&gt;。&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="_1"&gt;一、问题的本质：行为耦合&lt;/h2&gt;
-&lt;p&gt;很多团队共享 SDK，是为了复用 client 调用、DTO，甚至一部分业务逻辑。当共享的不只是 "接口定义"，而是 "带策略的代码" 时，关系就变成了：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;A 服务  →  依赖  →  B 服务的行为
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;也就是 &lt;strong&gt;Behavioral Coupling（行为耦合）&lt;/strong&gt;。&lt;/p&gt;
-&lt;p&gt;行为耦合比结构耦合更危险：它不会破坏编译、不会破坏接口、甚至不会破坏测试，但会破坏业务语义。&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="sdk-sdk"&gt;二、业务 SDK 与 基础设施 SDK&lt;/h2&gt;
-&lt;p&gt;如果不是 "业务 SDK"，而是 Feature Toggle SDK、Secret SDK、Search SDK、Config SDK、Metrics SDK 这类&lt;strong&gt;基础设施 SDK&lt;/strong&gt;，是不是就可以放心共享？答案是：风险会小很多，但并不是零风险，照样要按 SDK 治理来管。下面分几块说。&lt;/p&gt;
-&lt;h3 id="21-sdk-vs-sdk"&gt;2.1 业务 SDK vs 基础设施 SDK 的本质区别&lt;/h3&gt;
-&lt;p&gt;&lt;strong&gt;业务 SDK&lt;/strong&gt;：包含业务规则、策略决策，语义强依赖具体场景，容易行为耦合。风险主要来自&lt;strong&gt;语义改变&lt;/strong&gt;。&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;基础设施 SDK（中间件 SDK）&lt;/strong&gt;：如 Feature Toggle、Secret、Search、配置中心、Metrics。特点是通用能力、无业务策略、语义更稳定，关注技术行为而非业务含义。风险主要来自&lt;strong&gt;技术行为改变&lt;/strong&gt;（timeout、retry、cache、默认值）。两种风险性质不同。&lt;/p&gt;
-&lt;h3 id="22-sdk"&gt;2.2 基础设施 SDK 真的安全吗？&lt;/h3&gt;
-&lt;p&gt;举几个身边的例子。&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;Feature Toggle SDK&lt;/strong&gt;：若 SDK 把 "未配置 flag → 默认 true" 改成 "默认 false"，接口和结构都没变，生产事故立刻发生。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Secret SDK&lt;/strong&gt;：若改动缓存时间、过期刷新机制、fallback 策略，可能导致密钥过期、调用失败、流量雪崩。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Search SDK&lt;/strong&gt;：若改动默认分页大小、排序、超时、分词策略，编译和测试可能都通过，线上却出现数据异常。&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;虽然不牵涉到具体业务, 可是由于功能比较通用, 使用范围和频率都比较高, 所以一旦出现问题, 影响面比较大, 事故频率比较高.&lt;/p&gt;
-&lt;h3 id="23-sdk"&gt;2.3 大公司为什么允许共享中间件 SDK？&lt;/h3&gt;
-&lt;p&gt;一般得满足三条：&lt;strong&gt;语义高度稳定&lt;/strong&gt;、&lt;strong&gt;策略高度可配置&lt;/strong&gt;、&lt;strong&gt;不嵌入业务规则&lt;/strong&gt;。这三条是关键。&lt;/p&gt;
-&lt;h3 id="24-sdk"&gt;2.4 成熟公司对基础设施 SDK 的要求&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;SDK 是 "薄客户端"&lt;/strong&gt;：只做网络调用、序列化、认证、连接池；不做默认策略、fallback 决策、业务转换、隐式行为。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;所有默认行为必须显式配置&lt;/strong&gt;：例如不要 &lt;code&gt;new FeatureClient()&lt;/code&gt;，而要 &lt;code&gt;new FeatureClient(defaultValue=false, timeout=200ms, retry=2)&lt;/code&gt;。任何默认策略改变必须是 Major 版本。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;SDK 行为必须冻结测试&lt;/strong&gt;：SDK 仓库里得有默认 flag 行为、timeout、fallback、null 行为等测试，否则 CI 不让发版。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;重大版本升级必须广播&lt;/strong&gt;：发布升级指南、标注 breaking change、提供迁移说明。&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3 id="25-sdk"&gt;2.5 为什么基础设施 SDK 风险更可控？&lt;/h3&gt;
-&lt;p&gt;因为它是 "技术抽象层" 而不是 "业务抽象层"。例如 HTTP client、Database client、Redis client：你不会担心 Redis SDK 改变 "业务规则"，但会担心默认连接池、超时行为改变——这是&lt;strong&gt;可预期风险&lt;/strong&gt;。&lt;/p&gt;
-&lt;h3 id="26"&gt;2.6 风险排序（从高到低）&lt;/h3&gt;
-&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;类型&lt;/th&gt;
-&lt;th&gt;风险等级&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;共享业务策略 SDK&lt;/td&gt;
-&lt;td&gt;🔴 极高&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;Feature Toggle / Secret SDK&lt;/td&gt;
-&lt;td&gt;🟠 高&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;Search SDK&lt;/td&gt;
-&lt;td&gt;🟡 中&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;纯 HTTP Client&lt;/td&gt;
-&lt;td&gt;🟢 低&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;底层网络库&lt;/td&gt;
-&lt;td&gt;🟢 很低&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;p&gt;不是因为技术不同，而是 "默认行为影响范围" 不同。 通用的, 共享的, 相对稳定不变的, 才有必要做成 SDK, 而业务层面的东西, 由于需求, 场景, 策略, 决策等变化, 很难做成 SDK, 效果也不好.&lt;/p&gt;
-&lt;h3 id="27"&gt;2.7 核心结论&lt;/h3&gt;
-&lt;p&gt;基础设施 SDK 可以共享，但必须满足：&lt;strong&gt;只共享 "能力"，不共享 "决策"。&lt;/strong&gt;要是 SDK 里头偷偷做决策（默认开功能、默认 fallback、默认缓存、默认吞错误），就是在往 "策略 SDK" 滑，风险会很快上来。&lt;/p&gt;
-&lt;h3 id="28"&gt;2.8 真正成熟的做法&lt;/h3&gt;
-&lt;p&gt;成熟点的组织一般是：共享基础设施 SDK、client 封装、OpenAPI/Protobuf；不共享业务规则；各服务自己定策略。再配上版本治理、行为冻结测试、升级闸门。说白了，&lt;strong&gt;SDK 治理就是微服务治理往 "库" 上延伸一步。&lt;/strong&gt;&lt;/p&gt;
-&lt;h3 id="29"&gt;2.9 小结&lt;/h3&gt;
-&lt;p&gt;业务 SDK 的危险在 "语义漂移"；基础设施 SDK 的危险在 "默认策略变了"。两者都不是零风险：一个伤业务自治，一个伤系统稳定。&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="contract-testing"&gt;三、Contract Testing 能解决吗？&lt;/h2&gt;
-&lt;p&gt;像 Pact 这样的 Consumer-Driven Contract Testing 很有价值，能抓住字段删除、类型变化、状态码改变、Schema 不兼容。但它默认保护的是 &lt;strong&gt;HTTP Contract&lt;/strong&gt;，不是 &lt;strong&gt;SDK 内部策略&lt;/strong&gt;。&lt;/p&gt;
-&lt;p&gt;如果 SDK 改了默认值、fallback、重试、缓存、异常处理方式，Contract Testing 多半抓不到。所以：&lt;strong&gt;CDC 必要，但不充分。&lt;/strong&gt;&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="sdk_1"&gt;四、SDK 治理的核心原则&lt;/h2&gt;
-&lt;h3 id="sdk_2"&gt;原则一：把 SDK 当成 "外部依赖"&lt;/h3&gt;
-&lt;p&gt;哪怕是内部团队写的。心里得当成 "这是一个可能随时改行为的外部系统"，而不是 "自家人写的，肯定稳"。&lt;/p&gt;
-&lt;h3 id="sdk_3"&gt;原则二：禁止 "策略逻辑" 下沉到 SDK&lt;/h3&gt;
-&lt;p&gt;可以共享：HTTP 调用封装、鉴权逻辑、DTO、序列化处理。&lt;br&gt;
-不要共享：默认值策略、fallback 策略、缓存策略、业务判断、容错规则。&lt;strong&gt;策略属于业务语境，业务语境不应该跨服务传播。&lt;/strong&gt;&lt;/p&gt;
-&lt;h3 id="_2"&gt;原则三：语义必须显式&lt;/h3&gt;
-&lt;p&gt;不要依赖 SDK 默认行为。不要写 &lt;code&gt;sdk.getConfig(key)&lt;/code&gt;，而要：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;code&gt;sdk.getConfigOrDefault(key, "xxx")&lt;/code&gt;，或  &lt;/li&gt;
-&lt;li&gt;&lt;code&gt;sdk.getConfig(key, timeout=3s, retry=3)&lt;/code&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;默认值是事故源头。&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="sdk_4"&gt;五、三层 SDK 防爆模型&lt;/h2&gt;
-&lt;p&gt;如果仍然要共享 SDK，可以建三层防御。&lt;/p&gt;
-&lt;h3 id="adapter"&gt;第一层：Adapter 隔离层&lt;/h3&gt;
-&lt;p&gt;服务 A 永远不直接使用 SDK：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;A Service  →  Adapter  →  B SDK
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;Adapter 负责 null 兜底、fallback、异常转换、语义统一，用意就是把&lt;strong&gt;外部语义转成你服务内部能依赖的稳定语义&lt;/strong&gt;。&lt;/p&gt;
-&lt;h3 id="behavior-freeze-test"&gt;第二层：语义锁定测试（Behavior Freeze Test）&lt;/h3&gt;
-&lt;p&gt;测的不是 SDK 本身，而是 &lt;strong&gt;A 对 SDK 的假设&lt;/strong&gt;。例如：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nd"&gt;@Test&lt;/span&gt;
-&lt;span class="kt"&gt;void&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nf"&gt;missingKeyShouldReturnDefault&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
-&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="n"&gt;assertEquals&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;default&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="n"&gt;configAdapter&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="na"&gt;get&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;missing&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;));&lt;/span&gt;
-&lt;span class="p"&gt;}&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;SDK 行为一变，CI 立刻失败，比 CDC 更精准。&lt;/p&gt;
-&lt;h3 id="_3"&gt;第三层：升级隔离流程&lt;/h3&gt;
-&lt;p&gt;SDK 升级必须：独立 PR、读 changelog、标注是否 breaking、全量测试、小流量发布。禁止 "顺手升级"。&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="major"&gt;六、语义变更 = Major 版本&lt;/h2&gt;
-&lt;p&gt;SemVer（MAJOR.MINOR.PATCH）得严格执行。&lt;strong&gt;行为一变就升 MAJOR&lt;/strong&gt;，否则治理等于没建。&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="sdk_5"&gt;七、SDK 的组织级治理机制&lt;/h2&gt;
-&lt;p&gt;很多团队会建一套：SDK 变更 RFC、Breaking Change 审核、行为冻结测试、消费方自动回归流水线、灰度 + Canary。和微服务治理是一类事，只不过治理对象从 "服务" 换成了 "库"。&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="_4"&gt;八、业界与开源可参考&lt;/h2&gt;
-&lt;p&gt;业界和开源社区有不少写进文档的 SDK 治理实践，和本文主张的 "行为即契约、显式语义、Major 才 breaking" 是一路的，需要时可以对标。&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;Azure SDK&lt;/strong&gt;：多语言统一发布策略，强制要求 Changelog + Migration Guide；新标准升级必须提供按语言的迁移指南和 "Benefits" 说明。&lt;a href="https://azure.github.io/azure-sdk/policies_releases.html"&gt;Policies: Releases&lt;/a&gt;、&lt;a href="https://azure.github.io/azure-sdk/general_implementation.html"&gt;General Implementation&lt;/a&gt; 里对实现细节（错误处理、配置、可观测性）有明确约定，相当于把 "薄客户端 + 可预期行为" 写进规范。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Sentry SDK&lt;/strong&gt;：把 breaking 分成四类——API 表面变更、产品侧影响（告警/分组/洞察）、行为变更（如 trim 上限、配额）、版本支持废弃；要求 &lt;strong&gt;breaking 只能进 Major&lt;/strong&gt;，且必须带迁移指南（含 before/after 示例），必要时提供 codemod。&lt;a href="https://develop.sentry.dev/sdk/processes/breaking_changes/"&gt;Breaking Changes Playbook&lt;/a&gt; 可直接当 "是否算 breaking、怎么发版" 的检查清单用。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Stripe&lt;/strong&gt;：SDK 严格跟 SemVer，Major 对应 breaking（必填参数、类型/方法重命名等）；API 版本按月发布无 breaking，每年两次 Major 带 breaking，方便下游规划升级。&lt;a href="https://docs.stripe.com/sdks/versioning"&gt;Versioning and support policy&lt;/a&gt;、&lt;a href="https://docs.stripe.com/changelog"&gt;Changelog&lt;/a&gt; 按版本和日期组织，便于 "读 changelog 再升级"。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;AWS SDK&lt;/strong&gt;：多语言统一生命周期（GA → Maintenance → End-of-Support），Major 发布后旧版有明确维护期和终止时间；同时提供 "智能默认配置" 模式（如 in-region / cross-region），但&lt;strong&gt;文档和版本化&lt;/strong&gt;这些默认值，避免静默改行为。&lt;a href="https://docs.aws.amazon.com/sdkref/latest/guide/maint-policy.html"&gt;Maintenance policy&lt;/a&gt;。&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;共性三条：
-- breaking 只进 Major 并写进流程；
-- 每次大版本都有 Changelog + 迁移指南（或升级说明）；
-- 默认行为要么显式配置、要么在文档里写死并随版本演进。和你自己建 "升级闸门、语义锁定测试、显式默认" 是一套思路。&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="_5"&gt;九、更深一层的架构问题&lt;/h2&gt;
-&lt;p&gt;SDK 里一旦带了业务逻辑，微服务边界就已经被削了一块。理想情况是：
-- 共享 API 定义、
-- 不共享业务逻辑、
-- 服务间走 HTTP/RPC、
-- 用 Contract Testing 保接口稳定。&lt;/p&gt;
-&lt;p&gt;现实里共享 SDK 往往是效率和治理之间的妥协，&lt;strong&gt;得心里有数：这是架构上的 trade-off，不是纯技术题。&lt;/strong&gt;&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="_6"&gt;十、总结&lt;/h2&gt;
-&lt;p&gt;一句话：&lt;strong&gt;微服务要治理，SDK 也要治理。&lt;/strong&gt;&lt;/p&gt;
-&lt;p&gt;共享 SDK 本身没问题，问题出在：共享策略、隐式语义、默认行为、升级没纪律。成熟做法不是 "别共享"，而是：共享范围收窄、语义显式、语义锁定测试、升级设闸门、版本守规矩。这套建起来，SDK 才从事故源变成可控的工程资产。&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="checklistsdk"&gt;Checklist（SDK 治理自检）&lt;/h2&gt;
-&lt;ul&gt;
-&lt;li&gt;[ ] 是否把 SDK 当 "外部依赖" 对待（含内部团队提供的）？&lt;/li&gt;
-&lt;li&gt;[ ] 是否禁止把默认值/fallback/缓存/业务判断下沉到共享 SDK？&lt;/li&gt;
-&lt;li&gt;[ ] 调用方是否用 Adapter 隔离，并做语义锁定测试？&lt;/li&gt;
-&lt;li&gt;[ ] SDK 升级是否独立 PR、读 changelog、全量测试、小流量发布？&lt;/li&gt;
-&lt;li&gt;[ ] 行为变更是否一律升 MAJOR，并走 Breaking Change 审核？&lt;/li&gt;
-&lt;li&gt;[ ] 若为基础设施 SDK：是否薄客户端、默认行为显式配置、行为冻结测试、重大升级广播？&lt;/li&gt;
-&lt;/ul&gt;
-&lt;hr&gt;
-&lt;h2 id="references"&gt;References&lt;/h2&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://pact.io/"&gt;Pact - Consumer-Driven Contract Testing&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://semver.org/"&gt;Semantic Versioning 2.0.0&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://azure.github.io/azure-sdk/policies_releases.html"&gt;Azure SDK - Policies: Releases&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://azure.github.io/azure-sdk/general_implementation.html"&gt;Azure SDK - General Implementation&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://develop.sentry.dev/sdk/processes/breaking_changes/"&gt;Sentry SDK - Breaking Changes Playbook&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://docs.stripe.com/sdks/versioning"&gt;Stripe - SDK versioning and support policy&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://docs.aws.amazon.com/sdkref/latest/guide/maint-policy.html"&gt;AWS SDKs - Maintenance policy&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;hr&gt;
-&lt;h2 id="_7"&gt;思维导图&lt;/h2&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap
-title 微服务之外：被忽视的 SDK 治理
-* SDK 治理
-** 问题本质
-*** 行为耦合 &amp;gt; 结构耦合
-*** 不破坏编译/接口/测试
-*** 但破坏业务语义
-** 两类 SDK
-*** 业务 SDK
-**** 风险：语义漂移
-**** 包含业务规则和策略
-*** 基础设施 SDK
-**** Feature Toggle / Secret
-**** Config / Metrics / Search
-**** 风险：默认策略改变
-**** 可共享但需治理
-** 核心原则
-*** 1. 当外部依赖对待
-*** 2. 禁止策略下沉
-**** 可共享：HTTP封装/鉴权/DTO
-**** 不共享：默认值/fallback/缓存策略
-*** 3. 语义必须显式
-**** getConfigOrDefault(key, &amp;quot;xxx&amp;quot;)
-**** 不依赖隐式默认行为
-** 三层防爆模型
-*** 第一层：Adapter 隔离
-**** null 兜底 / fallback
-**** 外部语义 → 内部稳定语义
-*** 第二层：行为冻结测试
-**** 测 A 对 SDK 的假设
-**** SDK 行为一变 CI 立刻失败
-*** 第三层：升级隔离流程
-**** 独立 PR / 读 changelog
-**** 标注 breaking / 小流量发布
-** 版本纪律
-*** SemVer 严格执行
-*** 行为变更 = MAJOR
-*** CDC 必要但不充分
-** 业界参考
-*** Azure SDK：统一发布策略
-*** Sentry SDK：Breaking 分四类
-*** Stripe：按年 Major 发版
-*** AWS SDK：统一生命周期
-** 自检清单
-*** SDK 当外部依赖？
-*** 禁止策略下沉？
-*** Adapter + 冻结测试？
-*** 升级独立 PR + 小流量？
-*** 行为变更升 MAJOR？
-@endmindmap
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;&lt;img alt="思维导图" src="./images/tech_20260228_sdk_governance_mindmap.png"&gt;&lt;/p&gt;
-&lt;hr/&gt;
-&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Tech"/><category term="sdk"/><category term="微服务"/><category term="治理"/><category term="contract-testing"/><category term="semver"/></entry></feed>
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Tech"/><category term="security"/><category term="owasp"/><category term="access-control"/><category term="bac"/><category term="安全"/><category term="访问控制"/></entry></feed>

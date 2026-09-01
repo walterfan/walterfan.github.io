@@ -1,5 +1,823 @@
 <?xml version="1.0" encoding="utf-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom"><title>Walter Fan's Blog - Tech</title><link href="https://www.fanyamin.com/blog/" rel="alternate"/><link href="https://www.fanyamin.com/blog/feeds/tech.atom.xml" rel="self"/><id>https://www.fanyamin.com/blog/</id><updated>2026-08-30T10:03:00+08:00</updated><subtitle>手握灵珠常奋笔, 心开天籁不吹箫</subtitle><entry><title>SIP 协议回顾：从一通电话到呼叫中心</title><link href="https://www.fanyamin.com/blog/2026-08-29-sip-protocol-contact-center.html" rel="alternate"/><published>2026-08-29T20:20:00+08:00</published><updated>2026-08-30T10:03:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-08-29:/blog/2026-08-29-sip-protocol-contact-center.html</id><summary type="html">&lt;p&gt;SIP 看起来像 HTTP，真正用起来却更像一套分布式状态机。本文系统回顾寻址注册、消息、事务、Dialog、SDP Offer/Answer 和重要扩展，再把它放进呼叫中心，拆解 SIP Trunk、SBC、IVR、ACD、转接、录音与典型排障案例。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Walter Fan's Blog - Tech</title><link href="https://www.fanyamin.com/blog/" rel="alternate"/><link href="https://www.fanyamin.com/blog/feeds/tech.atom.xml" rel="self"/><id>https://www.fanyamin.com/blog/</id><updated>2026-09-01T23:50:00+08:00</updated><subtitle>手握灵珠常奋笔, 心开天籁不吹箫</subtitle><entry><title>用 SDD 写代码之后，我每天读的 Markdown 比代码多——于是写了 markpad</title><link href="https://www.fanyamin.com/blog/2026-09-01-markpad-markdown-workbench.html" rel="alternate"/><published>2026-09-01T23:50:00+08:00</published><updated>2026-09-01T23:50:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-09-01:/blog/2026-09-01-markpad-markdown-workbench.html</id><summary type="html">&lt;p&gt;自从用 OpenSpec 那套 spec-driven 流程做 AI 编程，proposal.md、design.md、tasks.md、spec.md 一层套一层，我一天读的 Markdown 比代码多。写这一端有 agent 帮忙，读这一端还是 cat 加 less。所以我给 markpad 又加了几刀：在任意目录敲一个命令，起一个本地 Web，左边编辑右边预览，Mermaid 和 PlantUML 直接出图，选中一段就能流式翻译，一键出摘要加思维导图。这是六月那篇介绍的续集，不讲功能清单，讲几个当时没写清的实现决定：为什么两种图表走两条完全不同的路、为什么翻译非流式不行、本地工具的安全线画在哪，以及我拿它打开自己上一篇博客时踩到的一个洞。1657 行 Python，53 个测试，可抄。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;用 SDD 写代码之后，我每天读的 Markdown 比代码多——于是写了 markpad&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;learning note&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Version&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;v1.0&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;2026-09-01&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 id="_1"&gt;大纲&lt;/h2&gt;
+&lt;details&gt;
+&lt;summary&gt;展开看看&lt;/summary&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;新瓶颈&lt;/strong&gt;：SDD 把文档产量拉高了，读文档的工具却没跟上&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;它长什么样&lt;/strong&gt;：一个命令，一个本地 Web，三块面板&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;两种图表两条路&lt;/strong&gt;：Mermaid 交给浏览器，PlantUML 交给子进程&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;翻译为什么必须流式&lt;/strong&gt;：一篇 spec 等 40 秒不动，你就不会用第二次&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;摘要加思维导图&lt;/strong&gt;：一个 JSON 两个 key，我用得最多的功能&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;本地工具的安全线&lt;/strong&gt;：该守的守，该开的口子明说&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;一个我自己踩到的洞&lt;/strong&gt;：markpad 渲染不了我博客里的 &lt;code&gt;&amp;lt;details&amp;gt;&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;账本和可抄的部分&lt;/strong&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/details&gt;
+&lt;hr&gt;
+&lt;p&gt;用 SDD（spec-driven development，先写规格再写代码）之后，我的目录里多了一堆东西。&lt;/p&gt;
+&lt;p&gt;拿 &lt;a href="https://github.com/Fission-AI/OpenSpec"&gt;OpenSpec&lt;/a&gt; 举例，一个变更下面标配四件套：&lt;code&gt;proposal.md&lt;/code&gt; 说要干什么，&lt;code&gt;design.md&lt;/code&gt; 说为什么这么设计，&lt;code&gt;tasks.md&lt;/code&gt; 拆任务，然后每个能力一份 &lt;code&gt;spec.md&lt;/code&gt;。markpad 这个项目本身只有一个变更，&lt;code&gt;openspec/&lt;/code&gt; 下面就有 8 份 Markdown、514 行。旁边 &lt;a href="https://github.com/walterfan/gitman"&gt;gitman&lt;/a&gt; 那个项目 9 份。这还只是我自己的两个小工具。&lt;/p&gt;
+&lt;p&gt;再加上 &lt;code&gt;AGENTS.md&lt;/code&gt;、&lt;code&gt;README.md&lt;/code&gt;、各种 agent 的 skill 文件、每次 review 前 agent 顺手生成的分析报告——&lt;strong&gt;我现在一天里读 Markdown 的时间，比读代码的时间长。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;问题是，写这一端已经被 AI 接走了，读这一端还是老样子：&lt;code&gt;cat&lt;/code&gt; 出来一屏原始符号，&lt;code&gt;|&lt;/code&gt; 和 &lt;code&gt;#&lt;/code&gt; 和 &lt;code&gt;---&lt;/code&gt; 混在一起；想看 Mermaid 图，得复制到某个在线站点；想快速搞清一份 200 行 spec 讲了什么，得从头读到尾。&lt;/p&gt;
+&lt;p&gt;IDE 里的 Markdown 预览当然有，VS Code 那个我用了多年。但它有个前提：&lt;strong&gt;你得先把这个目录当成一个项目打开。&lt;/strong&gt; 而我看文档的场景经常不是这样——临时收到一份别人的 design doc，或者在 &lt;code&gt;~/Downloads&lt;/code&gt; 里躺着一个从 agent 输出里存下来的分析报告。为了看一个文件开一个 IDE 窗口，有点重。&lt;/p&gt;
+&lt;p&gt;所以我写了 &lt;a href="https://github.com/walterfan/markpad"&gt;markpad&lt;/a&gt;。一句话：&lt;strong&gt;在任何一个有 Markdown 的目录里敲一个命令，浏览器里就出现一个能读、能改、能出图、能翻译、能总结的工作台。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;六月的时候我写过&lt;a href="https://www.fanyamin.com/markpad-local-markdown-reader-translator.html"&gt;一篇介绍&lt;/a&gt;，讲的是“有哪些功能、适合谁用”。这篇不重复那些，讲的是三个月后回头看，几个当时没写清楚的实现决定——包括两种图表为什么走两条完全不同的路、翻译为什么非流式不行、以及一个本地工具的安全线该画在哪。顺便交代几处变化：包管理从 Poetry 换成了 uv，环境变量从 &lt;code&gt;LLM_*&lt;/code&gt; 加了 &lt;code&gt;MP_&lt;/code&gt; 前缀（避免和别的工具打架），多了一个我现在用得最多的摘要加思维导图功能。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_2"&gt;它长什么样&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nb"&gt;cd&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;openspec/changes/add-markdown-web-server-cli
+markpad
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;输出：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="go"&gt;  markpad is ready.&lt;/span&gt;
+&lt;span class="go"&gt;  Serving Markdown from: /Users/walterfan/workspace/walter/markpad/openspec/changes/add-markdown-web-server-cli&lt;/span&gt;
+
+&lt;span class="go"&gt;  Open http://127.0.0.1:9526 in your browser to:&lt;/span&gt;
+&lt;span class="go"&gt;    - read your Markdown files with live preview&lt;/span&gt;
+&lt;span class="go"&gt;    - edit them with instant rendering&lt;/span&gt;
+&lt;span class="go"&gt;    - translate or improve them with the LLM tools&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;也可以直接开一个文件，包括绝对路径：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;markpad&lt;span class="w"&gt; &lt;/span&gt;docs/guide.md&lt;span class="w"&gt; &lt;/span&gt;--open
+markpad&lt;span class="w"&gt; &lt;/span&gt;/Users/me/notes/today.md&lt;span class="w"&gt; &lt;/span&gt;--open
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;浏览器里是三块面板：左边文件树，中间 Markdown 源码，右边渲染后的 HTML。工具栏上三个小图标分别控制三块的显隐——&lt;strong&gt;只读的时候把编辑器关掉，只剩文件树加预览，这是我最常用的布局。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;端口默认 9526，被占就往后顺延，最多试到 9626。这个设计是从 gitman 抄自己的：本地开发工具老是要抢端口，报错让用户自己换太不客气。&lt;/p&gt;
+&lt;p&gt;另外它是有状态的：&lt;code&gt;markpad -d&lt;/code&gt; 起后台，&lt;code&gt;markpad stop&lt;/code&gt; 停，&lt;code&gt;markpad status&lt;/code&gt; 看有没有在跑，&lt;code&gt;markpad doctor&lt;/code&gt; 不启服务只打诊断（LLM 配好了没、配置从哪来的、内容根目录在哪）。&lt;code&gt;doctor --format json&lt;/code&gt; 给脚本用。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;URL 里带着文件路径&lt;/strong&gt;这一点也值一句。打开 &lt;code&gt;docs/guide.md&lt;/code&gt; 之后地址栏是 &lt;code&gt;http://localhost:9526/docs/guide.md&lt;/code&gt;，把这个 URL 发给同事（前提是他也在跑 markpad）或者收藏起来，回来还是那个文件、那个源码加预览的视图。实现上是一个兜底路由：任何路径都返回同一个 index.html，前端自己去解析路径加载文件。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_3"&gt;两种图表，两条完全不同的路&lt;/h2&gt;
+&lt;p&gt;这是整个项目里我觉得最值得说的一个设计决定。&lt;/p&gt;
+&lt;p&gt;Mermaid 和 PlantUML 都是“图表即代码”，看起来该用同一套机制处理。实际上我把它们分到了两条路上：&lt;strong&gt;Mermaid 在浏览器里渲染，PlantUML 在服务端起子进程渲染。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;原因很简单：Mermaid 本身就是个 JS 库，浏览器里跑得好好的；PlantUML 是 Java 的，你不可能塞进浏览器。&lt;/p&gt;
+&lt;p&gt;所以后端渲染的时候做的事情也不一样。&lt;code&gt;renderer.py&lt;/code&gt; 里先用正则把围栏代码块抠出来，按语言分流：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;replace_diagram&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;match&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+    &lt;span class="n"&gt;info&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;match&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;group&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;info&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="ow"&gt;or&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;lower&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+    &lt;span class="n"&gt;source&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;match&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;group&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;body&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;info&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;mermaid&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="c1"&gt;# 只占位，把源码转义后交给浏览器&lt;/span&gt;
+        &lt;span class="n"&gt;token&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;@@MARKPAD_DIAGRAM_&lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="nb"&gt;len&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;placeholders&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;@@&amp;quot;&lt;/span&gt;
+        &lt;span class="n"&gt;escaped&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;html&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;escape&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;source&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="n"&gt;placeholders&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;append&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;DiagramPlaceholder&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+            &lt;span class="n"&gt;token&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;token&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+            &lt;span class="n"&gt;html&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;&amp;lt;div class=&amp;quot;diagram diagram-mermaid&amp;quot;&amp;gt;&amp;lt;div class=&amp;quot;mermaid&amp;quot;&amp;gt;&lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;escaped&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s1"&gt;&amp;lt;/div&amp;gt;...&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+        &lt;span class="p"&gt;))&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;token&lt;/span&gt;
+    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;info&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;plantuml&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;puml&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;}:&lt;/span&gt;
+        &lt;span class="c1"&gt;# 服务端直接出图&lt;/span&gt;
+        &lt;span class="n"&gt;token&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;@@MARKPAD_DIAGRAM_&lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="nb"&gt;len&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;placeholders&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;@@&amp;quot;&lt;/span&gt;
+        &lt;span class="n"&gt;placeholders&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;append&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;DiagramPlaceholder&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;token&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;token&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;html&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;render_plantuml_block&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;source&lt;/span&gt;&lt;span class="p"&gt;)))&lt;/span&gt;
+        &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;token&lt;/span&gt;
+    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;match&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;group&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;PlantUML 那边是起一个进程，管道进管道出：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="n"&gt;result&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;subprocess&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;run&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+    &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="n"&gt;command&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;-tsvg&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;-pipe&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;
+    &lt;span class="nb"&gt;input&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;source&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;encode&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;utf-8&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;),&lt;/span&gt;
+    &lt;span class="n"&gt;capture_output&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="kc"&gt;True&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="n"&gt;svg&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;result&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;stdout&lt;/span&gt;
+&lt;span class="n"&gt;encoded&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;base64&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;b64encode&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;svg&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;decode&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;ascii&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;&amp;lt;img alt=&amp;quot;PlantUML diagram&amp;quot; src=&amp;quot;data:image/svg+xml;base64,&lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;encoded&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s1"&gt;&amp;quot;&amp;gt;&amp;#39;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;strong&gt;为什么用 base64 data URI 而不是写一个临时文件再给个 URL？&lt;/strong&gt; 因为临时文件要管生命周期：什么时候删、并发怎么办、进程崩了留一堆垃圾怎么办。data URI 让整个渲染保持无状态——一次请求进去，一段自包含的 HTML 出来，服务端不留痕迹。代价是 HTML 变大，但本地工具不心疼这点带宽。&lt;/p&gt;
+&lt;p&gt;这里有个坑：&lt;strong&gt;占位符必须绕过 Markdown 解析和 HTML 清洗这两道工序。&lt;/strong&gt; 流程是“抠图 → 换占位符 → 渲染 Markdown → bleach 清洗 → 把占位符换回真 HTML”。如果顺序反了，让图表 HTML 先进 bleach，&lt;code&gt;&amp;lt;svg&amp;gt;&lt;/code&gt; 和 &lt;code&gt;data:&lt;/code&gt; 会被洗掉一半。占位符我用了 &lt;code&gt;@@MARKPAD_DIAGRAM_0@@&lt;/code&gt; 这种形式，因为它不含任何 Markdown 特殊字符，不会被解析器改动。&lt;/p&gt;
+&lt;p&gt;还有一个细节：markdown-it 会把独占一行的占位符包成 &lt;code&gt;&amp;lt;p&amp;gt;@@MARKPAD_DIAGRAM_0@@&amp;lt;/p&amp;gt;&lt;/code&gt;，所以替换的时候要先试带 &lt;code&gt;&amp;lt;p&amp;gt;&lt;/code&gt; 的版本，再试裸的：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;placeholder&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;placeholders&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;cleaned&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;cleaned&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;replace&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&amp;lt;p&amp;gt;&lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;placeholder&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;token&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;&amp;lt;/p&amp;gt;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;placeholder&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;html&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="n"&gt;cleaned&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;cleaned&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;replace&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;placeholder&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;token&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;placeholder&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;html&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;不然你会得到一个 &lt;code&gt;&amp;lt;p&amp;gt;&lt;/code&gt; 里面套 &lt;code&gt;&amp;lt;figure&amp;gt;&lt;/code&gt;，HTML 不合法，浏览器排版会跳。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;PlantUML 没装怎么办？&lt;/strong&gt; 不报 500，也不静默吞掉，而是原地渲染一段说明：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;PlantUML renderer unavailable. Set MARKPAD_PLANTUML_CMD
+or install PlantUML so `which plantuml` prints a command path.
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这是我给自己定的规矩：&lt;strong&gt;可选依赖缺失的时候，在缺失的那个位置告诉用户怎么补。&lt;/strong&gt; 不要让人去翻日志，也不要装作没这块内容。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_4"&gt;翻译为什么必须流式&lt;/h2&gt;
+&lt;p&gt;工具栏上有个语言下拉框，15 种语言，默认简体中文。选中一段 Markdown，点 Translate，译文原地替换选区；不选就整篇翻。&lt;/p&gt;
+&lt;p&gt;第一版我写的是非流式的：POST 上去，等结果，一次性替换。跑一次发现不行——&lt;strong&gt;一篇 200 行的 spec，40 秒里屏幕上什么都不动。&lt;/strong&gt; 用户不知道是在跑还是卡了，第二次就不会点了。&lt;/p&gt;
+&lt;p&gt;所以加了 &lt;code&gt;/api/translate/stream&lt;/code&gt;，后端把 LLM 的 SSE 流转成 &lt;code&gt;StreamingResponse&lt;/code&gt; 往下吐，前端一段段往编辑器里写。选区翻译尤其明显：你看着那一段一个词一个词被替换掉，中途觉得不对可以直接 Esc。&lt;/p&gt;
+&lt;p&gt;流完了才刷预览——这一点是有意的。流的过程里每来一个 token 就重渲染一次 HTML，右边会疯狂抖动，而且白白打服务端。所以翻译期间只更新编辑器，&lt;code&gt;await streamTranslation(...)&lt;/code&gt; 返回之后才 &lt;code&gt;renderPreview()&lt;/code&gt;。&lt;/p&gt;
+&lt;p&gt;顺便说编辑时的预览刷新：不是每敲一个字就渲染，而是 150 毫秒的防抖：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="kd"&gt;function&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;schedulePreview&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nx"&gt;updateStats&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nx"&gt;clearTimeout&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nx"&gt;state&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;renderTimer&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nx"&gt;state&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;renderTimer&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;setTimeout&lt;/span&gt;&lt;span class="p"&gt;(()&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;=&amp;gt;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nx"&gt;renderPreview&lt;/span&gt;&lt;span class="p"&gt;().&lt;/span&gt;&lt;span class="k"&gt;catch&lt;/span&gt;&lt;span class="p"&gt;((&lt;/span&gt;&lt;span class="nx"&gt;error&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;=&amp;gt;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;setStatus&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="sb"&gt;`Render failed: &lt;/span&gt;&lt;span class="si"&gt;${&lt;/span&gt;&lt;span class="nx"&gt;error&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;message&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="sb"&gt;`&lt;/span&gt;&lt;span class="p"&gt;));&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="p"&gt;},&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="mf"&gt;150&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;150 毫秒这个数字试出来的：低于 100 打字连打的时候会闪，高于 250 感觉上“跟不上手”。&lt;/p&gt;
+&lt;p&gt;翻译按钮什么时候能点？三个环境变量都齐了才能点，缺一个就是灰的，鼠标悬上去告诉你缺什么：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nv"&gt;MP_LLM_BASE_URL&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;https://api.example.com/v1
+&lt;span class="nv"&gt;MP_LLM_MODEL&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;your-model
+&lt;span class="nv"&gt;MP_LLM_API_KEY&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;your-api-key
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;code&gt;.env&lt;/code&gt; 也读，从你运行 &lt;code&gt;markpad&lt;/code&gt; 的那个目录读，环境变量优先。这样可以给不同项目配不同模型，临时用环境变量覆盖还有效。base URL 写到 &lt;code&gt;/v1&lt;/code&gt; 或者直接写到 &lt;code&gt;/chat/completions&lt;/code&gt; 都行，代码里 &lt;code&gt;_chat_completions_url()&lt;/code&gt; 会自己判断——这种小体贴能省掉一次“我明明配对了怎么 404”的排查。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_5"&gt;摘要加思维导图：我用得最多的一个&lt;/h2&gt;
+&lt;p&gt;前面说的都是读文档的辅助，这个是真正解决“我今天要读 20 份 spec”的那个功能。&lt;/p&gt;
+&lt;p&gt;点 Summarize，弹出一个对话框，上半是这份文档的摘要，下半是一张 Mermaid 思维导图，还带一个可展开的“看导图源码”。&lt;/p&gt;
+&lt;p&gt;实现上就一次 LLM 调用，关键在于&lt;strong&gt;让它一次返回两样东西&lt;/strong&gt;，而不是调两次：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="s2"&gt;&amp;quot;content&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;
+    &lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;Summarize the given Markdown document in &lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;target_language&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt; and outline &amp;quot;&lt;/span&gt;
+    &lt;span class="s2"&gt;&amp;quot;its structure as a Mermaid mindmap. Respond with ONLY a JSON object (no &amp;quot;&lt;/span&gt;
+    &lt;span class="s2"&gt;&amp;quot;code fences, no extra text) with exactly two string keys: &amp;quot;&lt;/span&gt;
+    &lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;&amp;quot;summary&amp;quot; — a detailed &lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;target_language&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s1"&gt;-language summary covering the &amp;#39;&lt;/span&gt;
+    &lt;span class="s2"&gt;&amp;quot;document&amp;#39;s purpose, main sections, key points/arguments, and conclusion; &amp;quot;&lt;/span&gt;
+    &lt;span class="s1"&gt;&amp;#39;&amp;quot;mindmap&amp;quot; — valid Mermaid mindmap syntax, whose first line is exactly &amp;#39;&lt;/span&gt;
+    &lt;span class="s2"&gt;&amp;quot;`mindmap`, followed by an indented root node derived from the document &amp;quot;&lt;/span&gt;
+    &lt;span class="s2"&gt;&amp;quot;title... Keep node text free of special characters like parentheses, &amp;quot;&lt;/span&gt;
+    &lt;span class="s2"&gt;&amp;quot;quotes, or colons.&amp;quot;&lt;/span&gt;
+&lt;span class="p"&gt;),&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;三个提示词细节是踩出来的：&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;一，“no code fences”。&lt;/strong&gt; 模型特别喜欢把 JSON 裹在 ```json 里面。光靠提示词挡不住，所以解析的时候还得兜一手：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="n"&gt;text&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;raw&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;strip&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;text&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;startswith&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;```&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+    &lt;span class="n"&gt;text&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;text&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;strip&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;`&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="n"&gt;text&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;text&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;removeprefix&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;json&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;strip&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;strong&gt;二，"first line is exactly &lt;code&gt;mindmap&lt;/code&gt;"。&lt;/strong&gt; Mermaid 的 mindmap 语法对第一行很挑，模型如果写成 &lt;code&gt;graph TD&lt;/code&gt; 或者前面多个空行，浏览器里就是一片空白。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;三，“节点文字里别放括号、引号、冒号”。&lt;/strong&gt; 这条是被坑最多的。Mermaid mindmap 里 &lt;code&gt;(&lt;/code&gt; 和 &lt;code&gt;[&lt;/code&gt; 是节点形状语法，冒号也有特殊含义。模型很自然会生成 &lt;code&gt;护栏一：argv 不是 shell 串&lt;/code&gt; 这种节点，然后整张图解析失败。&lt;strong&gt;这不是模型的错，是我一开始没告诉它输出要进一个对语法敏感的解析器。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;摘要和思维导图两个字段少一个就报 502，不做“部分成功”：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="ow"&gt;not&lt;/span&gt; &lt;span class="nb"&gt;isinstance&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;summary&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="ow"&gt;or&lt;/span&gt; &lt;span class="ow"&gt;not&lt;/span&gt; &lt;span class="nb"&gt;isinstance&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;mindmap&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+    &lt;span class="k"&gt;raise&lt;/span&gt; &lt;span class="n"&gt;HTTPException&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+        &lt;span class="n"&gt;status_code&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;502&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+        &lt;span class="n"&gt;detail&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;LLM summarization response was missing summary or mindmap.&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+    &lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;理由和 gitman 里那条一样：&lt;strong&gt;一个宁可说“这次没做出来”的工具，比一个总能给你半成品的工具好用。&lt;/strong&gt; 半张图比没有图更浪费时间——你得先花几秒钟才反应过来它是错的。&lt;/p&gt;
+&lt;p&gt;还有个 LLM 编辑框，在编辑器下面：写一句指令（“把这段改成更简洁的中文”、“给这个表格加一列说明”），点 Apply，流式改写选区或者全文。系统提示词里那条硬约束值得抄：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;Preserve Markdown structure, front matter, links, tables, code blocks, and diagram code unless the instruction explicitly asks to change them.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;不加这句，模型会顺手把你的 front matter 重排、把 Mermaid 代码块“优化”掉。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_6"&gt;本地工具的安全线画在哪&lt;/h2&gt;
+&lt;p&gt;这个项目我一开始想偷懒：反正只跑在 &lt;code&gt;127.0.0.1&lt;/code&gt;，只服务自己机器上的文件，还需要什么安全考虑？&lt;/p&gt;
+&lt;p&gt;后来想明白了两件事。第一，&lt;strong&gt;它接受任意 Markdown 内容并渲染成 HTML，而 Markdown 允许内联 HTML&lt;/strong&gt;。第二，&lt;strong&gt;它接受 HTTP 请求里的路径参数并读写文件&lt;/strong&gt;。这两条任意一条出问题，都是实打实的洞。&lt;/p&gt;
+&lt;p&gt;所以守了这几条：&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;渲染必过 bleach。&lt;/strong&gt; 白名单标签、白名单属性、协议只允许 &lt;code&gt;http&lt;/code&gt; / &lt;code&gt;https&lt;/code&gt; / &lt;code&gt;data&lt;/code&gt;。所以你在 Markdown 里塞 &lt;code&gt;&amp;lt;script&amp;gt;&lt;/code&gt; 或者 &lt;code&gt;onerror=&lt;/code&gt;，预览里不会执行。你可能会说“我自己的文件我还会攻击自己吗”——但你会打开别人发的、agent 生成的、从网上抄的 Markdown。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;路径不许逃出根目录。&lt;/strong&gt; 每次解析都先 resolve 再检查从属关系：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="n"&gt;resolved&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;root&lt;/span&gt; &lt;span class="o"&gt;/&lt;/span&gt; &lt;span class="n"&gt;requested&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;resolve&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;strict&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="kc"&gt;False&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="k"&gt;try&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;resolved&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;relative_to&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;root&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="k"&gt;except&lt;/span&gt; &lt;span class="ne"&gt;ValueError&lt;/span&gt; &lt;span class="k"&gt;as&lt;/span&gt; &lt;span class="n"&gt;exc&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+    &lt;span class="k"&gt;raise&lt;/span&gt; &lt;span class="n"&gt;PathOutsideRootError&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;Path escapes the content root.&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="kn"&gt;from&lt;/span&gt; &lt;span class="nn"&gt;exc&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;code&gt;resolve()&lt;/code&gt; 会把 &lt;code&gt;../../&lt;/code&gt; 和符号链接都摊平，之后 &lt;code&gt;relative_to()&lt;/code&gt; 才有意义。顺序反了就白做。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;保存是原子的。&lt;/strong&gt; 先写 &lt;code&gt;.文件名.tmp&lt;/code&gt;，再 &lt;code&gt;replace()&lt;/code&gt; 过去：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="n"&gt;tmp_path&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;file_path&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;with_name&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;.&lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;file_path&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;.tmp&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="n"&gt;tmp_path&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;write_text&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;content&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;encoding&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;utf-8&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="n"&gt;tmp_path&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;replace&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;file_path&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;同一个文件系统上 &lt;code&gt;replace()&lt;/code&gt; 是原子的。这样进程在写一半的时候被 kill，你的原文还在，不会留下半个文件。&lt;strong&gt;编辑器丢用户内容是最不可原谅的 bug&lt;/strong&gt;，这十行值得写。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;绝对路径是个明说的口子。&lt;/strong&gt; 前面提过可以 &lt;code&gt;markpad /Users/me/notes/today.md&lt;/code&gt;，也可以在左边搜索框里粘一个绝对路径直接打开。这明摆着绕过了根目录限制——所以我把它做成一条独立的 API（&lt;code&gt;/api/absolute-file&lt;/code&gt;）和一条独立的解析函数，不和相对路径那条混在一起，并且加了两道额外检查：必须是绝对路径，必须是 Markdown 扩展名。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;该开的口子明说，比假装没有口子安全。&lt;/strong&gt; 如果我为了“看起来严格”把绝对路径塞进相对路径那条逻辑里绕一下，那才是真正危险的——以后谁改那段代码都不知道自己在动一条安全边界。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;已知的缺口我也说清楚。&lt;/strong&gt; 和 gitman 不一样，markpad 在把文档内容发给 LLM 之前 &lt;strong&gt;既不截断也不脱敏&lt;/strong&gt;。你翻译一篇里面写着 API key 的文档，那个 key 就原样发出去了。这不是“还没做”，是我明确没做——一个 Markdown 编辑器不该猜哪段文字是秘密，而这个工具的定位是“你自己配自己的 LLM 端点”，责任在配置这一侧。不过它值得写在 README 里，我还没写。这条算欠着的账。&lt;/p&gt;
+&lt;p&gt;顺便，&lt;code&gt;MP_LLM_VERIFY_SSL=false&lt;/code&gt; 这个开关我也留了，注释里写清楚了：&lt;strong&gt;只在你的 LLM 端点用可信自签证书的时候才关。&lt;/strong&gt; 公司内网的 gateway 经常这样，不留这个口子工具在内网就用不了；不写清楚，就会有人为了消掉一个警告把它默认关掉。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_7"&gt;一个我自己踩到的洞&lt;/h2&gt;
+&lt;p&gt;写这篇文章的时候我顺手拿 markpad 打开了自己上一篇博客（就是讲 gitman 那篇），结果发现开头的“大纲”折叠块没了——&lt;code&gt;&amp;lt;details markdown="1"&amp;gt;&lt;/code&gt; 和 &lt;code&gt;&amp;lt;summary&amp;gt;&lt;/code&gt; 被原样转义成了文字。&lt;/p&gt;
+&lt;p&gt;查了一下，&lt;code&gt;renderer.py&lt;/code&gt; 的 &lt;code&gt;ALLOWED_TAGS&lt;/code&gt; 白名单里确实没有 &lt;code&gt;details&lt;/code&gt; 和 &lt;code&gt;summary&lt;/code&gt;：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="o"&gt;&amp;gt;&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class="kn"&gt;from&lt;/span&gt; &lt;span class="nn"&gt;markpad.renderer&lt;/span&gt; &lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="n"&gt;ALLOWED_TAGS&lt;/span&gt;
+&lt;span class="o"&gt;&amp;gt;&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;details&amp;quot;&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;ALLOWED_TAGS&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;summary&amp;quot;&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;ALLOWED_TAGS&lt;/span&gt;
+&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="kc"&gt;False&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="kc"&gt;False&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这个洞挺有意思，因为它恰好说明了白名单机制的性格：&lt;strong&gt;白名单是安全的，也是永远不完整的。&lt;/strong&gt; 我当初照着“常见语义标签”列了一份，压根没想到自己的博客会用 &lt;code&gt;&amp;lt;details&amp;gt;&lt;/code&gt;。而黑名单机制不会有这个问题——但会有另一个更糟的问题：你漏掉的那个标签是能执行脚本的那个。&lt;/p&gt;
+&lt;p&gt;所以修法是加白名单，不是换机制。这两个标签本身不带脚本能力，&lt;code&gt;open&lt;/code&gt; 属性也无害。补一行就行，但我打算连着一个测试一起提——&lt;strong&gt;能被一句 REPL 复现的 bug，一定能被一个测试锁住。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;写在这里也是想说：一个工具最好的测试用户就是作者本人，而且必须真的拿它干活，不是跑一遍 demo 就算完。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_8"&gt;这个工具花了多少&lt;/h2&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;项&lt;/th&gt;
+&lt;th&gt;数字&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;后端&lt;/td&gt;
+&lt;td&gt;1657 行 Python（&lt;code&gt;server.py&lt;/code&gt; 673、&lt;code&gt;cli.py&lt;/code&gt; 486、&lt;code&gt;files.py&lt;/code&gt; 208、&lt;code&gt;renderer.py&lt;/code&gt; 161、&lt;code&gt;models.py&lt;/code&gt; 89、&lt;code&gt;ports.py&lt;/code&gt; 33）&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;前端&lt;/td&gt;
+&lt;td&gt;2061 行（&lt;code&gt;app.js&lt;/code&gt; 1049、&lt;code&gt;styles.css&lt;/code&gt; 718、&lt;code&gt;index.html&lt;/code&gt; 294），零构建步骤&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;测试&lt;/td&gt;
+&lt;td&gt;878 行，53 个用例，全绿&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;commit 数&lt;/td&gt;
+&lt;td&gt;7&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;跨度&lt;/td&gt;
+&lt;td&gt;5 月 26 日到 9 月 1 日，业余时间&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;依赖&lt;/td&gt;
+&lt;td&gt;fastapi、uvicorn、click、pydantic、markdown-it-py、bleach、watchfiles、websockets、httpx&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;&lt;strong&gt;前端零构建&lt;/strong&gt;是有意的。没有 npm、没有 webpack、没有 TypeScript 编译——&lt;code&gt;app.js&lt;/code&gt; 就是一个浏览器直接跑的普通脚本，Mermaid 是一个 3.2MB 的 &lt;code&gt;mermaid.min.js&lt;/code&gt; 直接 vendor 进仓库。这样安装路径只有一条：一个 Python 包，装完就能跑。&lt;strong&gt;一个本地小工具，用户不该为了看 Markdown 先装个 Node。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;vendor 那 3.2MB 我犹豫过。走 CDN 更干净，但那意味着 markpad 在飞机上、在没网的会议室里就废了一半功能——图全渲不出来。&lt;strong&gt;离线可用&lt;/strong&gt;这条我看得比仓库干净重要。&lt;/p&gt;
+&lt;p&gt;不过这条我只做了一半，得承认：Tailwind 还是走 CDN 的（&lt;code&gt;index.html&lt;/code&gt; 里一行 &lt;code&gt;&amp;lt;script src="https://cdn.tailwindcss.com"&amp;gt;&lt;/code&gt;）。所以现在断网打开，图还在，排版会散。这是当初图省事留下的，vendor 一份 Tailwind 或者换成一份手写 CSS 都能解决，我还没动。&lt;strong&gt;一个原则如果只在一半的地方守，等于没守&lt;/strong&gt;——这句话是骂自己的。&lt;/p&gt;
+&lt;p&gt;live reload 用的是 WebSocket 加 &lt;a href="https://github.com/samuelcolvin/watchfiles"&gt;watchfiles&lt;/a&gt;，只推 Markdown 文件的变化：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;async&lt;/span&gt; &lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;_watch_and_send&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;root&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;Path&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;websocket&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;WebSocket&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="kc"&gt;None&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+    &lt;span class="k"&gt;async&lt;/span&gt; &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;changes&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;awatch&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;root&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+        &lt;span class="n"&gt;payload&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;
+            &lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;change&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;change&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;name&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;path&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;path&lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+            &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;change&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;path&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;changes&lt;/span&gt;
+            &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;_is_markdown_event&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;root&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;Path&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;path&lt;/span&gt;&lt;span class="p"&gt;))&lt;/span&gt;
+        &lt;span class="p"&gt;]&lt;/span&gt;
+        &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;payload&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+            &lt;span class="k"&gt;await&lt;/span&gt; &lt;span class="n"&gt;websocket&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;send_json&lt;/span&gt;&lt;span class="p"&gt;({&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;type&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;files-changed&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;changes&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="n"&gt;payload&lt;/span&gt;&lt;span class="p"&gt;})&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;过滤这一层不能省。&lt;code&gt;awatch&lt;/code&gt; 会把 &lt;code&gt;.git/&lt;/code&gt; 里的每次索引变化、&lt;code&gt;__pycache__&lt;/code&gt; 的每个 pyc 都报上来，一次 &lt;code&gt;git status&lt;/code&gt; 能触发几十个事件。文件索引那边也做了忽略目录（&lt;code&gt;.git&lt;/code&gt;、&lt;code&gt;.venv&lt;/code&gt;、&lt;code&gt;node_modules&lt;/code&gt;、&lt;code&gt;dist&lt;/code&gt; 那一串），不然在一个装了依赖的项目里，文件树会被 node_modules 里的 README 淹掉。&lt;/p&gt;
+&lt;p&gt;装的话一行：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;curl&lt;span class="w"&gt; &lt;/span&gt;-fsSL&lt;span class="w"&gt; &lt;/span&gt;https://raw.githubusercontent.com/walterfan/markpad/main/bootstrap.sh&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;|&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;bash
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;装进 &lt;code&gt;~/.local/share/markpad/venv&lt;/code&gt;，命令链到 &lt;code&gt;~/.local/bin/markpad&lt;/code&gt;。卸载 &lt;code&gt;./install.sh uninstall&lt;/code&gt;。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_9"&gt;可以直接抄的部分&lt;/h2&gt;
+&lt;p&gt;如果你也在写这类“在当前目录起个本地 Web”的小工具：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;不同渲染目标走不同路径，不要强行统一。&lt;/strong&gt;
+   Mermaid 交给浏览器，PlantUML 交给子进程。硬凑一套抽象只会让两边都变扭。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;占位符要绕过所有中间工序，并且不含特殊字符。&lt;/strong&gt;
+   抠出来 → 换占位符 → 走完解析和清洗 → 换回去。顺序错了，清洗会吃掉你的图。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;LLM 的输出只要给下游解析器吃，就在提示词里说清语法约束。&lt;/strong&gt;
+   “别用括号、引号、冒号”这条不是啰嗦，是 Mermaid mindmap 真的会挂。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;任何超过两三秒的 LLM 调用都做流式。&lt;/strong&gt;
+   不是为了快，是为了让用户知道它在动。40 秒的黑屏等于这个功能不存在。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;可选依赖缺失时，在缺失的位置说怎么补。&lt;/strong&gt;
+   不要抛 500，不要静默跳过，就在那块位置渲染一句“装 X 或者设 Y”。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;保存永远走临时文件加原子替换。&lt;/strong&gt;
+   十行代码，换掉“进程被 kill 时用户文件只剩一半”这个风险。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;该开的安全口子明说，单独一条代码路径。&lt;/strong&gt;
+   绝对路径读写就是一个口子，那就给它独立的 API 和独立的校验，别混进主路径里绕。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;本地工具优先离线可用，宁可 vendor。&lt;/strong&gt;
+   3MB 的仓库体积，换飞机上还能看图。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;拿自己的工具干真活。&lt;/strong&gt;
+   我打开自己上一篇博客才发现 &lt;code&gt;&amp;lt;details&amp;gt;&lt;/code&gt; 渲染不出来。跑 demo 发现不了这种事。&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;hr&gt;
+&lt;h2 id="ai"&gt;总结：AI 把写的成本压下去了，读的成本还在原地&lt;/h2&gt;
+&lt;p&gt;回到开头。SDD 好不好？好。让 agent 先写 proposal 和 design 再动手，代码质量确实不一样，几个月后回来也知道当初为什么这么定。&lt;/p&gt;
+&lt;p&gt;但它有个副作用没人提：&lt;strong&gt;它把文档产量提高了一个数量级，而人读文档的速度一点没变。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;以前一个变更配一份 design doc，是因为写文档贵。现在写文档几乎免费了，四件套变成标配，甚至一次 review 就顺手生成三份分析报告。产出端的成本降到接近零，消费端还是那双眼睛。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;这个不对称，就是我写 markpad 的全部理由。&lt;/strong&gt; 它做的三件事——渲染、总结、翻译——本质上都是压缩：把符号压成排版，把 200 行压成一张思维导图和一段摘要，把英文压成你母语里读得快的那个版本。&lt;/p&gt;
+&lt;p&gt;有意思的是，这个思路和 gitman 是同一个。gitman 解决的是“我知道我想干什么，但翻译成 git 命令很费劲”；markpad 解决的是“这份文档里有我要的东西，但读完很费劲”。&lt;strong&gt;两个都不是让 AI 替我做决定，是让它把我和信息之间那段翻译工作接走。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;我猜下一波真正有用的小工具，多半也长这样：不是又一个 agent，而是给已经爆炸的信息量配一副眼镜。&lt;/p&gt;
+&lt;hr&gt;
+&lt;p&gt;代码在 &lt;a href="https://github.com/walterfan/markpad"&gt;github.com/walterfan/markpad&lt;/a&gt;，Apache 2.0，1657 行 Python 加 2000 行没有构建步骤的前端。欢迎抄，也欢迎告诉我 &lt;code&gt;ALLOWED_TAGS&lt;/code&gt; 里还漏了哪个标签。&lt;/p&gt;
+&lt;h2 id="_10"&gt;全文思维导图&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap
+&amp;lt;style&amp;gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    LineColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&amp;lt;/style&amp;gt;
+
+* markpad：Markdown 工作台
+** 起因
+*** SDD 四件套让文档产量爆炸
+*** 写这端被 AI 接走，读这端还是 cat
+*** 为看一个文件开 IDE 太重
+** 形态
+*** 一个命令起本地 Web
+*** 文件树 + 源码 + 预览，可独立显隐
+*** 端口 9526，占了往后顺延
+*** URL 带文件路径，可分享可收藏
+*** doctor / -d / stop / status
+** 两种图表两条路
+*** Mermaid 交给浏览器
+*** PlantUML 起子进程 -tsvg -pipe
+*** base64 data URI，服务端无状态
+*** 占位符绕过解析和清洗
+*** 依赖缺失就地说怎么补
+** 翻译
+*** 必须流式，否则 40 秒黑屏
+*** 选区优先，不选则全文
+*** 流完才刷预览，避免抖动
+*** 编辑预览 150 毫秒防抖
+*** 15 种语言，.env 或环境变量
+** 摘要与思维导图
+*** 一次调用返回 summary 和 mindmap
+*** 提示词要禁围栏、锁首行、禁特殊字符
+*** 少一个字段就报错，不做半成品
+*** LLM 编辑框保结构不动 front matter
+** 安全线
+*** 渲染必过 bleach 白名单
+*** 路径先 resolve 再 relative_to
+*** 保存走临时文件原子替换
+*** 绝对路径是明说的口子，独立路径
+*** 不脱敏是已知缺口，写进文档
+** 踩到的洞
+*** details 和 summary 不在白名单
+*** 白名单安全但永远不完整
+*** 拿自己的工具干真活才发现
+** 账本
+*** 1657 行 Python / 2061 行前端
+*** 878 行测试，53 个用例
+*** 7 个 commit，五月到九月
+*** 前端零构建，Mermaid vendor 3.2MB
+@endmindmap
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;img alt="markpad：为 SDD 时代配一副读文档的眼镜 - 思维导图" src="./images/tech_20260901_markpad_mindmap.svg"&gt;&lt;/p&gt;
+&lt;hr/&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。&lt;/p&gt;</content><category term="Tech"/><category term="journal"/><category term="markdown"/><category term="LLM"/><category term="CLI"/><category term="tooling"/><category term="python"/><category term="fastapi"/><category term="SDD"/></entry><entry><title>我写过 git cheatsheet，还是记不住——于是写了 gitman</title><link href="https://www.fanyamin.com/blog/2026-09-01-gitman-nl-git.html" rel="alternate"/><published>2026-09-01T23:10:00+08:00</published><updated>2026-09-01T23:10:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-09-01:/blog/2026-09-01-gitman-nl-git.html</id><summary type="html">&lt;p&gt;我在自己的 wiki 上写过一篇 git tips，改了 17 版，该记不住的还是记不住。于是写了 gitman：用自然语言说想干什么，它先给出一份 git 命令计划和一条从真实 diff 里长出来的 commit message，你点头它才执行。这篇不讲“AI 真神奇”，讲的是让 LLM 碰你的仓库时必须先立起来的几道护栏——argv 白名单、三级危险分类、commit message 只能来自 snapshot、默认不联网。全部代码 942 行，5 个 commit，可抄。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;我写过 git cheatsheet，还是记不住——于是写了 gitman&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;learning note&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Version&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;v1.0&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;2026-09-01&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 id="_1"&gt;大纲&lt;/h2&gt;
+&lt;details&gt;
+&lt;summary&gt;展开看看&lt;/summary&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;cheatsheet 治不好的病&lt;/strong&gt;：查手册的前提是你知道要查什么关键词&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;gitman 是什么&lt;/strong&gt;：自然语言 → 计划 → 确认 → 执行，CLI 加一个本地 Web UI&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;四道护栏&lt;/strong&gt;：argv 不是 shell 串、三级危险分类、commit message 来自 diff、默认不联网&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;一个真实的坑&lt;/strong&gt;：&lt;code&gt;git rm&lt;/code&gt; 那个 commit 是怎么来的&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;让 LLM 学会说“我不确定”&lt;/strong&gt;：歧义时只返回只读命令&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;小工具的账&lt;/strong&gt;：942 行代码、686 行测试、5 个 commit&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;可以直接抄的 checklist&lt;/strong&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/details&gt;
+&lt;hr&gt;
+&lt;p&gt;我在自己的 wiki 上有一篇 &lt;a href="https://github.com/walterfan/walterfan/wiki/git-tips"&gt;git tips&lt;/a&gt;，从工作区暂存区仓库区讲到 submodule、subtree、filter-branch，改了 17 版。写的时候很爽，觉得从此江湖再无难题。&lt;/p&gt;
+&lt;p&gt;然后每隔几个月，我还是要打开它翻一遍。删远程分支到底是 &lt;code&gt;git push origin --delete&lt;/code&gt; 还是 &lt;code&gt;:branchname&lt;/code&gt;？想把最近两个 commit 合成一个，&lt;code&gt;rebase -i HEAD~2&lt;/code&gt; 之后是选第一个还是第二个改成 squash？子模块换地址要不要 &lt;code&gt;sync --recursive&lt;/code&gt;？&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;cheatsheet 没治好这个病，因为查手册有个前提：你得先知道要查什么关键词。&lt;/strong&gt; 而我脑子里当时只有一句大白话——“我想把这两个提交并成一个”。从这句话到 &lt;code&gt;git rebase --interactive HEAD~2&lt;/code&gt;，中间那一步翻译，恰恰是最费劲的。&lt;/p&gt;
+&lt;p&gt;再加上写 commit message。改完一堆文件，回头要给它起个名字，还得符合 conventional commit 那套 &lt;code&gt;feat:&lt;/code&gt; / &lt;code&gt;fix:&lt;/code&gt; / &lt;code&gt;refactor:&lt;/code&gt; 的规矩，这活儿说不上难，就是烦——你得重新读一遍自己的 diff，才能诚实地概括它。&lt;/p&gt;
+&lt;p&gt;所以我写了 &lt;a href="https://github.com/walterfan/gitman"&gt;gitman&lt;/a&gt;。一句话：&lt;strong&gt;你说人话，它出计划，你点头，它才动手。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;但这篇文章想讲的不是“接个 LLM 真神奇”。接 API 是最简单的部分，两百行就够了。真正花时间的是另一件事：&lt;strong&gt;当一个会瞎猜的东西拿到了你仓库的执行权，你得先给它焊几道护栏。&lt;/strong&gt;&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_2"&gt;它长什么样&lt;/h2&gt;
+&lt;p&gt;从任何一个 git 工作树里：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;gitman&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;commit the staged changes&amp;quot;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;--dry-run
+gitman&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;show status&amp;quot;&lt;/span&gt;
+gitman&lt;span class="w"&gt; &lt;/span&gt;ask&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;commit the refactor&amp;quot;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;--repo&lt;span class="w"&gt; &lt;/span&gt;/path/to/repo
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;code&gt;ask&lt;/code&gt; 是默认命令，所以 &lt;code&gt;gitman "show status"&lt;/code&gt; 和 &lt;code&gt;gitman ask "show status"&lt;/code&gt; 一样。输出是这样的：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="gp"&gt;$ &lt;/span&gt;gitman&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;show status&amp;quot;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;--dry-run
+&lt;span class="go"&gt;Summary: Show short git status&lt;/span&gt;
+&lt;span class="go"&gt;Commands:&lt;/span&gt;
+&lt;span class="go"&gt;  1. git status --short&lt;/span&gt;
+&lt;span class="go"&gt;Dry-run: no git commands executed.&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;要提交的时候，它会先把命令序列和 commit message 摆出来，等你确认：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="gp"&gt;$ &lt;/span&gt;gitman&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;commit my changes&amp;quot;&lt;/span&gt;
+&lt;span class="go"&gt;Summary: Commit changes: docs: update README.md&lt;/span&gt;
+&lt;span class="go"&gt;Commit message:&lt;/span&gt;
+&lt;span class="go"&gt;docs: update README.md&lt;/span&gt;
+&lt;span class="go"&gt;Commands:&lt;/span&gt;
+&lt;span class="go"&gt;  1. git add -A [mutating]&lt;/span&gt;
+&lt;span class="go"&gt;  2. git commit -m docs: update README.md [mutating]&lt;/span&gt;
+&lt;span class="go"&gt;Execute this plan? [y/N]:&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;注意方括号里的 &lt;code&gt;mutating&lt;/code&gt;。这个标记不是装饰，下面会讲它从哪来。&lt;/p&gt;
+&lt;p&gt;还有个 &lt;code&gt;gitman serve&lt;/code&gt;，在 &lt;code&gt;127.0.0.1:9626&lt;/code&gt; 起一个本地 Web UI，同样的 ask → plan → confirm → execute 循环，只是搬到浏览器里。端口被占就往后顺延到 9627、9628。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="llm-argv-shell"&gt;护栏一：LLM 只能吐 argv，不能吐 shell 字符串&lt;/h2&gt;
+&lt;p&gt;这是整个工具最重要的一条约定。&lt;/p&gt;
+&lt;p&gt;让 LLM 生成一整行 shell 命令，然后 &lt;code&gt;subprocess.run(cmd, shell=True)&lt;/code&gt;——这是注入风险最高的那条路。你的 diff 里但凡有一行文件名或者 commit message 长得像 &lt;code&gt;; rm -rf ~&lt;/code&gt;，模型又恰好把它抄进了输出，就完了。&lt;/p&gt;
+&lt;p&gt;所以 gitman 的契约是：&lt;strong&gt;planner 只能返回一个 JSON，里面 &lt;code&gt;commands[].args&lt;/code&gt; 是字符串数组，不含 &lt;code&gt;git&lt;/code&gt; 这个二进制名，不含 shell。&lt;/strong&gt; 执行器自己拼 &lt;code&gt;git -C &amp;lt;repo&amp;gt;&lt;/code&gt;，然后 &lt;code&gt;shell=False&lt;/code&gt;。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;summary&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;Stage Python files and commit&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;commands&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;args&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;add&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;src/gitman&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;]},&lt;/span&gt;
+&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;args&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;commit&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;-m&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&amp;lt;generated message&amp;gt;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;]}&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;commit_message&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;feat: add gitman CLI planner&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;span class="w"&gt;  &lt;/span&gt;&lt;span class="nt"&gt;&amp;quot;warnings&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[]&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;光有约定不够，模型是会跑偏的，所以还得在执行前做一次校验。&lt;code&gt;safety.py&lt;/code&gt; 里那三十行是整个项目最值钱的部分：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="n"&gt;FORBIDDEN_BINARIES&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;bash&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;sh&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;zsh&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;python&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;python3&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+                      &lt;span class="s2"&gt;&amp;quot;curl&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;wget&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;sudo&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;chmod&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;chown&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;kill&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;dd&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
+
+&lt;span class="n"&gt;SHELL_META&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;re&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;compile&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="sa"&gt;r&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;[;|&amp;amp;`$]&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;validate_git_args&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;args&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;list&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="nb"&gt;str&lt;/span&gt;&lt;span class="p"&gt;])&lt;/span&gt; &lt;span class="o"&gt;-&amp;gt;&lt;/span&gt; &lt;span class="kc"&gt;None&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;first&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;args&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt;
+    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;first&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;FORBIDDEN_BINARIES&lt;/span&gt; &lt;span class="ow"&gt;or&lt;/span&gt; &lt;span class="n"&gt;first&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;git&amp;quot;&lt;/span&gt; &lt;span class="ow"&gt;or&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;/&amp;quot;&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;first&lt;/span&gt; &lt;span class="ow"&gt;or&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="se"&gt;\\&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;first&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="k"&gt;raise&lt;/span&gt; &lt;span class="n"&gt;UnsafeCommandError&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;Rejected non-git command: &lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;first&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="o"&gt;...&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;第一个参数必须是一个 git 子命令：不能是别的二进制，不能带路径分隔符，不能是 &lt;code&gt;.sh&lt;/code&gt; 或 &lt;code&gt;.exe&lt;/code&gt;。其余参数不许出现 shell 元字符。&lt;/p&gt;
+&lt;p&gt;这里有个小细节值得说：&lt;code&gt;-m&lt;/code&gt; 后面那个参数要开个口子。commit message 里出现 &lt;code&gt;$&lt;/code&gt; 或者 &lt;code&gt;&amp;amp;&lt;/code&gt; 太正常了（“fix: handle $HOME expansion”），如果一刀切，工具就没法用了。所以校验时先把所有 &lt;code&gt;-m&lt;/code&gt; 的下一个位置记下来，跳过它们再查元字符：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="n"&gt;message_indexes&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="nb"&gt;set&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="nb"&gt;int&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nb"&gt;set&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+&lt;span class="n"&gt;index&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt;
+&lt;span class="k"&gt;while&lt;/span&gt; &lt;span class="n"&gt;index&lt;/span&gt; &lt;span class="o"&gt;&amp;lt;&lt;/span&gt; &lt;span class="nb"&gt;len&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;args&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;args&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="n"&gt;index&lt;/span&gt;&lt;span class="p"&gt;]&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;-m&amp;quot;&lt;/span&gt; &lt;span class="ow"&gt;and&lt;/span&gt; &lt;span class="n"&gt;index&lt;/span&gt; &lt;span class="o"&gt;+&lt;/span&gt; &lt;span class="mi"&gt;1&lt;/span&gt; &lt;span class="o"&gt;&amp;lt;&lt;/span&gt; &lt;span class="nb"&gt;len&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;args&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+        &lt;span class="n"&gt;message_indexes&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;add&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;index&lt;/span&gt; &lt;span class="o"&gt;+&lt;/span&gt; &lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+        &lt;span class="n"&gt;index&lt;/span&gt; &lt;span class="o"&gt;+=&lt;/span&gt; &lt;span class="mi"&gt;2&lt;/span&gt;
+        &lt;span class="k"&gt;continue&lt;/span&gt;
+    &lt;span class="n"&gt;index&lt;/span&gt; &lt;span class="o"&gt;+=&lt;/span&gt; &lt;span class="mi"&gt;1&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;因为 &lt;code&gt;shell=False&lt;/code&gt;，这个参数会被原样当成一个字符串交给 git，元字符没有任何特殊含义。&lt;strong&gt;安全边界立在“不进 shell”这一层，不是立在“字符串里不许有奇怪符号”这一层。&lt;/strong&gt; 这个区分很关键：前者是结构性的，后者是打地鼠。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_3"&gt;护栏二：命令分三级，危险的那级要问两次&lt;/h2&gt;
+&lt;p&gt;不是所有 git 命令都一样。&lt;code&gt;git status&lt;/code&gt; 你闭着眼让它跑；&lt;code&gt;git add&lt;/code&gt; 跑错了顶多重来；&lt;code&gt;git reset --hard&lt;/code&gt; 跑错了，你今天下午白干。&lt;/p&gt;
+&lt;p&gt;所以 &lt;code&gt;classify()&lt;/code&gt; 把命令分成三档：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;级别&lt;/th&gt;
+&lt;th&gt;例子&lt;/th&gt;
+&lt;th&gt;需要什么&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;read-only&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;status&lt;/code&gt;、&lt;code&gt;log&lt;/code&gt;、&lt;code&gt;diff&lt;/code&gt;、&lt;code&gt;show&lt;/code&gt;、&lt;code&gt;blame&lt;/code&gt;、&lt;code&gt;rev-parse&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;直接跑，不问&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;mutating&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;add&lt;/code&gt;、&lt;code&gt;commit&lt;/code&gt;、&lt;code&gt;push&lt;/code&gt;、&lt;code&gt;branch -d&lt;/code&gt;、&lt;code&gt;stash&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;问一次，或者 &lt;code&gt;--yes&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;destructive&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;reset --hard&lt;/code&gt;、&lt;code&gt;clean -f&lt;/code&gt;、&lt;code&gt;push --force&lt;/code&gt;、&lt;code&gt;branch -D&lt;/code&gt;、&lt;code&gt;rebase&lt;/code&gt;、&lt;code&gt;commit --amend&lt;/code&gt;、&lt;code&gt;filter-branch&lt;/code&gt;、&lt;code&gt;update-ref -d&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;再问一次，或者显式 &lt;code&gt;--force-destructive&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;关键点在于 &lt;strong&gt;&lt;code&gt;--yes&lt;/code&gt; 不能覆盖 destructive&lt;/strong&gt;。脚本里图省事加个 &lt;code&gt;--yes&lt;/code&gt; 是人之常情，但如果 &lt;code&gt;--yes&lt;/code&gt; 能一路放行到 &lt;code&gt;push --force&lt;/code&gt;，那这层分类就白做了。所以 destructive 单独要一个标志：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;destructive&lt;/span&gt; &lt;span class="ow"&gt;and&lt;/span&gt; &lt;span class="ow"&gt;not&lt;/span&gt; &lt;span class="n"&gt;force_destructive&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+    &lt;span class="n"&gt;destructive_confirmed&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;click&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;confirm&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+        &lt;span class="s2"&gt;&amp;quot;This plan includes destructive git commands. Continue?&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;default&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="kc"&gt;False&lt;/span&gt;
+    &lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;code&gt;default=False&lt;/code&gt; 也是有意的。手快按回车的默认结果应该是“不”。&lt;/p&gt;
+&lt;p&gt;还有一条容易被忽略的：&lt;strong&gt;分类要在执行的那一刻再算一遍，而不是信任 plan 里带过来的标记。&lt;/strong&gt; Web UI 那边尤其明显——&lt;code&gt;/api/execute&lt;/code&gt; 收到的 plan 是从前端 POST 上来的 JSON，前端说自己是 &lt;code&gt;destructive: false&lt;/code&gt; 完全不能信，所以服务端进来先 &lt;code&gt;annotate_commands()&lt;/code&gt; 重新分类：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="n"&gt;plan&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;annotate_commands&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;body&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;plan&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;   &lt;span class="c1"&gt;# 不信前端传上来的标记&lt;/span&gt;
+&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="nb"&gt;any&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;cmd&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;destructive&lt;/span&gt; &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;cmd&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;plan&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;commands&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="ow"&gt;and&lt;/span&gt; &lt;span class="ow"&gt;not&lt;/span&gt; &lt;span class="n"&gt;body&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;destructive_confirm&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+    &lt;span class="k"&gt;raise&lt;/span&gt; &lt;span class="n"&gt;HTTPException&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;status_code&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;400&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;detail&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;Destructive command requires extra confirmation.&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这是老生常谈的“不要信任客户端”，但套在 AI 工具上还多一层：&lt;strong&gt;LLM 的输出也是客户端输入。&lt;/strong&gt; 它标了 &lt;code&gt;mutating: false&lt;/code&gt; 不代表这条命令真的无害。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="commit-message-diff"&gt;护栏三：commit message 只能从真实的 diff 里长出来&lt;/h2&gt;
+&lt;p&gt;这是我一开始就想清楚的一条，也是这个工具对我个人最有用的一条。&lt;/p&gt;
+&lt;p&gt;如果只把用户那句话（“提交一下我的重构”）丢给模型让它写 commit message，你会得到一条听起来很像样、但和实际改动对不上的消息。几个月后你 &lt;code&gt;git log&lt;/code&gt; 翻回来，看到 &lt;code&gt;refactor: improve code structure&lt;/code&gt;，一点信息都没有。&lt;/p&gt;
+&lt;p&gt;所以流程是反过来的：&lt;strong&gt;先在目标仓库里跑 &lt;code&gt;git status --short&lt;/code&gt;、&lt;code&gt;git diff&lt;/code&gt;、&lt;code&gt;git diff --staged&lt;/code&gt;，把这个 snapshot 喂给 planner，再让它写。&lt;/strong&gt; 系统提示词里有一条硬约束：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;Never invent file paths that are not in the provided status/diff snapshot.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;snapshot 本身也有几个约束：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;有上限&lt;/strong&gt;：diff 超过 8000 字符就截断，并在 warnings 里标注“Unstaged diff was truncated”，不给模型硬塞，也不给自己的 token 账单添堵。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;先脱敏&lt;/strong&gt;：进 prompt 之前过一遍 &lt;code&gt;redact()&lt;/code&gt;，把形如 &lt;code&gt;api_key=xxx&lt;/code&gt;、&lt;code&gt;token: xxx&lt;/code&gt; 的键值对，以及 &lt;code&gt;ghp_&lt;/code&gt;、&lt;code&gt;sk-&lt;/code&gt;、&lt;code&gt;xox?-&lt;/code&gt; 打头的 token 串换成 &lt;code&gt;&amp;lt;redacted&amp;gt;&lt;/code&gt;。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;没改动就不编&lt;/strong&gt;：&lt;code&gt;commit_message_from_snapshot()&lt;/code&gt; 在 &lt;code&gt;changed_paths()&lt;/code&gt; 为空时直接返回 &lt;code&gt;None&lt;/code&gt;，计划里就不会出现 commit 命令，只留一句 warning。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这三条里，我觉得最容易被忽略的是最后一条。一个愿意说“你没有东西可提交”的工具，比一个总能给你憋出一条 commit message 的工具靠谱得多。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="git-rm"&gt;一个真实的坑：&lt;code&gt;git rm&lt;/code&gt; 是怎么被拦下来的&lt;/h2&gt;
+&lt;p&gt;项目现在总共 5 个 commit，其中一个是 &lt;code&gt;fix: allow git rm --cached while blocking destructive rm&lt;/code&gt;。&lt;/p&gt;
+&lt;p&gt;背景是这样：你删了一个文件，然后跟 gitman 说“把这个删除提交上去”。模型很自然地会想到 &lt;code&gt;git rm &amp;lt;path&amp;gt;&lt;/code&gt;。问题是——&lt;strong&gt;文件已经在磁盘上被删掉了，此时正确的做法是 &lt;code&gt;git add -A&lt;/code&gt; 或者 &lt;code&gt;git add &amp;lt;path&amp;gt;&lt;/code&gt;，让 git 记录这次删除。&lt;/strong&gt; 而 &lt;code&gt;git rm&lt;/code&gt; 会去删工作区里的文件，你以为在暂存一个删除，它在执行一个删除。&lt;/p&gt;
+&lt;p&gt;大部分时候结果一样，但只要模型把路径搞错一个字符，你丢的就是一个本来好好的文件。&lt;/p&gt;
+&lt;p&gt;修法是两头堵。planner 的系统提示词加了三行：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;To stage a deleted file, use `add -A` or `add &amp;lt;path&amp;gt;` instead of `rm`.
+`rm` is only allowed with `--cached` (unstage/untrack without touching the
+working tree); plain `rm` is always rejected because it deletes files on disk.
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;code&gt;safety.py&lt;/code&gt; 里再加一道兜底，并且把错误信息写成能直接照着做的样子：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;first&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;rm&amp;quot;&lt;/span&gt; &lt;span class="ow"&gt;and&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;--cached&amp;quot;&lt;/span&gt; &lt;span class="ow"&gt;not&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;args&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="p"&gt;:]:&lt;/span&gt;
+    &lt;span class="k"&gt;raise&lt;/span&gt; &lt;span class="n"&gt;UnsafeCommandError&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+        &lt;span class="s2"&gt;&amp;quot;Rejected `git rm` without --cached: it deletes the file from your working &amp;quot;&lt;/span&gt;
+        &lt;span class="s2"&gt;&amp;quot;tree, not just the index. Run `git rm --cached &amp;lt;path&amp;gt;` to only unstage/untrack &amp;quot;&lt;/span&gt;
+        &lt;span class="s2"&gt;&amp;quot;it, or delete the file yourself and run `gitman` again to commit the removal.&amp;quot;&lt;/span&gt;
+    &lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;strong&gt;提示词是软约束，代码是硬约束，两个都要有。&lt;/strong&gt; 提示词负责让模型大部分时候做对，代码负责让它做错时不出事。只信提示词，等于把安全建立在“模型今天状态不错”上面。&lt;/p&gt;
+&lt;p&gt;顺便说一句，这条错误信息我特意写长了。CLI 工具最气人的就是甩你一句 &lt;code&gt;Rejected: rm&lt;/code&gt;，然后你得去读源码才知道该怎么办。既然拦了，就顺手告诉人家下一步怎么走。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_4"&gt;护栏四：默认不联网，仓库也不许走错&lt;/h2&gt;
+&lt;p&gt;两条边界，一句话就能说清，但都是踩过坑才会当回事的。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;不配置就不联网。&lt;/strong&gt; &lt;code&gt;GITMAN_LLM_BASE_URL&lt;/code&gt; 和 &lt;code&gt;GITMAN_LLM_MODEL&lt;/code&gt; 没设的时候，&lt;code&gt;ask&lt;/code&gt; 直接失败并给出配置说明，&lt;strong&gt;不会退化成“先跑几条命令看看”&lt;/strong&gt;。你的私有仓库 diff 不会因为你手滑跑了个命令就飞到某个 API 上去。想用本地模型？把 base URL 指向 Ollama 就行，代码不用改。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nv"&gt;GITMAN_LLM_BASE_URL&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;http://127.0.0.1:11434&amp;quot;&lt;/span&gt;
+&lt;span class="nv"&gt;GITMAN_LLM_MODEL&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;qwen2.5-coder&amp;quot;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;code&gt;.env&lt;/code&gt; 也支持，cwd 和目标仓库各找一次，已经设好的环境变量优先——这样你可以给不同项目配不同模型，而临时用环境变量覆盖依然有效。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;仓库只从起点解析。&lt;/strong&gt; &lt;code&gt;resolve_repo()&lt;/code&gt; 从 cwd 或者 &lt;code&gt;--repo&lt;/code&gt; 出发跑一次 &lt;code&gt;git rev-parse --show-toplevel&lt;/code&gt;，不在里面就直接退出，绝不去兄弟目录或者什么全局配置的项目根里碰运气。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="n"&gt;result&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;_run_git&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;probe&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;rev-parse&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;--is-inside-work-tree&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;])&lt;/span&gt;
+&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;result&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;returncode&lt;/span&gt; &lt;span class="o"&gt;!=&lt;/span&gt; &lt;span class="mi"&gt;0&lt;/span&gt; &lt;span class="ow"&gt;or&lt;/span&gt; &lt;span class="n"&gt;result&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;stdout&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;strip&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt; &lt;span class="o"&gt;!=&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;true&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+    &lt;span class="k"&gt;raise&lt;/span&gt; &lt;span class="n"&gt;NotAGitRepoError&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="sa"&gt;f&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;No git repository found at &lt;/span&gt;&lt;span class="si"&gt;{&lt;/span&gt;&lt;span class="n"&gt;probe&lt;/span&gt;&lt;span class="si"&gt;}&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;Web UI 那边更严一点：serve 启动时锁定一个仓库，&lt;code&gt;/api/execute&lt;/code&gt; 如果收到一个不同的 repo 路径，直接 403。&lt;strong&gt;一个能被 HTTP 请求换掉目标仓库的本地服务，等于在你机器上开了个洞。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;顺带一提，UI 默认绑 &lt;code&gt;127.0.0.1&lt;/code&gt; 而不是 &lt;code&gt;0.0.0.0&lt;/code&gt;。你的 git 元数据和 diff 不该在局域网里裸奔。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="llm"&gt;让 LLM 学会说“我不确定”&lt;/h2&gt;
+&lt;p&gt;这一条我觉得比前面所有护栏都更有普适性。&lt;/p&gt;
+&lt;p&gt;用户说“undo”。撤销什么？工作区的未提交改动，还是最后一次 commit？如果两样都存在，这句话就是歧义的——而这两个操作的后果差得非常远。&lt;/p&gt;
+&lt;p&gt;大多数工具在这里会挑一个它觉得最可能的执行掉。gitman 的选择是：&lt;strong&gt;返回只读命令加一条 warning，什么都不改。&lt;/strong&gt;&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;text&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;undo&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;undo that&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt; &lt;span class="ow"&gt;and&lt;/span&gt; &lt;span class="n"&gt;snapshot&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;has_changes&lt;/span&gt; &lt;span class="ow"&gt;and&lt;/span&gt; &lt;span class="n"&gt;snapshot&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;has_head&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;Plan&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+        &lt;span class="n"&gt;summary&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;Ambiguous undo: inspect first&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+        &lt;span class="n"&gt;commands&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="n"&gt;GitCommand&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;args&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;status&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;--short&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;])],&lt;/span&gt;
+        &lt;span class="n"&gt;warnings&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;
+            &lt;span class="s2"&gt;&amp;quot;Both uncommitted changes and a HEAD commit exist. &amp;quot;&lt;/span&gt;
+            &lt;span class="s2"&gt;&amp;quot;Say whether to discard working-tree changes or undo the last commit.&amp;quot;&lt;/span&gt;
+        &lt;span class="p"&gt;],&lt;/span&gt;
+    &lt;span class="p"&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;系统提示词里也写了同样的规则，让远端模型照做：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;If the request is ambiguous (for example "undo" when both uncommitted changes and a HEAD commit exist), return only read-only inspection commands and a warning; do not mutate.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;&lt;code&gt;Plan&lt;/code&gt; 这个模型里专门留了 &lt;code&gt;warnings: list[str]&lt;/code&gt; 字段，就是为了让“我不确定”成为一个一等公民的返回值，而不是塞在 summary 里的一句客套话。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;AI 工具的可信度，很大程度上取决于它敢不敢说“这句话我没听懂”。&lt;/strong&gt; 一个永远给你答案的助手，你迟早会发现它有一半答案是编的；一个会停下来反问的助手，剩下那些答案你才敢用。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_5"&gt;这个工具花了多少&lt;/h2&gt;
+&lt;p&gt;我把账摊开，因为这决定了值不值得自己写：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;项&lt;/th&gt;
+&lt;th&gt;数字&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;源码&lt;/td&gt;
+&lt;td&gt;942 行（&lt;code&gt;src/gitman/&lt;/code&gt; 全部 Python）&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;测试&lt;/td&gt;
+&lt;td&gt;686 行，60 个用例，全绿&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;commit 数&lt;/td&gt;
+&lt;td&gt;5&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;跨度&lt;/td&gt;
+&lt;td&gt;8 月 17 日到 9 月 1 日，业余时间&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;依赖&lt;/td&gt;
+&lt;td&gt;click、fastapi、httpx、pydantic、uvicorn、python-dotenv&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;测试和源码的比例接近 3:4，这不是我勤快，是这类工具的必然：&lt;strong&gt;一个会执行 git 命令的程序，你不敢靠手动测试放它出门。&lt;/strong&gt; CI 里没有 LLM，所有 planner 相关的测试都走一个 &lt;code&gt;FakePlanner&lt;/code&gt;，配合临时 git 仓库跑真实的 &lt;code&gt;git&lt;/code&gt; 二进制。60 个用例覆盖 CLI 启动、计划解析、执行安全、commit message 生成、Web UI、端口选择、&lt;code&gt;.env&lt;/code&gt; 加载，还有安装脚本本身。&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;GITMAN_PLANNER=fake&lt;/code&gt; 这个开关也留给了用户——想在没有模型的情况下摸一下手感，直接：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nv"&gt;GITMAN_PLANNER&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;fake&lt;span class="w"&gt; &lt;/span&gt;gitman&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;show status&amp;quot;&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;--dry-run
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;另外这个项目是先写 spec 再写代码的。&lt;code&gt;openspec/&lt;/code&gt; 目录下有 proposal、design、tasks 和六份能力 spec，design.md 137 行，把每个决策的理由和被否掉的方案（Poetry、Go CLI、LangChain agent、让 LLM 直接吐 shell 脚本）都记下来了。&lt;strong&gt;在 AI 参与写代码的时代，这份文档的价值反而上升了：它是喂给 agent 的上下文，也是几个月后我自己回来看“当初为什么这么定”的唯一线索。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;装的话一行：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;curl&lt;span class="w"&gt; &lt;/span&gt;-fsSL&lt;span class="w"&gt; &lt;/span&gt;https://raw.githubusercontent.com/walterfan/gitman/main/bootstrap.sh&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;|&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;bash
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;它会把包装进 &lt;code&gt;~/.local/share/gitman/venv&lt;/code&gt;，把 &lt;code&gt;gitman&lt;/code&gt; 命令链到 &lt;code&gt;~/.local/bin&lt;/code&gt;。要卸载就 &lt;code&gt;./install.sh uninstall&lt;/code&gt;。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_6"&gt;可以直接抄的部分&lt;/h2&gt;
+&lt;p&gt;如果你也在给 LLM 接一个能动真格的工具——不管是 git、kubectl、数据库还是文件系统——这几条我建议照抄：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;让模型输出结构化数据，不要输出可执行文本。&lt;/strong&gt;
+   argv 数组、JSON、参数对象都行，就是别让它吐 shell 字符串然后 &lt;code&gt;shell=True&lt;/code&gt;。这一条能挡掉八成的严重问题。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;在执行前重新分类，不信任模型给的标记。&lt;/strong&gt;
+   模型说这条命令安全，那是它的意见，不是事实。危险等级由你自己的代码判定。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;危险操作单独一个确认开关，&lt;code&gt;--yes&lt;/code&gt; 不能覆盖。&lt;/strong&gt;
+   一定会有人在脚本里写 &lt;code&gt;--yes&lt;/code&gt;，你要保证那时候 &lt;code&gt;push --force&lt;/code&gt; 还是跑不了。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;提示词和代码校验都要有，各管一头。&lt;/strong&gt;
+   提示词提高成功率，代码兜住失败。只有前者是把安全押在模型状态上。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;给模型的上下文要截断、要脱敏。&lt;/strong&gt;
+   diff 设上限，secret 模式先 redact。你不知道对面的日志留多久。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;默认不联网，配置才启用。&lt;/strong&gt;
+   不要让用户在“不小心把私有代码发出去”和“工具能用”之间二选一。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;给“我不确定”留一个正式的返回字段。&lt;/strong&gt;
+   歧义时只返回只读操作加 warning，比猜一个执行掉强得多。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;错误信息里写清楚下一步怎么办。&lt;/strong&gt;
+   拦下来是本分，告诉人家该怎么绕过去才是本事。&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;hr&gt;
+&lt;h2 id="_7"&gt;总结：护栏比翻译更值钱&lt;/h2&gt;
+&lt;p&gt;回到开头那个问题：为什么写了 cheatsheet 还是记不住。&lt;/p&gt;
+&lt;p&gt;因为记忆不是瓶颈，&lt;strong&gt;翻译才是&lt;/strong&gt;——从“我想把这两个提交并成一个”翻译到 &lt;code&gt;git rebase -i HEAD~2&lt;/code&gt;。这一步交给模型，它做得比我翻手册快。&lt;/p&gt;
+&lt;p&gt;但翻译本身不是这个工具的价值所在。接个 OpenAI 兼容 API 是两百行的事，谁都能做。真正需要动脑子的是另外七百行：&lt;strong&gt;当翻译错了的时候，会发生什么。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;一个会猜的东西 + 一个会执行的东西，中间必须夹一层看得见、拦得住、能反悔的护栏。计划先打印出来，危险的问两遍，commit message 从真实 diff 里长，歧义时宁可什么都不做——&lt;strong&gt;这些约束不是为了防模型，是为了让我敢用它。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;有意思的是，这些原则我一条都没发明。它们都是从写了二十年后端服务里搬过来的：不要信任客户端输入、不要拼字符串执行、危险操作要幂等要可回滚、默认关闭、失败要给出可操作的错误信息。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;AI 时代的工程约束，和之前那一套并没有两样，只是“不可信输入”这一栏里，多了一项叫模型输出。&lt;/strong&gt;&lt;/p&gt;
+&lt;hr&gt;
+&lt;p&gt;代码在 &lt;a href="https://github.com/walterfan/gitman"&gt;github.com/walterfan/gitman&lt;/a&gt;，Apache 2.0，一个九百多行的小工具，欢迎抄，也欢迎告诉我哪道护栏还漏了风。&lt;/p&gt;
+&lt;h2 id="_8"&gt;全文思维导图&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap
+&amp;lt;style&amp;gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    LineColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&amp;lt;/style&amp;gt;
+
+* gitman：自然语言到 git
+** 起因
+*** cheatsheet 改了 17 版还是记不住
+*** 查手册要先知道查什么关键词
+*** commit message 得重读自己的 diff
+** 核心循环
+*** ask → plan → confirm → execute
+*** CLI 为主，serve 起本地 Web UI
+*** --dry-run / --yes / --force-destructive
+** 护栏一：argv 不是 shell 串
+*** 只吐 JSON，args 是字符串数组
+*** shell=False，自己拼 git -C
+*** 禁二进制 + 元字符校验
+*** -m 后面开口子（消息可含 $ &amp;amp;）
+** 护栏二：三级分类
+*** read-only 直接跑
+*** mutating 问一次
+*** destructive 再问一次，--yes 不覆盖
+*** 执行前重新分类，不信模型标记
+** 护栏三：message 来自 diff
+*** 先 status/diff 拿 snapshot
+*** 不许发明快照里没有的路径
+*** diff 截断 8000 字符
+*** 敏感串先 redact
+*** 没改动就返回 None，不硬编
+** 护栏四：边界
+*** 不配置 LLM 就不联网
+*** 仓库只从起点解析，不向外找
+*** Web UI 绑 127.0.0.1
+*** /api/execute 换仓库直接 403
+** 敢说不确定
+*** undo 歧义时只返回只读命令
+*** warnings 是一等公民字段
+** 成本
+*** 942 行源码 / 686 行测试 / 60 用例
+*** 5 个 commit，两周业余时间
+*** spec 先行：proposal + design + tasks
+@endmindmap
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;img alt="gitman：自然语言到 git 的护栏设计 - 思维导图" src="./images/tech_20260901_gitman_nl_git_mindmap.svg"&gt;&lt;/p&gt;
+&lt;hr/&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。&lt;/p&gt;</content><category term="Tech"/><category term="journal"/><category term="git"/><category term="LLM"/><category term="CLI"/><category term="tooling"/><category term="python"/><category term="safety"/></entry><entry><title>SIP 协议回顾：从一通电话到呼叫中心</title><link href="https://www.fanyamin.com/blog/2026-08-29-sip-protocol-contact-center.html" rel="alternate"/><published>2026-08-29T20:20:00+08:00</published><updated>2026-08-30T10:03:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-08-29:/blog/2026-08-29-sip-protocol-contact-center.html</id><summary type="html">&lt;p&gt;SIP 看起来像 HTTP，真正用起来却更像一套分布式状态机。本文系统回顾寻址注册、消息、事务、Dialog、SDP Offer/Answer 和重要扩展，再把它放进呼叫中心，拆解 SIP Trunk、SBC、IVR、ACD、转接、录音与典型排障案例。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
 &lt;thead&gt;
 &lt;tr&gt;
 &lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
@@ -32672,16 +33490,15 @@ toc: true
 &lt;h2 id="_1"&gt;短大纲&lt;/h2&gt;
 &lt;details&gt;
 &lt;summary&gt;展开看看&lt;/summary&gt;
-
-- **核心观点**：零停机不是系统永不故障，而是故障发生时，用户尽量看不见。
-- **基本架构**：两个集群 active-active，对外由 Global Edge / Gateway 统一接入。
-- **止血手段**：短超时、每请求跨集群重试、被动故障检测、熔断和慢启动。
-- **安全边界**：GET 可以自动重试，POST 必须靠 `Idempotency-Key` 兜底。
-- **状态要求**：应用尽量无状态，会话、幂等记录、数据库写入和后台任务要跨集群设计。
-- **落地清单**：给出默认参数、健康检查设计和上线前检查卡。
-
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;核心观点&lt;/strong&gt;：零停机不是系统永不故障，而是故障发生时，用户尽量看不见。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;基本架构&lt;/strong&gt;：两个集群 active-active，对外由 Global Edge / Gateway 统一接入。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;止血手段&lt;/strong&gt;：短超时、每请求跨集群重试、被动故障检测、熔断和慢启动。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;安全边界&lt;/strong&gt;：GET 可以自动重试，POST 必须靠 &lt;code&gt;Idempotency-Key&lt;/code&gt; 兜底。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;状态要求&lt;/strong&gt;：应用尽量无状态，会话、幂等记录、数据库写入和后台任务要跨集群设计。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;落地清单&lt;/strong&gt;：给出默认参数、健康检查设计和上线前检查卡。&lt;/li&gt;
+&lt;/ul&gt;
 &lt;/details&gt;
-
 &lt;hr&gt;
 &lt;h2 id="_2"&gt;正文&lt;/h2&gt;
 &lt;p&gt;线上服务最尴尬的时刻，不是机器真的坏了。&lt;/p&gt;
@@ -41321,19 +42138,18 @@ python&lt;span class="w"&gt; &lt;/span&gt;auto_poster.py&lt;span class="w"&gt; &
 &lt;/table&gt;
 &lt;details&gt;
 &lt;summary&gt;大纲&lt;/summary&gt;
-
-1. 扎心场景：AI 什么都会，但什么都不精
-2. What：AI Skill 到底是什么
-3. Why：为什么你需要写 Skill
-4. How：六步法写出一个好 Skill
-5. 好 Skill 长什么样（真实案例拆解）
-6. 写 Skill 的核心原则
-7. 常见反模式
-8. 行动清单 + 思维导图
-9. 扩展阅读
-
+&lt;ol&gt;
+&lt;li&gt;扎心场景：AI 什么都会，但什么都不精&lt;/li&gt;
+&lt;li&gt;What：AI Skill 到底是什么&lt;/li&gt;
+&lt;li&gt;Why：为什么你需要写 Skill&lt;/li&gt;
+&lt;li&gt;How：六步法写出一个好 Skill&lt;/li&gt;
+&lt;li&gt;好 Skill 长什么样（真实案例拆解）&lt;/li&gt;
+&lt;li&gt;写 Skill 的核心原则&lt;/li&gt;
+&lt;li&gt;常见反模式&lt;/li&gt;
+&lt;li&gt;行动清单 + 思维导图&lt;/li&gt;
+&lt;li&gt;扩展阅读&lt;/li&gt;
+&lt;/ol&gt;
 &lt;/details&gt;
-
 &lt;hr&gt;
 &lt;h2 id="ai-agent"&gt;一、你的 AI Agent 是个"高学历文盲"&lt;/h2&gt;
 &lt;p&gt;上周我让 Claude 帮我处理一个 PDF 表单——填写一份报销单。它很聪明，知道 PDF 的原理，能侃侃而谈 PDF 1.7 规范里 AcroForm 和 XFA 的区别。但你猜怎么着？它不知道我用的是 &lt;code&gt;pypdf&lt;/code&gt; 还是 &lt;code&gt;pdftk&lt;/code&gt;，不知道我的表单字段名叫什么，不知道填完之后要存到哪个目录。&lt;/p&gt;
@@ -42051,19 +42867,18 @@ mindmapDiagram {
 &lt;h2 id="_1"&gt;简短大纲&lt;/h2&gt;
 &lt;details&gt;
 &lt;summary&gt;展开看看&lt;/summary&gt;
-
-- **反直觉观点**：我们只关心 AI 怎么帮我们，却很少想过我们该怎么帮 AI
-- **双向赋能**：AI 赋能人（写代码、做决策、自动化），人赋能 AI（上下文、结构、规则）
-- **Context Engineering**：为什么"怎么跟 AI 说话"正在成为一门工程学科
-- **AI Friendly 架构**：API、UI、文档、日志、配置——每一层的设计原则
-- **路沿坡道效应**：AI Friendly 的设计往往对人也更友好
-- **跨越鸿沟**：打通软件与软件、软件与人、人与人之间的三道裂缝
-- **AI 时代程序员的转变**：从写代码的人变成定义规则的人
-- **关于焦虑**：庄子的智慧——建立判断力、积累可迁移能力、找到生态位
-- **实战清单 + 思维导图 + 扩展阅读**
-
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;反直觉观点&lt;/strong&gt;：我们只关心 AI 怎么帮我们，却很少想过我们该怎么帮 AI&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;双向赋能&lt;/strong&gt;：AI 赋能人（写代码、做决策、自动化），人赋能 AI（上下文、结构、规则）&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Context Engineering&lt;/strong&gt;：为什么"怎么跟 AI 说话"正在成为一门工程学科&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;AI Friendly 架构&lt;/strong&gt;：API、UI、文档、日志、配置——每一层的设计原则&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;路沿坡道效应&lt;/strong&gt;：AI Friendly 的设计往往对人也更友好&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;跨越鸿沟&lt;/strong&gt;：打通软件与软件、软件与人、人与人之间的三道裂缝&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;AI 时代程序员的转变&lt;/strong&gt;：从写代码的人变成定义规则的人&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;关于焦虑&lt;/strong&gt;：庄子的智慧——建立判断力、积累可迁移能力、找到生态位&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;实战清单 + 思维导图 + 扩展阅读&lt;/strong&gt;&lt;/li&gt;
+&lt;/ul&gt;
 &lt;/details&gt;
-
 &lt;hr&gt;
 &lt;h2 id="1-ai-ai"&gt;1. 反直觉：你在给 AI 打工，还是 AI 在给你打工？&lt;/h2&gt;
 &lt;blockquote&gt;
@@ -44038,23 +44853,22 @@ title Broken Auth &amp;amp; Session Management
 &lt;/table&gt;
 &lt;details&gt;
 &lt;summary&gt;📋 大纲&lt;/summary&gt;
-
-1. 为什么 MySQL 高可用是"保命底线"
-2. 高可用的核心指标：RTO 和 RPO
-3. 方案一览：从简单到复杂
-4. 主从复制(Replication)
-5. 半同步复制(Semi-Sync)
-6. MHA(Master High Availability)
-7. InnoDB Cluster / Group Replication
-8. Galera Cluster
-9. 代理层：ProxySQL / MySQL Router
-10. 方案对比表
-11. 常见错误与排查
-12. 最佳实践清单
-13. 思维导图
-
+&lt;ol&gt;
+&lt;li&gt;为什么 MySQL 高可用是"保命底线"&lt;/li&gt;
+&lt;li&gt;高可用的核心指标：RTO 和 RPO&lt;/li&gt;
+&lt;li&gt;方案一览：从简单到复杂&lt;/li&gt;
+&lt;li&gt;主从复制(Replication)&lt;/li&gt;
+&lt;li&gt;半同步复制(Semi-Sync)&lt;/li&gt;
+&lt;li&gt;MHA(Master High Availability)&lt;/li&gt;
+&lt;li&gt;InnoDB Cluster / Group Replication&lt;/li&gt;
+&lt;li&gt;Galera Cluster&lt;/li&gt;
+&lt;li&gt;代理层：ProxySQL / MySQL Router&lt;/li&gt;
+&lt;li&gt;方案对比表&lt;/li&gt;
+&lt;li&gt;常见错误与排查&lt;/li&gt;
+&lt;li&gt;最佳实践清单&lt;/li&gt;
+&lt;li&gt;思维导图&lt;/li&gt;
+&lt;/ol&gt;
 &lt;/details&gt;
-
 &lt;hr&gt;
 &lt;h2 id="mysql"&gt;一、为什么 MySQL 高可用是"保命底线"&lt;/h2&gt;
 &lt;p&gt;数据库是大多数系统的"心脏"。Web 服务挂了可以重启，缓存丢了可以重建，但数据库挂了——&lt;/p&gt;
@@ -47837,911 +48651,4 @@ title 防止 XSS 的典型套路
 
 &lt;p&gt;&lt;img alt="思维导图" src="./images/tech_20260228_xss_mindmap.png"&gt;&lt;/p&gt;
 &lt;hr/&gt;
-&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Tech"/><category term="security"/><category term="xss"/><category term="owasp"/><category term="安全"/><category term="web"/></entry><entry><title>AI 时代的软件工程</title><link href="https://www.fanyamin.com/blog/ai-shi-dai-de-ruan-jian-gong-cheng.html" rel="alternate"/><published>2026-02-28T20:00:00+08:00</published><updated>2026-03-02T10:00:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-02-28:/blog/ai-shi-dai-de-ruan-jian-gong-cheng.html</id><summary type="html">&lt;p&gt;AI 让"写代码"更便宜, 但让"证明没坑"更贵。软件工程的重心正在从"把需求写成代码", 转向"能力编排与治理": 把 prompt 当契约, 把评估当门禁, 把可观测性当边界, 把回滚当退路。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
-&lt;th&gt;AI 时代的软件工程&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;tech note&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Status&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;v1.0&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;2026-03-02&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;h1 id="ai"&gt;AI 时代的软件工程&lt;/h1&gt;
-&lt;p&gt;上周 code review, 我看着 PR 的 diff, 脑子里冒出一个很不工程、很不优雅的念头:&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;这玩意儿像外卖。来得快, 闻着香, 吃到一半才发现——没熟。&lt;/strong&gt;&lt;/p&gt;
-&lt;p&gt;更麻烦的是: 我发现了一个危险的繁荣。&lt;/p&gt;
-&lt;p&gt;团队的 PR 体积变大了, 交付周期缩短了。一眼望去, 代码结构规整, 注释详尽——满满的都是 AI 助手的痕迹。&lt;/p&gt;
-&lt;p&gt;这不是坏事, 生产力确实提升了。&lt;/p&gt;
-&lt;p&gt;但你也会隐隐觉得: &lt;strong&gt;我们还在用同一套"人写代码、人审代码"的流程, 去应对一种已经不太一样的生产方式。&lt;/strong&gt;&lt;/p&gt;
-&lt;p&gt;还有个更糟的副作用, 很多人没当回事: 所谓"十倍效率", 有时候不只是写代码更快, 也可能是"引入技术债更快"。&lt;/p&gt;
-&lt;p&gt;AI 生成的代码经常有一种气质: 僵化、啰嗦、看起来面面俱到, 实则漏洞不少。它会把边界条件写满, 注释写满, 但"前瞻性"和"实用性"很难保证, 更别提那种需要你靠经验做取舍的地方。&lt;/p&gt;
-&lt;p&gt;顺便补个扎心的数据点: 一项覆盖 12.1 万名开发者、450 多家公司的研究里, 92.6% 的开发者至少每月使用一次 AI 编码助手, 约 75% 每周都用一次, 但组织层面的生产力提升不到 10%(&lt;a href="https://shiftmag.dev/this-cto-says-93-of-developers-use-ai-but-productivity-is-still-10-8013/"&gt;93% of Developers Use AI - Productivity Only 10%&lt;/a&gt;)。&lt;/p&gt;
-&lt;p&gt;过去三十年, 软件工程的核心能力绕来绕去就一句话:&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;把需求转化为代码。&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;p&gt;AI 大模型出现之后, 这个基本假设开始松动。问题从来不在于"AI 会不会写代码"——它会, 而且会得越来越多。&lt;/p&gt;
-&lt;p&gt;真正的问题是:&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;当机器能参与编写、理解、重构、甚至设计代码时, 软件工程的核心能力, 还等不等于"亲手实现"?&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;p&gt;我想给的答案很明确(也很不讨喜):&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;&lt;strong&gt;软件工程的核心正在从"把需求写成代码", 转向"能力编排与治理"。&lt;/strong&gt;&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;p&gt;你写代码的时间会下降; 你定义边界、设计约束、建立验收与回归的时间会飙升。你不是变轻松了, 你只是从"码农"转职成"系统的监工与审计员"。&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="1"&gt;1. 人话版: 这到底是什么变化?&lt;/h2&gt;
-&lt;p&gt;把它说成人话:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;过去你写系统, 主要在"实现": 功能怎么做, 接口怎么写, 性能怎么榨。&lt;/li&gt;
-&lt;li&gt;现在你写系统, 越来越多在"组织能力": 哪些能力由模型生成, 哪些由确定性代码完成, 哪些必须人工确认, 失败怎么兜底, 行为怎么回归。&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;一个类比更直观:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;传统软件像"机械钟表": 齿轮咬合, 按图纸走, 误差可控。&lt;/li&gt;
-&lt;li&gt;LLM/Agent 系统更像"雇了个聪明但不稳定的助手": 你给它目标, 它会自己找路, 有时很神, 有时把你带沟里。&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;所以工程的重点自然变了:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;你不再把"每一颗齿轮"都亲手打磨&lt;/li&gt;
-&lt;li&gt;你开始关心: &lt;strong&gt;这位助手能做什么、不能做什么、做错了怎么发现、怎么纠正、怎么追责&lt;/strong&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;这就是我说的"能力编排与治理"。&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="2-vs-ai"&gt;2. 传统默认假设 vs AI 新假设&lt;/h2&gt;
-&lt;p&gt;你可以把软件工程看成一组"默认假设"的集合。AI 时代最关键的变化, 是这些假设被逐条拆掉。&lt;/p&gt;
-&lt;h4 id="a"&gt;假设 A: 接口契约主要写在类型系统里&lt;/h4&gt;
-&lt;p&gt;传统接口(HTTP/gRPC/函数签名)大多有共同特点:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;输入输出明确&lt;/li&gt;
-&lt;li&gt;类型可校验&lt;/li&gt;
-&lt;li&gt;行为可预测(至少你假装可预测)&lt;/li&gt;
-&lt;li&gt;可测试、可回归&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;AI 系统里出现了一类新接口:&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;&lt;strong&gt;Prompt&lt;/strong&gt;(更准确叫"语义接口")&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;p&gt;Prompt 不只是文本, 它承担了指令定义、输出约束、推理引导、风险边界等职责。你会发现一些团队已经开始:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;给 prompt 做版本管理&lt;/li&gt;
-&lt;li&gt;给 prompt 做 review&lt;/li&gt;
-&lt;li&gt;给 prompt 做回归测试&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;因为改一个词, 行为就可能偏航——&lt;strong&gt;契约不再主要写在类型里, 而写在语义里。&lt;/strong&gt;&lt;/p&gt;
-&lt;p&gt;安全侧也在用类似视角建立风险清单, 比如 OWASP 的 LLM Top 10 里把 Prompt Injection 放在高优先级(见 &lt;a href="https://owasp.org/www-project-top-10-for-large-language-model-applications/"&gt;OWASP LLM Top 10&lt;/a&gt;)。&lt;/p&gt;
-&lt;h4 id="b"&gt;假设 B: 系统行为主要由代码确定&lt;/h4&gt;
-&lt;p&gt;传统系统里, 代码是行为的唯一来源; 配置只是调参。&lt;/p&gt;
-&lt;p&gt;LLM/Agent 系统里, "行为来源"变多了:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;prompt(语义契约)&lt;/li&gt;
-&lt;li&gt;检索到的上下文(RAG)&lt;/li&gt;
-&lt;li&gt;工具清单与权限(tool calling)&lt;/li&gt;
-&lt;li&gt;模型版本与参数(temperature、system prompt 等)&lt;/li&gt;
-&lt;li&gt;运行时策略(guardrails、拒答、过滤)&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;行为变成"组合出来的", 这就要求你像管理依赖一样管理这些组件: 版本、变更、回滚、审计。&lt;/p&gt;
-&lt;h4 id="c"&gt;假设 C: 生产力的瓶颈在实现&lt;/h4&gt;
-&lt;p&gt;当 20 行自然语言能换来 200 行"看起来还行"的代码时, 瓶颈不再是打字速度, 而是:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;你能否准确表达意图&lt;/li&gt;
-&lt;li&gt;你是否知道边界在哪里&lt;/li&gt;
-&lt;li&gt;你是否能识别风险与异常&lt;/li&gt;
-&lt;li&gt;你是否能设计验证机制(否则你只是更快地生成未知风险)&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;一句不好听但实用的话:&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;&lt;strong&gt;生成代码的成本降了, 证明它没坑的成本没降, 甚至更高。&lt;/strong&gt;&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;hr&gt;
-&lt;h2 id="3-ai"&gt;3. 别把 AI 只当"打字机"&lt;/h2&gt;
-&lt;p&gt;很多团队对 AI 的引入, 只停在 Copilot 阶段: 补全代码分支、生成单元测试、写注释、做重构建议。它确实像"增强型 IDE", 省了不少体力活。&lt;/p&gt;
-&lt;p&gt;但现实是, 模型正在越过这条线。当你开始引入 RAG(检索增强生成), 让大模型直接调用内部 API(tool calling), 甚至让 Agent 自行拆解复杂任务时, AI 就不再是"增强型打字机"。&lt;/p&gt;
-&lt;p&gt;它变成了一个参与系统运行时行为的、非确定性的智能体。&lt;/p&gt;
-&lt;p&gt;简单区分一下:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;Copilot 更像"智能输入法": 你在写, 它帮你补&lt;/li&gt;
-&lt;li&gt;Agent 更像"实习生": 你下任务, 它去做&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;两者对工程流程的影响完全不同。前者改变的是速度, 后者改变的是"生产方式"。&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="4-prompt-as-contract"&gt;4. 接口之变: Prompt as Contract&lt;/h2&gt;
-&lt;p&gt;传统软件的接口是什么? HTTP API、gRPC、CLI、函数签名。&lt;/p&gt;
-&lt;p&gt;这些接口有个共同特点: 明确输入输出、类型可校验、行为可预测、可测试、可回归。&lt;/p&gt;
-&lt;p&gt;而在 AI 系统中, 一个新的接口出现了:&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;&lt;strong&gt;Prompt。&lt;/strong&gt;&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;p&gt;Prompt 不再只是文本。它实际上承担了以下职责: 指令定义、行为约束、输出格式规范、推理引导、风险边界。&lt;/p&gt;
-&lt;p&gt;它本质上是一个&lt;strong&gt;语义接口&lt;/strong&gt;。&lt;/p&gt;
-&lt;p&gt;很多开发者依然把 prompt 当作一串字符串去硬编码。直到有一天, 某个人把 prompt 里的"请简明扼要"改成了"请详细说明", 大模型输出的 JSON 格式彻底跑偏, 下游服务一片红。&lt;/p&gt;
-&lt;p&gt;这时你才会意识到: prompt 不是字符串。它是指令定义, 是行为约束, 也是风险控制边界。&lt;/p&gt;
-&lt;p&gt;当团队开始版本化 prompt、review prompt、回归测试 prompt 时, 事情就已经变了。改一个词, 行为就可能偏航——&lt;strong&gt;契约已经不在类型里, 而在语义里。&lt;/strong&gt;&lt;/p&gt;
-&lt;p&gt;我们正在从：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;Code as Contract
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;转向：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;Prompt as Contract
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;这意味着:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;行为定义从类型系统迁移到语义系统&lt;/li&gt;
-&lt;li&gt;验证从编译期迁移到运行期评估&lt;/li&gt;
-&lt;li&gt;接口从确定性协议转向概率性约束&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;这不是工具变化, 这是接口模型变化。&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="5"&gt;5. 瓶颈在迁移——生成容易, 保障难&lt;/h2&gt;
-&lt;p&gt;AI 让写代码变快了, 但组织层面的效率未必跟着涨, 因为瓶颈迁移到了下游: 审查、调试、验证、回归。&lt;/p&gt;
-&lt;p&gt;还有个更直观的现象: PR 变多了, 但 review 变慢了。有团队的统计显示, PR 数量接近翻倍(+98%), 审查时间也跟着大幅上升(+91%)(&lt;a href="https://blog.logrocket.com/ai-coding-tools-shift-bottleneck-to-review/"&gt;Why AI coding tools shift the real bottleneck to review&lt;/a&gt;)。&lt;/p&gt;
-&lt;p&gt;一句不好听但实用的话, 再说一遍:&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;&lt;strong&gt;生成代码的成本降了, 证明它没坑的成本没降, 甚至更高。&lt;/strong&gt;&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;p&gt;这就好比一个建筑工地——砌砖的速度从人工砌墙变成了 3D 打印, 一天就能"打"出一栋楼。但质检员还是两条腿两只眼, 验收能力没变。打得越快, 验不过来的风险越大。&lt;/p&gt;
-&lt;p&gt;所以这几年你会感觉到一种奇怪的状态: PR 变多了, 讨论变热闹了, 但你心里更不踏实了。不是因为大家更懒, 是因为"理解"和"生产"这两件事被解耦了。&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="6"&gt;6. 语法的贬值与抽象的溢价&lt;/h2&gt;
-&lt;p&gt;在传统工程体系中，技术成长路径通常是：&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;语法熟练 → 框架掌握 → 架构理解 → 系统设计
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;而 AI 时代，前两个阶段的壁垒迅速降低。AI 可以写 CRUD、生成 REST API、编写基础单元测试、甚至生成简单架构模板。&lt;/p&gt;
-&lt;p&gt;这导致一个直接后果：&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;语法能力的稀缺性下降。&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;p&gt;AI 写得快, 不代表它写得对, 更不代表它写得"合适"。真正拉开差距的, 反而是老工程师最不性感的那几样东西: &lt;strong&gt;判断力&lt;/strong&gt;、&lt;strong&gt;边界感&lt;/strong&gt;、&lt;strong&gt;风险嗅觉&lt;/strong&gt;。&lt;/p&gt;
-&lt;p&gt;你得知道 AI 该用在什么地方, 哪些地方必须人工兜底; 还得能一眼看出那种"看起来没毛病, 但会出事"的代码味道。&lt;/p&gt;
-&lt;p&gt;真正稀缺的能力开始转向:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;意图的精确表达能力&lt;/strong&gt;——你到底想让系统干什么, 以及不该干什么&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;系统抽象能力&lt;/strong&gt;——把复杂问题分解为可管理的模块&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;边界定义能力&lt;/strong&gt;——知道系统在哪里"切一刀"&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;约束设计能力&lt;/strong&gt;——定义 AI 不能做什么, 比定义它能做什么更重要&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;行为建模能力&lt;/strong&gt;——在非确定性环境中预测系统行为&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;风险评估能力&lt;/strong&gt;——识别"看起来能跑但会出事"的隐患&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;如果说过去的工程能力核心是：&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;How to implement?&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;p&gt;那么现在的核心问题变成：&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;What should be implemented, and under what constraints?&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;p&gt;这是一种认知层级的上移。&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="7"&gt;7. 从"手工实现"到"能力编排与治理"&lt;/h2&gt;
-&lt;p&gt;我们终于来到本文的核心论点。&lt;/p&gt;
-&lt;p&gt;在传统工程中，系统的"能力"是通过代码逐行堆叠起来的。工程师亲自实现每一个函数，手动控制系统行为，精确控制每一个分支。&lt;/p&gt;
-&lt;p&gt;而在 AI 时代，一个新的可能性出现：&lt;strong&gt;我们不再直接实现所有能力。&lt;/strong&gt;&lt;/p&gt;
-&lt;p&gt;我们开始：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;设计能力接口&lt;/li&gt;
-&lt;li&gt;编排能力调用&lt;/li&gt;
-&lt;li&gt;定义行为约束&lt;/li&gt;
-&lt;li&gt;建立验证循环&lt;/li&gt;
-&lt;li&gt;监控智能体行为&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;软件开发正在从：&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;&lt;strong&gt;手工实现(Manual Implementation)&lt;/strong&gt;&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;p&gt;转向：&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;&lt;strong&gt;能力编排与治理(Capability Orchestration &amp;amp; Governance)&lt;/strong&gt;&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;p&gt;随着 AI 开始"自己干活", 团队必然从亲自执行任务, 转向编排任务: 你给目标、给边界、给验收, 然后盯着它别翻车。&lt;/p&gt;
-&lt;p&gt;这不是对工程的削弱，而是抽象层级的提升。&lt;/p&gt;
-&lt;p&gt;就像当年从汇编走向高级语言，从单体走向微服务，从物理机走向云计算。工程师从"砌砖"变成"画图纸 + 验收"——砖可以交给机器砌，但图纸和验收标准你得握在手里。&lt;/p&gt;
-&lt;p&gt;每一次跃迁，本质上都是：&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;工程师从更高层级控制系统。&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;p&gt;现在，AI 正在成为新的能力模块。工程师的角色正在转变为：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;能力设计者&lt;/strong&gt;——定义系统应该具备什么能力&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;行为约束设计者&lt;/strong&gt;——定义 AI 不能做什么&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;智能体调度者&lt;/strong&gt;——编排多个 Agent 协作完成任务&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;系统治理者&lt;/strong&gt;——确保整个系统可控、可观测、可审计&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;一句话: 你过去十年积累的架构经验、系统直觉、排查能力, 不但没有贬值, 反而更值钱了。因为当"写"变便宜, 稀缺的就变成了"让它安全地跑起来"。&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="8-failure-path"&gt;8. 不治理会怎么翻车(Failure Path)&lt;/h2&gt;
-&lt;p&gt;"能力编排与治理"听起来像管理学废话。那就用一条很工程的"翻车链路"把它钉死。&lt;/p&gt;
-&lt;p&gt;你在团队里引入一个"写代码 + 改代码 + 生成单测"的 Agent(或者一堆 Copilot 生成的 patch), 你没有做治理, 于是:&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;&lt;strong&gt;行为漂移&lt;/strong&gt;: prompt 改了几句、模型升级了一个版本, 输出风格变了。以前是"稳妥保守", 现在突然"大胆重构", PR 里开始出现大改动。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;错误隐藏更深&lt;/strong&gt;: AI 特别擅长写"看起来合理"的错误。它不会像新人那样写出一眼假的代码, 它会写出"需要你认真读 10 分钟才发现错"的代码。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;验证缺失&lt;/strong&gt;: 单测是它写的, 测试数据也是它选的。结果就是: 它给自己出题、自己批卷、自己宣布优秀。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;责任模糊&lt;/strong&gt;: 线上出事故, 大家开始进行一种古老而优雅的甩锅艺术:&lt;/li&gt;
-&lt;li&gt;"这段不是我写的, 是 AI 建议的"&lt;/li&gt;
-&lt;li&gt;"我只 approve 了个大概"&lt;/li&gt;
-&lt;li&gt;"当时赶时间"&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;组织后果&lt;/strong&gt;: 团队开始对 AI 要么迷信要么抵触。产能变得不可预测, 质量开始靠运气。&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;你会发现, 翻车不是因为 AI 很蠢, 而是因为:&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;你用"管理确定性代码"的方式, 在管理一个"概率性行为系统"。&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;hr&gt;
-&lt;h2 id="9-practice"&gt;9. 你可以怎么做(Practice): 把"治理"落成四件硬事&lt;/h2&gt;
-&lt;p&gt;"能力编排与治理"听起来很大, 其实可以拆成四个非常具体、非常工程的动作: &lt;strong&gt;契约、门禁、观测、回滚&lt;/strong&gt;。&lt;/p&gt;
-&lt;h3 id="91-prompt-as-contract-prompt"&gt;9.1 Prompt as Contract: 把 prompt 当接口对待&lt;/h3&gt;
-&lt;p&gt;你至少要做到:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;prompt 版本化(改动要有 diff, 要有说明)&lt;/li&gt;
-&lt;li&gt;prompt review(像审 API 一样审: 输入约束、输出格式、拒答条件)&lt;/li&gt;
-&lt;li&gt;prompt 回归(关键样例集: 正常/边界/对抗)&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;这一步的代价很现实: 你会多出一套"语义接口"的维护成本。
-但不做, 你就在赌"每次改词都不出事"。&lt;/p&gt;
-&lt;h3 id="92-eval-as-gate"&gt;9.2 Eval as Gate: 没有评估集, 就没有质量&lt;/h3&gt;
-&lt;p&gt;很多团队对 AI 的质量控制停留在"试了一下感觉还行"。&lt;/p&gt;
-&lt;p&gt;工程化一点: 你需要一个最小可用评估集(golden set), 再配一个门禁:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;每次 prompt/模型/检索策略变更, 都跑评估&lt;/li&gt;
-&lt;li&gt;设阈值: 达不到就不放行&lt;/li&gt;
-&lt;li&gt;评估维度别只看"答对没", 还要看: 幻觉、越界、拒答、格式稳定性&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;你甚至可以用现成的评估工具/接口来体系化管理(比如 &lt;a href="https://platform.openai.com/docs/api-reference/evals/get"&gt;OpenAI Evals API&lt;/a&gt;, 或 &lt;a href="https://openai.github.io/openai-guardrails-python/evals/"&gt;Guardrails 的评估工具&lt;/a&gt;)。&lt;/p&gt;
-&lt;p&gt;提示: 别急着追求"完美指标", 先追求"每次变更都能对比"。&lt;/p&gt;
-&lt;h3 id="93-observability-as-boundary"&gt;9.3 Observability as Boundary: 可观测性是你的安全绳&lt;/h3&gt;
-&lt;p&gt;传统系统的可观测性关注: 延迟、错误率、吞吐、资源。&lt;/p&gt;
-&lt;p&gt;LLM/Agent 系统还要多看一层"行为可观测性":&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;这次回答/改动使用了哪个 prompt 版本?&lt;/li&gt;
-&lt;li&gt;检索到了哪些文档片段? 引用是什么?&lt;/li&gt;
-&lt;li&gt;调用了哪些工具? 参数是什么? 有没有越权?&lt;/li&gt;
-&lt;li&gt;在哪个决策点发生了分歧/重试/降级?&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;没有这些, 你 debug 不了; 更要命的是, 你也复盘不了。&lt;/p&gt;
-&lt;h3 id="94-rollback-fallback"&gt;9.4 Rollback &amp;amp; Fallback: 把"退路"写在设计里&lt;/h3&gt;
-&lt;p&gt;AI 时代的上线策略要更像 SRE:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;灰度与切流(别一次性全量)&lt;/li&gt;
-&lt;li&gt;快速回滚(prompt/模型/检索配置都能回退)&lt;/li&gt;
-&lt;li&gt;fallback 策略(模型不稳定就降级到规则/模板/旧模型/人工)&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;你不是追求永远正确, 你是在追求"出问题时能控制损失"(见 &lt;a href="https://sre.google/sre-book/table-of-contents/"&gt;Google SRE Book&lt;/a&gt;)。&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="10-verify-gate"&gt;10. 怎么验收你真的做对了(Verify &amp;amp; Gate)&lt;/h2&gt;
-&lt;p&gt;写到这里, 如果你还只能说"我们做了治理", 那基本等于没做。&lt;/p&gt;
-&lt;p&gt;给你一组可以落地验收的"硬指标"(不需要很精美, 但必须可追踪):&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;变更可追溯&lt;/strong&gt;: 每次 prompt/模型/检索配置变更, 都能定位到 PR / 版本号 / 发布时间&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;回归可对比&lt;/strong&gt;: 同一评估集在新旧版本上能做差异报告(哪类问题变好了, 哪类变差了)&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;线上可定位&lt;/strong&gt;: 线上任意一次异常输出, 都能回放关键上下文(输入、检索片段、工具调用、输出)&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;回滚可执行&lt;/strong&gt;: 出现事故时, 能在分钟级回退到上一个稳定组合&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;人为确认点明确&lt;/strong&gt;: 哪些操作必须人工确认(比如花钱、删数据、改配置), 写进流程和代码里&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;如果你做不到这些, 那你现在的"AI 工程"更像是"把不确定性塞进生产, 然后祈祷"。&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="_1"&gt;本章小结&lt;/h2&gt;
-&lt;ul&gt;
-&lt;li&gt;AI 没有消灭软件工程, 它只是把工程的重心推上了一层: 从"实现"推向"编排与治理"。&lt;/li&gt;
-&lt;li&gt;Prompt 正在变成语义接口; Agent 变成执行单元; 评估与可观测性变成质量边界。&lt;/li&gt;
-&lt;li&gt;生成变便宜, 验证更值钱。你省下的实现时间, 迟早要用来买"门禁、回归、回滚、审计"。&lt;/li&gt;
-&lt;li&gt;还有一笔隐形账: AI 的生成速度远快于人类的理解速度, 有人把这个差距概括为 5-7 倍, 并称之为"认知债务"(&lt;a href="https://byteiota.com/cognitive-debt-ai-coding-agents-outpace-comprehension-5-7x/"&gt;Cognitive Debt: AI Coding Agents Outpace Comprehension 5-7x&lt;/a&gt;)。&lt;/li&gt;
-&lt;li&gt;真正稀缺的能力不再是语法熟练, 而是: 边界定义、约束设计、验收与复盘。&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;留个问题给你:&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;你们团队现在的契约, 主要还写在代码里, 还是已经悄悄迁到 prompt / 配置 / 模型组合里了?&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;hr&gt;
-&lt;h2 id="5-checklist"&gt;明天就能做的 5 件事(Checklist)&lt;/h2&gt;
-&lt;ol&gt;
-&lt;li&gt;
-&lt;p&gt;&lt;strong&gt;列一张清单: 你们系统里有哪些行为已经由 prompt/模型决定?&lt;/strong&gt;(15 分钟)&lt;br&gt;
-   写清楚: 位置、负责人、是否版本化、是否有回归样例。&lt;/p&gt;
-&lt;/li&gt;
-&lt;li&gt;
-&lt;p&gt;&lt;strong&gt;把一个关键 prompt 纳入版本管理 + PR review&lt;/strong&gt;(30 分钟)&lt;br&gt;
-   规则很简单: 改 prompt 必须有变更说明(为什么改、预期影响、回滚方式)。&lt;/p&gt;
-&lt;/li&gt;
-&lt;li&gt;
-&lt;p&gt;&lt;strong&gt;做一个"最小评估集"(10-30 条样例)&lt;/strong&gt;(1 小时)&lt;br&gt;
-   覆盖: 正常输入、边界输入、你最怕的对抗输入。先能跑起来, 再谈扩充。&lt;/p&gt;
-&lt;/li&gt;
-&lt;li&gt;
-&lt;p&gt;&lt;strong&gt;给线上输出打上"行为指纹"&lt;/strong&gt;(半天)&lt;br&gt;
-   至少记录: prompt 版本、模型版本、关键参数、检索文档 ID(或 hash)。&lt;/p&gt;
-&lt;/li&gt;
-&lt;li&gt;
-&lt;p&gt;&lt;strong&gt;写下你们的第一条"AI 时代红线"&lt;/strong&gt;(10 分钟)&lt;br&gt;
-   例如: 涉及花钱/删数据/改权限的操作, 必须人工确认; Agent 只拿最小权限 token。&lt;/p&gt;
-&lt;/li&gt;
-&lt;/ol&gt;
-&lt;hr&gt;
-&lt;h2 id="_2"&gt;适用边界与代价&lt;/h2&gt;
-&lt;p&gt;这套"从实现转向编排与治理"的观点, 不是要你明天就把所有系统改成 Agent。&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;适合认真对号入座的团队:&lt;/strong&gt;&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;已经在大量使用 Copilot/LLM 生成代码、测试、文档&lt;/li&gt;
-&lt;li&gt;已经上线了 RAG/Agent 这类"行为会漂移"的能力&lt;/li&gt;
-&lt;li&gt;对质量与合规有要求(ToB、金融、医疗、基础设施相关)&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;&lt;strong&gt;暂时不必过度折腾的场景:&lt;/strong&gt;&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;纯内部工具, 失败成本很低&lt;/li&gt;
-&lt;li&gt;AI 只用来写草稿/摘要, 不直接影响关键决策或生产行为&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;&lt;strong&gt;代价很真实:&lt;/strong&gt;&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;你会增加"语义契约"的维护工作(prompt、评估集、门禁)&lt;/li&gt;
-&lt;li&gt;你会引入"治理摩擦"(review、审批、灰度)&lt;/li&gt;
-&lt;li&gt;你需要跨职能协作(工程、产品、数据、安全、合规)&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;这代价本质上是: 你把"线上事故成本"前置成"工程成本"。你愿意付哪一种, 决定了你能走多远。&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="_3"&gt;延伸思考&lt;/h2&gt;
-&lt;p&gt;你们团队现在的契约, 主要还写在代码里, 还是已经悄悄迁到 prompt / 配置 / 模型组合里了?&lt;/p&gt;
-&lt;p&gt;如果已经迁了一部分, 你们是怎么做版本、回归、回滚和审计的?&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="_4"&gt;扩展阅读&lt;/h2&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://www.nist.gov/publications/artificial-intelligence-risk-management-framework-ai-rmf-10"&gt;NIST AI RMF 1.0&lt;/a&gt; (AI 风险管理框架, 适合建立"治理语言")&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://owasp.org/www-project-top-10-for-large-language-model-applications/"&gt;OWASP Top 10 for LLM Applications&lt;/a&gt; (LLM 应用安全风险清单, 适合做威胁建模)&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://platform.openai.com/docs/api-reference/evals/get"&gt;OpenAI Evals API Reference&lt;/a&gt; (把"评估"做成工程管道的一种方式)&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://openai.github.io/openai-guardrails-python/evals/"&gt;OpenAI Guardrails Python - Evaluation Tool&lt;/a&gt; (评估工具示例)&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://sre.google/sre-book/table-of-contents/"&gt;Google SRE Book&lt;/a&gt; (用 SLO/灰度/回滚思维管理不确定性系统)&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://sre.google/resources/"&gt;Google SRE Resources&lt;/a&gt; (SRE 资源入口)&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://shiftmag.dev/this-cto-says-93-of-developers-use-ai-but-productivity-is-still-10-8013/"&gt;93% of Developers Use AI - Productivity Only 10%&lt;/a&gt; (采用率很高, 但组织指标未必同步上涨)&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://blog.logrocket.com/ai-coding-tools-shift-bottleneck-to-review/"&gt;Why AI coding tools shift the real bottleneck to review&lt;/a&gt; (瓶颈从"写"迁移到"审"的一个直观证据)&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://byteiota.com/cognitive-debt-ai-coding-agents-outpace-comprehension-5-7x/"&gt;Cognitive Debt: AI Coding Agents Outpace Comprehension 5-7x&lt;/a&gt; ("认知债务"这个概念的系统阐述)&lt;/li&gt;
-&lt;/ul&gt;
-&lt;hr&gt;
-&lt;h2 id="_5"&gt;思维导图&lt;/h2&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap
-&amp;lt;style&amp;gt;
-mindmapDiagram {
-  node { BackgroundColor #F5F5F5; RoundCorner 8; Padding 8; FontSize 14 }
-  :depth(0) { BackgroundColor #2C3E50; FontColor white; FontSize 16; FontStyle bold }
-  :depth(1) { FontSize 14; FontStyle bold }
-  :depth(2) { FontSize 13 }
-}
-&amp;lt;/style&amp;gt;
-
-title AI 时代的软件工程
-
-* 核心论点
-** 从&amp;quot;把需求写成代码&amp;quot;
-** 到&amp;quot;能力编排与治理&amp;quot;
-*** 写代码更便宜
-*** 证明没坑更贵
-*** 你写边界/约束/验收的时间会上升
-
-* 1. 人话版: 这到底是什么变化?
-** 重心从&amp;quot;实现&amp;quot; -&amp;gt; &amp;quot;组织能力&amp;quot;
-** 类比
-*** 传统软件 = 机械钟表
-*** LLM/Agent = 聪明但不稳定的助手
-
-* 2. 默认假设被拆(Why)
-** 契约从类型 -&amp;gt; 语义(prompt)
-** 行为从代码 -&amp;gt; 组合
-*** prompt + RAG + tool calling + 模型/参数 + guardrails
-** 瓶颈从实现 -&amp;gt; 验证
-*** 采用率很高, 组织指标未必同步上涨(92.6% 使用但 &amp;lt;10% 提升)
-*** PR 变多 + 评审更久(生成容易, 审核更难)
-*** &amp;quot;认知债务&amp;quot;: 速度 &amp;gt; 理解(5-7x)
-
-* 3. 别把 AI 只当&amp;quot;打字机&amp;quot;
-** 它更像&amp;quot;半个同事&amp;quot;
-** 你需要把不可控部分圈起来
-
-* 4. 接口之变: Prompt as Contract
-** prompt 要像 API 一样
-*** 版本管理 / diff / 说明
-*** review
-*** 回归样例集
-
-* 5. 瓶颈在迁移: 生成容易, 保障难
-** 质量问题更隐蔽
-** 缺少回归就等于&amp;quot;自出题自批卷&amp;quot;
-
-* 6. 语法的贬值与抽象的溢价
-** 语言门槛下降
-** 工程判断与抽象能力更值钱
-
-* 7. 从&amp;quot;手工实现&amp;quot;到&amp;quot;能力编排与治理&amp;quot;
-** 把能力拆清楚: 模型做什么 / 代码做什么 / 人做什么
-** 把边界写清楚: 权限 / 数据 / 责任 / 兜底
-
-* 8. 不治理会怎么翻车(Failure Path)
-** 行为漂移
-** 错误更隐蔽
-** 责任模糊
-** 组织后果(迷信 or 抵触)
-
-* 9. 四件硬事(Practice)
-** 9.1 Prompt as Contract
-** 9.2 Eval as Gate
-*** golden set + 阈值门禁
-*** 幻觉/越界/拒答/格式稳定
-** 9.3 Observability as Boundary
-*** prompt 版本 / 检索片段 / 工具调用与参数
-*** 越权/分歧/重试/降级
-** 9.4 Rollback &amp;amp; Fallback
-*** 灰度切流
-*** prompt/模型/检索可回退
-*** 降级到规则/模板/旧模型/人工
-
-* 10. 验收(Verify &amp;amp; Gate)
-** 变更可追溯
-** 回归可对比
-** 线上可回放
-** 回滚可执行
-** 人为确认点明确
-@endmindmap
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;&lt;img alt="AI 时代的软件工程 - 思维导图" src="./images/tech_20260228_ai_software_engineering_mindmap.png"&gt;&lt;/p&gt;
-&lt;hr/&gt;
-&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Tech"/><category term="tech"/><category term="blog"/><category term="ai"/><category term="软件工程"/></entry><entry><title>网络安全指北: 为什么 BAC 访问控制失效总能霸榜</title><link href="https://www.fanyamin.com/blog/wang-luo-an-quan-zhi-bei-wei-shi-yao-bac-fang-wen-kong-zhi-shi-xiao-zong-neng-ba-bang.html" rel="alternate"/><published>2026-02-28T18:00:00+08:00</published><updated>2026-02-28T21:00:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-02-28:/blog/wang-luo-an-quan-zhi-bei-wei-shi-yao-bac-fang-wen-kong-zhi-shi-xiao-zong-neng-ba-bang.html</id><summary type="html">&lt;p&gt;OWASP Top 10 每隔几年更新一次，榜首却从未换过——BAC（Broken Access Control，访问控制失效）连续霸榜。本文从这个现象出发，用酒店房卡类比说清楚 BAC 是什么、为何难做对、典型场景和缓解措施，并给出 Java/Go/Python 三语言正反示例、常用框架、最佳实践和自检清单。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
-&lt;th&gt;为什么 BAC 访问控制失效总能霸榜&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;tech note&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Status&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;v1.0&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;2026-02-28&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;h1 id="bac"&gt;为什么 BAC 访问控制失效总能霸榜&lt;/h1&gt;
-&lt;p&gt;&lt;a href="https://owasp.org/Top10/"&gt;OWASP Top 10&lt;/a&gt; 是全球 Web 安全圈公认的 "风险排行榜"，每隔几年更新一次。SQL 注入来过、XSS 来过，榜单上的面孔换了一拨又一拨——但有一位选手从未跌出过冠军宝座：&lt;strong&gt;BAC（Broken Access Control，访问控制失效）&lt;/strong&gt;。&lt;a href="https://owasp.org/Top10/2025/A01_2025-Broken_Access_Control/"&gt;2025 版&lt;/a&gt;依然是 &lt;strong&gt;A01，第一名&lt;/strong&gt;。&lt;/p&gt;
-&lt;p&gt;这就像高考状元年年换人，但 "粗心大意导致丢分" 这个失分原因永远排第一——不是题难，是门没关好。&lt;/p&gt;
-&lt;p&gt;写了二十多年代码，我越来越觉得：大部分安全问题不是因为算法不够强，而是因为 "门没关好"。认证（Authentication）解决的是 "你是谁"，就好比一把钥匙；访问控制（Authorization）解决的是 "这把钥匙能开哪些门"。BAC 的意思是：钥匙发对了，但门锁形同虚设——该锁的门没锁，或者一把钥匙能开所有房间。&lt;/p&gt;
-&lt;p&gt;本文就来掰扯一下：BAC 到底是什么、为什么它这么难做对、怎么防，以及 Java/Go/Python 各有哪些现成的工具可以用。&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="whatbac"&gt;What（BAC 是什么）&lt;/h2&gt;
-&lt;p&gt;&lt;strong&gt;访问控制&lt;/strong&gt;的作用是确保用户&lt;strong&gt;只能在被允许的范围内&lt;/strong&gt;操作。打个比方：你住酒店，房卡只能开你自己那间房，不能开别人的房间，也不能进员工通道——这就是访问控制。一旦这个机制失效，就会出现越权访问、信息泄露或数据被篡改/删除。&lt;/p&gt;
-&lt;p&gt;BAC 就是说：本该受控的访问没有被正确实施，用户能摸到本不该碰的数据或功能。&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;&lt;strong&gt;小白提示&lt;/strong&gt;：你可能会看到一些缩写，简单解释一下：
-- &lt;strong&gt;OWASP&lt;/strong&gt;：一个专门研究 Web 应用安全的国际开源社区，每隔几年发布一份 "Top 10" 最常见安全风险清单。
-- &lt;strong&gt;CWE&lt;/strong&gt;：通用弱点枚举（Common Weakness Enumeration），给各种安全缺陷编了号，方便大家统一讨论。
-- &lt;strong&gt;IDOR&lt;/strong&gt;：不安全的直接对象引用（Insecure Direct Object Reference），就是 "改一下 URL 里的 ID 就能看到别人的数据"。
-- &lt;strong&gt;CSRF&lt;/strong&gt;：跨站请求伪造，攻击者诱导你的浏览器偷偷向目标网站发请求。
-- &lt;strong&gt;SSRF&lt;/strong&gt;：服务端请求伪造，攻击者让你的服务器去请求本不该访问的内部资源。&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;hr&gt;
-&lt;h2 id="why-top-10"&gt;Why（为何是 Top 10 第一）&lt;/h2&gt;
-&lt;p&gt;OWASP 每隔几年会根据全球安全社区提交的真实漏洞数据和 CVE（公开安全漏洞编号）给 Top 10 排序。BAC 一直排第一，无外乎三条：&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;&lt;strong&gt;检出率极高&lt;/strong&gt;：在 2025 版所依据的数据中，&lt;strong&gt;100% 的被测应用&lt;/strong&gt;都存在某种形式的访问控制问题（&lt;a href="https://owasp.org/Top10/2025/A01_2025-Broken_Access_Control/"&gt;A01 背景说明&lt;/a&gt;）。换句话说，每一个被测试的网站/应用都有这方面的毛病。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;发生次数与 CVE 数量突出&lt;/strong&gt;：这类在真实数据里 "出现次数" 最多，相关 CVE 数在 Top 10 里排第二——也就是说，全世界的黑客也特别喜欢找这个洞。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;直接对应业务与合规风险&lt;/strong&gt;：一旦被利用，往往是数据被看光、被改掉、被删掉，数据泄露、罚款、品牌受损都跟着来。&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;所以 BAC 被放在 A01，是真实数据撑出来的，不是拍脑袋排的。&lt;/p&gt;
-&lt;h3 id="_1"&gt;为什么访问控制这么难做对？&lt;/h3&gt;
-&lt;p&gt;想一想，认证只需要做一次（登录），而授权需要在&lt;strong&gt;每个接口、每条数据、每种操作&lt;/strong&gt;上都做对。这就像一栋大楼：门禁系统只要在大门口装一个就行，但每个房间、每个抽屉是否该锁、谁该有钥匙，需要一间一间去配。漏掉一个房间，就是一个 BAC。&lt;/p&gt;
-&lt;p&gt;再加上几个现实困难：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;业务变化快&lt;/strong&gt;：新功能上了，权限模型没跟着更新，或新接口忘了加校验。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;角色膨胀&lt;/strong&gt;：系统越做越大，角色从 admin/user 两个变成十几个，组合爆炸后很难覆盖测试。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;职责分散&lt;/strong&gt;：前端觉得 "后端会校验"，后端觉得 "网关会拦"，最后谁都没拦。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;隐式信任&lt;/strong&gt;：内部服务之间互相调用时，常常默认 "既然能调到，就是有权限"，缺少显式校验。&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;这也是为什么 OWASP 的第一条建议就是 "默认拒绝"——与其去想 "哪些要锁"，不如默认全部锁死，再逐个放行。&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="how-it-causes-security-issues"&gt;How it causes security issues（如何导致安全问题）&lt;/h2&gt;
-&lt;p&gt;典型 BAC 场景，用生活类比来理解：&lt;/p&gt;
-&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;类型&lt;/th&gt;
-&lt;th&gt;生活类比&lt;/th&gt;
-&lt;th&gt;技术说明&lt;/th&gt;
-&lt;th&gt;后果&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;默认放行&lt;/td&gt;
-&lt;td&gt;大楼所有门都没上锁&lt;/td&gt;
-&lt;td&gt;没按 "默认拒绝" 来，缺省就允许访问&lt;/td&gt;
-&lt;td&gt;任何人都能进任何房间&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;参数篡改 / IDOR&lt;/td&gt;
-&lt;td&gt;把房卡上的房号从 101 改成 102&lt;/td&gt;
-&lt;td&gt;改 URL 里的 ID 就能查别人数据&lt;/td&gt;
-&lt;td&gt;看到或修改别人的数据&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;仅前端校验&lt;/td&gt;
-&lt;td&gt;门口只挂了个 "请勿入内" 的牌子，没装锁&lt;/td&gt;
-&lt;td&gt;权限只在前端 JS 里做，服务端不校验&lt;/td&gt;
-&lt;td&gt;用 curl 直接绕过&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;写操作无控&lt;/td&gt;
-&lt;td&gt;任何人都能按电梯里的 "管理员" 按钮&lt;/td&gt;
-&lt;td&gt;POST/PUT/DELETE 没做权限校验&lt;/td&gt;
-&lt;td&gt;任意用户可增删改数据&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;权限提升&lt;/td&gt;
-&lt;td&gt;普通住客按了按钮就到了总统套房&lt;/td&gt;
-&lt;td&gt;普通用户能访问管理员接口&lt;/td&gt;
-&lt;td&gt;越权&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;JWT/Cookie 篡改&lt;/td&gt;
-&lt;td&gt;伪造了一张房卡&lt;/td&gt;
-&lt;td&gt;篡改或重放 Token/会话&lt;/td&gt;
-&lt;td&gt;冒充他人&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;CORS 配置错误&lt;/td&gt;
-&lt;td&gt;允许隔壁酒店的人用你们的房卡系统&lt;/td&gt;
-&lt;td&gt;允许不可信站点调 API&lt;/td&gt;
-&lt;td&gt;跨域攻击&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;p&gt;&lt;strong&gt;三个场景帮你秒懂&lt;/strong&gt;：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;场景 1（改 ID 看别人数据）&lt;/strong&gt;：网址是 &lt;code&gt;example.com/account?acct=123&lt;/code&gt;，你把 123 改成 456，就看到了别人的账户信息。原因是服务端没有检查 "456 这个账户是不是你的"。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;场景 2（直接猜管理员地址）&lt;/strong&gt;：普通用户在浏览器直接输入 &lt;code&gt;example.com/admin&lt;/code&gt;，居然能访问管理后台。原因是这个地址没有做登录和角色检查。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;场景 3（前端藏按钮没用）&lt;/strong&gt;：管理员按钮在页面上被 JS 隐藏了，但用命令行工具 &lt;code&gt;curl&lt;/code&gt; 直接请求 API 照样能调通。原因是权限只在前端做了，服务端是 "裸奔" 的。&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;共同点就一条：&lt;strong&gt;访问控制没在可信的服务端/API 里统一、强制落地&lt;/strong&gt;，要么没做，要么没按 "默认拒绝 + 所有权/角色校验" 来做。&lt;/p&gt;
-&lt;p&gt;我自己的个人 wiki 就踩过这类坑。数据分三类：公开（所有人可看）、私有（仅自己存取）、共享（对某群组开放）。当时的问题是：&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;数据模型里没有一个清晰的 &lt;code&gt;visibility&lt;/code&gt; 或 &lt;code&gt;owner_id + acl&lt;/code&gt; 字段组合，"谁可以访问哪条记录" 全靠业务代码里零散的 if-else 来判断。&lt;/li&gt;
-&lt;li&gt;接口边界不清楚——有些 API 既返回公开数据也返回私有数据，靠前端来过滤显示，服务端不做区分。&lt;/li&gt;
-&lt;li&gt;共享给群组的逻辑更复杂，后来发现有些用户退出了群组，仍能访问之前共享的数据。&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;结果就是典型的 BAC：边界模糊，校验靠感觉。后来不得不回头补建模——给每条记录加 &lt;code&gt;visibility&lt;/code&gt; 枚举和 &lt;code&gt;owner_id&lt;/code&gt;，共享记录走 ACL 表，接口层统一用 middleware 校验。这件事教训很深：&lt;strong&gt;访问控制不是 "功能做完了再加" 的东西，它得从数据模型开始就想清楚。&lt;/strong&gt;&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="how-to-mitigate"&gt;How to mitigate（如何缓解）&lt;/h2&gt;
-&lt;p&gt;访问控制&lt;strong&gt;得在服务端（或 serverless API）统一做&lt;/strong&gt;——就像锁必须装在门上而不是贴个纸条在门口，攻击者撕不掉真锁，但撕纸条很容易。OWASP 的 &lt;a href="https://owasp.org/Top10/2025/A01_2025-Broken_Access_Control/"&gt;How to prevent&lt;/a&gt; 要点如下：&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;&lt;strong&gt;默认拒绝&lt;/strong&gt;：除了你明确标记为 "公开" 的资源，其他一律不允许访问。就像酒店的门默认都是锁着的，只有刷房卡才能开。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;集中、复用&lt;/strong&gt;：访问控制逻辑写在一个地方，整个应用（包括所有 API）统一使用，别到处复制粘贴。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;按所有权建模&lt;/strong&gt;：按 "这条数据是谁的" 来控制访问，用户只能动&lt;strong&gt;自己名下的记录&lt;/strong&gt;，不能 "想查谁就查谁"。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;业务限制交给领域模型&lt;/strong&gt;：业务上的访问边界由专门的权限模块统一管理，别散落在各个接口里。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;关闭目录列表、避免敏感元数据暴露&lt;/strong&gt;：禁用 Web 根目录列表，确保 &lt;code&gt;.git&lt;/code&gt;、备份等不在 Web 根下。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;记录并告警&lt;/strong&gt;：记录访问控制失败，对重复失败等异常行为告警。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;限流&lt;/strong&gt;：对 API/控制器做速率限制，降低自动化攻击影响。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;会话与 Token&lt;/strong&gt;：服务端在登出后使会话失效；若用无状态 JWT，尽量短生命周期，长生命周期时用 refresh token 并遵循 OAuth 撤销机制。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;用成熟框架/模式&lt;/strong&gt;：用现成的、声明式的访问控制库或模式，少手写，少漏。&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;开发和 QA 在单测、集成测里&lt;strong&gt;都要覆盖访问控制&lt;/strong&gt;（比如用别人 ID 请求要 403，未登录要 401）。&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="examplejava-go-python"&gt;Example（Java / Go / Python 正反示例）&lt;/h2&gt;
-&lt;p&gt;BAC 的核心问题跨语言一致：拿到请求里的资源 ID 后，有没有校验 "当前用户有权访问这个 ID 吗"。下面分三种语言各给一组正反例。&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;&lt;strong&gt;小白提示&lt;/strong&gt;：即使你不熟悉以下某种语言，只需关注反例和正例的区别——反例里直接用请求传来的 ID 查数据库，正例里多了一步 "这个 ID 对应的数据是不是当前用户的"。&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;h3 id="pythondjango"&gt;Python（Django）&lt;/h3&gt;
-&lt;p&gt;&lt;strong&gt;反例&lt;/strong&gt;：直接用请求参数查库，不校验归属&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;get_account&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;request&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
-    &lt;span class="n"&gt;acct_id&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;request&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;GET&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;get&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;acct&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;  &lt;span class="c1"&gt;# 攻击者可改为任意 ID&lt;/span&gt;
-    &lt;span class="n"&gt;account&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;Account&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;objects&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;get&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nb"&gt;id&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;acct_id&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
-    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;JsonResponse&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;account&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;to_dict&lt;/span&gt;&lt;span class="p"&gt;())&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;&lt;strong&gt;正例&lt;/strong&gt;：用当前用户 ID 过滤，不信任客户端传来的 ID&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="kn"&gt;from&lt;/span&gt; &lt;span class="nn"&gt;django.contrib.auth.decorators&lt;/span&gt; &lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="n"&gt;login_required&lt;/span&gt;
-
-&lt;span class="nd"&gt;@login_required&lt;/span&gt;
-&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;get_account&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;request&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
-    &lt;span class="n"&gt;account&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;Account&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;objects&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;get&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;user_id&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;request&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;user&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;id&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
-    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;JsonResponse&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;account&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;to_dict&lt;/span&gt;&lt;span class="p"&gt;())&lt;/span&gt;
-
-&lt;span class="nd"&gt;@login_required&lt;/span&gt;
-&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;get_order&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;request&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;order_id&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
-    &lt;span class="n"&gt;order&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;Order&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;objects&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;filter&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nb"&gt;id&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;order_id&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;user_id&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;request&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;user&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;id&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;first&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
-    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="ow"&gt;not&lt;/span&gt; &lt;span class="n"&gt;order&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
-        &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;JsonResponse&lt;/span&gt;&lt;span class="p"&gt;({&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;error&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;Forbidden&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;},&lt;/span&gt; &lt;span class="n"&gt;status&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="mi"&gt;403&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
-    &lt;span class="k"&gt;return&lt;/span&gt; &lt;span class="n"&gt;JsonResponse&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;order&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;to_dict&lt;/span&gt;&lt;span class="p"&gt;())&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;h3 id="javaspring-boot"&gt;Java（Spring Boot）&lt;/h3&gt;
-&lt;p&gt;&lt;strong&gt;反例&lt;/strong&gt;：Controller 里直接用路径参数查库&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nd"&gt;@GetMapping&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;/accounts/{id}&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
-&lt;span class="kd"&gt;public&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="n"&gt;Account&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nf"&gt;getAccount&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nd"&gt;@PathVariable&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="n"&gt;Long&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="n"&gt;id&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
-&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="k"&gt;return&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="n"&gt;accountRepository&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="na"&gt;findById&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;id&lt;/span&gt;&lt;span class="p"&gt;).&lt;/span&gt;&lt;span class="na"&gt;orElseThrow&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;
-&lt;span class="p"&gt;}&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;&lt;strong&gt;正例&lt;/strong&gt;：用 &lt;code&gt;@PreAuthorize&lt;/code&gt; + 当前用户校验所有权&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="nd"&gt;@GetMapping&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;/accounts/{id}&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
-&lt;span class="nd"&gt;@PreAuthorize&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;isAuthenticated()&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
-&lt;span class="kd"&gt;public&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="n"&gt;Account&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nf"&gt;getAccount&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nd"&gt;@PathVariable&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="n"&gt;Long&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="n"&gt;id&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="n"&gt;Authentication&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="n"&gt;auth&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
-&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="n"&gt;Account&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="n"&gt;account&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="n"&gt;accountRepository&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="na"&gt;findById&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;id&lt;/span&gt;&lt;span class="p"&gt;).&lt;/span&gt;&lt;span class="na"&gt;orElseThrow&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;
-&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="k"&gt;if&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="o"&gt;!&lt;/span&gt;&lt;span class="n"&gt;account&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="na"&gt;getUserId&lt;/span&gt;&lt;span class="p"&gt;().&lt;/span&gt;&lt;span class="na"&gt;equals&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;auth&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="na"&gt;getName&lt;/span&gt;&lt;span class="p"&gt;()))&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
-&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="k"&gt;throw&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="k"&gt;new&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="n"&gt;AccessDeniedException&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;Forbidden&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
-&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
-&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="k"&gt;return&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="n"&gt;account&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
-&lt;span class="p"&gt;}&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;Spring Security 提供了 &lt;code&gt;@PreAuthorize&lt;/code&gt;、&lt;code&gt;@Secured&lt;/code&gt;、方法级别的 SpEL 表达式（如 &lt;code&gt;#id == principal.id&lt;/code&gt;），可以做到声明式校验，比手写 if-else 少漏很多。&lt;/p&gt;
-&lt;h3 id="gogin"&gt;Go（Gin / 标准库）&lt;/h3&gt;
-&lt;p&gt;&lt;strong&gt;反例&lt;/strong&gt;：从 URL 取 ID 直接查库&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="kd"&gt;func&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;GetAccount&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nx"&gt;c&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;*&lt;/span&gt;&lt;span class="nx"&gt;gin&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;Context&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
-&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nx"&gt;id&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;:=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;c&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;Param&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;id&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
-&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nx"&gt;account&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;_&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;:=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;db&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;FindAccountByID&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nx"&gt;id&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
-&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nx"&gt;c&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;JSON&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mi"&gt;200&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;account&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
-&lt;span class="p"&gt;}&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;&lt;strong&gt;正例&lt;/strong&gt;：从 context 取当前用户，查库时带上 user_id 条件&lt;/p&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="kd"&gt;func&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;GetAccount&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nx"&gt;c&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;*&lt;/span&gt;&lt;span class="nx"&gt;gin&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;Context&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
-&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nx"&gt;userID&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;:=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;c&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;GetString&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;userID&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="c1"&gt;// 由认证 middleware 写入&lt;/span&gt;
-&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nx"&gt;id&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;:=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;c&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;Param&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;id&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
-&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nx"&gt;account&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;err&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;:=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;db&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;FindAccountByIDAndUser&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nx"&gt;id&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;userID&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
-&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="k"&gt;if&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;err&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="o"&gt;!=&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="kc"&gt;nil&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;
-&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="nx"&gt;c&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;JSON&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="nx"&gt;http&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;StatusForbidden&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;gin&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;H&lt;/span&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="s"&gt;&amp;quot;error&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="s"&gt;&amp;quot;Forbidden&amp;quot;&lt;/span&gt;&lt;span class="p"&gt;})&lt;/span&gt;
-&lt;span class="w"&gt;        &lt;/span&gt;&lt;span class="k"&gt;return&lt;/span&gt;
-&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="p"&gt;}&lt;/span&gt;
-&lt;span class="w"&gt;    &lt;/span&gt;&lt;span class="nx"&gt;c&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;JSON&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="mi"&gt;200&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nx"&gt;account&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
-&lt;span class="p"&gt;}&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;Go 生态里常用 middleware 链来做认证和基础权限校验（如 &lt;a href="https://github.com/casbin/casbin"&gt;casbin&lt;/a&gt; 做 RBAC/ABAC），资源级所有权校验通常在 handler 内完成。&lt;/p&gt;
-&lt;hr&gt;
-&lt;h2 id="java-go-python"&gt;框架与最佳实践（Java / Go / Python）&lt;/h2&gt;
-&lt;p&gt;不要从零手写访问控制——就像你不会自己造锁，而是买一把经过认证的锁。用成熟的库和模式可以大幅降低遗漏风险。下面按语言梳理常用方案。&lt;/p&gt;
-&lt;blockquote&gt;
-&lt;p&gt;&lt;strong&gt;小白提示&lt;/strong&gt;：下面的表格不需要全部记住，只需要知道——你用的语言/框架大概率已经有现成的权限管理工具，用它而不是自己从头写。&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;h3 id="python"&gt;Python&lt;/h3&gt;
-&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;框架/库&lt;/th&gt;
-&lt;th&gt;说明&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Django 权限系统&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;内置 User/Group/Permission 模型，配合 &lt;code&gt;@login_required&lt;/code&gt;、&lt;code&gt;@permission_required&lt;/code&gt; 做视图级控制；Django REST Framework 的 &lt;code&gt;permissions&lt;/code&gt; 模块支持对象级权限（如 &lt;code&gt;IsOwnerOrReadOnly&lt;/code&gt;）&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Flask-Principal / Flask-Login&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;Flask-Login 管认证，Flask-Principal 管角色/权限 Identity，通过 &lt;code&gt;Permission&lt;/code&gt; + &lt;code&gt;RoleNeed&lt;/code&gt; 做声明式校验&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Casbin (PyCasbin)&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;支持 RBAC/ABAC/ACL 多种模型，策略配置和代码分离，适合需要灵活权限模型的场景&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;OPA (Open Policy Agent)&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;策略用 Rego 语言写，通过 sidecar 或 SDK 集成，适合微服务/K8s 环境做统一策略决策&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;p&gt;&lt;strong&gt;最佳实践&lt;/strong&gt;：Django/DRF 项目优先用框架自带的 permission classes；资源级所有权在 &lt;code&gt;get_queryset()&lt;/code&gt; 里用当前用户过滤，而不是在序列化后做。&lt;/p&gt;
-&lt;h3 id="java"&gt;Java&lt;/h3&gt;
-&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;框架/库&lt;/th&gt;
-&lt;th&gt;说明&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Spring Security&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;Java 生态事实标准；&lt;code&gt;@PreAuthorize&lt;/code&gt;、&lt;code&gt;@PostAuthorize&lt;/code&gt; 做方法级控制，SpEL 表达式可引用方法参数和返回值；FilterChain 做 URL 级控制；配合 Spring ACL 可做对象级权限&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Apache Shiro&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;比 Spring Security 轻量，API 直观（&lt;code&gt;subject.isPermitted("order:read:123")&lt;/code&gt;），适合非 Spring 项目&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Keycloak Adapter&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;配合 Keycloak 做 SSO/RBAC，Policy Enforcement Point 在网关或应用层，策略在 Keycloak 管理台集中维护&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;OPA / Casbin-Java&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;同上，跨语言统一策略&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;p&gt;&lt;strong&gt;最佳实践&lt;/strong&gt;：Spring Boot 项目用 Security 的 &lt;code&gt;@PreAuthorize&lt;/code&gt; + 自定义 &lt;code&gt;PermissionEvaluator&lt;/code&gt; 做对象级校验；不要把权限硬编码在 Controller 的 if-else 里，否则改一次角色要改一堆文件。&lt;/p&gt;
-&lt;h3 id="go"&gt;Go&lt;/h3&gt;
-&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;框架/库&lt;/th&gt;
-&lt;th&gt;说明&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Casbin&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;Go 原生实现，RBAC/ABAC/ACL，策略文件热加载，和 Gin/Echo/gRPC 都有现成 middleware&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Gin middleware 链&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;认证 middleware 从 JWT/Cookie 提取用户信息写入 context；权限 middleware 在 handler 前校验角色/scope&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;Ory (Keto / Oathkeeper)&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;Keto 是 Google Zanzibar 的开源实现，做关系型授权（ReBAC）；Oathkeeper 是 API 网关层的访问代理&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;strong&gt;OPA&lt;/strong&gt;&lt;/td&gt;
-&lt;td&gt;通过 HTTP API 或 Go SDK 嵌入，适合策略与代码分离的架构&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;p&gt;&lt;strong&gt;最佳实践&lt;/strong&gt;：Go 项目常在 middleware 里做 "角色/scope 级" 粗粒度校验，在 handler 里做 "资源所有权" 细粒度校验；两层都不能省。用 Casbin 或 OPA 时，策略文件和代码分开维护，改权限不用改代码重部署。&lt;/p&gt;
-&lt;h3 id="_2"&gt;跨语言通用原则&lt;/h3&gt;
-&lt;p&gt;不管用什么语言和框架，有几条原则是通的：&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;&lt;strong&gt;权限逻辑和业务逻辑分开&lt;/strong&gt;：别把 &lt;code&gt;if user.role == "admin"&lt;/code&gt; 塞满业务代码。就像你不会在每个房间门口贴一张纸条写 "只有张三能进"，而是用统一的门禁系统。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;两层校验&lt;/strong&gt;：大门口先查你有没有资格进大楼（粗粒度：角色、是否登录），到具体房间再查你有没有这间房的钥匙（细粒度：资源所有权）。两层都不能省。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;策略可审计&lt;/strong&gt;：得能在一个地方看到 "谁对什么资源有什么权限"，而不是散落在几十个文件里。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;测试要覆盖&lt;/strong&gt;：针对每个接口写三种测试——正确用户访问 → 200，错误用户访问 → 403，未登录 → 401。跑在 CI 里，每次提交代码都自动检查。&lt;/li&gt;
-&lt;/ol&gt;
-&lt;hr&gt;
-&lt;h2 id="checklistbac"&gt;Checklist（BAC 自检清单）&lt;/h2&gt;
-&lt;ul&gt;
-&lt;li&gt;[ ] 除公开资源外，是否&lt;strong&gt;默认拒绝&lt;/strong&gt;访问？&lt;/li&gt;
-&lt;li&gt;[ ] 访问控制是否在&lt;strong&gt;服务端/API 统一实现&lt;/strong&gt;，且不依赖前端隐藏或前端校验？&lt;/li&gt;
-&lt;li&gt;[ ] 对讲究 "归属" 的资源，有没有用&lt;strong&gt;当前用户/会话&lt;/strong&gt;和&lt;strong&gt;资源所有者&lt;/strong&gt;比对，而不是光拿请求里的 ID 去查？&lt;/li&gt;
-&lt;li&gt;[ ] POST/PUT/DELETE 等写操作是否都有&lt;strong&gt;授权与所有权校验&lt;/strong&gt;？&lt;/li&gt;
-&lt;li&gt;[ ] 是否关闭 Web 根目录列表，且敏感文件/备份不在 Web 根下？&lt;/li&gt;
-&lt;li&gt;[ ] 是否&lt;strong&gt;记录访问控制失败&lt;/strong&gt;并在适当时机告警？&lt;/li&gt;
-&lt;li&gt;[ ] 是否对 API/敏感端点做&lt;strong&gt;限流&lt;/strong&gt;？&lt;/li&gt;
-&lt;li&gt;[ ] 登出后会话是否在服务端&lt;strong&gt;失效&lt;/strong&gt;？JWT 是否短寿或配合 refresh/撤销机制？&lt;/li&gt;
-&lt;li&gt;[ ] 单测/集成测里有没有&lt;strong&gt;越权用例&lt;/strong&gt;（例如用别人 ID 请求要 403）？&lt;/li&gt;
-&lt;/ul&gt;
-&lt;hr&gt;
-&lt;h2 id="summary"&gt;Summary&lt;/h2&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;BAC&lt;/strong&gt; = 访问控制没做对，导致越权访问；OWASP Top 10:2025 排&lt;strong&gt;第一&lt;/strong&gt;，100% 被测应用存在此类问题。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;为什么难做对&lt;/strong&gt;：认证只需一次，授权要在每个接口、每条数据上做对。业务变化快、角色膨胀、职责分散、隐式信任，都是坑。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;根因&lt;/strong&gt;：访问控制只在前端、未在服务端统一实施；未默认拒绝；未按所有权/角色校验；或暴露了本不该暴露的接口。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;缓解&lt;/strong&gt;：服务端默认拒绝、集中实施、按所有权建模、日志与限流、会话/JWT 规范、用成熟框架、测试覆盖越权用例。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;框架选择&lt;/strong&gt;：Python 用 Django Permission / DRF / Casbin；Java 用 Spring Security / Shiro；Go 用 Casbin / middleware 链 / OPA。跨语言通用：权限逻辑和业务逻辑分开，粗细两层校验，策略可审计。&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;开发习惯&lt;/strong&gt;：凡是 "按 ID 查资源" 的接口，先问一句：&lt;strong&gt;当前请求者有没有权访问这个 ID？&lt;/strong&gt; 别把客户端传过来的资源 ID 当成授权。&lt;/li&gt;
-&lt;/ul&gt;
-&lt;blockquote&gt;
-&lt;p&gt;一句话：&lt;strong&gt;认证是发钥匙，授权是配锁——每扇门都得单独配，漏一扇就是 BAC。&lt;/strong&gt;&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;hr&gt;
-&lt;h2 id="references"&gt;References&lt;/h2&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://owasp.org/Top10/2025/A01_2025-Broken_Access_Control/"&gt;OWASP Top 10:2025 – A01 Broken Access Control&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://owasp.org/www-project-proactive-controls/"&gt;OWASP Proactive Controls: C1 Implement Access Control&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://owasp.org/www-project-application-security-verification-standard/"&gt;OWASP ASVS: V8 Authorization&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://owasp.org/www-project-web-security-testing-guide/"&gt;OWASP Testing Guide: Authorization Testing&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html"&gt;OWASP Cheat Sheet: Authorization&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://docs.spring.io/spring-security/reference/"&gt;Spring Security Reference&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://casbin.org/"&gt;Casbin - Authorization library&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://www.openpolicyagent.org/"&gt;Open Policy Agent (OPA)&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://www.ory.sh/keto/"&gt;Ory Keto - Zanzibar-based authorization&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;hr&gt;
-&lt;h2 id="_3"&gt;思维导图&lt;/h2&gt;
-&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap
-&amp;lt;style&amp;gt;
-mindmapDiagram {
-  node { BackgroundColor #FAFAFA }
-  :depth(0) { BackgroundColor #FFD700 }
-  :depth(1) { BackgroundColor #E3F2FD }
-  :depth(2) { BackgroundColor #F5F5F5 }
-}
-&amp;lt;/style&amp;gt;
-title BAC：访问控制失效（OWASP Top 10 A01）
-* BAC 防御
-** What（是什么）
-*** 认证 = 发钥匙（你是谁）
-*** 授权 = 配锁（你能开哪些门）
-*** BAC = 门锁形同虚设
-** Why（为什么排第一）
-*** 100% 被测应用存在问题
-*** CVE 数量 Top 10 排第二
-*** 直接导致数据泄露/合规风险
-** 为什么难做对
-*** 认证只需一次，授权要每扇门都做
-*** 业务变化快，权限模型没跟上
-*** 角色膨胀，组合爆炸
-*** 职责分散，前后端互相指望
-*** 内部服务隐式信任
-** 典型场景
-*** 改 ID 看别人数据（IDOR）
-*** 直接猜管理员地址
-*** 前端藏按钮，服务端裸奔
-*** 写操作无权限校验
-*** JWT/Cookie 篡改
-*** CORS 配置错误
-** 缓解措施
-*** 1. 默认拒绝
-**** 除公开资源外一律不允许
-*** 2. 服务端统一实施
-**** 别只靠前端
-*** 3. 按所有权建模
-**** 数据模型加 owner_id / visibility
-**** 查库时带当前用户条件
-*** 4. 集中复用
-**** 权限逻辑写在一处
-*** 5. 日志与告警
-**** 记录失败，异常行为告警
-*** 6. 限流
-**** 降低自动化攻击影响
-*** 7. 会话/JWT 规范
-**** HttpOnly + Secure + SameSite
-**** 登出后服务端失效
-*** 8. 用成熟框架
-**** 别从零手写
-*** 9. 测试覆盖越权用例
-**** 正确用户 → 200
-**** 错误用户 → 403
-**** 未登录 → 401
-** 框架选择
-*** Python
-**** Django Permission / DRF
-**** Casbin / OPA
-*** Java
-**** Spring Security
-**** Apache Shiro / Keycloak
-*** Go
-**** Casbin + Gin middleware
-**** Ory Keto / OPA
-** 通用原则
-*** 权限逻辑和业务逻辑分开
-*** 粗粒度（大门）+ 细粒度（房间）两层校验
-*** 策略可审计
-*** 测试自动化跑在 CI
-@endmindmap
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-
-&lt;p&gt;&lt;img alt="思维导图" src="./images/tech_20260228_bac_owasp_mindmap.png"&gt;&lt;/p&gt;
-&lt;hr/&gt;
-&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Tech"/><category term="security"/><category term="owasp"/><category term="access-control"/><category term="bac"/><category term="安全"/><category term="访问控制"/></entry></feed>
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。&lt;/p&gt;</content><category term="Tech"/><category term="security"/><category term="xss"/><category term="owasp"/><category term="安全"/><category term="web"/></entry></feed>

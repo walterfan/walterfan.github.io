@@ -1,0 +1,995 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="自从用 OpenSpec 那套 spec-driven 流程做 AI 编程，proposal.md、design.md、tasks.md、spec.md 一层套一层，我一天读的 Markdown 比代码多。写这一端有 agent 帮忙，读这一端还是 cat 加 less。所以我给 markpad 又加了几刀：在任意目录敲一个命令，起一个本地 Web，左边编辑右边预览，Mermaid 和 PlantUML 直接出图，选中一段就能流式翻译，一键出摘要加思维导图。这是六月那篇介绍的续集，不讲功能清单，讲几个当时没写清的实现决定：为什么两种图表走两条完全不同的路、为什么翻译非流式不行、本地工具的安全线画在哪，以及我拿它打开自己上一篇博客时踩到的一个洞。1657 行 Python，53 个测试，可抄。" />
+<meta name="keywords" content="journal, markdown, LLM, CLI, tooling, python, fastapi, SDD">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "用 SDD 写代码之后，我每天读的 Markdown 比代码多——于是写了 markpad",
+  "description": "自从用 OpenSpec 那套 spec-driven 流程做 AI 编程，proposal.md、design.md、tasks.md、spec.md 一层套一层，我一天读的 Markdown 比代码多。写这一端有 agent 帮忙，读这一端还是 cat 加 less。所以我给 markpad 又加了几刀：在任意目录敲一个命令，起一个本地 Web，左边编辑右边预览，Mermaid 和 PlantUML 直接出图，选中一段就能流式翻译，一键出摘要加思维导图。这是六月那篇介绍的续集，不讲功能清单，讲几个当时没写清的实现决定：为什么两种图表走两条完全不同的路、为什么翻译非流式不行、本地工具的安全线画在哪，以及我拿它打开自己上一篇博客时踩到的一个洞。1657 行 Python，53 个测试，可抄。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-09-01T23:50:00+08:00",
+  "dateModified": "2026-09-01T23:50:00+08:00",
+  "url": "https://www.fanyamin.com/blog/2026-09-01-markpad-markdown-workbench.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/2026-09-01-markpad-markdown-workbench.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "journal, markdown, LLM, CLI, tooling, python, fastapi, SDD"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="用 SDD 写代码之后，我每天读的 Markdown 比代码多——于是写了 markpad"/>
+  <meta property="og:description" content="自从用 OpenSpec 那套 spec-driven 流程做 AI 编程，proposal.md、design.md、tasks.md、spec.md 一层套一层，我一天读的 Markdown 比代码多。写这一端有 agent 帮忙，读这一端还是 cat 加 less。所以我给 markpad 又加了几刀：在任意目录敲一个命令，起一个本地 Web，左边编辑右边预览，Mermaid 和 PlantUML 直接出图，选中一段就能流式翻译，一键出摘要加思维导图。这是六月那篇介绍的续集，不讲功能清单，讲几个当时没写清的实现决定：为什么两种图表走两条完全不同的路、为什么翻译非流式不行、本地工具的安全线画在哪，以及我拿它打开自己上一篇博客时踩到的一个洞。1657 行 Python，53 个测试，可抄。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/2026-09-01-markpad-markdown-workbench.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-09-01 23:50:00+08:00"/>
+  <meta property="article:modified_time" content="2026-09-01 23:50:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="journal"/>
+  <meta property="article:tag" content="markdown"/>
+  <meta property="article:tag" content="LLM"/>
+  <meta property="article:tag" content="CLI"/>
+  <meta property="article:tag" content="tooling"/>
+  <meta property="article:tag" content="python"/>
+  <meta property="article:tag" content="fastapi"/>
+  <meta property="article:tag" content="SDD"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 用 SDD 写代码之后，我每天读的 Markdown 比代码多——于是写了 markpad</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="2026-09-01-markpad-markdown-workbench">用 SDD 写代码之后，我每天读的 Markdown 比代码多——于是写了 markpad</h1>
+    <p>
+      Posted on 二 01 9月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>用 SDD 写代码之后，我每天读的 Markdown 比代码多——于是写了 markpad</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>learning note</td>
+</tr>
+<tr>
+<td><strong>Version</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-09-01</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">大纲</h2>
+<details>
+<summary>展开看看</summary>
+<ul>
+<li><strong>新瓶颈</strong>：SDD 把文档产量拉高了，读文档的工具却没跟上</li>
+<li><strong>它长什么样</strong>：一个命令，一个本地 Web，三块面板</li>
+<li><strong>两种图表两条路</strong>：Mermaid 交给浏览器，PlantUML 交给子进程</li>
+<li><strong>翻译为什么必须流式</strong>：一篇 spec 等 40 秒不动，你就不会用第二次</li>
+<li><strong>摘要加思维导图</strong>：一个 JSON 两个 key，我用得最多的功能</li>
+<li><strong>本地工具的安全线</strong>：该守的守，该开的口子明说</li>
+<li><strong>一个我自己踩到的洞</strong>：markpad 渲染不了我博客里的 <code>&lt;details&gt;</code></li>
+<li><strong>账本和可抄的部分</strong></li>
+</ul>
+</details>
+<hr>
+<p>用 SDD（spec-driven development，先写规格再写代码）之后，我的目录里多了一堆东西。</p>
+<p>拿 <a href="https://github.com/Fission-AI/OpenSpec">OpenSpec</a> 举例，一个变更下面标配四件套：<code>proposal.md</code> 说要干什么，<code>design.md</code> 说为什么这么设计，<code>tasks.md</code> 拆任务，然后每个能力一份 <code>spec.md</code>。markpad 这个项目本身只有一个变更，<code>openspec/</code> 下面就有 8 份 Markdown、514 行。旁边 <a href="https://github.com/walterfan/gitman">gitman</a> 那个项目 9 份。这还只是我自己的两个小工具。</p>
+<p>再加上 <code>AGENTS.md</code>、<code>README.md</code>、各种 agent 的 skill 文件、每次 review 前 agent 顺手生成的分析报告——<strong>我现在一天里读 Markdown 的时间，比读代码的时间长。</strong></p>
+<p>问题是，写这一端已经被 AI 接走了，读这一端还是老样子：<code>cat</code> 出来一屏原始符号，<code>|</code> 和 <code>#</code> 和 <code>---</code> 混在一起；想看 Mermaid 图，得复制到某个在线站点；想快速搞清一份 200 行 spec 讲了什么，得从头读到尾。</p>
+<p>IDE 里的 Markdown 预览当然有，VS Code 那个我用了多年。但它有个前提：<strong>你得先把这个目录当成一个项目打开。</strong> 而我看文档的场景经常不是这样——临时收到一份别人的 design doc，或者在 <code>~/Downloads</code> 里躺着一个从 agent 输出里存下来的分析报告。为了看一个文件开一个 IDE 窗口，有点重。</p>
+<p>所以我写了 <a href="https://github.com/walterfan/markpad">markpad</a>。一句话：<strong>在任何一个有 Markdown 的目录里敲一个命令，浏览器里就出现一个能读、能改、能出图、能翻译、能总结的工作台。</strong></p>
+<p>六月的时候我写过<a href="https://www.fanyamin.com/markpad-local-markdown-reader-translator.html">一篇介绍</a>，讲的是“有哪些功能、适合谁用”。这篇不重复那些，讲的是三个月后回头看，几个当时没写清楚的实现决定——包括两种图表为什么走两条完全不同的路、翻译为什么非流式不行、以及一个本地工具的安全线该画在哪。顺便交代几处变化：包管理从 Poetry 换成了 uv，环境变量从 <code>LLM_*</code> 加了 <code>MP_</code> 前缀（避免和别的工具打架），多了一个我现在用得最多的摘要加思维导图功能。</p>
+<hr>
+<h2 id="_2">它长什么样</h2>
+<div class="highlight"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>openspec/changes/add-markdown-web-server-cli
+markpad
+</code></pre></div>
+
+<p>输出：</p>
+<div class="highlight"><pre><span></span><code><span class="go">  markpad is ready.</span>
+<span class="go">  Serving Markdown from: /Users/walterfan/workspace/walter/markpad/openspec/changes/add-markdown-web-server-cli</span>
+
+<span class="go">  Open http://127.0.0.1:9526 in your browser to:</span>
+<span class="go">    - read your Markdown files with live preview</span>
+<span class="go">    - edit them with instant rendering</span>
+<span class="go">    - translate or improve them with the LLM tools</span>
+</code></pre></div>
+
+<p>也可以直接开一个文件，包括绝对路径：</p>
+<div class="highlight"><pre><span></span><code>markpad<span class="w"> </span>docs/guide.md<span class="w"> </span>--open
+markpad<span class="w"> </span>/Users/me/notes/today.md<span class="w"> </span>--open
+</code></pre></div>
+
+<p>浏览器里是三块面板：左边文件树，中间 Markdown 源码，右边渲染后的 HTML。工具栏上三个小图标分别控制三块的显隐——<strong>只读的时候把编辑器关掉，只剩文件树加预览，这是我最常用的布局。</strong></p>
+<p>端口默认 9526，被占就往后顺延，最多试到 9626。这个设计是从 gitman 抄自己的：本地开发工具老是要抢端口，报错让用户自己换太不客气。</p>
+<p>另外它是有状态的：<code>markpad -d</code> 起后台，<code>markpad stop</code> 停，<code>markpad status</code> 看有没有在跑，<code>markpad doctor</code> 不启服务只打诊断（LLM 配好了没、配置从哪来的、内容根目录在哪）。<code>doctor --format json</code> 给脚本用。</p>
+<p><strong>URL 里带着文件路径</strong>这一点也值一句。打开 <code>docs/guide.md</code> 之后地址栏是 <code>http://localhost:9526/docs/guide.md</code>，把这个 URL 发给同事（前提是他也在跑 markpad）或者收藏起来，回来还是那个文件、那个源码加预览的视图。实现上是一个兜底路由：任何路径都返回同一个 index.html，前端自己去解析路径加载文件。</p>
+<hr>
+<h2 id="_3">两种图表，两条完全不同的路</h2>
+<p>这是整个项目里我觉得最值得说的一个设计决定。</p>
+<p>Mermaid 和 PlantUML 都是“图表即代码”，看起来该用同一套机制处理。实际上我把它们分到了两条路上：<strong>Mermaid 在浏览器里渲染，PlantUML 在服务端起子进程渲染。</strong></p>
+<p>原因很简单：Mermaid 本身就是个 JS 库，浏览器里跑得好好的；PlantUML 是 Java 的，你不可能塞进浏览器。</p>
+<p>所以后端渲染的时候做的事情也不一样。<code>renderer.py</code> 里先用正则把围栏代码块抠出来，按语言分流：</p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span> <span class="nf">replace_diagram</span><span class="p">(</span><span class="n">match</span><span class="p">):</span>
+    <span class="n">info</span> <span class="o">=</span> <span class="p">(</span><span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="s2">&quot;info&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+    <span class="n">source</span> <span class="o">=</span> <span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="s2">&quot;body&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">info</span> <span class="o">==</span> <span class="s2">&quot;mermaid&quot;</span><span class="p">:</span>
+        <span class="c1"># 只占位，把源码转义后交给浏览器</span>
+        <span class="n">token</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;@@MARKPAD_DIAGRAM_</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">placeholders</span><span class="p">)</span><span class="si">}</span><span class="s2">@@&quot;</span>
+        <span class="n">escaped</span> <span class="o">=</span> <span class="n">html</span><span class="o">.</span><span class="n">escape</span><span class="p">(</span><span class="n">source</span><span class="p">)</span>
+        <span class="n">placeholders</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">DiagramPlaceholder</span><span class="p">(</span>
+            <span class="n">token</span><span class="o">=</span><span class="n">token</span><span class="p">,</span>
+            <span class="n">html</span><span class="o">=</span><span class="sa">f</span><span class="s1">&#39;&lt;div class=&quot;diagram diagram-mermaid&quot;&gt;&lt;div class=&quot;mermaid&quot;&gt;</span><span class="si">{</span><span class="n">escaped</span><span class="si">}</span><span class="s1">&lt;/div&gt;...&#39;</span><span class="p">,</span>
+        <span class="p">))</span>
+        <span class="k">return</span> <span class="n">token</span>
+    <span class="k">if</span> <span class="n">info</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">&quot;plantuml&quot;</span><span class="p">,</span> <span class="s2">&quot;puml&quot;</span><span class="p">}:</span>
+        <span class="c1"># 服务端直接出图</span>
+        <span class="n">token</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;@@MARKPAD_DIAGRAM_</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">placeholders</span><span class="p">)</span><span class="si">}</span><span class="s2">@@&quot;</span>
+        <span class="n">placeholders</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">DiagramPlaceholder</span><span class="p">(</span><span class="n">token</span><span class="o">=</span><span class="n">token</span><span class="p">,</span> <span class="n">html</span><span class="o">=</span><span class="n">render_plantuml_block</span><span class="p">(</span><span class="n">source</span><span class="p">)))</span>
+        <span class="k">return</span> <span class="n">token</span>
+    <span class="k">return</span> <span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+</code></pre></div>
+
+<p>PlantUML 那边是起一个进程，管道进管道出：</p>
+<div class="highlight"><pre><span></span><code><span class="n">result</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
+    <span class="p">[</span><span class="n">command</span><span class="p">,</span> <span class="s2">&quot;-tsvg&quot;</span><span class="p">,</span> <span class="s2">&quot;-pipe&quot;</span><span class="p">],</span>
+    <span class="nb">input</span><span class="o">=</span><span class="n">source</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">),</span>
+    <span class="n">capture_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">svg</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">stdout</span>
+<span class="n">encoded</span> <span class="o">=</span> <span class="n">base64</span><span class="o">.</span><span class="n">b64encode</span><span class="p">(</span><span class="n">svg</span><span class="p">)</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">&quot;ascii&quot;</span><span class="p">)</span>
+<span class="k">return</span> <span class="sa">f</span><span class="s1">&#39;&lt;img alt=&quot;PlantUML diagram&quot; src=&quot;data:image/svg+xml;base64,</span><span class="si">{</span><span class="n">encoded</span><span class="si">}</span><span class="s1">&quot;&gt;&#39;</span>
+</code></pre></div>
+
+<p><strong>为什么用 base64 data URI 而不是写一个临时文件再给个 URL？</strong> 因为临时文件要管生命周期：什么时候删、并发怎么办、进程崩了留一堆垃圾怎么办。data URI 让整个渲染保持无状态——一次请求进去，一段自包含的 HTML 出来，服务端不留痕迹。代价是 HTML 变大，但本地工具不心疼这点带宽。</p>
+<p>这里有个坑：<strong>占位符必须绕过 Markdown 解析和 HTML 清洗这两道工序。</strong> 流程是“抠图 → 换占位符 → 渲染 Markdown → bleach 清洗 → 把占位符换回真 HTML”。如果顺序反了，让图表 HTML 先进 bleach，<code>&lt;svg&gt;</code> 和 <code>data:</code> 会被洗掉一半。占位符我用了 <code>@@MARKPAD_DIAGRAM_0@@</code> 这种形式，因为它不含任何 Markdown 特殊字符，不会被解析器改动。</p>
+<p>还有一个细节：markdown-it 会把独占一行的占位符包成 <code>&lt;p&gt;@@MARKPAD_DIAGRAM_0@@&lt;/p&gt;</code>，所以替换的时候要先试带 <code>&lt;p&gt;</code> 的版本，再试裸的：</p>
+<div class="highlight"><pre><span></span><code><span class="k">for</span> <span class="n">placeholder</span> <span class="ow">in</span> <span class="n">placeholders</span><span class="p">:</span>
+    <span class="n">cleaned</span> <span class="o">=</span> <span class="n">cleaned</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;&lt;p&gt;</span><span class="si">{</span><span class="n">placeholder</span><span class="o">.</span><span class="n">token</span><span class="si">}</span><span class="s2">&lt;/p&gt;&quot;</span><span class="p">,</span> <span class="n">placeholder</span><span class="o">.</span><span class="n">html</span><span class="p">)</span>
+    <span class="n">cleaned</span> <span class="o">=</span> <span class="n">cleaned</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">placeholder</span><span class="o">.</span><span class="n">token</span><span class="p">,</span> <span class="n">placeholder</span><span class="o">.</span><span class="n">html</span><span class="p">)</span>
+</code></pre></div>
+
+<p>不然你会得到一个 <code>&lt;p&gt;</code> 里面套 <code>&lt;figure&gt;</code>，HTML 不合法，浏览器排版会跳。</p>
+<p><strong>PlantUML 没装怎么办？</strong> 不报 500，也不静默吞掉，而是原地渲染一段说明：</p>
+<div class="highlight"><pre><span></span><code>PlantUML renderer unavailable. Set MARKPAD_PLANTUML_CMD
+or install PlantUML so `which plantuml` prints a command path.
+</code></pre></div>
+
+<p>这是我给自己定的规矩：<strong>可选依赖缺失的时候，在缺失的那个位置告诉用户怎么补。</strong> 不要让人去翻日志，也不要装作没这块内容。</p>
+<hr>
+<h2 id="_4">翻译为什么必须流式</h2>
+<p>工具栏上有个语言下拉框，15 种语言，默认简体中文。选中一段 Markdown，点 Translate，译文原地替换选区；不选就整篇翻。</p>
+<p>第一版我写的是非流式的：POST 上去，等结果，一次性替换。跑一次发现不行——<strong>一篇 200 行的 spec，40 秒里屏幕上什么都不动。</strong> 用户不知道是在跑还是卡了，第二次就不会点了。</p>
+<p>所以加了 <code>/api/translate/stream</code>，后端把 LLM 的 SSE 流转成 <code>StreamingResponse</code> 往下吐，前端一段段往编辑器里写。选区翻译尤其明显：你看着那一段一个词一个词被替换掉，中途觉得不对可以直接 Esc。</p>
+<p>流完了才刷预览——这一点是有意的。流的过程里每来一个 token 就重渲染一次 HTML，右边会疯狂抖动，而且白白打服务端。所以翻译期间只更新编辑器，<code>await streamTranslation(...)</code> 返回之后才 <code>renderPreview()</code>。</p>
+<p>顺便说编辑时的预览刷新：不是每敲一个字就渲染，而是 150 毫秒的防抖：</p>
+<div class="highlight"><pre><span></span><code><span class="kd">function</span><span class="w"> </span><span class="nx">schedulePreview</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">updateStats</span><span class="p">();</span>
+<span class="w">  </span><span class="nx">clearTimeout</span><span class="p">(</span><span class="nx">state</span><span class="p">.</span><span class="nx">renderTimer</span><span class="p">);</span>
+<span class="w">  </span><span class="nx">state</span><span class="p">.</span><span class="nx">renderTimer</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">setTimeout</span><span class="p">(()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">renderPreview</span><span class="p">().</span><span class="k">catch</span><span class="p">((</span><span class="nx">error</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">setStatus</span><span class="p">(</span><span class="sb">`Render failed: </span><span class="si">${</span><span class="nx">error</span><span class="p">.</span><span class="nx">message</span><span class="si">}</span><span class="sb">`</span><span class="p">));</span>
+<span class="w">  </span><span class="p">},</span><span class="w"> </span><span class="mf">150</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>150 毫秒这个数字试出来的：低于 100 打字连打的时候会闪，高于 250 感觉上“跟不上手”。</p>
+<p>翻译按钮什么时候能点？三个环境变量都齐了才能点，缺一个就是灰的，鼠标悬上去告诉你缺什么：</p>
+<div class="highlight"><pre><span></span><code><span class="nv">MP_LLM_BASE_URL</span><span class="o">=</span>https://api.example.com/v1
+<span class="nv">MP_LLM_MODEL</span><span class="o">=</span>your-model
+<span class="nv">MP_LLM_API_KEY</span><span class="o">=</span>your-api-key
+</code></pre></div>
+
+<p><code>.env</code> 也读，从你运行 <code>markpad</code> 的那个目录读，环境变量优先。这样可以给不同项目配不同模型，临时用环境变量覆盖还有效。base URL 写到 <code>/v1</code> 或者直接写到 <code>/chat/completions</code> 都行，代码里 <code>_chat_completions_url()</code> 会自己判断——这种小体贴能省掉一次“我明明配对了怎么 404”的排查。</p>
+<hr>
+<h2 id="_5">摘要加思维导图：我用得最多的一个</h2>
+<p>前面说的都是读文档的辅助，这个是真正解决“我今天要读 20 份 spec”的那个功能。</p>
+<p>点 Summarize，弹出一个对话框，上半是这份文档的摘要，下半是一张 Mermaid 思维导图，还带一个可展开的“看导图源码”。</p>
+<p>实现上就一次 LLM 调用，关键在于<strong>让它一次返回两样东西</strong>，而不是调两次：</p>
+<div class="highlight"><pre><span></span><code><span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="p">(</span>
+    <span class="sa">f</span><span class="s2">&quot;Summarize the given Markdown document in </span><span class="si">{</span><span class="n">target_language</span><span class="si">}</span><span class="s2"> and outline &quot;</span>
+    <span class="s2">&quot;its structure as a Mermaid mindmap. Respond with ONLY a JSON object (no &quot;</span>
+    <span class="s2">&quot;code fences, no extra text) with exactly two string keys: &quot;</span>
+    <span class="sa">f</span><span class="s1">&#39;&quot;summary&quot; — a detailed </span><span class="si">{</span><span class="n">target_language</span><span class="si">}</span><span class="s1">-language summary covering the &#39;</span>
+    <span class="s2">&quot;document&#39;s purpose, main sections, key points/arguments, and conclusion; &quot;</span>
+    <span class="s1">&#39;&quot;mindmap&quot; — valid Mermaid mindmap syntax, whose first line is exactly &#39;</span>
+    <span class="s2">&quot;`mindmap`, followed by an indented root node derived from the document &quot;</span>
+    <span class="s2">&quot;title... Keep node text free of special characters like parentheses, &quot;</span>
+    <span class="s2">&quot;quotes, or colons.&quot;</span>
+<span class="p">),</span>
+</code></pre></div>
+
+<p>三个提示词细节是踩出来的：</p>
+<p><strong>一，“no code fences”。</strong> 模型特别喜欢把 JSON 裹在 ```json 里面。光靠提示词挡不住，所以解析的时候还得兜一手：</p>
+<div class="highlight"><pre><span></span><code><span class="n">text</span> <span class="o">=</span> <span class="n">raw</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+<span class="k">if</span> <span class="n">text</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;```&quot;</span><span class="p">):</span>
+    <span class="n">text</span> <span class="o">=</span> <span class="n">text</span><span class="o">.</span><span class="n">strip</span><span class="p">(</span><span class="s2">&quot;`&quot;</span><span class="p">)</span>
+    <span class="n">text</span> <span class="o">=</span> <span class="n">text</span><span class="o">.</span><span class="n">removeprefix</span><span class="p">(</span><span class="s2">&quot;json&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+</code></pre></div>
+
+<p><strong>二，"first line is exactly <code>mindmap</code>"。</strong> Mermaid 的 mindmap 语法对第一行很挑，模型如果写成 <code>graph TD</code> 或者前面多个空行，浏览器里就是一片空白。</p>
+<p><strong>三，“节点文字里别放括号、引号、冒号”。</strong> 这条是被坑最多的。Mermaid mindmap 里 <code>(</code> 和 <code>[</code> 是节点形状语法，冒号也有特殊含义。模型很自然会生成 <code>护栏一：argv 不是 shell 串</code> 这种节点，然后整张图解析失败。<strong>这不是模型的错，是我一开始没告诉它输出要进一个对语法敏感的解析器。</strong></p>
+<p>摘要和思维导图两个字段少一个就报 502，不做“部分成功”：</p>
+<div class="highlight"><pre><span></span><code><span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">summary</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">mindmap</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+    <span class="k">raise</span> <span class="n">HTTPException</span><span class="p">(</span>
+        <span class="n">status_code</span><span class="o">=</span><span class="mi">502</span><span class="p">,</span>
+        <span class="n">detail</span><span class="o">=</span><span class="s2">&quot;LLM summarization response was missing summary or mindmap.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+</code></pre></div>
+
+<p>理由和 gitman 里那条一样：<strong>一个宁可说“这次没做出来”的工具，比一个总能给你半成品的工具好用。</strong> 半张图比没有图更浪费时间——你得先花几秒钟才反应过来它是错的。</p>
+<p>还有个 LLM 编辑框，在编辑器下面：写一句指令（“把这段改成更简洁的中文”、“给这个表格加一列说明”），点 Apply，流式改写选区或者全文。系统提示词里那条硬约束值得抄：</p>
+<blockquote>
+<p>Preserve Markdown structure, front matter, links, tables, code blocks, and diagram code unless the instruction explicitly asks to change them.</p>
+</blockquote>
+<p>不加这句，模型会顺手把你的 front matter 重排、把 Mermaid 代码块“优化”掉。</p>
+<hr>
+<h2 id="_6">本地工具的安全线画在哪</h2>
+<p>这个项目我一开始想偷懒：反正只跑在 <code>127.0.0.1</code>，只服务自己机器上的文件，还需要什么安全考虑？</p>
+<p>后来想明白了两件事。第一，<strong>它接受任意 Markdown 内容并渲染成 HTML，而 Markdown 允许内联 HTML</strong>。第二，<strong>它接受 HTTP 请求里的路径参数并读写文件</strong>。这两条任意一条出问题，都是实打实的洞。</p>
+<p>所以守了这几条：</p>
+<p><strong>渲染必过 bleach。</strong> 白名单标签、白名单属性、协议只允许 <code>http</code> / <code>https</code> / <code>data</code>。所以你在 Markdown 里塞 <code>&lt;script&gt;</code> 或者 <code>onerror=</code>，预览里不会执行。你可能会说“我自己的文件我还会攻击自己吗”——但你会打开别人发的、agent 生成的、从网上抄的 Markdown。</p>
+<p><strong>路径不许逃出根目录。</strong> 每次解析都先 resolve 再检查从属关系：</p>
+<div class="highlight"><pre><span></span><code><span class="n">resolved</span> <span class="o">=</span> <span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="n">requested</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">(</span><span class="n">strict</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">resolved</span><span class="o">.</span><span class="n">relative_to</span><span class="p">(</span><span class="n">root</span><span class="p">)</span>
+<span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+    <span class="k">raise</span> <span class="n">PathOutsideRootError</span><span class="p">(</span><span class="s2">&quot;Path escapes the content root.&quot;</span><span class="p">)</span> <span class="kn">from</span> <span class="nn">exc</span>
+</code></pre></div>
+
+<p><code>resolve()</code> 会把 <code>../../</code> 和符号链接都摊平，之后 <code>relative_to()</code> 才有意义。顺序反了就白做。</p>
+<p><strong>保存是原子的。</strong> 先写 <code>.文件名.tmp</code>，再 <code>replace()</code> 过去：</p>
+<div class="highlight"><pre><span></span><code><span class="n">tmp_path</span> <span class="o">=</span> <span class="n">file_path</span><span class="o">.</span><span class="n">with_name</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;.</span><span class="si">{</span><span class="n">file_path</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">.tmp&quot;</span><span class="p">)</span>
+<span class="n">tmp_path</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="n">content</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+<span class="n">tmp_path</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">file_path</span><span class="p">)</span>
+</code></pre></div>
+
+<p>同一个文件系统上 <code>replace()</code> 是原子的。这样进程在写一半的时候被 kill，你的原文还在，不会留下半个文件。<strong>编辑器丢用户内容是最不可原谅的 bug</strong>，这十行值得写。</p>
+<p><strong>绝对路径是个明说的口子。</strong> 前面提过可以 <code>markpad /Users/me/notes/today.md</code>，也可以在左边搜索框里粘一个绝对路径直接打开。这明摆着绕过了根目录限制——所以我把它做成一条独立的 API（<code>/api/absolute-file</code>）和一条独立的解析函数，不和相对路径那条混在一起，并且加了两道额外检查：必须是绝对路径，必须是 Markdown 扩展名。</p>
+<p><strong>该开的口子明说，比假装没有口子安全。</strong> 如果我为了“看起来严格”把绝对路径塞进相对路径那条逻辑里绕一下，那才是真正危险的——以后谁改那段代码都不知道自己在动一条安全边界。</p>
+<p><strong>已知的缺口我也说清楚。</strong> 和 gitman 不一样，markpad 在把文档内容发给 LLM 之前 <strong>既不截断也不脱敏</strong>。你翻译一篇里面写着 API key 的文档，那个 key 就原样发出去了。这不是“还没做”，是我明确没做——一个 Markdown 编辑器不该猜哪段文字是秘密，而这个工具的定位是“你自己配自己的 LLM 端点”，责任在配置这一侧。不过它值得写在 README 里，我还没写。这条算欠着的账。</p>
+<p>顺便，<code>MP_LLM_VERIFY_SSL=false</code> 这个开关我也留了，注释里写清楚了：<strong>只在你的 LLM 端点用可信自签证书的时候才关。</strong> 公司内网的 gateway 经常这样，不留这个口子工具在内网就用不了；不写清楚，就会有人为了消掉一个警告把它默认关掉。</p>
+<hr>
+<h2 id="_7">一个我自己踩到的洞</h2>
+<p>写这篇文章的时候我顺手拿 markpad 打开了自己上一篇博客（就是讲 gitman 那篇），结果发现开头的“大纲”折叠块没了——<code>&lt;details markdown="1"&gt;</code> 和 <code>&lt;summary&gt;</code> 被原样转义成了文字。</p>
+<p>查了一下，<code>renderer.py</code> 的 <code>ALLOWED_TAGS</code> 白名单里确实没有 <code>details</code> 和 <code>summary</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="o">&gt;&gt;&gt;</span> <span class="kn">from</span> <span class="nn">markpad.renderer</span> <span class="kn">import</span> <span class="n">ALLOWED_TAGS</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="s2">&quot;details&quot;</span> <span class="ow">in</span> <span class="n">ALLOWED_TAGS</span><span class="p">,</span> <span class="s2">&quot;summary&quot;</span> <span class="ow">in</span> <span class="n">ALLOWED_TAGS</span>
+<span class="p">(</span><span class="kc">False</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
+</code></pre></div>
+
+<p>这个洞挺有意思，因为它恰好说明了白名单机制的性格：<strong>白名单是安全的，也是永远不完整的。</strong> 我当初照着“常见语义标签”列了一份，压根没想到自己的博客会用 <code>&lt;details&gt;</code>。而黑名单机制不会有这个问题——但会有另一个更糟的问题：你漏掉的那个标签是能执行脚本的那个。</p>
+<p>所以修法是加白名单，不是换机制。这两个标签本身不带脚本能力，<code>open</code> 属性也无害。补一行就行，但我打算连着一个测试一起提——<strong>能被一句 REPL 复现的 bug，一定能被一个测试锁住。</strong></p>
+<p>写在这里也是想说：一个工具最好的测试用户就是作者本人，而且必须真的拿它干活，不是跑一遍 demo 就算完。</p>
+<hr>
+<h2 id="_8">这个工具花了多少</h2>
+<table>
+<thead>
+<tr>
+<th>项</th>
+<th>数字</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>后端</td>
+<td>1657 行 Python（<code>server.py</code> 673、<code>cli.py</code> 486、<code>files.py</code> 208、<code>renderer.py</code> 161、<code>models.py</code> 89、<code>ports.py</code> 33）</td>
+</tr>
+<tr>
+<td>前端</td>
+<td>2061 行（<code>app.js</code> 1049、<code>styles.css</code> 718、<code>index.html</code> 294），零构建步骤</td>
+</tr>
+<tr>
+<td>测试</td>
+<td>878 行，53 个用例，全绿</td>
+</tr>
+<tr>
+<td>commit 数</td>
+<td>7</td>
+</tr>
+<tr>
+<td>跨度</td>
+<td>5 月 26 日到 9 月 1 日，业余时间</td>
+</tr>
+<tr>
+<td>依赖</td>
+<td>fastapi、uvicorn、click、pydantic、markdown-it-py、bleach、watchfiles、websockets、httpx</td>
+</tr>
+</tbody>
+</table>
+<p><strong>前端零构建</strong>是有意的。没有 npm、没有 webpack、没有 TypeScript 编译——<code>app.js</code> 就是一个浏览器直接跑的普通脚本，Mermaid 是一个 3.2MB 的 <code>mermaid.min.js</code> 直接 vendor 进仓库。这样安装路径只有一条：一个 Python 包，装完就能跑。<strong>一个本地小工具，用户不该为了看 Markdown 先装个 Node。</strong></p>
+<p>vendor 那 3.2MB 我犹豫过。走 CDN 更干净，但那意味着 markpad 在飞机上、在没网的会议室里就废了一半功能——图全渲不出来。<strong>离线可用</strong>这条我看得比仓库干净重要。</p>
+<p>不过这条我只做了一半，得承认：Tailwind 还是走 CDN 的（<code>index.html</code> 里一行 <code>&lt;script src="https://cdn.tailwindcss.com"&gt;</code>）。所以现在断网打开，图还在，排版会散。这是当初图省事留下的，vendor 一份 Tailwind 或者换成一份手写 CSS 都能解决，我还没动。<strong>一个原则如果只在一半的地方守，等于没守</strong>——这句话是骂自己的。</p>
+<p>live reload 用的是 WebSocket 加 <a href="https://github.com/samuelcolvin/watchfiles">watchfiles</a>，只推 Markdown 文件的变化：</p>
+<div class="highlight"><pre><span></span><code><span class="k">async</span> <span class="k">def</span> <span class="nf">_watch_and_send</span><span class="p">(</span><span class="n">root</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">websocket</span><span class="p">:</span> <span class="n">WebSocket</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">async</span> <span class="k">for</span> <span class="n">changes</span> <span class="ow">in</span> <span class="n">awatch</span><span class="p">(</span><span class="n">root</span><span class="p">):</span>
+        <span class="n">payload</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="p">{</span><span class="s2">&quot;change&quot;</span><span class="p">:</span> <span class="n">change</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="s2">&quot;path&quot;</span><span class="p">:</span> <span class="n">path</span><span class="p">}</span>
+            <span class="k">for</span> <span class="n">change</span><span class="p">,</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">changes</span>
+            <span class="k">if</span> <span class="n">_is_markdown_event</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="n">Path</span><span class="p">(</span><span class="n">path</span><span class="p">))</span>
+        <span class="p">]</span>
+        <span class="k">if</span> <span class="n">payload</span><span class="p">:</span>
+            <span class="k">await</span> <span class="n">websocket</span><span class="o">.</span><span class="n">send_json</span><span class="p">({</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;files-changed&quot;</span><span class="p">,</span> <span class="s2">&quot;changes&quot;</span><span class="p">:</span> <span class="n">payload</span><span class="p">})</span>
+</code></pre></div>
+
+<p>过滤这一层不能省。<code>awatch</code> 会把 <code>.git/</code> 里的每次索引变化、<code>__pycache__</code> 的每个 pyc 都报上来，一次 <code>git status</code> 能触发几十个事件。文件索引那边也做了忽略目录（<code>.git</code>、<code>.venv</code>、<code>node_modules</code>、<code>dist</code> 那一串），不然在一个装了依赖的项目里，文件树会被 node_modules 里的 README 淹掉。</p>
+<p>装的话一行：</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://raw.githubusercontent.com/walterfan/markpad/main/bootstrap.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>bash
+</code></pre></div>
+
+<p>装进 <code>~/.local/share/markpad/venv</code>，命令链到 <code>~/.local/bin/markpad</code>。卸载 <code>./install.sh uninstall</code>。</p>
+<hr>
+<h2 id="_9">可以直接抄的部分</h2>
+<p>如果你也在写这类“在当前目录起个本地 Web”的小工具：</p>
+<ol>
+<li>
+<p><strong>不同渲染目标走不同路径，不要强行统一。</strong>
+   Mermaid 交给浏览器，PlantUML 交给子进程。硬凑一套抽象只会让两边都变扭。</p>
+</li>
+<li>
+<p><strong>占位符要绕过所有中间工序，并且不含特殊字符。</strong>
+   抠出来 → 换占位符 → 走完解析和清洗 → 换回去。顺序错了，清洗会吃掉你的图。</p>
+</li>
+<li>
+<p><strong>LLM 的输出只要给下游解析器吃，就在提示词里说清语法约束。</strong>
+   “别用括号、引号、冒号”这条不是啰嗦，是 Mermaid mindmap 真的会挂。</p>
+</li>
+<li>
+<p><strong>任何超过两三秒的 LLM 调用都做流式。</strong>
+   不是为了快，是为了让用户知道它在动。40 秒的黑屏等于这个功能不存在。</p>
+</li>
+<li>
+<p><strong>可选依赖缺失时，在缺失的位置说怎么补。</strong>
+   不要抛 500，不要静默跳过，就在那块位置渲染一句“装 X 或者设 Y”。</p>
+</li>
+<li>
+<p><strong>保存永远走临时文件加原子替换。</strong>
+   十行代码，换掉“进程被 kill 时用户文件只剩一半”这个风险。</p>
+</li>
+<li>
+<p><strong>该开的安全口子明说，单独一条代码路径。</strong>
+   绝对路径读写就是一个口子，那就给它独立的 API 和独立的校验，别混进主路径里绕。</p>
+</li>
+<li>
+<p><strong>本地工具优先离线可用，宁可 vendor。</strong>
+   3MB 的仓库体积，换飞机上还能看图。</p>
+</li>
+<li>
+<p><strong>拿自己的工具干真活。</strong>
+   我打开自己上一篇博客才发现 <code>&lt;details&gt;</code> 渲染不出来。跑 demo 发现不了这种事。</p>
+</li>
+</ol>
+<hr>
+<h2 id="ai">总结：AI 把写的成本压下去了，读的成本还在原地</h2>
+<p>回到开头。SDD 好不好？好。让 agent 先写 proposal 和 design 再动手，代码质量确实不一样，几个月后回来也知道当初为什么这么定。</p>
+<p>但它有个副作用没人提：<strong>它把文档产量提高了一个数量级，而人读文档的速度一点没变。</strong></p>
+<p>以前一个变更配一份 design doc，是因为写文档贵。现在写文档几乎免费了，四件套变成标配，甚至一次 review 就顺手生成三份分析报告。产出端的成本降到接近零，消费端还是那双眼睛。</p>
+<p><strong>这个不对称，就是我写 markpad 的全部理由。</strong> 它做的三件事——渲染、总结、翻译——本质上都是压缩：把符号压成排版，把 200 行压成一张思维导图和一段摘要，把英文压成你母语里读得快的那个版本。</p>
+<p>有意思的是，这个思路和 gitman 是同一个。gitman 解决的是“我知道我想干什么，但翻译成 git 命令很费劲”；markpad 解决的是“这份文档里有我要的东西，但读完很费劲”。<strong>两个都不是让 AI 替我做决定，是让它把我和信息之间那段翻译工作接走。</strong></p>
+<p>我猜下一波真正有用的小工具，多半也长这样：不是又一个 agent，而是给已经爆炸的信息量配一副眼镜。</p>
+<hr>
+<p>代码在 <a href="https://github.com/walterfan/markpad">github.com/walterfan/markpad</a>，Apache 2.0，1657 行 Python 加 2000 行没有构建步骤的前端。欢迎抄，也欢迎告诉我 <code>ALLOWED_TAGS</code> 里还漏了哪个标签。</p>
+<h2 id="_10">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    LineColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* markpad：Markdown 工作台
+** 起因
+*** SDD 四件套让文档产量爆炸
+*** 写这端被 AI 接走，读这端还是 cat
+*** 为看一个文件开 IDE 太重
+** 形态
+*** 一个命令起本地 Web
+*** 文件树 + 源码 + 预览，可独立显隐
+*** 端口 9526，占了往后顺延
+*** URL 带文件路径，可分享可收藏
+*** doctor / -d / stop / status
+** 两种图表两条路
+*** Mermaid 交给浏览器
+*** PlantUML 起子进程 -tsvg -pipe
+*** base64 data URI，服务端无状态
+*** 占位符绕过解析和清洗
+*** 依赖缺失就地说怎么补
+** 翻译
+*** 必须流式，否则 40 秒黑屏
+*** 选区优先，不选则全文
+*** 流完才刷预览，避免抖动
+*** 编辑预览 150 毫秒防抖
+*** 15 种语言，.env 或环境变量
+** 摘要与思维导图
+*** 一次调用返回 summary 和 mindmap
+*** 提示词要禁围栏、锁首行、禁特殊字符
+*** 少一个字段就报错，不做半成品
+*** LLM 编辑框保结构不动 front matter
+** 安全线
+*** 渲染必过 bleach 白名单
+*** 路径先 resolve 再 relative_to
+*** 保存走临时文件原子替换
+*** 绝对路径是明说的口子，独立路径
+*** 不脱敏是已知缺口，写进文档
+** 踩到的洞
+*** details 和 summary 不在白名单
+*** 白名单安全但永远不完整
+*** 拿自己的工具干真活才发现
+** 账本
+*** 1657 行 Python / 2061 行前端
+*** 878 行测试，53 个用例
+*** 7 个 commit，五月到九月
+*** 前端零构建，Mermaid vendor 3.2MB
+@endmindmap
+</code></pre></div>
+
+<p><img alt="markpad：为 SDD 时代配一副读文档的眼镜 - 思维导图" src="./images/tech_20260901_markpad_mindmap.svg"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/2026-09-01-markpad-markdown-workbench.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/journal.html">journal</a>
+      <a href="https://www.fanyamin.com/blog/tag/markdown.html">markdown</a>
+      <a href="https://www.fanyamin.com/blog/tag/llm.html">LLM</a>
+      <a href="https://www.fanyamin.com/blog/tag/cli.html">CLI</a>
+      <a href="https://www.fanyamin.com/blog/tag/tooling.html">tooling</a>
+      <a href="https://www.fanyamin.com/blog/tag/python.html">python</a>
+      <a href="https://www.fanyamin.com/blog/tag/fastapi.html">fastapi</a>
+      <a href="https://www.fanyamin.com/blog/tag/sdd.html">SDD</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-09-01-gitman-nl-git.html" title="我写过 git cheatsheet，还是记不住——于是写了 gitman">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/2026-09-01-gitman-nl-git.html">我写过 git cheatsheet，还是记不住——于是写了 gitman</a></li>
+      <li><a href="https://www.fanyamin.com/blog/markpad-local-markdown-reader-translator.html">Markpad：我给 Markdown 装了一个本地驾驶舱</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-04-21-lazy-podcast-mate.html">把文章一键变成播客：我的 side project `lazy-podcast-mate`</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-07-ai-agent-memory.html">如何管理 AI Agent 的记忆之一：既记得牢、想得起，又不烧钱</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-02-building-effective-agents.html">重读《Building Effective Agents》：怎么才算构建了一个"高效"的 AI Agent</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

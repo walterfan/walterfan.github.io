@@ -1,0 +1,1353 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="KV Cache 不是一个&#34;顺手能省点钱&#34;的技巧，而是一条硬约束：它规定了你的提示词必须怎么排版。前缀不稳，缓存全废；更糟的是，如果你开了缓存又让前缀每轮都变，按价目表算，账单会比压根不开缓存还高 25%。本文讲清 KV Cache 的原理、命中规则、省钱之外的收益、可落地的最佳实践和常见陷阱。" />
+<meta name="keywords" content="tech, AI, LLM, kv-cache, prompt-caching, context-engineering, token, agent">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "LLM 的 KV Cache：一个时间戳，能让你的账单比不开缓存还贵",
+  "description": "KV Cache 不是一个&#34;顺手能省点钱&#34;的技巧，而是一条硬约束：它规定了你的提示词必须怎么排版。前缀不稳，缓存全废；更糟的是，如果你开了缓存又让前缀每轮都变，按价目表算，账单会比压根不开缓存还高 25%。本文讲清 KV Cache 的原理、命中规则、省钱之外的收益、可落地的最佳实践和常见陷阱。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-09-01T21:30:00+08:00",
+  "dateModified": "2026-09-01T21:30:00+08:00",
+  "url": "https://www.fanyamin.com/blog/llm-kv-cache-prefix-caching.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/llm-kv-cache-prefix-caching.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "tech, AI, LLM, kv-cache, prompt-caching, context-engineering, token, agent"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="LLM 的 KV Cache：一个时间戳，能让你的账单比不开缓存还贵"/>
+  <meta property="og:description" content="KV Cache 不是一个&#34;顺手能省点钱&#34;的技巧，而是一条硬约束：它规定了你的提示词必须怎么排版。前缀不稳，缓存全废；更糟的是，如果你开了缓存又让前缀每轮都变，按价目表算，账单会比压根不开缓存还高 25%。本文讲清 KV Cache 的原理、命中规则、省钱之外的收益、可落地的最佳实践和常见陷阱。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/llm-kv-cache-prefix-caching.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-09-01 21:30:00+08:00"/>
+  <meta property="article:modified_time" content="2026-09-01 21:30:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="AI"/>
+  <meta property="article:tag" content="tech"/>
+  <meta property="article:tag" content="AI"/>
+  <meta property="article:tag" content="LLM"/>
+  <meta property="article:tag" content="kv-cache"/>
+  <meta property="article:tag" content="prompt-caching"/>
+  <meta property="article:tag" content="context-engineering"/>
+  <meta property="article:tag" content="token"/>
+  <meta property="article:tag" content="agent"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; LLM 的 KV Cache：一个时间戳，能让你的账单比不开缓存还贵</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="llm-kv-cache-prefix-caching">LLM 的 KV Cache：一个时间戳，能让你的账单比不开缓存还贵</h1>
+    <p>
+      Posted on 二 01 9月 2026 in <a href="https://www.fanyamin.com/blog/category/ai.html">AI</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>LLM 的 KV Cache 原理、命中规则与工程实践</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>AI</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-09-01</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">大纲</h2>
+<details>
+<summary>展开看看</summary>
+<ul>
+<li><strong>核心结论</strong>：KV Cache 不是省钱技巧，是提示词的架构约束——命中要求前缀逐 token 一致，这条要求反过来决定了你怎么排 system prompt、工具定义和历史消息。</li>
+<li><strong>先分清两个 KV Cache</strong>：单次请求内的（引擎默认干的，你管不着）和跨请求的 prefix caching（账单上那个，你说了算）。</li>
+<li><strong>命中规则</strong>：从第 0 个 token 起的精确前缀匹配、块粒度、最小长度门槛、TTL、路由亲和。四家厂商的具体数字列了张表。</li>
+<li><strong>省钱之外</strong>：首字延迟（TTFT）、GPU 显存与吞吐、长上下文 Agent 的可行性。</li>
+<li><strong>一笔能对的账</strong>：20 轮 Agent 会话，开缓存省 82%；但前缀带秒级时间戳时，反而比不开缓存贵 25%。</li>
+<li><strong>真实数据</strong>：我扫了自己四个 harness 最近 30 天的日志——怀疑的对象是清白的（88% 命中）；而那个吓人的低命中率是没埋点造成的假象，我还因为统计粒度不对，被同一个坑绊了两次。附可直接运行的脚本。</li>
+<li><strong>最佳实践</strong>：分层排版、确定性序列化、mask 而非 remove、append-only、断点放哪、路由亲和、把命中率做成指标。</li>
+<li><strong>常见陷阱</strong>：把 RAG 结果放前面、动态工具集、摘要压缩重写历史、盲目上 1h TTL、多租户缓存串味、以及"以为缓存等于模型记住了"。</li>
+<li><strong>自查清单</strong>：一张能直接抄走的表。</li>
+</ul>
+</details>
+<hr>
+<p>我先说个让人不太舒服的算术。</p>
+<p>假设你在跑一个 Agent：system prompt 加工具定义一共 12K token，每轮对话追加 1K，一次任务跑 20 轮。用 Claude Sonnet 的价目表算（输入 $3/MTok，缓存读 $0.30/MTok，5 分钟缓存写 $3.75/MTok）：</p>
+<ul>
+<li>不开缓存：43 万输入 token，<strong>$1.29</strong></li>
+<li>开缓存且前缀稳定：<strong>$0.236</strong>，省掉 82%</li>
+<li>开了缓存，但 system prompt 顶部有个精确到秒的时间戳：<strong>$1.61</strong></li>
+</ul>
+<p>看清楚第三行。你老老实实打了 <code>cache_control</code>，结果比什么都不做还贵了 25%。因为每轮前缀都变，你每轮都在付 1.25 倍的缓存写入费，却一次都没读到过。</p>
+<p>这不是玄学，是算术：缓存写比正常输入贵，缓存读比正常输入便宜。你只在"写一次、读多次"的时候赚钱。前缀一不稳，你就只写不读，纯亏。</p>
+<p>所以这篇文章想让你带走的那句话是：</p>
+<blockquote>
+<p><strong>KV Cache 不是一个能顺手薅的省钱技巧，它是一条架构约束——它规定了你的提示词必须怎么排版。</strong></p>
+</blockquote>
+<p>省 token 只是遵守这条约束之后的副产品。真正的变化是，你以后组织 system prompt、工具定义和对话历史时，得像维护一个对外 API 一样谨慎：<strong>前缀是接口，改它是破坏性变更。</strong></p>
+<blockquote>
+<p>关于 token 成本的整体治理思路，我在 <a href="https://www.fanyamin.com/blog/llm-api-token-cost-control.html">《LLM API 越来越贵，别让 token 像自来水一样哗哗流》</a> 和 <a href="https://www.fanyamin.com/blog/progressive-disclosure-context-management.html">《上下文管理之渐进式披露》</a> 里写过。这篇专门啃 KV Cache 这一块硬骨头。</p>
+</blockquote>
+<hr>
+<h2 id="kv-cache">一、先把两个 "KV Cache" 分开</h2>
+<p>这是最容易混的一点，不分清后面全是糊涂账。<strong>"KV Cache" 这四个字在两个层面上被使用，含义完全不同。</strong></p>
+<h3 id="1-kv-cache">1. 请求内的 KV Cache：推理引擎默认就干的事</h3>
+<p>Transformer 生成文本是自回归的：吐第 N 个 token 时，要让它跟前面 N-1 个 token 做注意力计算。注意力的核心是三个东西——Query（我在找什么）、Key（每个位置的索引）、Value（每个位置的内容）。</p>
+<p>关键在于：<strong>已经生成的 token，它的 K 和 V 是不变的。</strong> 第 5 个 token 的 Key 向量，在生成第 6 个、第 60 个、第 600 个 token 时，永远是同一个值。</p>
+<p>那还每次重算干嘛？存下来就行了。这就是 KV Cache 最原始的意思——把每一层、每个位置算出来的 K 和 V 缓存在显存里，生成下一个 token 时直接查表。</p>
+<p>省了多少？没有它，生成 N 个 token 的注意力计算是 O(N²)；有了它，每步只算新 token 的那一份，降到 O(N)。<strong>这是所有推理引擎（vLLM、SGLang、TensorRT-LLM，以及所有云 API 背后）的默认行为，不需要你做任何事。</strong></p>
+<p>代价是显存。每个 token 要存多少字节，有个很好记的公式：</p>
+<div class="highlight"><pre><span></span><code>每 token 的 KV 字节数 = 2 × 层数 × KV头数 × 每头维度 × 每元素字节数
+                        ↑
+                    K 和 V 各存一份
+</code></pre></div>
+
+<p>拿 Llama 3.1 70B 举例（80 层，GQA 下 8 个 KV 头，每头 128 维，BF16 即 2 字节）：</p>
+<div class="highlight"><pre><span></span><code>2 × 80 × 8 × 128 × 2 = 327,680 字节 ≈ 320 KB / token
+</code></pre></div>
+
+<p>32K 上下文的一个请求，光 KV Cache 就吃掉 <strong>10.7 GB 显存</strong>。如果这模型用的是老式的 MHA（64 个 KV 头），这个数字要乘 8——86 GB，一张 H100 装不下一个请求。</p>
+<p>这就是为什么现在的模型几乎全部改用 GQA（多个 Query 头共享一组 KV 头）或者 MLA（把 KV 压缩到低维隐空间）。<strong>不是为了跑得快，是为了跑得起。</strong> DeepSeek V3 用 MLA 把每 token 压到约 50 KB，32K 上下文只要 1.6 GB，671B 的模型才有可能开 128K 窗口。</p>
+<h3 id="2-prefix-caching">2. 跨请求的 Prefix Caching：账单上那个</h3>
+<p>请求内的缓存，请求一结束就该释放了。但工程师很快发现一件事：<strong>不同请求的开头，往往长得一模一样。</strong></p>
+<p>你的 Agent 有 12K token 的 system prompt 加工具定义，一天调用十万次——这 12K token 的 K/V，每次都要从头算一遍 prefill，纯属浪费。</p>
+<p>于是有了 prefix caching（Anthropic 和 OpenAI 叫 prompt caching，DeepSeek 叫上下文硬盘缓存）：<strong>把已经算好的前缀 KV 存起来，下次来一个请求，如果开头能对上，直接复用。</strong></p>
+<p>vLLM 的实现很值得一看，因为它把命中条件讲得最直白。它把 KV Cache 切成固定大小的 block，每个 block 用一个哈希标识：</p>
+<div class="highlight"><pre><span></span><code>block_hash = hash(父block的哈希, 本block的token序列, 额外因子)
+                    ↑                                   ↑
+              绑定了整条前缀链              LoRA id / 多模态输入 / cache_salt
+</code></pre></div>
+
+<p>三件事从这个公式里直接能读出来：</p>
+<ol>
+<li><strong>哈希链绑定了整条前缀。</strong> 第 3 个 block 的哈希包含第 2 个的哈希，第 2 个包含第 1 个的。<strong>任何一个 token 变了，从它往后的所有 block 全部作废。</strong></li>
+<li><strong>只缓存完整的 block。</strong> 半个 block 不算数，所以命中是有粒度的，不是逐 token 的。</li>
+<li><strong>额外因子决定了隔离边界。</strong> 多租户环境里，vLLM 支持 <code>cache_salt</code>——加了盐，只有同盐的请求才能复用同一份 KV。这个设计不是为了性能，是为了安全，后面会讲。</li>
+</ol>
+<p>淘汰策略是 LRU：显存不够时，先赶引用计数为 0 的、最久没用的 block。</p>
+<p><strong>这一层才是你能控制、也必须控制的。</strong> 后面说的"命中"，全指这一层。</p>
+<hr>
+<h2 id="_2">二、命中规则：五个必须同时满足的条件</h2>
+<p>写代码之前，先把游戏规则背下来。</p>
+<h3 id="1-0-token">规则 1：从第 0 个 token 起的精确前缀匹配</h3>
+<p>这是最硬的一条。缓存匹配的是<strong>从头开始、连续不断的一段 token</strong>，不是"内容相似"，也不是"包含关系"。</p>
+<div class="highlight"><pre><span></span><code>上次请求：[你是一个代码审查助手][工具定义...][用户: 看看这段 Go]
+本次请求：[你是一个代码审查助手][工具定义...][用户: 看看这段 Python]
+                ↑─────────── 命中 ───────────↑  ↑─ 从这里开始重算 ─↑
+
+上次请求：[2026-09-01 21:30:15][你是一个代码审查助手][工具定义...]
+本次请求：[2026-09-01 21:30:47][你是一个代码审查助手][工具定义...]
+           ↑ 第一个 token 就不一样 → 后面全部重算，一个字都没省
+</code></pre></div>
+
+<p>第二个例子就是那个经典的自伤操作。Manus 团队在他们的 Agent 工程复盘里点名批评过：在 system prompt 开头放精确到秒的时间戳，"确实能让模型知道现在几点，但也顺手杀死了你的缓存命中率"。</p>
+<h3 id="2-prompt">规则 2：有最小长度门槛，短 prompt 根本不缓存</h3>
+<p>低于门槛，你标什么都没用，请求会被当成没有缓存处理。各家的门槛不一样：</p>
+<table>
+<thead>
+<tr>
+<th>厂商</th>
+<th>最小可缓存长度</th>
+<th>缓存读价格</th>
+<th>缓存写价格</th>
+<th>有效期</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>OpenAI（GPT-5.6+）</td>
+<td>1,024 token</td>
+<td>0.1× 输入价</td>
+<td>1.25× 输入价</td>
+<td>闲置 5–10 分钟清除，最长 1 小时</td>
+</tr>
+<tr>
+<td>OpenAI（更早的模型）</td>
+<td>2,048 token</td>
+<td>约 5 折</td>
+<td>不额外收费</td>
+<td>同上</td>
+</tr>
+<tr>
+<td>Anthropic Claude（Opus/Sonnet）</td>
+<td>1,024 token</td>
+<td>0.1× 输入价</td>
+<td>1.25×（5 分钟）/ 2×（1 小时）</td>
+<td>5 分钟或 1 小时，每次命中自动续期</td>
+</tr>
+<tr>
+<td>Anthropic Claude（Haiku）</td>
+<td>2,048 token</td>
+<td>0.1× 输入价</td>
+<td>同上</td>
+<td>同上</td>
+</tr>
+<tr>
+<td>Gemini 2.5 Flash / Pro</td>
+<td>2,048 token</td>
+<td>约 0.1× 输入价</td>
+<td>隐式缓存不额外收费</td>
+<td>由平台管理</td>
+</tr>
+<tr>
+<td>Gemini 3.x 系列</td>
+<td>4,096 token</td>
+<td>同上</td>
+<td>同上</td>
+<td>同上</td>
+</tr>
+<tr>
+<td>DeepSeek</td>
+<td>自动，无需声明</td>
+<td>约 1/10 输入价</td>
+<td>不额外收费</td>
+<td>数小时到数天，best-effort</td>
+</tr>
+</tbody>
+</table>
+<p>（数字以各家官方文档为准，且变动频繁——这张表的意义是让你知道<strong>要去查哪几个数</strong>，别拿它当长期依据。）</p>
+<p>有两个门道值得单说：</p>
+<ul>
+<li><strong>OpenAI 的命中是 128 token 步进的。</strong> 门槛 1024 之后，实际命中数只会是 1024、1152、1280…… 所以你的稳定前缀是 1100 token 的话，只有 1024 个能命中，剩下 76 个白算。</li>
+<li><strong>Anthropic 是两段计价。</strong> 写比正常输入贵，读比正常输入便宜。5 分钟档写 1.25×、读 0.1×，意味着<strong>命中一次就回本</strong>；1 小时档写 2×，要<strong>命中两次才回本</strong>。这个账后面还要算。</li>
+</ul>
+<h3 id="3ttl">规则 3：TTL 会到期，而且是静默的</h3>
+<p>缓存不是永久的。Anthropic 默认 5 分钟（每次命中自动续期），OpenAI 大约闲置 5–10 分钟清除、最长一小时内必删，DeepSeek 是几小时到几天不等且明确说了是 best-effort。</p>
+<p>麻烦在于<strong>过期不会报错</strong>。你的请求照样成功返回，只是这次全价。所以你必须自己盯着响应里的字段，不然亏钱亏得悄无声息。</p>
+<h3 id="4">规则 4：得路由到同一台机器</h3>
+<p>云 API 会尽量把带相同前缀的请求路由到最近处理过它的服务器上。自建的话，这事得你自己管——vLLM 集群里，同一个会话的请求必须落到同一个 worker，缓存才在那儿。做法通常是按 session id 做一致性哈希路由。</p>
+<p><strong>忘了这一步，你会看到一个诡异现象：本地单机测试命中率 90%，上线之后掉到 20%。</strong> 不是代码错了，是请求被负载均衡打散了。</p>
+<h3 id="5">规则 5：序列化必须逐字节确定</h3>
+<p>这条最阴，因为它看起来根本不像 bug。</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># 危险：字典的 key 顺序在某些场景下不保证稳定，</span>
+<span class="c1"># 而且 json.dumps 默认会在逗号后加空格</span>
+<span class="n">payload</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">tool_schema</span><span class="p">)</span>
+
+<span class="c1"># 安全：固定 key 顺序、固定分隔符、关掉 ASCII 转义</span>
+<span class="n">payload</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">tool_schema</span><span class="p">,</span> <span class="n">sort_keys</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                     <span class="n">separators</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">,</span> <span class="s2">&quot;:&quot;</span><span class="p">),</span> <span class="n">ensure_ascii</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</code></pre></div>
+
+<p>内容一模一样，序列化出来差一个空格，token 序列就不同，缓存就没了。跨语言、跨版本的序列化差异更是重灾区——vLLM 甚至专门提供了 <code>sha256_cbor</code> 哈希算法，就是为了保证跨语言、跨版本可复现。</p>
+<hr>
+<h2 id="token">三、省 token 之外，你还赚到什么</h2>
+<p>如果只盯着账单，你会低估这件事。</p>
+<h3 id="ttft">首字延迟（TTFT）：用户能直接感觉到</h3>
+<p>缓存命中省掉的是 prefill 阶段的计算。prefill 就是模型"读完你的提示词"的那段时间，用户看到的"转圈圈"主要就是它。</p>
+<p>2026 年 1 月有篇专门测这个的论文（<em>Don't Break the Cache: An Evaluation of Prompt Caching for Long-Horizon Agentic Tasks</em>，arXiv:2601.06007），在 DeepResearch Bench 上跑了 500 多个 Agent 会话、10K token 的 system prompt，横跨 OpenAI、Anthropic、Google 三家。结论是：<strong>成本降低 41–80%，TTFT 改善 13–31%。</strong></p>
+<p>13–31% 什么概念？一个 3 秒的首字延迟压到 2.2 秒，用户是能感觉到"这个应用变利索了"的。而且这个收益不用改模型、不用加机器。</p>
+<h3 id="_3">显存和吞吐：自建推理的隐藏收益</h3>
+<p>如果你自己跑 vLLM，prefix caching 的收益是双份的：</p>
+<ul>
+<li><strong>算力</strong>：命中的部分不用重算 prefill，GPU 算力腾出来给别的请求</li>
+<li><strong>显存</strong>：共享同一前缀的多个请求，映射到<strong>同一批物理 KV block</strong>，不用各存一份</li>
+</ul>
+<p>一百个并发会话共享同一个 12K 的 system prompt，只占一份显存而不是一百份。这直接决定了你的单卡并发上限。</p>
+<h3 id="agent">长上下文 Agent 才变得可行</h3>
+<p>Manus 团队给了个数字：他们的 Agent 平均<strong>输入输出比是 100:1</strong>。也就是说，Agent 干活时读的远比写的多，而且读的大部分是同样的东西——同一套 system prompt、同一批工具定义、同一段越滚越长的历史。</p>
+<p>在这种负载下，缓存命中率不是优化项，是生死线。所以他们把话说得很重：</p>
+<blockquote>
+<p>KV-cache 命中率是生产级 AI Agent 最重要的单一指标。</p>
+</blockquote>
+<p>不是准确率，不是延迟，是一个<strong>缓存</strong>指标。第一次看到这句我也觉得夸张，算完那笔 20 轮的账之后就理解了——对一个多轮 Agent 来说，前缀的重复读取占了成本的绝大部分，别的优化再努力也是在小头上抠。</p>
+<h3 id="_4">最后一个收益：它逼你把上下文管好</h3>
+<p>这是我最看重的一条，也是文章开头那句话的意思。</p>
+<p>为了让缓存命中，你不得不做这几件事：把不变的东西和变的东西分开、给上下文定一个稳定的排列顺序、不许中途改历史、序列化必须确定。</p>
+<p><strong>这些事，就算没有缓存，也是对的。</strong> 一个 system prompt 里到处塞动态变量的 Agent，本来就难调试、难复现、难 review。缓存只是给了你一个硬性的、能量化的理由去做正确的事——而且这个理由每天都会出现在账单上。</p>
+<hr>
+<h2 id="_5">四、这笔账到底怎么算</h2>
+<p>回到开头那个例子，把过程摊开。场景：system prompt + 工具定义 12K token，每轮追加 1K，共 20 轮，Claude Sonnet 价目表。</p>
+<p><strong>情况 A：不开缓存</strong></p>
+<p>每轮输入是累积的：第 1 轮 12K，第 2 轮 13K…… 第 20 轮 31K。</p>
+<div class="highlight"><pre><span></span><code>总输入 = 20 × 12,000 + 1,000 × (0+1+...+19) = 430,000 token
+成本   = 0.43 MTok × $3 = $1.29
+</code></pre></div>
+
+<p><strong>情况 B：开缓存，前缀稳定，append-only</strong></p>
+<p>43 万 token 里，<strong>独一无二的只有 31,000 个</strong>（12K 底座 + 19 轮追加），剩下 399,000 全是重复读取。</p>
+<div class="highlight"><pre><span></span><code>写入 = 31,000  × $3.75 / 1M = $0.116
+读取 = 399,000 × $0.30 / 1M = $0.120
+合计 = $0.236          ← 相比 A 省 82%
+</code></pre></div>
+
+<p><strong>情况 C：开缓存，但 system prompt 顶部有秒级时间戳</strong></p>
+<p>每轮前缀都不一样，每轮都是全新的缓存写入，而且一次都读不到（下一轮时间戳又变了）：</p>
+<div class="highlight"><pre><span></span><code>成本 = 430,000 × $3.75 / 1M = $1.61   ← 比 A 还贵 25%
+</code></pre></div>
+
+<p>（这三笔都是按公开价目表推算的理想模型，没算 TTL 过期、块粒度对齐、路由失配这些损耗。真实数字只会更差一点，但相对关系不变。）</p>
+<p>情况 C 是我认为最该记住的：<strong>缓存不是"开了就赚"的东西。开了却不满足命中条件，是负收益。</strong></p>
+<p>而这个负收益特别隐蔽——你的功能是好的，测试是过的，日志是干净的，只有月底的账单在默默变胖。</p>
+<hr>
+<h2 id="_6">五、我把自己的日志扫了一遍，结果跟猜的不一样</h2>
+<p>上面都是推算。推算这东西的问题在于，它总是对的——因为它是从公式倒推出来的。<strong>真要知道钱花在哪，得去翻日志。</strong></p>
+<p>好在几个主流的 AI coding harness 都把 token 用量写在本地了，字段还挺全。我写了个脚本（<a href="https://github.com/walterfan/lazy-rabbit-agent/blob/master/scripts/kv_cache_report.py"><code>kv_cache_report.py</code></a>，已开源，用法见文末）扫了一遍自己最近 30 天的记录，四个 harness 一起看。</p>
+<h3 id="_7">第一个意外：我怀疑错了对象</h3>
+<p>起因是我觉得 Superpowers 那套 brainstorming skill 特别烧钱——它要反复追问、反复改设计，直觉上就是缓存杀手。</p>
+<p>扫出来是这样：</p>
+<div class="highlight"><pre><span></span><code><span class="go">── brainstorming 会话 ──</span>
+<span class="go">   命中率  ███████████████████···   88.0%</span>
+<span class="go">   缓存读 1.6M   缓存写 213.4K   输出 13.5K</span>
+<span class="go">   估算 $3.25   不用缓存要 $9.21   省下 65%</span>
+</code></pre></div>
+
+<p><strong>88%，缓存干得挺好。</strong> 我冤枉它了。</p>
+<p>那钱花哪了？同一份数据里还有两个数：</p>
+<div class="highlight"><pre><span></span><code><span class="go">上下文从 50,096 涨到 94,301 token（1.9 倍）</span>
+<span class="go">输入输出比 131:1</span>
+</code></pre></div>
+
+<p>真正的开销是<strong>上下文膨胀</strong>：多轮设计对话每轮都在追加，窗口越滚越大，每轮都得把之前所有内容重读一遍。哪怕每个 token 都打了一折，读的量本身在翻倍。</p>
+<p>这是 brainstorming 这类任务的<strong>固有成本，不是 bug</strong>。缓存已经尽力了，剩下的得靠控制上下文长度——比如讨论到一定程度就落盘成 spec、开个新会话接着聊。</p>
+<p>不过脚本还是揪出了两处真问题：</p>
+<div class="highlight"><pre><span></span><code><span class="go">   缓存断裂点（前缀被打断，重新建缓存）：</span>
+<span class="go">   第 15 次调用  命中 85.4K → 18.1K  重建写入 68.8K</span>
+<span class="go">   第 18 次调用  命中 87.1K → 18.1K  重建写入 70.7K</span>
+</code></pre></div>
+
+<p>两次都精准掉回 18.1K——说明前缀被打断，从那个点往后全部重算。加起来白扔了 <strong>14 万 token</strong>，而且这个会话用的是 1 小时档（写入 2 倍价），这两次重建是纯亏。</p>
+<p><strong>这就是"断裂点"这个指标的价值：它能告诉你是第几次调用出的事，而不是只给你一个平均值。</strong></p>
+<h3 id="_8">第二个意外：连着被同一个坑绊了两次</h3>
+<p>四个 harness 横着一比，我第一眼看到的是这个：</p>
+<table>
+<thead>
+<tr>
+<th>Harness</th>
+<th>命中率</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Claude Code</td>
+<td>96.5%</td>
+</tr>
+<tr>
+<td>Codex</td>
+<td>94.2%</td>
+</tr>
+<tr>
+<td>OpenCode</td>
+<td><strong>16.2%</strong> ⚠</td>
+</tr>
+<tr>
+<td>Cursor</td>
+<td>本地无数据</td>
+</tr>
+</tbody>
+</table>
+<p>OpenCode 才 16%？那可太值得查了。我正准备去翻它的提示词构造，顺手先按月拆了一下：</p>
+<div class="highlight"><pre><span></span><code><span class="go">2026-06  claude-opus-4-8    0.0%   cache_read =           0</span>
+<span class="go">2026-07  claude-opus-4-8  100.0%   cache_read = 1,297,594,097</span>
+<span class="go">2026-08  claude-opus-4-8    0.0%   cache_read =           0</span>
+</code></pre></div>
+
+<p>0% → 100% → 0%。<strong>没有任何真实的缓存行为长这样。</strong></p>
+<p>决定性的证据是另一个字段：这些月份里，<strong>缓存读和缓存写同时为 0</strong>。</p>
+<p>这不可能。想想情况 C——真正的缓存失效会留下<strong>大量写入痕迹</strong>，因为每次前缀被打断，系统都得重新写一份缓存。<strong>只有"根本没上报"，才会读写同时归零。</strong></p>
+<p>所以这不是命中率低，是这段时间的 provider 没回传缓存字段。我给脚本加了个过滤，把这类会话剔除，重算得到 50.3%——比 16% 可信多了。</p>
+<p><strong>然后我又栽了第二跤。</strong></p>
+<p>50.3% 还是偏低，我下钻去看是哪些会话拖的，发现一个诡异的：某个会话 4180 万 token，命中率 3.6%。按模型拆开一看：</p>
+<div class="highlight"><pre><span></span><code><span class="go">claude-opus-4-8      207 次调用   cache_read = 0          ← 没埋点</span>
+<span class="go">deepseek-v4-flash     10 次调用   cache_read = 1,498,112  ← 正常</span>
+</code></pre></div>
+
+<p><strong>一个会话里混用了两个模型。</strong> deepseek 那部分缓存工作得好好的，但 opus 占了 207/217 次调用、几乎全部 token，它的假 0 把整个会话的命中率拖到了 3.6%。</p>
+<p>我的过滤是<strong>按会话</strong>判断的——只要会话里混进一个没埋点的模型，整个会话的真实数据就跟着一起被算坏。正确的粒度是 <strong>(会话, 模型)</strong>：同一个会话里，opus 的假 0 该剔除，deepseek 的真数据该留下。</p>
+<p>改成按模型分组之后：</p>
+<table>
+<thead>
+<tr>
+<th>Harness</th>
+<th>命中率</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Claude Code</td>
+<td>96.5%</td>
+<td>健康</td>
+</tr>
+<tr>
+<td>Codex</td>
+<td>94.2%</td>
+<td>健康</td>
+</tr>
+<tr>
+<td>OpenCode</td>
+<td><strong>92.3%</strong></td>
+<td>也健康</td>
+</tr>
+<tr>
+<td>总体</td>
+<td><strong>94.7%</strong></td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p>那个"3.6%"的会话，真实命中率是 <strong>90.0%</strong>。</p>
+<p>OpenCode 从头到尾就没问题。<strong>16% 是假象，50.3% 也是假象——两次我都差点信了。</strong></p>
+<p>这件事给我的教训比省下的钱更值钱：</p>
+<blockquote>
+<p><strong>在你根据一个指标动手之前，先问一句：这个指标本身可信吗？</strong></p>
+</blockquote>
+<p>具体到缓存这件事，有一条判据可以直接抄走：</p>
+<ul>
+<li><strong>读低、写高</strong> → 真的没命中，前缀有问题，去查</li>
+<li><strong>读写同时为 0，但输入量很大</strong> → 多半是没埋点，先确认数据源，别急着改代码</li>
+</ul>
+<p><strong>判据要用对粒度。</strong> 我第一版按会话判断，结果混用模型的会话全被算坏；改成按 (会话, 模型) 才对。这跟缓存本身的道理是同一个——<strong>聚合会掩盖问题，得拆到"真正独立变化"的那一层去看。</strong></p>
+<p>更值得说的是：我写这个脚本，本来就是为了避免"被错误的指标误导"。结果第一版脚本自己就是个错误的指标，还让我对着 OpenCode 白紧张了一轮。<strong>一个会误导人的监控，比没有监控更危险</strong>——这句话我在文章里写下来的时候，自己正踩在这个坑里。</p>
+<h3 id="cursor">顺带发现：Cursor 本地什么都不存</h3>
+<p>四个里面 Cursor 是唯一拿不到数的。它本地只有一个 <code>ai-code-tracking.db</code>，记的是代码改动归因，没有任何 token 字段——用量在服务端账户页。</p>
+<p>脚本里我没有假装能算，而是如实打印出来说明原因。<strong>报告里出现"无法获取"，比编一个数字出来强。</strong></p>
+<p>（另外提醒一句：我调试时复制过一份 Cursor 的 <code>state.vscdb</code> 到临时目录，后来才想起来那里面存着 auth token，赶紧删了。<strong>扒本地日志的时候留个心眼，这些文件里什么都有。</strong>）</p>
+<h3 id="_9">脚本长什么样</h3>
+<p>四个 harness 的字段结构完全不同，这是踩过的坑：</p>
+<table>
+<thead>
+<tr>
+<th>Harness</th>
+<th>位置</th>
+<th>口径</th>
+<th>坑</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Claude Code</td>
+<td><code>~/.claude/projects/**/*.jsonl</code></td>
+<td>逐次请求，区分 5m/1h</td>
+<td>同一条 message 会重复写好几遍，<strong>必须按 id 去重</strong>，否则数字翻倍</td>
+</tr>
+<tr>
+<td>Codex</td>
+<td><code>~/.codex/sessions/**/*.jsonl</code></td>
+<td>累计值</td>
+<td>取最后一条；<code>input_tokens</code> 含 cached，要减掉</td>
+</tr>
+<tr>
+<td>OpenCode</td>
+<td><code>~/.local/share/opencode/opencode.db</code></td>
+<td>逐次请求</td>
+<td>SQLite，<strong>用只读模式打开</strong>，别干扰正在跑的进程</td>
+</tr>
+<tr>
+<td>Cursor</td>
+<td>—</td>
+<td>—</td>
+<td>本地无 token 数据</td>
+</tr>
+</tbody>
+</table>
+<p>还有一条不分 harness 的通用坑：<strong>统计要按 (会话, 模型) 分组</strong>。一个会话里混用多个模型是常态，只要有一个没上报缓存，按会话汇总就会把其它模型的真实数据一起算坏。</p>
+<p>常用命令：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># 全局扫一遍</span>
+python3<span class="w"> </span>scripts/kv_cache_report.py
+
+<span class="c1"># 单独看某个 skill，并找出缓存断裂点</span>
+python3<span class="w"> </span>scripts/kv_cache_report.py<span class="w"> </span>--grep<span class="w"> </span>brainstorming<span class="w"> </span>--breaks<span class="w"> </span>--by-session
+
+<span class="c1"># 揪出最贵的会话</span>
+python3<span class="w"> </span>scripts/kv_cache_report.py<span class="w"> </span>--harness<span class="w"> </span>opencode<span class="w"> </span>--by-session<span class="w"> </span>--top<span class="w"> </span><span class="m">15</span>
+</code></pre></div>
+
+<p>一个提醒：<strong>脚本算出来的金额是按公开价目表估的，不是账单。</strong> 订阅套餐根本不按 token 计费。这个数只用来看相对大小——哪个 harness、哪个会话最该优化。</p>
+<hr>
+<h2 id="_10">六、最佳实践清单</h2>
+<p>按重要性排序，从上往下做。</p>
+<h3 id="1">1. 分层排版：静态在前，动态在后</h3>
+<p>这是所有做法的总纲。把上下文按"变化频率"排序，越不变的越靠前：</p>
+<div class="highlight"><pre><span></span><code>flowchart TB
+    subgraph STABLE[&quot;稳定前缀 · 目标占 80% 以上 · 永不变动 · 可缓存&quot;]
+        direction TB
+        A[&quot;① 工具定义 / function schema&lt;br/&gt;—— 版本发布才变&quot;]
+        B[&quot;② system prompt / 角色与规则&lt;br/&gt;—— 版本发布才变&quot;]
+        C[&quot;③ few-shot 示例&lt;br/&gt;—— 版本发布才变&quot;]
+        D[&quot;④ 长期不变的背景文档&lt;br/&gt;—— 天级变&quot;]
+        A --&gt; B --&gt; C --&gt; D
+    end
+
+    BP{{&quot;← 缓存断点打在这里 →&quot;}}
+
+    subgraph VOLATILE[&quot;动态后缀 · 每轮变化 · 不缓存&quot;]
+        direction TB
+        E[&quot;⑤ 对话历史（只追加，不修改）&lt;br/&gt;—— 每轮追加&quot;]
+        F[&quot;⑥ RAG 检索结果 / 工具返回&lt;br/&gt;—— 每轮变&quot;]
+        G[&quot;⑦ 用户当前输入 / 时间戳 / 随机 id&lt;br/&gt;—— 每次都变&quot;]
+        E --&gt; F --&gt; G
+    end
+
+    STABLE --&gt; BP --&gt; VOLATILE
+
+    classDef stable fill:#E8F0E8,stroke:#2E7D32,color:#1B3A1B;
+    classDef volatile fill:#FBEAEA,stroke:#C62828,color:#4A1414;
+    classDef breakpoint fill:#FFF3CD,stroke:#B8860B,color:#5A4300;
+    class A,B,C,D stable;
+    class E,F,G volatile;
+    class BP breakpoint;
+</code></pre></div>
+
+<p>注意 Anthropic 的缓存前缀是按 <code>tools</code> → <code>system</code> → <code>messages</code> 的顺序构建的，工具定义天然在最前面——这也是为什么动态增删工具的破坏力那么大。</p>
+<p><strong>时间戳怎么办？</strong> 三个选择，按优先级：</p>
+<ol>
+<li>真不需要就删掉（大部分场景模型并不需要知道现在几点）</li>
+<li>降精度——精确到小时甚至天，一天最多失效 24 次而不是 86400 次</li>
+<li>挪到最尾部，紧挨着用户输入</li>
+</ol>
+<h3 id="2">2. 序列化确定化</h3>
+<p>前面讲过了，这里给一条可以直接抄的规矩：<strong>所有进入稳定前缀的结构化数据，序列化时必须固定 key 顺序、固定分隔符、固定缩进、禁止任何随机或时变字段。</strong></p>
+<p>值得给这段代码单独写一个单元测试：同样的输入序列化两次，断言字节完全相等。听起来傻，但这种 bug 你不测出来，就只能从账单上读出来。</p>
+<h3 id="3-mask-remove">3. 工具用 mask，不要 remove</h3>
+<p>场景：不同阶段该给模型不同的工具，规划阶段给搜索，执行阶段给写文件。</p>
+<p><strong>直觉做法</strong>：动态增删 <code>tools</code> 数组。<strong>这是灾难</strong>——工具定义在最前面，删一个，整个缓存归零。</p>
+<p><strong>正确做法</strong>：工具全集永远保持在稳定前缀里，用别的方式限制模型的选择：</p>
+<ul>
+<li>自建推理：直接对 logits 做 mask，从解码层面禁止不该调的工具</li>
+<li>用云 API：靠 <code>tool_choice</code> 参数，或者在<strong>尾部</strong>的动态区加一句"本轮只允许使用 X 和 Y"</li>
+</ul>
+<p>Manus 把这条总结成一句口诀：<strong>mask, don't remove</strong>。</p>
+<h3 id="4-append-only">4. Append-only：不许改历史</h3>
+<p>历史消息只能往后追加，不能回头修改、重排、删除。改了哪一条，从那条往后的缓存全废。</p>
+<p>这条会跟一个常见需求打架：<strong>上下文太长了要压缩</strong>。摘要压缩的本质就是"把前面十条换成一条摘要"，属于典型的改写历史，必然导致缓存全失效。</p>
+<p>务实的做法：</p>
+<ul>
+<li><strong>别在中间压。</strong> 压缩的时候把断点往前推，保住最前面那段真正稳定的底座（system + tools），只压中段。</li>
+<li><strong>接受一次性成本。</strong> 压缩是低频操作，一次全量重建可以接受，但要明确知道自己付了这笔钱，别每 3 轮压一次。</li>
+<li><strong>想让模型"记住"目标，就在尾部复述，别去改开头。</strong> Manus 用的是不断在上下文末尾重写一份 <code>todo.md</code> 的做法——追加不破坏前缀，改开头就完了。</li>
+</ul>
+<h3 id="5_1">5. 断点打在哪</h3>
+<p>Anthropic 允许最多 4 个 <code>cache_control</code> 断点，系统会自动匹配最长的那个命中前缀。分配原则：</p>
+<ul>
+<li><strong>最起码要有一个断点在 system prompt 末尾。</strong> 这是保底。</li>
+<li>剩下的按"变化频率的台阶"打——比如一个在工具定义后，一个在长背景文档后，一个在历史消息的稳定段后。</li>
+<li>别把断点打在高频变化的内容后面，那等于每轮都在付写入费。</li>
+</ul>
+<p>OpenAI、DeepSeek 是自动的，不用你标；但正因为自动，你更要靠排版去引导它。</p>
+<h3 id="6-5-1">6. 5 分钟还是 1 小时？算一下再决定</h3>
+<p>Anthropic 提供两档 TTL，价格不同，这笔账很好算：</p>
+<ul>
+<li><strong>5 分钟档</strong>：写 1.25×，读 0.1× → <strong>命中 1 次就回本</strong></li>
+<li><strong>1 小时档</strong>：写 2×，读 0.1× → <strong>命中 2 次才回本</strong></li>
+</ul>
+<p>判断规则：</p>
+<ul>
+<li>请求间隔<strong>稳定小于 5 分钟</strong>（在线聊天、连续跑的 Agent）→ 用 5 分钟档。每次命中自动续期，等于免费长存。</li>
+<li>请求间隔<strong>忽长忽短、经常超过 5 分钟</strong>（低频的批处理、人工间断介入的工作流）→ 算一下平均命中次数，超过 2 次再上 1 小时档。</li>
+<li><strong>千万别无脑上 1 小时档。</strong> 如果你的前缀一小时内只被读 1 次，你花了 2× 的写入费换 0.1× 的一次读取，纯亏。</li>
+</ul>
+<h3 id="7">7. 批量任务按前缀分组</h3>
+<p>跑批的时候，把共享同一前缀的任务排在一起连续发，别打散混在别的任务里。中间插进来的其它前缀会挤占缓存空间，触发 LRU 淘汰，等你转回来时缓存已经没了。</p>
+<p>这个优化几乎零成本——就是给任务队列加个排序键——但对批量场景的效果很明显。</p>
+<h3 id="8">8. 把命中率做成指标，挂到监控上</h3>
+<p><strong>不度量，前面七条都是玄学。</strong> 每家 API 都在响应里给了字段：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># OpenAI</span>
+<span class="n">usage</span><span class="o">.</span><span class="n">prompt_tokens_details</span><span class="o">.</span><span class="n">cached_tokens</span>
+
+<span class="c1"># Anthropic</span>
+<span class="n">usage</span><span class="o">.</span><span class="n">cache_read_input_tokens</span>      <span class="c1"># 命中读取</span>
+<span class="n">usage</span><span class="o">.</span><span class="n">cache_creation_input_tokens</span>  <span class="c1"># 缓存写入</span>
+
+<span class="c1"># DeepSeek</span>
+<span class="n">usage</span><span class="o">.</span><span class="n">prompt_cache_hit_tokens</span>
+<span class="n">usage</span><span class="o">.</span><span class="n">prompt_cache_miss_tokens</span>
+</code></pre></div>
+
+<p>至少埋这三个指标：</p>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>算法</th>
+<th>看什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>缓存命中率</td>
+<td>命中 token / 总输入 token</td>
+<td>主指标。突然下跌 = 有人动了前缀</td>
+</tr>
+<tr>
+<td>写读比</td>
+<td>写入 token / 读取 token</td>
+<td>持续偏高说明前缀不稳，可能在做负收益缓存</td>
+</tr>
+<tr>
+<td>有效单价</td>
+<td>实际花费 / 总输入 token</td>
+<td>直接对得上账单的那个数</td>
+</tr>
+</tbody>
+</table>
+<p>再加一条来自上一节的教训：<strong>给指标本身做健康检查。</strong> 读写同时为 0 时，先怀疑埋点，别怀疑前缀（判据见第五节）。</p>
+<p><strong>最关键的动作：给命中率配一条告警。</strong> 前缀是一个所有人都能随手改的地方——加一行提示词、调一下工具描述、改一个 JSON 字段名——改完功能全对，测试全过，只有命中率悄悄从 85% 掉到 12%。有告警，你当天就知道；没告警，你月底才知道。</p>
+<hr>
+<h2 id="_11">七、常见陷阱</h2>
+<p>前面的实践是"该做什么"，这里是"别做什么"。有几条是前面正面讲过的反面，我只列没提过的。</p>
+<h3 id="1_1">陷阱 1：以为缓存能省输出的钱</h3>
+<p><strong>输出 token 一分钱不省。</strong> 缓存复用的是 prefill 阶段的 K/V，跟 decode 阶段生成新 token 毫无关系。</p>
+<p>所以如果你的应用是"短输入、长输出"（比如写文章、生成代码），缓存的收益天然有限。反过来，Agent 这种 100:1 的负载才是缓存的主场。<strong>先看清自己的输入输出比，再决定花多少力气在这上面。</strong></p>
+<h3 id="2-rag">陷阱 2：把 RAG 检索结果放在前面</h3>
+<p>这个错误特别常见，因为它看起来很合理：检索到的资料是"背景知识"，背景知识不该放前面吗？</p>
+<p>不该。<strong>判断标准不是"这内容是不是背景"，是"这内容每次请求会不会变"。</strong> RAG 结果每次都随 query 变，放在 system prompt 后面，等于把它下面的所有内容都拖下水。</p>
+<p>正确位置是紧挨着用户问题，在最尾部。</p>
+<h3 id="3">陷阱 3：全量缓存反而更慢</h3>
+<p>那篇 arXiv 论文测出一个反直觉结果：<strong>naive 的全上下文缓存，可能反而增加延迟。</strong></p>
+<p>原因是缓存本身有开销——写入、查找、块管理都不是免费的。如果你把大量高频变化的内容也标进缓存区，就是在为一堆永远命中不了的内容反复付管理成本。</p>
+<p>论文的建议很明确：<strong>有策略的分块缓存（动态内容放末尾、排除动态工具结果）比无脑全量缓存更稳定。</strong> 也就是前面说的分层排版。</p>
+<h3 id="4_1">陷阱 4：多租户共享缓存的串味风险</h3>
+<p>自建推理时这条是安全问题，不只是性能问题。</p>
+<p>如果租户 A 和租户 B 的请求共用一个缓存池，理论上存在两种风险：<strong>哈希碰撞</strong>导致 B 读到 A 的 KV block（vLLM 从 v0.11 起默认用 sha256 就是为了堵这个，用 xxhash 换速度时要清楚自己在冒什么险）；以及<strong>时序侧信道</strong>——B 构造一个 prompt，通过响应快慢反推 A 是否发过类似内容。</p>
+<p>vLLM 给的解法是 <code>cache_salt</code>：每个请求带一个盐值，参与第一个 block 的哈希，只有同盐的请求能互相复用。</p>
+<p><strong>规矩很简单：跨租户边界，宁可牺牲命中率也要做隔离。</strong> 同租户内部再去优化命中率。</p>
+<h3 id="5_2">陷阱 5：以为"缓存命中"等于"模型记住了"</h3>
+<p>这是概念层面的误解，但影响很实际。</p>
+<p><strong>缓存复用的是计算结果，不是记忆。</strong> 模型每次推理，看到的仍然是完整的、从头到尾的上下文；缓存只是让"算出这段上下文的 K/V"这一步跳过了。</p>
+<p>所以：缓存命中<strong>不会</strong>让上下文变短，<strong>不会</strong>绕过上下文窗口上限，<strong>不会</strong>让模型"更了解"之前的对话。你的上下文该多长还是多长，该爆窗口还是爆窗口。</p>
+<p>我见过有人以为"反正缓存便宜，那就往 system prompt 里多塞点"——这是在拿一个便宜的读取价格，去换更差的模型注意力分配。<strong>便宜不等于免费，更不等于没有副作用。</strong> 该做的上下文精简一样得做。</p>
+<h3 id="6">陷阱 6：本地和线上前缀不一致</h3>
+<p>本地调试时你可能开了 debug 模式、加了额外的提示、用了不同的工具子集。结果是：本地测出来的命中率、成本、延迟，跟线上完全对不上。</p>
+<p>做法：<strong>把稳定前缀的构造抽成一个纯函数</strong>，输入是配置，输出是确定的字符串。所有环境走同一个函数，差异只体现在配置里。顺便你还能给它写测试（见实践 2）。</p>
+<hr>
+<h2 id="_12">八、上线前的自查表</h2>
+<p>一张能直接抄走的表，Code Review 的时候对着过一遍。</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>检查项</th>
+<th>通过标准</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>稳定前缀有多长？</td>
+<td>超过目标模型的最小门槛（1024 / 2048 / 4096）</td>
+</tr>
+<tr>
+<td>2</td>
+<td>前缀里有时变内容吗？</td>
+<td>时间戳、随机 id、session id、用户名——一个都不能有</td>
+</tr>
+<tr>
+<td>3</td>
+<td>工具定义会动态增删吗？</td>
+<td>不会。用 mask 或 <code>tool_choice</code> 代替</td>
+</tr>
+<tr>
+<td>4</td>
+<td>RAG 结果 / 工具返回放在哪？</td>
+<td>尾部，紧挨用户输入</td>
+</tr>
+<tr>
+<td>5</td>
+<td>序列化确定吗？</td>
+<td><code>sort_keys=True</code> + 固定 separators，且有单元测试断言字节相等</td>
+</tr>
+<tr>
+<td>6</td>
+<td>历史消息是 append-only 吗？</td>
+<td>是。压缩策略明确，且不在高频路径上</td>
+</tr>
+<tr>
+<td>7</td>
+<td>缓存断点打在哪？</td>
+<td>至少一个在 system prompt 末尾</td>
+</tr>
+<tr>
+<td>8</td>
+<td>TTL 档位选对了吗？</td>
+<td>5 分钟档命中 1 次回本，1 小时档要 2 次——算过再选</td>
+</tr>
+<tr>
+<td>9</td>
+<td>请求路由有亲和性吗？</td>
+<td>自建集群按 session id 一致性哈希</td>
+</tr>
+<tr>
+<td>10</td>
+<td>命中率有监控吗？</td>
+<td>有指标 + 有告警阈值</td>
+</tr>
+<tr>
+<td>11</td>
+<td>多租户隔离了吗？</td>
+<td>跨租户用 <code>cache_salt</code> 或独立缓存池</td>
+</tr>
+<tr>
+<td>12</td>
+<td>前缀构造是纯函数吗？</td>
+<td>各环境共用同一个构造逻辑</td>
+</tr>
+<tr>
+<td>13</td>
+<td>指标本身可信吗？</td>
+<td>读写同时为 0 = 先查埋点，别改代码</td>
+</tr>
+<tr>
+<td>14</td>
+<td>指标的粒度对吗？</td>
+<td>按 (会话, 模型) 分组统计，混用模型时别按会话汇总</td>
+</tr>
+</tbody>
+</table>
+<p>如果 1–5 有任何一条不达标，先别管别的，那几条就能解释你 80% 的成本问题。</p>
+<hr>
+<h2 id="api">总结：前缀是接口，改它要像改 API 一样谨慎</h2>
+<p>回到开头那笔账：同一个 Agent，同一份活儿，账单能差 6.8 倍——从 $1.61 到 $0.236。中间隔着的不是什么高深优化，就是"前缀稳不稳"这一件事。</p>
+<p>所以我更愿意这么理解 KV Cache：<strong>它把"提示词排版"从一件审美的事，变成了一件有价格标签的事。</strong></p>
+<p>以前你把工具定义放前面还是后面，是个人习惯问题，谁也说服不了谁。现在有价目表了：放错位置，每天多烧几十上百刀。这种约束虽然烦，但对工程来说是好事——<strong>一个有明确成本函数的设计决策，才是能被讨论、被 review、被守住的决策。</strong></p>
+<p>所以，请把你的稳定前缀当成一个对外发布的 API 契约来对待：</p>
+<ul>
+<li>它有版本，改动要走发布流程，不能谁想加一行就加一行</li>
+<li>它有测试，序列化的字节要能断言</li>
+<li>它有监控，命中率掉了要有人被叫醒</li>
+<li>它有 owner，出了问题知道找谁</li>
+</ul>
+<p>明天上班能做的第一件事，不是重构提示词，是<strong>把日志扫一遍，看看你现在的命中率到底是多少</strong>。文末那个脚本可以直接拿去用。</p>
+<p>但请记住我在第五节栽的那两个跟头：<strong>扫出来的数字，也要先确认它可信，还要确认它的粒度对不对。</strong> 我怀疑的对象是清白的，那两个吓人的低命中率也都是假象。真花钱的地方，和我以为的完全是两回事。</p>
+<p>省钱是结果，看清楚才是方法。</p>
+<h2 id="_13">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* LLM KV Cache
+** 两层含义
+*** 请求内: 避免 O(N²) 重算, 引擎默认
+*** 跨请求: prefix caching, 账单相关
+*** 显存公式: 2×层×KV头×头维×字节
+*** GQA / MLA 是为了跑得起
+** 命中五条件
+*** 从 token 0 起精确前缀匹配
+*** 满足最小长度门槛
+*** TTL 未过期 (静默失效)
+*** 路由到同一台机器
+*** 序列化逐字节确定
+** 收益
+*** 成本降 41-80%
+*** TTFT 改善 13-31%
+*** 显存共享, 并发上限提高
+*** 倒逼上下文分层
+** 最佳实践
+*** 静态在前, 动态在后
+*** mask 工具, 不要 remove
+*** append-only, 不改历史
+*** 断点至少一个在 system 末尾
+*** TTL 档位算过再选
+*** 命中率做成指标加告警
+** 常见陷阱
+*** 输出 token 一分不省
+*** RAG 结果放前面
+*** 全量缓存反而更慢
+*** 多租户缓存串味
+*** 以为缓存 = 模型记住了
+*** 前缀不稳时开缓存反而更贵
+** 实测教训
+*** 先扫日志, 别靠猜
+*** 读写同时为 0 = 没埋点
+*** 按 (会话,模型) 分组, 别按会话
+*** 会误导的监控比没监控更危险
+*** 上下文膨胀 ≠ 缓存失效
+@endmindmap
+</code></pre></div>
+
+<p><img alt="LLM KV Cache - 思维导图" src="./images/tech_20260901_llm_kv_cache_mindmap.svg"></p>
+<h2 id="_14">延伸阅读</h2>
+<ol>
+<li><a href="https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching">Prompt caching - Anthropic Docs</a></li>
+<li><a href="https://platform.openai.com/docs/guides/prompt-caching">Prompt caching - OpenAI API</a></li>
+<li><a href="https://ai.google.dev/gemini-api/docs/caching">Context caching - Gemini API</a></li>
+<li><a href="https://api-docs.deepseek.com/guides/kv_cache/">Context Caching - DeepSeek API Docs</a></li>
+<li><a href="https://docs.vllm.ai/en/latest/design/prefix_caching/">Automatic Prefix Caching - vLLM Design Docs</a></li>
+<li><a href="https://manus.im/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus">Context Engineering for AI Agents: Lessons from Building Manus</a></li>
+<li><a href="https://arxiv.org/abs/2601.06007">Don't Break the Cache: An Evaluation of Prompt Caching for Long-Horizon Agentic Tasks (arXiv:2601.06007)</a></li>
+</ol>
+<h2 id="_15">附：命中率扫描脚本</h2>
+<p>本文第五节用的脚本开源在这里：<a href="https://github.com/walterfan/lazy-rabbit-agent/blob/master/scripts/kv_cache_report.py"><code>scripts/kv_cache_report.py</code></a>。支持 Claude Code、Codex、OpenCode 三家的本地日志（Cursor 本地不存 token 用量），会自动识别"没埋点"的可疑会话并剔除。</p>
+<div class="highlight"><pre><span></span><code>python3<span class="w"> </span>scripts/kv_cache_report.py<span class="w">                    </span><span class="c1"># 最近 30 天全部</span>
+python3<span class="w"> </span>scripts/kv_cache_report.py<span class="w"> </span>--grep<span class="w"> </span>&lt;skill名&gt;<span class="w"> </span>--breaks<span class="w"> </span>--by-session
+python3<span class="w"> </span>scripts/kv_cache_report.py<span class="w"> </span>--harness<span class="w"> </span>opencode<span class="w"> </span>--by-session<span class="w"> </span>--top<span class="w"> </span><span class="m">15</span>
+python3<span class="w"> </span>scripts/kv_cache_report.py<span class="w"> </span>--json<span class="w"> </span>report.json
+</code></pre></div>
+
+<p>价格表在脚本头部的 <code>PRICING</code> 里，按自己的模型改。金额只用于横向比较，不等于账单。</p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/llm-kv-cache-prefix-caching.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/tech.html">tech</a>
+      <a href="https://www.fanyamin.com/blog/tag/ai.html">AI</a>
+      <a href="https://www.fanyamin.com/blog/tag/llm.html">LLM</a>
+      <a href="https://www.fanyamin.com/blog/tag/kv-cache.html">kv-cache</a>
+      <a href="https://www.fanyamin.com/blog/tag/prompt-caching.html">prompt-caching</a>
+      <a href="https://www.fanyamin.com/blog/tag/context-engineering.html">context-engineering</a>
+      <a href="https://www.fanyamin.com/blog/tag/token.html">token</a>
+      <a href="https://www.fanyamin.com/blog/tag/agent.html">agent</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-08-30-ai-coding-freshman-guide.html" title="大一新生 AI 编程快速上手指南：用 OpenCode 和 Cursor + Cline 写出第一个程序">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/2026-09-01-knowledge-base-workflow.html" title="AI 时代知识到底怎么存、怎么找：一个后端工程师的知识库工作流">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/progressive-disclosure-context-management.html">上下文管理之渐进式披露：别把整座图书馆搬进模型的脑子</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-07-ai-agent-memory.html">如何管理 AI Agent 的记忆之一：既记得牢、想得起，又不烧钱</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-02-building-effective-agents.html">重读《Building Effective Agents》：怎么才算构建了一个"高效"的 AI Agent</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-07-31-harness-engineering.html">AI 的“操作系统”：Harness 工程如何让模型自我改进</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-07-29-ai-agent-incubator.html">AI Agent 孵化器：用一个父 Agent，批量造出贴身服务的子 Agent</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

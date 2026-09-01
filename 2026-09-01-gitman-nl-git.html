@@ -1,0 +1,982 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="我在自己的 wiki 上写过一篇 git tips，改了 17 版，该记不住的还是记不住。于是写了 gitman：用自然语言说想干什么，它先给出一份 git 命令计划和一条从真实 diff 里长出来的 commit message，你点头它才执行。这篇不讲“AI 真神奇”，讲的是让 LLM 碰你的仓库时必须先立起来的几道护栏——argv 白名单、三级危险分类、commit message 只能来自 snapshot、默认不联网。全部代码 942 行，5 个 commit，可抄。" />
+<meta name="keywords" content="journal, git, LLM, CLI, tooling, python, safety">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "我写过 git cheatsheet，还是记不住——于是写了 gitman",
+  "description": "我在自己的 wiki 上写过一篇 git tips，改了 17 版，该记不住的还是记不住。于是写了 gitman：用自然语言说想干什么，它先给出一份 git 命令计划和一条从真实 diff 里长出来的 commit message，你点头它才执行。这篇不讲“AI 真神奇”，讲的是让 LLM 碰你的仓库时必须先立起来的几道护栏——argv 白名单、三级危险分类、commit message 只能来自 snapshot、默认不联网。全部代码 942 行，5 个 commit，可抄。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-09-01T23:10:00+08:00",
+  "dateModified": "2026-09-01T23:10:00+08:00",
+  "url": "https://www.fanyamin.com/blog/2026-09-01-gitman-nl-git.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/2026-09-01-gitman-nl-git.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "journal, git, LLM, CLI, tooling, python, safety"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="我写过 git cheatsheet，还是记不住——于是写了 gitman"/>
+  <meta property="og:description" content="我在自己的 wiki 上写过一篇 git tips，改了 17 版，该记不住的还是记不住。于是写了 gitman：用自然语言说想干什么，它先给出一份 git 命令计划和一条从真实 diff 里长出来的 commit message，你点头它才执行。这篇不讲“AI 真神奇”，讲的是让 LLM 碰你的仓库时必须先立起来的几道护栏——argv 白名单、三级危险分类、commit message 只能来自 snapshot、默认不联网。全部代码 942 行，5 个 commit，可抄。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/2026-09-01-gitman-nl-git.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-09-01 23:10:00+08:00"/>
+  <meta property="article:modified_time" content="2026-09-01 23:10:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="journal"/>
+  <meta property="article:tag" content="git"/>
+  <meta property="article:tag" content="LLM"/>
+  <meta property="article:tag" content="CLI"/>
+  <meta property="article:tag" content="tooling"/>
+  <meta property="article:tag" content="python"/>
+  <meta property="article:tag" content="safety"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 我写过 git cheatsheet，还是记不住——于是写了 gitman</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="2026-09-01-gitman-nl-git">我写过 git cheatsheet，还是记不住——于是写了 gitman</h1>
+    <p>
+      Posted on 二 01 9月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>我写过 git cheatsheet，还是记不住——于是写了 gitman</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>learning note</td>
+</tr>
+<tr>
+<td><strong>Version</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-09-01</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">大纲</h2>
+<details>
+<summary>展开看看</summary>
+<ul>
+<li><strong>cheatsheet 治不好的病</strong>：查手册的前提是你知道要查什么关键词</li>
+<li><strong>gitman 是什么</strong>：自然语言 → 计划 → 确认 → 执行，CLI 加一个本地 Web UI</li>
+<li><strong>四道护栏</strong>：argv 不是 shell 串、三级危险分类、commit message 来自 diff、默认不联网</li>
+<li><strong>一个真实的坑</strong>：<code>git rm</code> 那个 commit 是怎么来的</li>
+<li><strong>让 LLM 学会说“我不确定”</strong>：歧义时只返回只读命令</li>
+<li><strong>小工具的账</strong>：942 行代码、686 行测试、5 个 commit</li>
+<li><strong>可以直接抄的 checklist</strong></li>
+</ul>
+</details>
+<hr>
+<p>我在自己的 wiki 上有一篇 <a href="https://github.com/walterfan/walterfan/wiki/git-tips">git tips</a>，从工作区暂存区仓库区讲到 submodule、subtree、filter-branch，改了 17 版。写的时候很爽，觉得从此江湖再无难题。</p>
+<p>然后每隔几个月，我还是要打开它翻一遍。删远程分支到底是 <code>git push origin --delete</code> 还是 <code>:branchname</code>？想把最近两个 commit 合成一个，<code>rebase -i HEAD~2</code> 之后是选第一个还是第二个改成 squash？子模块换地址要不要 <code>sync --recursive</code>？</p>
+<p><strong>cheatsheet 没治好这个病，因为查手册有个前提：你得先知道要查什么关键词。</strong> 而我脑子里当时只有一句大白话——“我想把这两个提交并成一个”。从这句话到 <code>git rebase --interactive HEAD~2</code>，中间那一步翻译，恰恰是最费劲的。</p>
+<p>再加上写 commit message。改完一堆文件，回头要给它起个名字，还得符合 conventional commit 那套 <code>feat:</code> / <code>fix:</code> / <code>refactor:</code> 的规矩，这活儿说不上难，就是烦——你得重新读一遍自己的 diff，才能诚实地概括它。</p>
+<p>所以我写了 <a href="https://github.com/walterfan/gitman">gitman</a>。一句话：<strong>你说人话，它出计划，你点头，它才动手。</strong></p>
+<p>但这篇文章想讲的不是“接个 LLM 真神奇”。接 API 是最简单的部分，两百行就够了。真正花时间的是另一件事：<strong>当一个会瞎猜的东西拿到了你仓库的执行权，你得先给它焊几道护栏。</strong></p>
+<hr>
+<h2 id="_2">它长什么样</h2>
+<p>从任何一个 git 工作树里：</p>
+<div class="highlight"><pre><span></span><code>gitman<span class="w"> </span><span class="s2">&quot;commit the staged changes&quot;</span><span class="w"> </span>--dry-run
+gitman<span class="w"> </span><span class="s2">&quot;show status&quot;</span>
+gitman<span class="w"> </span>ask<span class="w"> </span><span class="s2">&quot;commit the refactor&quot;</span><span class="w"> </span>--repo<span class="w"> </span>/path/to/repo
+</code></pre></div>
+
+<p><code>ask</code> 是默认命令，所以 <code>gitman "show status"</code> 和 <code>gitman ask "show status"</code> 一样。输出是这样的：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>gitman<span class="w"> </span><span class="s2">&quot;show status&quot;</span><span class="w"> </span>--dry-run
+<span class="go">Summary: Show short git status</span>
+<span class="go">Commands:</span>
+<span class="go">  1. git status --short</span>
+<span class="go">Dry-run: no git commands executed.</span>
+</code></pre></div>
+
+<p>要提交的时候，它会先把命令序列和 commit message 摆出来，等你确认：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>gitman<span class="w"> </span><span class="s2">&quot;commit my changes&quot;</span>
+<span class="go">Summary: Commit changes: docs: update README.md</span>
+<span class="go">Commit message:</span>
+<span class="go">docs: update README.md</span>
+<span class="go">Commands:</span>
+<span class="go">  1. git add -A [mutating]</span>
+<span class="go">  2. git commit -m docs: update README.md [mutating]</span>
+<span class="go">Execute this plan? [y/N]:</span>
+</code></pre></div>
+
+<p>注意方括号里的 <code>mutating</code>。这个标记不是装饰，下面会讲它从哪来。</p>
+<p>还有个 <code>gitman serve</code>，在 <code>127.0.0.1:9626</code> 起一个本地 Web UI，同样的 ask → plan → confirm → execute 循环，只是搬到浏览器里。端口被占就往后顺延到 9627、9628。</p>
+<hr>
+<h2 id="llm-argv-shell">护栏一：LLM 只能吐 argv，不能吐 shell 字符串</h2>
+<p>这是整个工具最重要的一条约定。</p>
+<p>让 LLM 生成一整行 shell 命令，然后 <code>subprocess.run(cmd, shell=True)</code>——这是注入风险最高的那条路。你的 diff 里但凡有一行文件名或者 commit message 长得像 <code>; rm -rf ~</code>，模型又恰好把它抄进了输出，就完了。</p>
+<p>所以 gitman 的契约是：<strong>planner 只能返回一个 JSON，里面 <code>commands[].args</code> 是字符串数组，不含 <code>git</code> 这个二进制名，不含 shell。</strong> 执行器自己拼 <code>git -C &lt;repo&gt;</code>，然后 <code>shell=False</code>。</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;summary&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Stage Python files and commit&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;commands&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;args&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;add&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;src/gitman&quot;</span><span class="p">]},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;args&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;commit&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;-m&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;&lt;generated message&gt;&quot;</span><span class="p">]}</span>
+<span class="w">  </span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;commit_message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;feat: add gitman CLI planner&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;warnings&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>光有约定不够，模型是会跑偏的，所以还得在执行前做一次校验。<code>safety.py</code> 里那三十行是整个项目最值钱的部分：</p>
+<div class="highlight"><pre><span></span><code><span class="n">FORBIDDEN_BINARIES</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;bash&quot;</span><span class="p">,</span> <span class="s2">&quot;sh&quot;</span><span class="p">,</span> <span class="s2">&quot;zsh&quot;</span><span class="p">,</span> <span class="s2">&quot;python&quot;</span><span class="p">,</span> <span class="s2">&quot;python3&quot;</span><span class="p">,</span>
+                      <span class="s2">&quot;curl&quot;</span><span class="p">,</span> <span class="s2">&quot;wget&quot;</span><span class="p">,</span> <span class="s2">&quot;sudo&quot;</span><span class="p">,</span> <span class="s2">&quot;chmod&quot;</span><span class="p">,</span> <span class="s2">&quot;chown&quot;</span><span class="p">,</span> <span class="s2">&quot;kill&quot;</span><span class="p">,</span> <span class="s2">&quot;dd&quot;</span><span class="p">}</span>
+
+<span class="n">SHELL_META</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;[;|&amp;`$]&quot;</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">validate_git_args</span><span class="p">(</span><span class="n">args</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">first</span> <span class="o">=</span> <span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">first</span> <span class="ow">in</span> <span class="n">FORBIDDEN_BINARIES</span> <span class="ow">or</span> <span class="n">first</span> <span class="o">==</span> <span class="s2">&quot;git&quot;</span> <span class="ow">or</span> <span class="s2">&quot;/&quot;</span> <span class="ow">in</span> <span class="n">first</span> <span class="ow">or</span> <span class="s2">&quot;</span><span class="se">\\</span><span class="s2">&quot;</span> <span class="ow">in</span> <span class="n">first</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">UnsafeCommandError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Rejected non-git command: </span><span class="si">{</span><span class="n">first</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="o">...</span>
+</code></pre></div>
+
+<p>第一个参数必须是一个 git 子命令：不能是别的二进制，不能带路径分隔符，不能是 <code>.sh</code> 或 <code>.exe</code>。其余参数不许出现 shell 元字符。</p>
+<p>这里有个小细节值得说：<code>-m</code> 后面那个参数要开个口子。commit message 里出现 <code>$</code> 或者 <code>&amp;</code> 太正常了（“fix: handle $HOME expansion”），如果一刀切，工具就没法用了。所以校验时先把所有 <code>-m</code> 的下一个位置记下来，跳过它们再查元字符：</p>
+<div class="highlight"><pre><span></span><code><span class="n">message_indexes</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+<span class="n">index</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="k">while</span> <span class="n">index</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">args</span><span class="p">[</span><span class="n">index</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;-m&quot;</span> <span class="ow">and</span> <span class="n">index</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+        <span class="n">message_indexes</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">index</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">index</span> <span class="o">+=</span> <span class="mi">2</span>
+        <span class="k">continue</span>
+    <span class="n">index</span> <span class="o">+=</span> <span class="mi">1</span>
+</code></pre></div>
+
+<p>因为 <code>shell=False</code>，这个参数会被原样当成一个字符串交给 git，元字符没有任何特殊含义。<strong>安全边界立在“不进 shell”这一层，不是立在“字符串里不许有奇怪符号”这一层。</strong> 这个区分很关键：前者是结构性的，后者是打地鼠。</p>
+<hr>
+<h2 id="_3">护栏二：命令分三级，危险的那级要问两次</h2>
+<p>不是所有 git 命令都一样。<code>git status</code> 你闭着眼让它跑；<code>git add</code> 跑错了顶多重来；<code>git reset --hard</code> 跑错了，你今天下午白干。</p>
+<p>所以 <code>classify()</code> 把命令分成三档：</p>
+<table>
+<thead>
+<tr>
+<th>级别</th>
+<th>例子</th>
+<th>需要什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>read-only</strong></td>
+<td><code>status</code>、<code>log</code>、<code>diff</code>、<code>show</code>、<code>blame</code>、<code>rev-parse</code></td>
+<td>直接跑，不问</td>
+</tr>
+<tr>
+<td><strong>mutating</strong></td>
+<td><code>add</code>、<code>commit</code>、<code>push</code>、<code>branch -d</code>、<code>stash</code></td>
+<td>问一次，或者 <code>--yes</code></td>
+</tr>
+<tr>
+<td><strong>destructive</strong></td>
+<td><code>reset --hard</code>、<code>clean -f</code>、<code>push --force</code>、<code>branch -D</code>、<code>rebase</code>、<code>commit --amend</code>、<code>filter-branch</code>、<code>update-ref -d</code></td>
+<td>再问一次，或者显式 <code>--force-destructive</code></td>
+</tr>
+</tbody>
+</table>
+<p>关键点在于 <strong><code>--yes</code> 不能覆盖 destructive</strong>。脚本里图省事加个 <code>--yes</code> 是人之常情，但如果 <code>--yes</code> 能一路放行到 <code>push --force</code>，那这层分类就白做了。所以 destructive 单独要一个标志：</p>
+<div class="highlight"><pre><span></span><code><span class="k">if</span> <span class="n">destructive</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">force_destructive</span><span class="p">:</span>
+    <span class="n">destructive_confirmed</span> <span class="o">=</span> <span class="n">click</span><span class="o">.</span><span class="n">confirm</span><span class="p">(</span>
+        <span class="s2">&quot;This plan includes destructive git commands. Continue?&quot;</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="kc">False</span>
+    <span class="p">)</span>
+</code></pre></div>
+
+<p><code>default=False</code> 也是有意的。手快按回车的默认结果应该是“不”。</p>
+<p>还有一条容易被忽略的：<strong>分类要在执行的那一刻再算一遍，而不是信任 plan 里带过来的标记。</strong> Web UI 那边尤其明显——<code>/api/execute</code> 收到的 plan 是从前端 POST 上来的 JSON，前端说自己是 <code>destructive: false</code> 完全不能信，所以服务端进来先 <code>annotate_commands()</code> 重新分类：</p>
+<div class="highlight"><pre><span></span><code><span class="n">plan</span> <span class="o">=</span> <span class="n">annotate_commands</span><span class="p">(</span><span class="n">body</span><span class="o">.</span><span class="n">plan</span><span class="p">)</span>   <span class="c1"># 不信前端传上来的标记</span>
+<span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">cmd</span><span class="o">.</span><span class="n">destructive</span> <span class="k">for</span> <span class="n">cmd</span> <span class="ow">in</span> <span class="n">plan</span><span class="o">.</span><span class="n">commands</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">body</span><span class="o">.</span><span class="n">destructive_confirm</span><span class="p">:</span>
+    <span class="k">raise</span> <span class="n">HTTPException</span><span class="p">(</span><span class="n">status_code</span><span class="o">=</span><span class="mi">400</span><span class="p">,</span> <span class="n">detail</span><span class="o">=</span><span class="s2">&quot;Destructive command requires extra confirmation.&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<p>这是老生常谈的“不要信任客户端”，但套在 AI 工具上还多一层：<strong>LLM 的输出也是客户端输入。</strong> 它标了 <code>mutating: false</code> 不代表这条命令真的无害。</p>
+<hr>
+<h2 id="commit-message-diff">护栏三：commit message 只能从真实的 diff 里长出来</h2>
+<p>这是我一开始就想清楚的一条，也是这个工具对我个人最有用的一条。</p>
+<p>如果只把用户那句话（“提交一下我的重构”）丢给模型让它写 commit message，你会得到一条听起来很像样、但和实际改动对不上的消息。几个月后你 <code>git log</code> 翻回来，看到 <code>refactor: improve code structure</code>，一点信息都没有。</p>
+<p>所以流程是反过来的：<strong>先在目标仓库里跑 <code>git status --short</code>、<code>git diff</code>、<code>git diff --staged</code>，把这个 snapshot 喂给 planner，再让它写。</strong> 系统提示词里有一条硬约束：</p>
+<blockquote>
+<p>Never invent file paths that are not in the provided status/diff snapshot.</p>
+</blockquote>
+<p>snapshot 本身也有几个约束：</p>
+<ul>
+<li><strong>有上限</strong>：diff 超过 8000 字符就截断，并在 warnings 里标注“Unstaged diff was truncated”，不给模型硬塞，也不给自己的 token 账单添堵。</li>
+<li><strong>先脱敏</strong>：进 prompt 之前过一遍 <code>redact()</code>，把形如 <code>api_key=xxx</code>、<code>token: xxx</code> 的键值对，以及 <code>ghp_</code>、<code>sk-</code>、<code>xox?-</code> 打头的 token 串换成 <code>&lt;redacted&gt;</code>。</li>
+<li><strong>没改动就不编</strong>：<code>commit_message_from_snapshot()</code> 在 <code>changed_paths()</code> 为空时直接返回 <code>None</code>，计划里就不会出现 commit 命令，只留一句 warning。</li>
+</ul>
+<p>这三条里，我觉得最容易被忽略的是最后一条。一个愿意说“你没有东西可提交”的工具，比一个总能给你憋出一条 commit message 的工具靠谱得多。</p>
+<hr>
+<h2 id="git-rm">一个真实的坑：<code>git rm</code> 是怎么被拦下来的</h2>
+<p>项目现在总共 5 个 commit，其中一个是 <code>fix: allow git rm --cached while blocking destructive rm</code>。</p>
+<p>背景是这样：你删了一个文件，然后跟 gitman 说“把这个删除提交上去”。模型很自然地会想到 <code>git rm &lt;path&gt;</code>。问题是——<strong>文件已经在磁盘上被删掉了，此时正确的做法是 <code>git add -A</code> 或者 <code>git add &lt;path&gt;</code>，让 git 记录这次删除。</strong> 而 <code>git rm</code> 会去删工作区里的文件，你以为在暂存一个删除，它在执行一个删除。</p>
+<p>大部分时候结果一样，但只要模型把路径搞错一个字符，你丢的就是一个本来好好的文件。</p>
+<p>修法是两头堵。planner 的系统提示词加了三行：</p>
+<div class="highlight"><pre><span></span><code>To stage a deleted file, use `add -A` or `add &lt;path&gt;` instead of `rm`.
+`rm` is only allowed with `--cached` (unstage/untrack without touching the
+working tree); plain `rm` is always rejected because it deletes files on disk.
+</code></pre></div>
+
+<p><code>safety.py</code> 里再加一道兜底，并且把错误信息写成能直接照着做的样子：</p>
+<div class="highlight"><pre><span></span><code><span class="k">if</span> <span class="n">first</span> <span class="o">==</span> <span class="s2">&quot;rm&quot;</span> <span class="ow">and</span> <span class="s2">&quot;--cached&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">args</span><span class="p">[</span><span class="mi">1</span><span class="p">:]:</span>
+    <span class="k">raise</span> <span class="n">UnsafeCommandError</span><span class="p">(</span>
+        <span class="s2">&quot;Rejected `git rm` without --cached: it deletes the file from your working &quot;</span>
+        <span class="s2">&quot;tree, not just the index. Run `git rm --cached &lt;path&gt;` to only unstage/untrack &quot;</span>
+        <span class="s2">&quot;it, or delete the file yourself and run `gitman` again to commit the removal.&quot;</span>
+    <span class="p">)</span>
+</code></pre></div>
+
+<p><strong>提示词是软约束，代码是硬约束，两个都要有。</strong> 提示词负责让模型大部分时候做对，代码负责让它做错时不出事。只信提示词，等于把安全建立在“模型今天状态不错”上面。</p>
+<p>顺便说一句，这条错误信息我特意写长了。CLI 工具最气人的就是甩你一句 <code>Rejected: rm</code>，然后你得去读源码才知道该怎么办。既然拦了，就顺手告诉人家下一步怎么走。</p>
+<hr>
+<h2 id="_4">护栏四：默认不联网，仓库也不许走错</h2>
+<p>两条边界，一句话就能说清，但都是踩过坑才会当回事的。</p>
+<p><strong>不配置就不联网。</strong> <code>GITMAN_LLM_BASE_URL</code> 和 <code>GITMAN_LLM_MODEL</code> 没设的时候，<code>ask</code> 直接失败并给出配置说明，<strong>不会退化成“先跑几条命令看看”</strong>。你的私有仓库 diff 不会因为你手滑跑了个命令就飞到某个 API 上去。想用本地模型？把 base URL 指向 Ollama 就行，代码不用改。</p>
+<div class="highlight"><pre><span></span><code><span class="nv">GITMAN_LLM_BASE_URL</span><span class="o">=</span><span class="s2">&quot;http://127.0.0.1:11434&quot;</span>
+<span class="nv">GITMAN_LLM_MODEL</span><span class="o">=</span><span class="s2">&quot;qwen2.5-coder&quot;</span>
+</code></pre></div>
+
+<p><code>.env</code> 也支持，cwd 和目标仓库各找一次，已经设好的环境变量优先——这样你可以给不同项目配不同模型，而临时用环境变量覆盖依然有效。</p>
+<p><strong>仓库只从起点解析。</strong> <code>resolve_repo()</code> 从 cwd 或者 <code>--repo</code> 出发跑一次 <code>git rev-parse --show-toplevel</code>，不在里面就直接退出，绝不去兄弟目录或者什么全局配置的项目根里碰运气。</p>
+<div class="highlight"><pre><span></span><code><span class="n">result</span> <span class="o">=</span> <span class="n">_run_git</span><span class="p">(</span><span class="n">probe</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;rev-parse&quot;</span><span class="p">,</span> <span class="s2">&quot;--is-inside-work-tree&quot;</span><span class="p">])</span>
+<span class="k">if</span> <span class="n">result</span><span class="o">.</span><span class="n">returncode</span> <span class="o">!=</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">result</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="o">!=</span> <span class="s2">&quot;true&quot;</span><span class="p">:</span>
+    <span class="k">raise</span> <span class="n">NotAGitRepoError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;No git repository found at </span><span class="si">{</span><span class="n">probe</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<p>Web UI 那边更严一点：serve 启动时锁定一个仓库，<code>/api/execute</code> 如果收到一个不同的 repo 路径，直接 403。<strong>一个能被 HTTP 请求换掉目标仓库的本地服务，等于在你机器上开了个洞。</strong></p>
+<p>顺带一提，UI 默认绑 <code>127.0.0.1</code> 而不是 <code>0.0.0.0</code>。你的 git 元数据和 diff 不该在局域网里裸奔。</p>
+<hr>
+<h2 id="llm">让 LLM 学会说“我不确定”</h2>
+<p>这一条我觉得比前面所有护栏都更有普适性。</p>
+<p>用户说“undo”。撤销什么？工作区的未提交改动，还是最后一次 commit？如果两样都存在，这句话就是歧义的——而这两个操作的后果差得非常远。</p>
+<p>大多数工具在这里会挑一个它觉得最可能的执行掉。gitman 的选择是：<strong>返回只读命令加一条 warning，什么都不改。</strong></p>
+<div class="highlight"><pre><span></span><code><span class="k">if</span> <span class="n">text</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">&quot;undo&quot;</span><span class="p">,</span> <span class="s2">&quot;undo that&quot;</span><span class="p">}</span> <span class="ow">and</span> <span class="n">snapshot</span><span class="o">.</span><span class="n">has_changes</span> <span class="ow">and</span> <span class="n">snapshot</span><span class="o">.</span><span class="n">has_head</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">Plan</span><span class="p">(</span>
+        <span class="n">summary</span><span class="o">=</span><span class="s2">&quot;Ambiguous undo: inspect first&quot;</span><span class="p">,</span>
+        <span class="n">commands</span><span class="o">=</span><span class="p">[</span><span class="n">GitCommand</span><span class="p">(</span><span class="n">args</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;status&quot;</span><span class="p">,</span> <span class="s2">&quot;--short&quot;</span><span class="p">])],</span>
+        <span class="n">warnings</span><span class="o">=</span><span class="p">[</span>
+            <span class="s2">&quot;Both uncommitted changes and a HEAD commit exist. &quot;</span>
+            <span class="s2">&quot;Say whether to discard working-tree changes or undo the last commit.&quot;</span>
+        <span class="p">],</span>
+    <span class="p">)</span>
+</code></pre></div>
+
+<p>系统提示词里也写了同样的规则，让远端模型照做：</p>
+<blockquote>
+<p>If the request is ambiguous (for example "undo" when both uncommitted changes and a HEAD commit exist), return only read-only inspection commands and a warning; do not mutate.</p>
+</blockquote>
+<p><code>Plan</code> 这个模型里专门留了 <code>warnings: list[str]</code> 字段，就是为了让“我不确定”成为一个一等公民的返回值，而不是塞在 summary 里的一句客套话。</p>
+<p><strong>AI 工具的可信度，很大程度上取决于它敢不敢说“这句话我没听懂”。</strong> 一个永远给你答案的助手，你迟早会发现它有一半答案是编的；一个会停下来反问的助手，剩下那些答案你才敢用。</p>
+<hr>
+<h2 id="_5">这个工具花了多少</h2>
+<p>我把账摊开，因为这决定了值不值得自己写：</p>
+<table>
+<thead>
+<tr>
+<th>项</th>
+<th>数字</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>源码</td>
+<td>942 行（<code>src/gitman/</code> 全部 Python）</td>
+</tr>
+<tr>
+<td>测试</td>
+<td>686 行，60 个用例，全绿</td>
+</tr>
+<tr>
+<td>commit 数</td>
+<td>5</td>
+</tr>
+<tr>
+<td>跨度</td>
+<td>8 月 17 日到 9 月 1 日，业余时间</td>
+</tr>
+<tr>
+<td>依赖</td>
+<td>click、fastapi、httpx、pydantic、uvicorn、python-dotenv</td>
+</tr>
+</tbody>
+</table>
+<p>测试和源码的比例接近 3:4，这不是我勤快，是这类工具的必然：<strong>一个会执行 git 命令的程序，你不敢靠手动测试放它出门。</strong> CI 里没有 LLM，所有 planner 相关的测试都走一个 <code>FakePlanner</code>，配合临时 git 仓库跑真实的 <code>git</code> 二进制。60 个用例覆盖 CLI 启动、计划解析、执行安全、commit message 生成、Web UI、端口选择、<code>.env</code> 加载，还有安装脚本本身。</p>
+<p><code>GITMAN_PLANNER=fake</code> 这个开关也留给了用户——想在没有模型的情况下摸一下手感，直接：</p>
+<div class="highlight"><pre><span></span><code><span class="nv">GITMAN_PLANNER</span><span class="o">=</span>fake<span class="w"> </span>gitman<span class="w"> </span><span class="s2">&quot;show status&quot;</span><span class="w"> </span>--dry-run
+</code></pre></div>
+
+<p>另外这个项目是先写 spec 再写代码的。<code>openspec/</code> 目录下有 proposal、design、tasks 和六份能力 spec，design.md 137 行，把每个决策的理由和被否掉的方案（Poetry、Go CLI、LangChain agent、让 LLM 直接吐 shell 脚本）都记下来了。<strong>在 AI 参与写代码的时代，这份文档的价值反而上升了：它是喂给 agent 的上下文，也是几个月后我自己回来看“当初为什么这么定”的唯一线索。</strong></p>
+<p>装的话一行：</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://raw.githubusercontent.com/walterfan/gitman/main/bootstrap.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>bash
+</code></pre></div>
+
+<p>它会把包装进 <code>~/.local/share/gitman/venv</code>，把 <code>gitman</code> 命令链到 <code>~/.local/bin</code>。要卸载就 <code>./install.sh uninstall</code>。</p>
+<hr>
+<h2 id="_6">可以直接抄的部分</h2>
+<p>如果你也在给 LLM 接一个能动真格的工具——不管是 git、kubectl、数据库还是文件系统——这几条我建议照抄：</p>
+<ol>
+<li>
+<p><strong>让模型输出结构化数据，不要输出可执行文本。</strong>
+   argv 数组、JSON、参数对象都行，就是别让它吐 shell 字符串然后 <code>shell=True</code>。这一条能挡掉八成的严重问题。</p>
+</li>
+<li>
+<p><strong>在执行前重新分类，不信任模型给的标记。</strong>
+   模型说这条命令安全，那是它的意见，不是事实。危险等级由你自己的代码判定。</p>
+</li>
+<li>
+<p><strong>危险操作单独一个确认开关，<code>--yes</code> 不能覆盖。</strong>
+   一定会有人在脚本里写 <code>--yes</code>，你要保证那时候 <code>push --force</code> 还是跑不了。</p>
+</li>
+<li>
+<p><strong>提示词和代码校验都要有，各管一头。</strong>
+   提示词提高成功率，代码兜住失败。只有前者是把安全押在模型状态上。</p>
+</li>
+<li>
+<p><strong>给模型的上下文要截断、要脱敏。</strong>
+   diff 设上限，secret 模式先 redact。你不知道对面的日志留多久。</p>
+</li>
+<li>
+<p><strong>默认不联网，配置才启用。</strong>
+   不要让用户在“不小心把私有代码发出去”和“工具能用”之间二选一。</p>
+</li>
+<li>
+<p><strong>给“我不确定”留一个正式的返回字段。</strong>
+   歧义时只返回只读操作加 warning，比猜一个执行掉强得多。</p>
+</li>
+<li>
+<p><strong>错误信息里写清楚下一步怎么办。</strong>
+   拦下来是本分，告诉人家该怎么绕过去才是本事。</p>
+</li>
+</ol>
+<hr>
+<h2 id="_7">总结：护栏比翻译更值钱</h2>
+<p>回到开头那个问题：为什么写了 cheatsheet 还是记不住。</p>
+<p>因为记忆不是瓶颈，<strong>翻译才是</strong>——从“我想把这两个提交并成一个”翻译到 <code>git rebase -i HEAD~2</code>。这一步交给模型，它做得比我翻手册快。</p>
+<p>但翻译本身不是这个工具的价值所在。接个 OpenAI 兼容 API 是两百行的事，谁都能做。真正需要动脑子的是另外七百行：<strong>当翻译错了的时候，会发生什么。</strong></p>
+<p>一个会猜的东西 + 一个会执行的东西，中间必须夹一层看得见、拦得住、能反悔的护栏。计划先打印出来，危险的问两遍，commit message 从真实 diff 里长，歧义时宁可什么都不做——<strong>这些约束不是为了防模型，是为了让我敢用它。</strong></p>
+<p>有意思的是，这些原则我一条都没发明。它们都是从写了二十年后端服务里搬过来的：不要信任客户端输入、不要拼字符串执行、危险操作要幂等要可回滚、默认关闭、失败要给出可操作的错误信息。</p>
+<p><strong>AI 时代的工程约束，和之前那一套并没有两样，只是“不可信输入”这一栏里，多了一项叫模型输出。</strong></p>
+<hr>
+<p>代码在 <a href="https://github.com/walterfan/gitman">github.com/walterfan/gitman</a>，Apache 2.0，一个九百多行的小工具，欢迎抄，也欢迎告诉我哪道护栏还漏了风。</p>
+<h2 id="_8">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    LineColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* gitman：自然语言到 git
+** 起因
+*** cheatsheet 改了 17 版还是记不住
+*** 查手册要先知道查什么关键词
+*** commit message 得重读自己的 diff
+** 核心循环
+*** ask → plan → confirm → execute
+*** CLI 为主，serve 起本地 Web UI
+*** --dry-run / --yes / --force-destructive
+** 护栏一：argv 不是 shell 串
+*** 只吐 JSON，args 是字符串数组
+*** shell=False，自己拼 git -C
+*** 禁二进制 + 元字符校验
+*** -m 后面开口子（消息可含 $ &amp;）
+** 护栏二：三级分类
+*** read-only 直接跑
+*** mutating 问一次
+*** destructive 再问一次，--yes 不覆盖
+*** 执行前重新分类，不信模型标记
+** 护栏三：message 来自 diff
+*** 先 status/diff 拿 snapshot
+*** 不许发明快照里没有的路径
+*** diff 截断 8000 字符
+*** 敏感串先 redact
+*** 没改动就返回 None，不硬编
+** 护栏四：边界
+*** 不配置 LLM 就不联网
+*** 仓库只从起点解析，不向外找
+*** Web UI 绑 127.0.0.1
+*** /api/execute 换仓库直接 403
+** 敢说不确定
+*** undo 歧义时只返回只读命令
+*** warnings 是一等公民字段
+** 成本
+*** 942 行源码 / 686 行测试 / 60 用例
+*** 5 个 commit，两周业余时间
+*** spec 先行：proposal + design + tasks
+@endmindmap
+</code></pre></div>
+
+<p><img alt="gitman：自然语言到 git 的护栏设计 - 思维导图" src="./images/tech_20260901_gitman_nl_git_mindmap.svg"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/2026-09-01-gitman-nl-git.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/journal.html">journal</a>
+      <a href="https://www.fanyamin.com/blog/tag/git.html">git</a>
+      <a href="https://www.fanyamin.com/blog/tag/llm.html">LLM</a>
+      <a href="https://www.fanyamin.com/blog/tag/cli.html">CLI</a>
+      <a href="https://www.fanyamin.com/blog/tag/tooling.html">tooling</a>
+      <a href="https://www.fanyamin.com/blog/tag/python.html">python</a>
+      <a href="https://www.fanyamin.com/blog/tag/safety.html">safety</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-09-01-knowledge-base-workflow.html" title="AI 时代知识到底怎么存、怎么找：一个后端工程师的知识库工作流">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/2026-09-01-markpad-markdown-workbench.html" title="用 SDD 写代码之后，我每天读的 Markdown 比代码多——于是写了 markpad">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/2026-09-01-markpad-markdown-workbench.html">用 SDD 写代码之后，我每天读的 Markdown 比代码多——于是写了 markpad</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-07-ai-agent-memory.html">如何管理 AI Agent 的记忆之一：既记得牢、想得起，又不烧钱</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-02-building-effective-agents.html">重读《Building Effective Agents》：怎么才算构建了一个"高效"的 AI Agent</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-02-mcp-2026-stateless-spec.html">MCP 大改版：从"打电话"变成"发快递"，附一个高德天气 MCP Server</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-07-31-harness-engineering.html">AI 的“操作系统”：Harness 工程如何让模型自我改进</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

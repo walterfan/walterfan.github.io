@@ -1,0 +1,1193 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="AI 编程助手最费钱也最不靠谱的动作，是拿着一个模糊的问题在你的仓库里反复 grep。graphify 换了个思路：先用 tree-sitter 把代码解析成一张知识图谱，之后所有问题都查图，不再翻文件。这篇我在本机真装真跑了 httpx 和 FastAPI 两个仓库——12.8 秒建图、零 token、39 倍压缩是真的，中文查询查不到、一次 update 把图从 8355 撑到 25685 个节点也是真的。另外扒了它为什么用 NetworkX 而不是 Neo4j（代价是 6.5% 的边被合并掉），以及和 Aider、Serena、Potpie、GraphRAG、SCIP、Repomix 这五条路线的横向对比。" />
+<meta name="keywords" content="journal, AI, knowledge-graph, tooling, code-intelligence, tree-sitter, agent">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "别让 agent 再 grep 了：用 graphify 给代码库先画一张图",
+  "description": "AI 编程助手最费钱也最不靠谱的动作，是拿着一个模糊的问题在你的仓库里反复 grep。graphify 换了个思路：先用 tree-sitter 把代码解析成一张知识图谱，之后所有问题都查图，不再翻文件。这篇我在本机真装真跑了 httpx 和 FastAPI 两个仓库——12.8 秒建图、零 token、39 倍压缩是真的，中文查询查不到、一次 update 把图从 8355 撑到 25685 个节点也是真的。另外扒了它为什么用 NetworkX 而不是 Neo4j（代价是 6.5% 的边被合并掉），以及和 Aider、Serena、Potpie、GraphRAG、SCIP、Repomix 这五条路线的横向对比。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-09-02T21:30:00+08:00",
+  "dateModified": "2026-09-02T21:30:00+08:00",
+  "url": "https://www.fanyamin.com/blog/2026-09-02-graphify-code-knowledge-graph.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/2026-09-02-graphify-code-knowledge-graph.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "journal, AI, knowledge-graph, tooling, code-intelligence, tree-sitter, agent"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="别让 agent 再 grep 了：用 graphify 给代码库先画一张图"/>
+  <meta property="og:description" content="AI 编程助手最费钱也最不靠谱的动作，是拿着一个模糊的问题在你的仓库里反复 grep。graphify 换了个思路：先用 tree-sitter 把代码解析成一张知识图谱，之后所有问题都查图，不再翻文件。这篇我在本机真装真跑了 httpx 和 FastAPI 两个仓库——12.8 秒建图、零 token、39 倍压缩是真的，中文查询查不到、一次 update 把图从 8355 撑到 25685 个节点也是真的。另外扒了它为什么用 NetworkX 而不是 Neo4j（代价是 6.5% 的边被合并掉），以及和 Aider、Serena、Potpie、GraphRAG、SCIP、Repomix 这五条路线的横向对比。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/2026-09-02-graphify-code-knowledge-graph.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-09-02 21:30:00+08:00"/>
+  <meta property="article:modified_time" content="2026-09-02 21:30:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="journal"/>
+  <meta property="article:tag" content="AI"/>
+  <meta property="article:tag" content="knowledge-graph"/>
+  <meta property="article:tag" content="tooling"/>
+  <meta property="article:tag" content="code-intelligence"/>
+  <meta property="article:tag" content="tree-sitter"/>
+  <meta property="article:tag" content="agent"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 别让 agent 再 grep 了：用 graphify 给代码库先画一张图</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="2026-09-02-graphify-code-knowledge-graph">别让 agent 再 grep 了：用 graphify 给代码库先画一张图</h1>
+    <p>
+      Posted on 三 02 9月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>别让 agent 再 grep 了：用 graphify 给代码库先画一张图</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>learning note</td>
+</tr>
+<tr>
+<td><strong>Version</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-09-02</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">大纲</h2>
+<details>
+<summary>展开看看</summary>
+<ul>
+<li><strong>它想解决什么</strong>：agent 的瓶颈是上下文，不是模型</li>
+<li><strong>它是什么</strong>：一个 CLI + 一个装进各家助手的 skill，产物是三个文件</li>
+<li><strong>工作原理</strong>：三趟处理、AST 优先、每条边都带置信标签</li>
+<li><strong>图存哪儿</strong>：用 NetworkX 而不是 Neo4j，省了运维，代价是 6.5% 的边被合并</li>
+<li><strong>本机实测</strong>：httpx 12.8 秒、FastAPI 9.5 秒、query / path / explain 的真实输出</li>
+<li><strong>不足之处</strong>：中文查询失效、<code>--code-only</code> 不粘、同名符号歧义、社区标签只是最大节点名</li>
+<li><strong>最佳实践</strong>：一份我跑完之后会照着做的配置清单</li>
+<li><strong>竞品对比</strong>：Aider / Serena / Potpie / GraphRAG / SCIP / Repomix，五条路线各自的账</li>
+<li><strong>未来展望</strong>：从"按需建图"到"常驻记忆层"，以及我不看好的部分</li>
+</ul>
+</details>
+<hr>
+<p>用 Claude Code 或者 Codex 改过大仓库的人，大概都见过这个画面：你问它"这个重定向逻辑是在哪儿处理的"，它开始 grep，grep 出三十个文件，挑五个读完，发现读错了地方，再 grep 一轮。十几分钟过去，token 烧掉几十万，答案还偏。</p>
+<p><strong>这不是模型不够聪明，是它没有地图。</strong> 换个人类新同事进来也一样——第一天靠 grep，第三个月靠脑子里那张"谁调谁、改这儿会崩哪儿"的图。区别只在于，人类会慢慢把图建起来，而 agent 每开一个新会话，都得从零 grep 一遍。</p>
+<p><a href="https://github.com/Graphify-Labs/graphify">graphify</a> 干的就是把这张图先建出来这件事：用 tree-sitter 把代码解析成一张知识图谱，存成 <code>graph.json</code>，之后所有问题都查图，不查文件。听上去很像又一个 RAG 项目，但它有个挺硬气的选择——<strong>不做向量检索，不用 embedding，纯 AST</strong>。</p>
+<p>这篇文章我不打算复述 README。我在本机装了 0.9.53，拿 httpx 和 FastAPI 两个真仓库跑了一遍，下面所有的数字和输出都是我自己终端里出来的。<strong>结论提前说：代码这一半非常扎实，值得进你的日常工具箱；文档那一半目前还很粗糙，别抱期望。</strong></p>
+<hr>
+<h2 id="_2">它想解决什么</h2>
+<p>让 agent 看懂一个仓库，目前有四条路，各有各的毛病：</p>
+<table>
+<thead>
+<tr>
+<th>路子</th>
+<th>怎么做</th>
+<th>毛病</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>grep / read</td>
+<td>关键词搜，命中什么读什么</td>
+<td>关键词对不上就全盘皆输；跨文件关系完全看不见</td>
+</tr>
+<tr>
+<td>全量塞上下文</td>
+<td>把整个仓库塞进 context</td>
+<td>贵，而且大海捞针，长上下文里的信息反而被淹没</td>
+</tr>
+<tr>
+<td>向量检索（RAG）</td>
+<td>切块、embedding、按相似度召回</td>
+<td>召回的是"看起来像"的片段，不是"确实调用了"的关系；建索引要烧 token</td>
+</tr>
+<tr>
+<td>图谱</td>
+<td>先建结构图，查图拿子图</td>
+<td>建图有成本，图会过期，边可能是猜的</td>
+</tr>
+</tbody>
+</table>
+<p>graphify 押的是第四条。它的判断是：<strong>代码这种东西，结构是确定的，不该用概率的办法去猜。</strong> <code>import</code> 就是 <code>import</code>，<code>class A(B)</code> 就是继承，这些用语法树解析出来是百分百准确的，凭什么要先转成一堆浮点数再算余弦相似度？</p>
+<p>这个判断我认同。写了这些年后端，我对"能确定的事情不要用统计方法"有近乎本能的偏好——就像你不会用机器学习去判断一个 JSON 是不是合法的。</p>
+<hr>
+<h2 id="cli-skill">它是什么：一个 CLI 加一层 skill</h2>
+<p>安装分两步，第二步是关键：</p>
+<div class="highlight"><pre><span></span><code>uv<span class="w"> </span>tool<span class="w"> </span>install<span class="w"> </span>graphifyy<span class="w">      </span><span class="c1"># 注意包名是 graphifyy，双 y；命令还是 graphify</span>
+graphify<span class="w"> </span>install<span class="w">               </span><span class="c1"># 把 skill 注册进你的 AI 助手</span>
+</code></pre></div>
+
+<p>第二步会往你的助手里塞三样东西：一个 <code>/graphify</code> 命令、一段写进 <code>AGENTS.md</code> 的常驻指令、以及一个在工具调用前触发的 hook。我用 OpenCode 装的时候，它写进了 <code>.opencode/plugins/graphify.js</code>，逻辑很朴素——你第一次跑 bash 命令时，往前面拼一句提醒：</p>
+<blockquote>
+<p>知识图谱在 graphify-out/，有具体问题请跑 graphify query，别去 grep 原始文件。</p>
+</blockquote>
+<p>说白了就是在 agent 耳边念叨。这个设计有点土，但比指望模型自觉靠谱。README 里还提到 Claude Code 上有个 <code>--strict</code> 模式，会直接拦截会话里第一次读源码的动作、强制改道查图，之后再退回软提醒——<strong>这是承认了软提醒会被无视。</strong></p>
+<p>跑完之后你会拿到三个文件：</p>
+<div class="highlight"><pre><span></span><code>graphify-out/
+├── graph.json       完整图谱，之后所有查询都读它
+├── GRAPH_REPORT.md  给人看的摘要：核心节点、意外关联、循环依赖
+└── graph.html       力导向图，浏览器里可点可搜
+</code></pre></div>
+
+<hr>
+<h2 id="_3">工作原理：三趟处理，各走各的路</h2>
+<p>这是我觉得设计得最漂亮的一点：<strong>它按文件类型分流，不同类型走完全不同的通道。</strong></p>
+<p><strong>第一趟——代码，纯本地，零 token。</strong> tree-sitter 解析出类、函数、导入、调用关系、注释。跑在你自己机器上，不联网，不需要任何 API key。我数了一下它的依赖，光 <code>tree-sitter-*</code> 的语法包就带了三十来个，从 Python、Go、Rust 到 Verilog、Fortran、PowerShell 都有。</p>
+<p><strong>第二趟——音视频，本地转写。</strong> faster-whisper 转成文字。有个小巧思：转写时会把已经建好的代码图里连接数最多的那些概念（它叫 god nodes）当作提示词喂进去，这样领域术语转写得更准。</p>
+<p><strong>第三趟——文档、PDF、图片，走 LLM。</strong> 这一趟才花钱。如果你的语料里只有代码，这趟直接跳过。</p>
+<p>三趟跑完，所有节点边合并成一张图。每条边有两个关键字段：</p>
+<table>
+<thead>
+<tr>
+<th>标签</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>EXTRACTED</code></td>
+<td>源码里白纸黑字写着的，比如一条 import、一次直接调用。置信度恒为 1.0</td>
+</tr>
+<tr>
+<td><code>INFERRED</code></td>
+<td>推断出来的，比如二次调用图分析。带 0.55~0.95 的离散分数</td>
+</tr>
+<tr>
+<td><code>AMBIGUOUS</code></td>
+<td>拿不准，报告里单独标出来让人复核</td>
+</tr>
+</tbody>
+</table>
+<p><strong>这个区分我认为是整个项目最值钱的设计。</strong> 大部分 AI 工具给你一个答案，你没法判断它是读出来的还是编出来的。graphify 把这条界线摆到台面上——我在 httpx 上跑出来的比例是 92% EXTRACTED、8% INFERRED，FastAPI 是 98% / 2%。也就是说，<strong>九成以上的连接是可以当事实用的，剩下那一成需要你自己过脑子。</strong></p>
+<p>社区划分用的是 Leiden 算法（一种按边密度给图分组的经典方法，简单说就是"连得密的归一堆"），把大图切成若干子系统。这一步也不需要 embedding——它的论据是：语义相似的边本来就已经在图里了，图结构本身就是相似性信号。</p>
+<hr>
+<h2 id="networkx-neo4j">插一段：它的图存在哪儿？NetworkX，不是 Neo4j</h2>
+<p>我自己做图相关的东西，习惯是起一个 Neo4j 或者 Memgraph，写 Cypher 查。所以看到 graphify 的依赖列表时我愣了一下——<strong>它没有图数据库，用的是 <a href="https://networkx.org/">NetworkX</a>。</strong></p>
+<p>NetworkX 是个 Python 库，不是服务。它把图完整放在进程内存里，用嵌套字典存邻接表，<code>pip install</code> 就能用，没有服务端、没有连接串、没有查询语言。你写的不是 Cypher，是普通 Python：</p>
+<div class="highlight"><pre><span></span><code><span class="n">G</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">Graph</span><span class="p">()</span>
+<span class="n">G</span><span class="o">.</span><span class="n">add_edge</span><span class="p">(</span><span class="s2">&quot;Client&quot;</span><span class="p">,</span> <span class="s2">&quot;Response&quot;</span><span class="p">,</span> <span class="n">relation</span><span class="o">=</span><span class="s2">&quot;uses&quot;</span><span class="p">,</span> <span class="n">confidence</span><span class="o">=</span><span class="s2">&quot;INFERRED&quot;</span><span class="p">)</span>
+<span class="n">nx</span><span class="o">.</span><span class="n">shortest_path</span><span class="p">(</span><span class="n">G</span><span class="p">,</span> <span class="s2">&quot;Client&quot;</span><span class="p">,</span> <span class="s2">&quot;Response&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<p>落盘就是一个 <code>graph.json</code>（NetworkX 的 node-link 格式）。<strong>整个"图数据库"就是这么一个文件。</strong></p>
+<h3 id="_4">这个选择换来了什么</h3>
+<p>站在工具的立场上，这笔账算得挺清楚：</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>NetworkX（graphify 的选择）</th>
+<th>Neo4j / Memgraph</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>部署</td>
+<td>无。<code>pip install</code> 完事</td>
+<td>起服务、配端口、管账号</td>
+</tr>
+<tr>
+<td>产物</td>
+<td>一个 JSON 文件，可提交、可传给同事</td>
+<td>一个需要运维的数据库实例</td>
+</tr>
+<tr>
+<td>查询</td>
+<td>Python 函数调用</td>
+<td>Cypher，跨进程走网络</td>
+</tr>
+<tr>
+<td>团队协作</td>
+<td>git 里 diff、merge</td>
+<td>每人自己起一个，或者共用一台</td>
+</tr>
+<tr>
+<td>规模上限</td>
+<td>受单机内存约束</td>
+<td>上亿节点，磁盘为主</td>
+</tr>
+<tr>
+<td>并发/事务</td>
+<td>没有</td>
+<td>ACID、多客户端</td>
+</tr>
+</tbody>
+</table>
+<p>对一个"给 agent 用的代码地图"来说，前四行的价值远大于后两行。<strong>agent 需要的是毫秒级的本地查询和一个能跟着仓库走的文件，不是一个要单独运维的服务。</strong> 我实测在 1637 节点的图上，<code>json.load</code> 加载 5 毫秒、重建成图对象 6 毫秒——这个量级的开销，你连缓存都不用想。</p>
+<p>有意思的是，Aider 的 repo map 也用 NetworkX（它跑的是 PageRank 排序）。<strong>两个思路完全不同的工具，在"图存哪儿"这件事上做了同一个选择</strong>，说明这不是偷懒，是这类场景的合理解。</p>
+<h3 id="_5">但内存图是有天花板的</h3>
+<p>我做了组压测，用合成图看它什么时候开始难受：</p>
+<table>
+<thead>
+<tr>
+<th>规模</th>
+<th>构图耗时</th>
+<th>峰值内存</th>
+<th>序列化成 JSON</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2.5 万节点 / 5 万边</td>
+<td>0.1s</td>
+<td>71 MB</td>
+<td>6.9 MB</td>
+</tr>
+<tr>
+<td>20 万节点 / 60 万边</td>
+<td>1.5s</td>
+<td>371 MB</td>
+<td>74 MB</td>
+</tr>
+<tr>
+<td>100 万节点 / 300 万边</td>
+<td>10.0s</td>
+<td>1385 MB</td>
+<td>376 MB</td>
+</tr>
+</tbody>
+</table>
+<p><strong>百万节点要 1.4 GB 内存、376 MB 的 JSON</strong>，而且这个 JSON 每次重建都要整份重写。graphify 自己设了个 512 MB 的 <code>graph.json</code> 上限（可以用 <code>GRAPHIFY_MAX_GRAPH_BYTES</code> 调），HTML 可视化超过 5000 节点就自动降级成社区聚合视图——<strong>这些限制的根都在这儿。</strong></p>
+<p>参考一下：我实测 FastAPI（含文档）是 2.5 万节点、9 MB。所以对绝大多数单仓库，NetworkX 绰绰有余。真到了单体巨型仓库或者跨几十个仓库合并的场景，这套就该换了。</p>
+<h3 id="_6">一个真实的代价：简单图会吞掉重复边</h3>
+<p>这条是我扒源码时发现的，值得单说，因为<strong>用过 Neo4j 的人会本能地掉进去</strong>。</p>
+<p>graphify 用的是 <code>nx.Graph</code>——简单无向图，<strong>一对节点之间只能有一条边</strong>。而 Neo4j、Memgraph 都是多重图，A 和 B 之间可以同时存在 <code>CALLS</code>、<code>REFERENCES</code>、<code>IMPORTS</code> 三条独立的边。</p>
+<p>那抽取出来的重复边去哪了？我直接调它的库测了一下 httpx：</p>
+<div class="highlight"><pre><span></span><code><span class="go">RAW edges from extractor: 3736</span>
+<span class="go">unordered unique pairs:   3495</span>
+<span class="go">edges lost to collapse:    241 (6.5%)</span>
+</code></pre></div>
+
+<p><strong>6.5% 的边在建图时被合并掉了。</strong> 看被吞掉的都是什么组合：</p>
+<div class="highlight"><pre><span></span><code><span class="go">  32  (&#39;references&#39;, &#39;uses&#39;)</span>
+<span class="go">  16  (&#39;inherits&#39;, &#39;uses&#39;)</span>
+<span class="go">  15  (&#39;calls&#39;, &#39;references&#39;)</span>
+<span class="go">  13  (&#39;method&#39;, &#39;references&#39;)</span>
+<span class="go">   2  (&#39;imports_from&#39;, &#39;re_exports&#39;)</span>
+</code></pre></div>
+
+<p>比如 <code>httpx/__init__.py</code> 和 <code>httpx/__version__.py</code> 之间，抽取器同时给出了 <code>imports_from</code> 和 <code>re_exports</code> 两条边——<strong>最后只留下一条，"这里做了重新导出"这个事实就没了。</strong></p>
+<p>公道地说，作者是知道这件事的，而且处理得比我预想的认真。源码里有一段很长的注释记录了一个踩坑：早期版本按字母序"后写覆盖先写"，结果 144 对同时有 <code>calls</code> 和 <code>references</code> 的边全被改写成了 <code>references</code>，而调用流分析不认这个关系，那些调用点就整个从调用图里消失了。现在的规则改成了<strong>具体关系不许被泛化关系覆盖</strong>（<code>calls</code> 打得过 <code>references</code>）。仓库里还专门有个 <code>multigraph_compat.py</code>，在为将来的 <code>--multigraph</code> 模式做运行时能力探测——注释里写着"尚无调用点"，说明这是个已排期未完成的改造。</p>
+<p>还有个坑要提醒：<strong>它确实能导出 Cypher 灌进 Neo4j，但那是在合并之后。</strong> 我验证过，导出的 Cypher 语句数正好等于合并后的 3290 条，不是原始的 3736 条——<strong>换个后端并不能把丢掉的边找回来，因为损失发生在建图阶段，不在存储阶段。</strong></p>
+<p>对日常用途，6.5% 的损失基本无感（多数被合并的是同义边）。但如果你想拿它的图做严肃的依赖分析或者影响面评估，<strong>这个数得先记在账上。</strong></p>
+<hr>
+<h2 id="_7">实例：我在本机真跑了两个仓库</h2>
+<p>环境是 M 系列 Mac，Python 3.14，graphify 0.9.53。为了验证"代码这条路真的零成本"，我特意用 <code>env -u OPENAI_API_KEY</code> 把环境变量摘掉重跑了一遍，结果和带 key 时一模一样，报告里的 <code>Token cost: 0 input · 0 output</code> 是真的。</p>
+<h3 id="httpx72-128">httpx：72 个代码文件，12.8 秒</h3>
+<div class="highlight"><pre><span></span><code>git<span class="w"> </span>clone<span class="w"> </span>--depth<span class="w"> </span><span class="m">1</span><span class="w"> </span>https://github.com/encode/httpx.git
+<span class="nb">cd</span><span class="w"> </span>httpx<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>graphify<span class="w"> </span>extract<span class="w"> </span>.<span class="w"> </span>--code-only<span class="w"> </span>--timing
+</code></pre></div>
+
+<p>输出：</p>
+<div class="highlight"><pre><span></span><code><span class="go">[graphify extract] --code-only: skipping 47 non-code file(s) (37 docs, 0 papers, 10 images)</span>
+<span class="go">[graphify extract] found 72 code, 0 docs, 0 papers, 0 images</span>
+<span class="go">[graphify extract] 1 file(s) skipped as potentially sensitive: .netrc</span>
+<span class="go">[graphify timing] AST extract: 3.0s</span>
+<span class="go">[graphify timing] build: 9.5s</span>
+<span class="go">[graphify timing] cluster: 0.1s</span>
+<span class="go">[graphify timing] total: 12.8s</span>
+<span class="go">[graphify extract] wrote graph.json: 1637 nodes, 3290 edges, 99 communities</span>
+</code></pre></div>
+
+<p>12.8 秒，1637 个节点，零 token。顺手夸一句：<strong>它主动跳过了 <code>.netrc</code>，因为可能含凭据。</strong> 这种默认行为说明作者是认真想过安全边界的。</p>
+<p>再看 <code>explain</code> 的真实输出：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>graphify<span class="w"> </span>explain<span class="w"> </span><span class="s2">&quot;Client&quot;</span>
+<span class="go">Node: Client</span>
+<span class="go">  Source:    httpx/_client.py L594</span>
+<span class="go">  Community: 25</span>
+<span class="go">  Degree:    37</span>
+
+<span class="go">Connections (37):</span>
+<span class="go">  --&gt; Response [uses] [INFERRED] httpx/_client.py:L787</span>
+<span class="go">  --&gt; BaseClient [inherits] [EXTRACTED] httpx/_client.py:L594</span>
+<span class="go">  &lt;-- request() [calls] [EXTRACTED] httpx/_api.py:L102</span>
+<span class="go">  &lt;-- _main.py [imports] [EXTRACTED] httpx/_main.py:L17</span>
+<span class="go">  --&gt; .request() [method] [EXTRACTED] httpx/_client.py:L771</span>
+<span class="go">  ...</span>
+</code></pre></div>
+
+<p>注意每一行都带了<strong>文件名和行号</strong>。这不是"我觉得它们有关系"，是"第 594 行写着继承 BaseClient"。agent 拿到这个可以直接跳过去读那一行，不用再 grep。</p>
+<p><code>GRAPH_REPORT.md</code> 里我最喜欢的是循环依赖这一节，它自动挖出来 18 条：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">#</span><span class="c1"># Import Cycles</span>
+<span class="go">- 3-file cycle: httpx/_content.py -&gt; httpx/_exceptions.py -&gt; httpx/_models.py -&gt; httpx/_content.py</span>
+<span class="go">- 4-file cycle: httpx/_auth.py -&gt; httpx/_models.py -&gt; httpx/_multipart.py -&gt; httpx/_types.py -&gt; httpx/_auth.py</span>
+<span class="go">- 5-file cycle: httpx/_auth.py -&gt; httpx/_models.py -&gt; httpx/_content.py -&gt; httpx/_multipart.py -&gt; httpx/_types.py -&gt; httpx/_auth.py</span>
+</code></pre></div>
+
+<p>这东西不用 AI 也能算，但顺手就给你了，接手一个陌生仓库时挺有用——<strong>循环依赖的位置基本就是这个项目的历史包袱所在。</strong></p>
+<h3 id="token">token 到底省了多少</h3>
+<p>它自带一个 benchmark 命令，我在 httpx 上跑的实测：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>graphify<span class="w"> </span>benchmark
+<span class="go">  Corpus:          81,850 words → ~109,133 tokens (naive)</span>
+<span class="go">  Avg query cost:  ~2,784 tokens</span>
+<span class="go">  Reduction:       39.2x fewer tokens per query</span>
+
+<span class="go">  Per question:</span>
+<span class="go">    [37.5x] how does authentication work</span>
+<span class="go">    [75.1x] what is the main entry point</span>
+<span class="go">    [23.1x] what connects the data layer to the api</span>
+</code></pre></div>
+
+<p><strong>39 倍。</strong> 这个对比其实偏乐观——它的分母是"把整个语料塞进去"，而现实中 agent 不会真这么干，它会 grep。但方向是对的：一次 query 拿回来两千多 token 的精确子图，确实比读五个文件划算得多。官方文档里在一个 52 文件的混合语料上报的是 71.5 倍，同时也老实承认在 6 个文件的小仓库上只有约 1 倍——<strong>语料小的时候，图的价值是结构清晰，不是省钱。</strong> 这句话说得挺实在。</p>
+<h3 id="fastapi1148-95">FastAPI：1148 个文件，9.5 秒</h3>
+<div class="highlight"><pre><span></span><code><span class="go">[graphify extract] found 1148 code, 0 docs, 0 papers, 0 images</span>
+<span class="go">  AST extraction: 1148/1148 uncached files (100%) [12 workers]</span>
+<span class="go">[graphify timing] AST extract: 5.9s</span>
+<span class="go">[graphify timing] total: 9.5s</span>
+<span class="go">[graphify extract] wrote graph.json: 8355 nodes, 15918 edges, 822 communities</span>
+</code></pre></div>
+
+<p><strong>文件数涨了 16 倍，耗时反而比 httpx 短。</strong> AST 解析这一段是多进程并行的（<code>ProcessPoolExecutor</code> 绕开 GIL，12 个 worker 全开），5.9 秒啃完 1148 个文件。httpx 那次慢，慢在 build 阶段占了 9.5 秒——那段是单进程的图合并，跟文件数关系不大，跟符号密度有关。</p>
+<p>查询同样是本地的。在一张 25685 节点的图上：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span><span class="nb">time</span><span class="w"> </span>graphify<span class="w"> </span>query<span class="w"> </span><span class="s2">&quot;how are dependencies resolved&quot;</span>
+<span class="go">Graph: graphify-out/graph.json (25685 nodes) | BFS depth=2 | 30 nodes found</span>
+<span class="go">...</span>
+<span class="go">graphify query  1.06s user 0.09s system 90% cpu 1.272 total</span>
+</code></pre></div>
+
+<p>一秒出头，没有网络请求。</p>
+<hr>
+<h2 id="_8">不足之处：我自己撞上的四件事</h2>
+<p><strong>下面每条都是我在终端里遇到的，不是从 issue 列表抄的。</strong> 其中两条是真坑，另外两条是期望需要往下调。</p>
+<h3 id="_9">一、中文查询直接失效</h3>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>graphify<span class="w"> </span>query<span class="w"> </span><span class="s2">&quot;连接池是怎么管理的&quot;</span>
+<span class="go">No matching nodes found.</span>
+</code></pre></div>
+
+<p>同一个图，换成英文 <code>how is the connection pool managed</code> 就能查到。原因不难猜：查询是靠分词后跟节点标签做匹配的，而中文不分词就是一整坨。它的 extras 里确实有个 <code>chinese</code> 选项（装 jieba），但默认不带，README 里也只有一行表格提了一嘴。<strong>对中文用户来说这是个静默失败——它不报错，只是告诉你"没找到"，你还以为是图没建好。</strong></p>
+<h3 id="-code-only">二、<code>--code-only</code> 不会粘在配置里</h3>
+<p>这个坑最阴。我第一次用 <code>--code-only</code> 建 FastAPI 的图，8355 个节点，干干净净。然后改了一行代码，跑了下增量更新：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;# WHY: 试一下增量&quot;</span><span class="w"> </span>&gt;&gt;<span class="w"> </span>fastapi/routing.py
+<span class="gp">$ </span>graphify<span class="w"> </span>update<span class="w"> </span>.
+<span class="go">[graphify watch] Rebuilt: 25685 nodes, 33598 edges, 2290 communities</span>
+</code></pre></div>
+
+<p><strong>从 8355 涨到 25685。</strong> 一看节点构成：</p>
+<div class="highlight"><pre><span></span><code><span class="go">document: 17314    code: 8155    rationale: 216</span>
+</code></pre></div>
+
+<p>一万七千个文档节点。FastAPI 的 <code>docs/</code> 目录下有十几种语言的翻译，<code>update</code> 没有继承 <code>--code-only</code>，把 <code>docs/zh-hant/</code>、<code>docs/tr/</code>、<code>docs/ko/</code> 全部按标题结构切成节点塞进来了。图从 9MB 变成一堆多语言 Markdown 标题的索引，社区数从 822 涨到 2290，报告基本没法看了。</p>
+<p><strong>典型的"首次运行的参数没有持久化"。</strong> 绕过办法是写 <code>.graphifyignore</code> 把 <code>docs/</code> 排掉，但你得先知道有这个坑。</p>
+<p>而且这一万七千个节点基本是白涨的。我数了一下它们身上的边，<code>contains</code>（文件包含标题）占了 15622 条，<code>references</code> 1259 条——<strong>信息量约等于一份多语言目录。</strong></p>
+<h3 id="_10">三、同名符号会歧义，但报错很体面</h3>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>graphify<span class="w"> </span>explain<span class="w"> </span><span class="s2">&quot;solve_dependencies()&quot;</span>
+<span class="go">Ambiguous: &#39;solve_dependencies()&#39; matches 2 nodes in different files.</span>
+<span class="go">  fastapi/dependencies/utils.py</span>
+<span class="go">    id: fastapi_dependencies_utils_solve_dependencies</span>
+<span class="go">  fastapi/routing.py</span>
+<span class="go">    id: fastapi_routing_frontendroutegroup_solve_dependencies</span>
+<span class="go">Retry with the repo-relative path or the full node id.</span>
+</code></pre></div>
+
+<p>这条我不算它扣分——<strong>它没有瞎猜一个，而是把两个候选都摆出来让你选，还告诉你怎么重试。</strong> 这是我希望所有工具都有的错误处理方式。但对 agent 来说这意味着多一轮交互，大仓库里重名函数遍地都是。</p>
+<h3 id="_11">四、社区标签只是"最大节点的名字"</h3>
+<p>这条我先冤枉了它一次，值得记下来。我第一次跑图时顺手加了 <code>--no-label</code>，拿到 99 个 <code>Community 0</code>、<code>Community 1</code>，就写下"社区命名必须靠 LLM"。回头重跑才发现是我自己关掉的——<strong>不加那个参数、也不给任何 API key，它照样能出标签</strong>：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">#</span><span class="c1"># Community Hubs (Navigation)</span>
+<span class="go">- client/test_auth.py</span>
+<span class="go">- _exceptions.py</span>
+<span class="go">- QueryParams</span>
+<span class="go">- Headers</span>
+<span class="go">- URL</span>
+</code></pre></div>
+
+<p>所以 README 说的 "LLM-free labels" 是真的。但看清它的做法之后，期望也得往下调一点：<strong>标签就是这个社区里连接数最多的那个节点的名字</strong>，不是语义概括。<code>Headers</code> 那一簇确实是 headers 相关的，但 <code>RuntimeError</code> 那一簇里装的是什么，标签完全没告诉你。够用来导航，不够用来理解。</p>
+<h3 id="_12">还有几点值得留意</h3>
+<ul>
+<li><strong>图会过期。</strong> 报告里会写建图时的 commit hash，让你自己比对。它提供了 git hook（commit 和 checkout 时后台重建），但 <code>git pull</code> 之后要手动 <code>graphify update .</code>。多一个要维护的状态，就多一个会不一致的地方。</li>
+<li><strong>项目本身非常年轻。</strong> PyPI 上第一个版本是 2026 年 4 月 4 日，到 8 月 30 日的 0.9.53 一共发了 221 个版本，<strong>平均一天一点五个版本</strong>。这个节奏说明迭代快，也说明接口还在动。你今天写的自动化脚本，下个月可能就要改。</li>
+<li><strong>开源部分是钩子。</strong> Apache 2.0 授权，代码实打实——我拆开发行包数了一下，核心 6.5 万行 Python，测试 244 个文件，测试量比主代码还大。但 README 里反复出现 graphify.com 的企业版入口——"想要常驻、后台自动更新、覆盖会议和文档"的那个版本要付费。这不是原罪，只是选型时要算进去：<strong>免费的是引擎，托管的是产品。</strong></li>
+<li><strong>benchmark 得打个折看。</strong> 它公布的 LOCOMO / LongMemEval 成绩（recall@10 0.497，QA 76%）方法论披露得相当详细，连评审模型的一致性检验都给了（90.6% 一致，Cohen's kappa 0.81），这比大部分自吹自擂的项目强太多。但这终究是<strong>自己的 harness 跑自己和对手</strong>，参考可以，别当定论。</li>
+</ul>
+<hr>
+<h2 id="_13">最佳实践：跑完之后我会这么配</h2>
+<p><strong>1. 第一次一定加 <code>--code-only</code>，并且立刻写 <code>.graphifyignore</code></strong></p>
+<div class="highlight"><pre><span></span><code>graphify<span class="w"> </span>extract<span class="w"> </span>.<span class="w"> </span>--code-only
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code># .graphifyignore
+docs/
+node_modules/
+dist/
+*.generated.py
+</code></pre></div>
+
+<p>理由见上面第二个坑。<code>.gitignore</code> 它会自动读，两者是合并的，<code>.graphifyignore</code> 后生效。</p>
+<p><strong>2. 中文用户先把 jieba 装上</strong></p>
+<div class="highlight"><pre><span></span><code>uv<span class="w"> </span>tool<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;graphifyy[chinese]&quot;</span>
+</code></pre></div>
+
+<p>不然你的中文查询会静默返回空。</p>
+<p><strong>3. 把 graph 产物加进 <code>.claudeignore</code> 或等价配置</strong></p>
+<div class="highlight"><pre><span></span><code>graph.json
+graphify-out/
+</code></pre></div>
+
+<p>这条 README 里藏在 troubleshooting 深处，但很关键：<strong>graphify 每次写 <code>graph.json</code> 都会让助手的 prompt cache 失效</strong>，下一轮对话整个上下文重新上传，按 cache-write 价格计费。省下来的 token 全从这儿漏回去了。</p>
+<p><strong>4. <code>graphify-out/</code> 要不要提交进 git，看团队</strong></p>
+<p>官方建议提交，让新人 clone 下来就有地图。我的看法是：<strong>提交 <code>manifest.json</code> 和 <code>GRAPH_REPORT.md</code> 可以，<code>graph.json</code> 慎重</strong>——FastAPI 那个图 9MB，每次 commit 都变，仓库很快就胖了。它确实提供了一个 union-merge 的 git merge driver 来避免冲突，但仓库体积的账还是要算。至于 <code>cost.json</code>，一定要 ignore。</p>
+<p><strong>5. 拿它当"接手陌生仓库的第一步"，而不是日常搜索替代品</strong></p>
+<p>我实测下来价值密度最高的三样，都是一次性的：</p>
+<ul>
+<li><code>GRAPH_REPORT.md</code> 里的 god nodes——直接告诉你哪五个类是这个项目的骨架</li>
+<li>循环依赖列表——历史债务的地图</li>
+<li><code>graphify path A B</code>——搞清楚两个模块到底怎么连上的</li>
+</ul>
+<p>日常改一行代码，老老实实 grep 反而更快。</p>
+<p><strong>6. 用 <code>explain</code> 而不是 <code>query</code>，如果你已经知道要查什么</strong></p>
+<p><code>query</code> 走的是 BFS 展开，容易膨胀。我查"重定向怎么处理"时，438 个节点，直接被 token 预算截断到 83 个，工具自己也提醒"答案可能在被砍掉的 355 个节点里"。<strong>知道符号名的时候，<code>explain "Client"</code> 精准得多。</strong></p>
+<hr>
+<h2 id="_14">竞品：同一个问题，五种解法</h2>
+<p>"让 agent 看懂代码库"这件事上，graphify 远不是唯一玩家。我按<strong>技术路线</strong>而不是知名度分了五类——因为选型时真正决定成败的是路线，不是 star 数。</p>
+<h3 id="ast">一、AST 图谱：同门师兄弟</h3>
+<p><strong>Aider 的 repo map</strong>（Apache-2.0）和 graphify 血缘最近：同样 tree-sitter、同样 NetworkX、同样不碰 embedding。区别在于用法——Aider 不做持久化图谱，它在<strong>每次调用模型之前</strong>重算一遍，用 personalized PageRank 给文件排序，再二分查找塞进大约 1024 token 的预算里。权重设计很见功力：你正在编辑的文件发出的引用 ×50，你提到的标识符 ×10，下划线开头的私有符号 ×0.1。</p>
+<blockquote>
+<p><strong>一句话区别：Aider 的图是"每轮重算的排序器"，graphify 的图是"落盘可查的地图"。</strong>
+前者服务于"这轮该给模型看哪些文件"，后者服务于"这个项目长什么样"。</p>
+</blockquote>
+<p><strong>Potpie</strong>（Apache-2.0，5.7k star）走的是重装路线：tree-sitter 解析，但存进 <strong>Neo4j</strong>，还额外跑一遍 LLM 生成 docstring 和 embedding，按分支独立索引。能力更强（真多重图、真 Cypher、支持影响面分析），代价是你得运维一个数据库，而且索引要花 LLM 的钱。<strong>如果你已经在用 Neo4j，它比 graphify 更顺手。</strong></p>
+<h3 id="lsp">二、LSP 路线：我认为最有前途的一支</h3>
+<p><strong>Serena</strong>（MIT，29k star）不建图，它把 <strong>Language Server Protocol 包成 MCP 工具</strong>给 agent 用：<code>find_symbol</code>、<code>find_referencing_symbols</code>、<code>get_symbols_overview</code>、<code>insert_after_symbol</code>。</p>
+<p>这是个很不一样的思路：<strong>不预先建图，而是让 agent 现场问 IDE。</strong> 优点非常突出——</p>
+<ul>
+<li><strong>精度是编译器级的</strong>，不是启发式。tree-sitter 认不出"这个 <code>save()</code> 到底是哪个类的"，语言服务器认得出</li>
+<li><strong>永远不会过期。</strong> 没有图，就没有图会过期的问题</li>
+<li>支持改代码，不只是读</li>
+</ul>
+<p>代价也很实在：得为每种语言装语言服务器，大项目首次索引慢，重型语言（Java、C++）的 LS 本身就很吃内存，而且<strong>没有全局视角</strong>——它能回答"谁调用了这个函数"，回答不了"这个项目的骨架是哪五个类"。</p>
+<p>我在文章后面说"这件事的自然归宿是 language server"，Serena 就是这条路已经跑出来的样子。<strong>它和 graphify 其实是互补的</strong>：graphify 给你鸟瞰图，Serena 给你显微镜。</p>
+<h3 id="graphrag">三、通用 GraphRAG：贵得吓人</h3>
+<p><strong>微软 GraphRAG</strong>（MIT，36k star）是这波知识图谱热的源头，也是 graphify 拿来对标的靶子。它面向的是通用文档而非代码：LLM 逐块抽取实体和关系，去重合并，Leiden 分社区，再让 LLM 给每个社区写摘要。</p>
+<p><strong>社区检测用 Leiden 这点和 graphify 一模一样，差别全在"边从哪来"。</strong> GraphRAG 每一条边都是 LLM 抽的，于是账单很吓人——我查到几个公开数据：一本 3.2 万词的书用 GPT-4o 索引大约 6~7 美元；500 页文档的索引成本在 50~200 美元区间，比普通向量 RAG 贵 10~40 倍；有团队把企业级语料跑完，一次索引花了约 3.3 万美元。</p>
+<p><strong>graphify 那句"建图零 LLM credit"，对标的就是这个数字。</strong> 但要讲公道：GraphRAG 处理的是没有语法树的自然语言文档，那个钱它不花不行。<strong>两者可比性有限，真正的教训是——有语法树的东西别拿 LLM 去抽。</strong></p>
+<p>同类还有 <strong>cognee</strong>（Apache-2.0，30k star）和 <strong>Graphiti</strong>（Apache-2.0，31k star），后者主打带时间维度的实时知识图谱，做 agent 长期记忆，都不是代码专用。</p>
+<h3 id="scip-joern">四、企业级精确索引：SCIP / Joern</h3>
+<p><strong>SCIP</strong>（Sourcegraph，Apache-2.0）是编译器级的索引格式，精度最高——它是拿真正的编译器前端跑出来的，跨仓库跳转都准。代价是<strong>慢且不增量</strong>：SCIP 索引器要分析整个项目，改一个文件就得全量重跑，一万文件以上的仓库索引要几分钟。这也是为什么它适合做服务端的代码导航，不适合塞进 agent 的循环里。</p>
+<p><strong>Joern</strong>（Apache-2.0，3.5k star）是另一路，做代码属性图（CPG），主要给安全审计做污点分析用。能力最深，门槛也最高。</p>
+<p><strong>一句话取舍：SCIP 和 Joern 精度碾压 tree-sitter，但都不满足"十几秒建完、随时重建"这个 agent 侧的硬需求。</strong></p>
+<h3 id="repomix-gitingest">五、打包党：Repomix / Gitingest</h3>
+<p><strong>Repomix</strong>（MIT，28k star）思路最简单粗暴：把整个仓库打包成一个 XML 文件，扔给模型。零理解、零索引、零依赖。</p>
+<p>小仓库里这招其实很好使——<strong>几千行的项目，与其建图不如直接全给它看。</strong> 但一过上下文窗口就彻底失效，而且每次都是全量 token。graphify 自己也承认，六个文件的语料它只有约 1 倍压缩比。<strong>这是 graphify 的下限，也是 Repomix 的上限。</strong></p>
+<h3 id="_15">横向对照</h3>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>路线</th>
+<th>建索引成本</th>
+<th>精度</th>
+<th>会过期吗</th>
+<th>适合</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>graphify</strong></td>
+<td>AST + 内存图</td>
+<td>零 token，十几秒</td>
+<td>中（启发式）</td>
+<td>会，要手动 update</td>
+<td>快速摸清陌生仓库</td>
+</tr>
+<tr>
+<td><strong>Aider repo map</strong></td>
+<td>AST + PageRank</td>
+<td>零 token，每轮重算</td>
+<td>中</td>
+<td>不会（不落盘）</td>
+<td>边写代码边给上下文</td>
+</tr>
+<tr>
+<td><strong>Serena</strong></td>
+<td>LSP 现场查询</td>
+<td>无需建图</td>
+<td><strong>高（编译器级）</strong></td>
+<td><strong>不会</strong></td>
+<td>精确改代码</td>
+</tr>
+<tr>
+<td><strong>Potpie</strong></td>
+<td>AST + Neo4j</td>
+<td>要花 LLM 钱</td>
+<td>中高</td>
+<td>会</td>
+<td>已有图数据库的团队</td>
+</tr>
+<tr>
+<td><strong>GraphRAG</strong></td>
+<td>LLM 抽取</td>
+<td><strong>很贵</strong></td>
+<td>视模型而定</td>
+<td>会，重建更贵</td>
+<td>非代码的文档语料</td>
+</tr>
+<tr>
+<td><strong>SCIP</strong></td>
+<td>编译器索引</td>
+<td>慢，不增量</td>
+<td><strong>最高</strong></td>
+<td>会</td>
+<td>服务端代码导航</td>
+</tr>
+<tr>
+<td><strong>Repomix</strong></td>
+<td>全量打包</td>
+<td>零</td>
+<td>不适用</td>
+<td>不会</td>
+<td>小仓库，一次性</td>
+</tr>
+</tbody>
+</table>
+<p><strong>如果只让我给一条选型建议：</strong> 想快速摸清一个陌生仓库的骨架，用 graphify；想让 agent 精确地改代码，装 Serena；两个一起用，才是我目前认为最舒服的组合——<strong>一个负责"这是什么地方"，一个负责"这一行到底谁在用"。</strong></p>
+<hr>
+<h2 id="_16">未来展望：图谱会成为标配，但未必是这个形态</h2>
+<p><strong>"结构确定的东西不要用概率去猜"，这个方向是对的。</strong> 现在的 agent 生态在长上下文和向量检索这两条路上砸了太多资源，而代码本来就有语法树、有类型系统、有编译器几十年攒下的静态分析能力——这些确定性信息，成本几乎为零，却基本被浪费了。我猜一两年内，<strong>"给 agent 一张代码结构图"会从加分项变成默认配置。</strong></p>
+<p>但不一定以 graphify 现在这个形态。<strong>它本质上还是个外挂</strong>：单独装、单独跑、单独维护新鲜度，还得靠一个 hook 在 agent 耳边念叨"记得查图"。而上面提到的 Serena 已经证明了另一条路走得通——<strong>不建图，直接把语言服务器包给 agent 用，精度更高，还没有过期问题。</strong></p>
+<p>graphify 眼下守住的差异有三条：跨语言不挑食、跨文件类型（文档音视频都能进同一张图）、产物是一个能提交进 git 的离线文件。<strong>第三条我认为最硬</strong>——语言服务器给不了你一份"可以传给同事、可以塞进 CI、可以直接 diff"的地图。但前两条，随着 LSP 侧工具成熟，很可能守不住。</p>
+<p><strong>文档那一半我持怀疑态度。</strong> 代码能做到零成本高精度，靠的是语法树；文档没有语法树，只能靠 LLM 抽，那就退回了 RAG 的老问题：贵、不稳、边可能是编的。我实测那一万七千个文档节点，绝大多数只是目录索引——<strong>这一半的价值，远没有代码那一半清楚。</strong></p>
+<p>至于"常驻记忆层"那个愿景——把会议、文档、代码实时织成一张图——听着很美，但那是另一个量级的工程，也正是他们收费版的卖点。开源这部分，当一个好用的代码地图工具来看待就好，别指望它长成第二个大脑。</p>
+<hr>
+<h2 id="_17">总结：先建图，再动手</h2>
+<p>回到开头那个画面。agent 在你的仓库里 grep 第三轮的时候，问题从来不是它笨，是<strong>你把一个需要地图的任务交给了一个只有搜索框的人。</strong></p>
+<p>graphify 给出的答案很朴素：动手之前，先花十几秒建一张图。代码这一半它做得干净利落——本地、确定、零 token、每条边都告诉你是读出来的还是猜出来的。这几条加起来，已经值得你在下一个陌生仓库上试一次。</p>
+<p>四条我会照做的：</p>
+<ol>
+<li>接手陌生项目的第一天，<code>graphify extract . --code-only</code>，把 <code>GRAPH_REPORT.md</code> 从头读到尾——特别是 god nodes 和循环依赖那两节。</li>
+<li>第一次跑完立刻写 <code>.graphifyignore</code>，把 <code>docs/</code> 排掉，别让翻译文件把图撑爆。</li>
+<li>中文环境记得装 <code>[chinese]</code>，否则你会以为是自己用错了。</li>
+<li>配一个 Serena 一起用。<strong>鸟瞰图和显微镜不是竞品，是两只眼睛。</strong></li>
+</ol>
+<p><strong>至于那些 benchmark 数字，可以少看两眼。</strong> 我更在意的是它把 <code>EXTRACTED</code> 和 <code>INFERRED</code> 分开标出来这个动作——在一个所有工具都急着显得无所不知的年代，肯把"这条是我猜的"写在输出里，反倒是一种少见的体面。</p>
+<h2 id="_18">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    LineColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* graphify：给代码库建知识图谱
+** 要解决的问题
+*** agent 反复 grep，烧钱还偏
+*** 瓶颈是上下文，不是模型
+*** 结构确定的事不该用概率猜
+** 工作原理
+*** 第一趟：代码 tree-sitter，本地零 token
+*** 第二趟：音视频 whisper 本地转写
+*** 第三趟：文档图片走 LLM，才花钱
+*** 每条边标 EXTRACTED / INFERRED / AMBIGUOUS
+*** Leiden 算法切社区，不用 embedding
+** 图存哪儿：NetworkX
+*** 内存图，不是 Neo4j / Memgraph
+*** 产物就一个 graph.json，可提交可传播
+*** 加载 5ms，重建图对象 6ms
+*** Aider 也用 NetworkX，同一个选择
+*** 天花板：百万节点要 1.4GB 内存
+*** 代价：简单图吞掉 6.5% 重复边
+*** 导出 Neo4j 也救不回来，损失在建图阶段
+** 本机实测
+*** httpx：12.8s，1637 节点，零 token
+*** FastAPI：9.5s，1148 文件，12 进程并行
+*** benchmark 实测 39.2 倍 token 压缩
+*** 循环依赖自动挖出 18 条
+*** query 在 2.5 万节点图上 1 秒返回
+** 踩到的坑
+*** 中文查询静默返回空，要装 jieba
+*** --code-only 不粘，update 后节点从 8355 涨到 25685
+*** 同名符号歧义，但报错体面
+*** 不配 LLM 社区名只有 Community N
+*** 图会过期，pull 后要手动 update
+** 最佳实践
+*** 首次必加 --code-only
+*** 立刻写 .graphifyignore 排掉 docs/
+*** graph.json 加进 .claudeignore 保 prompt cache
+*** 知道符号名就用 explain，别用 query
+*** 当接手陌生仓库的第一步，不是日常搜索替代
+** 竞品五条路线
+*** Aider：同样 AST+NetworkX，但每轮重算不落盘
+*** Serena：LSP 包成 MCP，编译器级精度，不会过期
+*** Potpie：AST 存 Neo4j，能力强但要运维
+*** GraphRAG：LLM 抽边，500 页要 50~200 美元
+*** SCIP / Joern：精度最高，但慢且不增量
+*** Repomix：全量打包，小仓库够用
+*** 我的组合：graphify 看骨架 + Serena 改代码
+** 展望
+*** 代码图谱会成为 agent 标配
+*** 正确归宿可能是 language server
+*** 文档那一半价值存疑
+*** 开源是引擎，托管是产品
+@endmindmap
+</code></pre></div>
+
+<p><img alt="graphify：给代码库建知识图谱 - 思维导图" src="./images/tech_20260902_graphify_mindmap.svg"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/2026-09-02-graphify-code-knowledge-graph.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/journal.html">journal</a>
+      <a href="https://www.fanyamin.com/blog/tag/ai.html">AI</a>
+      <a href="https://www.fanyamin.com/blog/tag/knowledge-graph.html">knowledge-graph</a>
+      <a href="https://www.fanyamin.com/blog/tag/tooling.html">tooling</a>
+      <a href="https://www.fanyamin.com/blog/tag/code-intelligence.html">code-intelligence</a>
+      <a href="https://www.fanyamin.com/blog/tag/tree-sitter.html">tree-sitter</a>
+      <a href="https://www.fanyamin.com/blog/tag/agent.html">agent</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-09-01-markpad-markdown-workbench.html" title="用 SDD 写代码之后，我每天读的 Markdown 比代码多——于是写了 markpad">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/2026-08-31-knowledge-base-workflow.html">AI 时代知识到底怎么存、怎么找：一个后端工程师的知识库工作流</a></li>
+      <li><a href="https://www.fanyamin.com/blog/progressive-disclosure-context-management.html">上下文管理之渐进式披露：别把整座图书馆搬进模型的脑子</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-17-typescript-in-ai-era.html">TypeScript 凭什么成了 AI 时代的新宠：一个不写 TS 的老程序员的读码笔记</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-08-mem0-memory-layer.html">如何管理 AI Agent 的记忆之三：让 mem0 给 AI Agent 装一层"通用记忆"</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-07-ai-coding-shared-memory.html">如何管理 AI Agent 的记忆之二：让 Claude Code、Codex、OpenCode 共享同一份记忆</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

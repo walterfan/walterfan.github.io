@@ -1,0 +1,1024 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="FreeSWITCH 那几篇讲的是&#34;怎么接通一路电话&#34;,这篇换个角度:当你有成千上万路电话、要做注册、鉴权、路由、限流、防欺诈时,前面挡在最前线的往往是 OpenSIPS。它是什么、怎么编译、一次注册和一次呼叫在脚本里到底怎么流转、代码结构长什么样、有哪些best practice、又有哪些新手必踩的坑——一次讲清。" />
+<meta name="keywords" content="tech, sip, opensips, voip, rtc, telephony">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "OpenSIPS 入门:一台 SIP 服务器,一个可编程的呼叫路由引擎",
+  "description": "FreeSWITCH 那几篇讲的是&#34;怎么接通一路电话&#34;,这篇换个角度:当你有成千上万路电话、要做注册、鉴权、路由、限流、防欺诈时,前面挡在最前线的往往是 OpenSIPS。它是什么、怎么编译、一次注册和一次呼叫在脚本里到底怎么流转、代码结构长什么样、有哪些best practice、又有哪些新手必踩的坑——一次讲清。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-09-14T20:30:00+08:00",
+  "dateModified": "2026-09-14T20:30:00+08:00",
+  "url": "https://www.fanyamin.com/blog/2026-09-14-opensips-intro.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/2026-09-14-opensips-intro.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "tech, sip, opensips, voip, rtc, telephony"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="OpenSIPS 入门:一台 SIP 服务器,一个可编程的呼叫路由引擎"/>
+  <meta property="og:description" content="FreeSWITCH 那几篇讲的是&#34;怎么接通一路电话&#34;,这篇换个角度:当你有成千上万路电话、要做注册、鉴权、路由、限流、防欺诈时,前面挡在最前线的往往是 OpenSIPS。它是什么、怎么编译、一次注册和一次呼叫在脚本里到底怎么流转、代码结构长什么样、有哪些best practice、又有哪些新手必踩的坑——一次讲清。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/2026-09-14-opensips-intro.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-09-14 20:30:00+08:00"/>
+  <meta property="article:modified_time" content="2026-09-14 20:30:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="tech"/>
+  <meta property="article:tag" content="sip"/>
+  <meta property="article:tag" content="opensips"/>
+  <meta property="article:tag" content="voip"/>
+  <meta property="article:tag" content="rtc"/>
+  <meta property="article:tag" content="telephony"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; OpenSIPS 入门:一台 SIP 服务器,一个可编程的呼叫路由引擎</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="2026-09-14-opensips-intro">OpenSIPS 入门:一台 SIP 服务器,一个可编程的呼叫路由引擎</h1>
+    <p>
+      Posted on 一 14 9月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>OpenSIPS 入门:一台 SIP 服务器,一个可编程的呼叫路由引擎</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Version</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-09-14</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">大纲</h2>
+<details>
+<summary>展开看看</summary>
+<ul>
+<li><strong>它是什么</strong>:一个 GPL 的 SIP 服务器,本质是"可编程的 SIP 信令路由引擎",不碰媒体</li>
+<li><strong>和 FreeSWITCH 什么关系</strong>:一个管信令和路由(前台),一个管媒体和业务(后台)</li>
+<li><strong>怎么编译</strong>:源码 + <code>make</code>,理解 <code>Makefile.conf</code>、模块机制、<code>TLS=1</code></li>
+<li><strong>进程与路由模型</strong>:多进程 worker + 一套自己的脚本语言,<code>route</code> / <code>branch_route</code> / <code>onreply_route</code> / <code>failure_route</code></li>
+<li><strong>典型流程</strong>:一次 REGISTER 和一次 INVITE 在 <code>opensips.cfg</code> 里到底走了哪几步</li>
+<li><strong>代码结构</strong>:core 干什么、193 个模块怎么分类、<code>tm</code>/<code>rr</code>/<code>usrloc</code> 是骨架</li>
+<li><strong>最佳实践</strong>:事务、record_route、NAT、限流、MI 管理接口</li>
+<li><strong>常见坑</strong>:483 死循环、prefix 不一致、忘了 <code>t_relay</code>、NAT 媒体不通</li>
+<li><strong>上手清单</strong>:从零到打通第一路电话</li>
+</ul>
+</details>
+<hr>
+<h2 id="opensips">一、OpenSIPS 是什么</h2>
+<p>先说结论:<strong>OpenSIPS 是一台可编程的 SIP 服务器</strong>。它不处理语音数据(RTP),只处理 SIP 信令——也就是那些 <code>REGISTER</code>、<code>INVITE</code>、<code>BYE</code> 消息。它的核心价值是:你可以用一门专门的脚本语言,决定每一条 SIP 消息该怎么处理、往哪里转。</p>
+<p>一句话类比:如果 SIP 呼叫是快递,OpenSIPS 就是那个巨大的<strong>分拣中心</strong>——它自己不送货(不传语音),但每个包裹到底发往哪个网点、要不要验身份、要不要限流、走不走加密通道,全由它说了算。而真正"送货"(收发 RTP 语音流、放音、录音、会议混音)的活,交给 FreeSWITCH、Asterisk 或 rtpproxy/rtpengine 这类媒体服务器。</p>
+<p>几个需要先对齐的名词:</p>
+<ul>
+<li><strong>SIP</strong>(Session Initiation Protocol):发起和管理通话的信令协议,长得像 HTTP,纯文本。</li>
+<li><strong>信令 vs 媒体</strong>:信令是"喂,我要给你打电话"这套约定;媒体是接通后真正传输的声音。OpenSIPS 只管前者。</li>
+<li><strong>SIP proxy</strong>:把 SIP 请求从一方转发到另一方的中间人。OpenSIPS 主要就是干这个,外加注册、鉴权、路由等一堆增强。</li>
+</ul>
+<p>OpenSIPS 起源于 SER(SIP Express Router),2005 年从 SER 分叉出来,主打"更开放的项目管理和更快的特性合入"。本文对照的是仓库里的开发版 <strong>4.1.0-dev</strong>(GPLv2 许可)。</p>
+<h3 id="freeswitch">它和 FreeSWITCH 到底谁干什么</h3>
+<p>写过前面几篇 FreeSWITCH 的读者会问:FreeSWITCH 不也能当 SIP proxy 吗?能,但定位不同。这是最容易混淆的地方,用一张表说清:</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>OpenSIPS</th>
+<th>FreeSWITCH</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>本质</td>
+<td>SIP 信令路由引擎(SIP proxy / registrar)</td>
+<td>媒体服务器 + 呼叫控制平台(B2BUA)</td>
+</tr>
+<tr>
+<td>碰不碰媒体</td>
+<td>不碰 RTP(可借 rtpproxy/rtpengine 中继)</td>
+<td>收发、转码、放音、录音、会议</td>
+</tr>
+<tr>
+<td>扩展性</td>
+<td>极强,单机可扛几万到几十万并发信令</td>
+<td>单机媒体并发受 CPU/编解码限制</td>
+</tr>
+<tr>
+<td>编程方式</td>
+<td>自己的路由脚本(<code>opensips.cfg</code>)</td>
+<td>Dialplan / mod_lua / ESL</td>
+</tr>
+<tr>
+<td>典型角色</td>
+<td>运营商级前端、负载均衡、注册代理</td>
+<td>IVR、会议、录音、转码、业务逻辑</td>
+</tr>
+</tbody>
+</table>
+<p>生产里常见的搭配是:<strong>OpenSIPS 站在最前面</strong>当注册中心和负载均衡,把呼叫分发给后面一排 FreeSWITCH 干重活。前台一个人挡住海量请求,后台一群人干细活。</p>
+<hr>
+<h2 id="_2">二、怎么编译</h2>
+<p>OpenSIPS 是 C 写的,构建系统是一套手写的 GNU Makefile,不用 CMake。核心思路:<strong>先编 core,再编模块,模块按需选</strong>。</p>
+<h3 id="_3">依赖</h3>
+<p>最小依赖不多:<code>gcc</code>、<code>bison</code>(或 yacc)、<code>flex</code>、GNU <code>make</code>(&gt;= 3.79)、<code>sed</code>、<code>tr</code>。可选依赖按模块来:要 TLS 就装 <code>openssl</code>,要 MySQL 就装 <code>libmysqlclient</code>,要 PostgreSQL 就装 <code>libpq</code>,要 XML-RPC 管理接口就装 <code>libxmlrpc-c3</code>,以此类推。</p>
+<p>Debian/Ubuntu 上装齐基础依赖:</p>
+<div class="highlight"><pre><span></span><code>sudo<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>gcc<span class="w"> </span>make<span class="w"> </span>bison<span class="w"> </span>flex<span class="w"> </span>libssl-dev<span class="w"> </span><span class="se">\</span>
+<span class="w">     </span>libmysqlclient-dev<span class="w"> </span>libpq-dev
+</code></pre></div>
+
+<h3 id="_4">三条命令跑起来</h3>
+<div class="highlight"><pre><span></span><code>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/OpenSIPS/opensips.git
+<span class="nb">cd</span><span class="w"> </span>opensips
+
+<span class="c1"># 只编 core(等价于 make opensips)</span>
+make
+
+<span class="c1"># 编所有默认模块</span>
+make<span class="w"> </span>modules
+
+<span class="c1"># 或者一步到位:core + 模块</span>
+make<span class="w"> </span>all
+
+<span class="c1"># 安装(默认装到 /usr/local/)</span>
+sudo<span class="w"> </span>make<span class="w"> </span>install
+</code></pre></div>
+
+<p>关键在于<strong>理解模块选择机制</strong>,这是新手最容易懵的地方。构建配置存在 <code>Makefile.conf</code> 里(首次 <code>make</code> 会从 <code>Makefile.conf.template</code> 拷一份),几个开关记住就够用:</p>
+<ul>
+<li><strong><code>exclude_modules</code></strong>:默认不编的模块(通常是有外部依赖的)。</li>
+<li><strong><code>include_modules</code></strong>:强制编进去,哪怕它在 exclude 列表里。</li>
+<li><strong><code>skip_modules</code></strong>:这次构建临时跳过某些模块。</li>
+</ul>
+<p>举几个实战例子:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># 只编 textops 一个模块(调试单模块时很有用)</span>
+make<span class="w"> </span><span class="nv">modules</span><span class="o">=</span>modules/textops<span class="w"> </span>modules
+
+<span class="c1"># 默认模块里跳过 textops 和 db_mysql</span>
+make<span class="w"> </span><span class="nv">skip_modules</span><span class="o">=</span><span class="s2">&quot;textops db_mysql&quot;</span><span class="w"> </span>modules
+
+<span class="c1"># 把默认不编的 db_mysql 拉进来编</span>
+make<span class="w"> </span><span class="nv">include_modules</span><span class="o">=</span><span class="s2">&quot;db_mysql&quot;</span><span class="w"> </span>modules
+
+<span class="c1"># 想编 TLS / SCTP 支持,用编译期开关</span>
+make<span class="w"> </span><span class="nv">TLS</span><span class="o">=</span><span class="m">1</span><span class="w"> </span>all
+make<span class="w"> </span><span class="nv">SCTP</span><span class="o">=</span><span class="m">1</span><span class="w"> </span>all
+</code></pre></div>
+
+<h3 id="_5">两个必须知道的编译期约定</h3>
+<p><strong>第一,<code>prefix</code> 要前后一致。</strong> 默认安装前缀是 <code>/usr/local/</code>,而<strong>默认配置文件路径是编译期硬编码进二进制的</strong>。如果你 <code>make all</code> 用默认 prefix,却 <code>make prefix=/ install</code> 装到别处,OpenSIPS 启动时会去 <code>/usr/local/etc/opensips/opensips.cfg</code> 找配置,结果文件明明在 <code>/etc/opensips/</code> ——直接找不到。正解是所有 <code>make</code> 命令都带同一个 prefix,或者干脆写进 <code>Makefile.conf</code>。</p>
+<p><strong>第二,改了 <code>DEFS</code>、编译器/链接器 flag 之后要 <code>make proper</code> 再重编。</strong> 否则依赖没重新生成,你会遇到各种玄学错误。</p>
+<p>除了源码,官方也提供 Debian/RPM 包和 Docker 镜像(仓库 <code>docker/</code> 下有 CI 用的 Dockerfile),不想折腾编译可以直接用包管理器装。</p>
+<hr>
+<h2 id="opensips_1">三、进程与路由模型:OpenSIPS 的灵魂</h2>
+<p>要真正会用 OpenSIPS,得理解两件事:<strong>它怎么跑(进程模型)</strong>,以及<strong>你怎么指挥它(路由脚本)</strong>。</p>
+<h3 id="worker">多进程 worker 模型</h3>
+<p>OpenSIPS 启动后 fork 出一组常驻进程。核心是一批 <strong>worker 进程</strong>(比如 UDP worker、TCP worker),每个 worker 独立完整地处理一条 SIP 消息——收包、跑脚本、转发,一气呵成。配置里那句 <code>udp_workers=4</code> 就是说开 4 个 UDP worker。除此之外还有 timer 进程、管理接口进程等。</p>
+<p>进程间共享状态靠<strong>共享内存(shm)</strong>,这是 OpenSIPS 高性能的关键,也是踩坑的高发区:worker 之间的私有内存(pkg)彼此看不见,只有放进 shm 的数据(比如注册信息、事务状态)才是全局可见的。</p>
+<h3 id="_6">一门专门的路由脚本语言</h3>
+<p>OpenSIPS 最独特的地方:<strong>配置文件 <code>opensips.cfg</code> 不是 key-value,而是一段用专门语言写的程序</strong>。它由词法/语法分析器(<code>cfg.lex</code> / <code>cfg.y</code>)解析,每来一条 SIP 消息,就执行对应的"路由块"。</p>
+<p>路由块分几种类型(定义在 <code>route.h</code> 里),各自在不同时机被触发:</p>
+<table>
+<thead>
+<tr>
+<th>路由块</th>
+<th>触发时机</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>route{}</code></td>
+<td>收到一条 SIP 请求(主入口)</td>
+</tr>
+<tr>
+<td><code>branch_route[]</code></td>
+<td>请求即将往某个分支发出前(每个分支各触发一次)</td>
+</tr>
+<tr>
+<td><code>onreply_route[]</code></td>
+<td>收到一条 SIP 应答时</td>
+</tr>
+<tr>
+<td><code>failure_route[]</code></td>
+<td>某个事务收到失败应答(4xx/5xx/6xx)时</td>
+</tr>
+<tr>
+<td><code>local_route[]</code></td>
+<td>OpenSIPS 自己生成请求时</td>
+</tr>
+<tr>
+<td><code>startup_route[]</code></td>
+<td>进程启动时执行一次(适合初始化)</td>
+</tr>
+<tr>
+<td><code>timer_route[]</code></td>
+<td>按设定周期定时执行</td>
+</tr>
+<tr>
+<td><code>event_route[]</code></td>
+<td>订阅的内部事件发生时</td>
+</tr>
+</tbody>
+</table>
+<p>理解这套"事件 → 路由块"的映射,是读懂任何一份 OpenSIPS 配置的钥匙。下面我们就顺着官方自带的 residential 配置(<code>etc/opensips.cfg</code>),把两个最典型的流程走一遍。</p>
+<hr>
+<h2 id="_7">四、典型用例与流程</h2>
+<h3 id="register">流程一:一次注册(REGISTER)</h3>
+<p>用户的 SIP 话机开机,要告诉服务器"我现在这个 IP/端口能被找到",这就是注册。在脚本里,它落到主 <code>route{}</code> 的这几行:</p>
+<div class="highlight"><pre><span></span><code>if (is_method(&quot;REGISTER&quot;)) {
+    # 保存注册信息到 usrloc(location 表)
+    if (!save(&quot;location&quot;))
+        xlog(&quot;failed to register AoR $tu\n&quot;);
+    exit;
+}
+</code></pre></div>
+
+<p>一次 REGISTER 的完整旅程:</p>
+<ol>
+<li><strong>进主 route</strong>:先 <code>mf_process_maxfwd_header(10)</code> 检查 Max-Forwards(防死循环)。</li>
+<li><strong>没有 To-tag</strong>,说明是新请求(不是对话内的续传)。</li>
+<li><strong>判断方法是 REGISTER</strong>。</li>
+<li><strong><code>save("location")</code></strong>:由 <code>registrar</code> 模块把这条注册写进 <code>usrloc</code> 模块管理的 location 表(内存里,可选落库),同时自动生成 200 OK 应答给话机。</li>
+<li><strong><code>exit</code></strong> 结束。</li>
+</ol>
+<p>生产环境里,REGISTER 之前通常还要插一段鉴权:用 <code>auth</code> / <code>auth_db</code> 模块做 digest 认证(<code>www_challenge</code> 发起挑战、<code>www_authorize</code> 校验),确认这个人真是他自己,防止别人冒名注册。默认配置为了免依赖把鉴权关掉了——<strong>这在生产上绝对不能照抄</strong>。</p>
+<h3 id="invite">流程二:一次呼叫(INVITE)</h3>
+<p>A 要打给 B。核心难点在于:SIP 是逐跳(hop-by-hop)的,OpenSIPS 得处理好"新请求"和"对话内后续请求"两种情况。我把 residential 配置的呼叫路径拆成几步:</p>
+<p><strong>第一步,区分新请求还是对话内请求。</strong> 有 To-tag 说明是已建立对话内的后续消息(ACK、BYE、re-INVITE):</p>
+<div class="highlight"><pre><span></span><code>if (has_totag()) {
+    # 对话内请求,按 record-route 定下的路径走
+    if (!loose_route()) { ... }
+    if (is_method(&quot;BYE&quot;)) {
+        do_accounting(&quot;log&quot;,&quot;failed&quot;);
+    }
+    route(relay);
+    exit;
+}
+</code></pre></div>
+
+<p><strong>第二步,新 INVITE 要做事务和录路(record-route)。</strong> 这两个概念是骨架:</p>
+<div class="highlight"><pre><span></span><code># 吸收重传,不重复建事务
+t_check_trans();
+
+# 让后续的对话内请求还能回到本机
+if (!is_method(&quot;REGISTER|MESSAGE&quot;))
+    record_route();
+
+# 只对 INVITE 记账
+if (is_method(&quot;INVITE&quot;)) {
+    do_accounting(&quot;log&quot;);
+}
+</code></pre></div>
+
+<p><strong>第三步,查被叫在哪,然后转发。</strong> 从 usrloc 里查 B 注册时留下的地址:</p>
+<div class="highlight"><pre><span></span><code># 从 location 表查被叫的当前联系地址
+if (!lookup(&quot;location&quot;,&quot;method-filtering&quot;)) {
+    t_reply(404, &quot;Not Found&quot;);
+    exit;
+}
+route(relay);
+</code></pre></div>
+
+<p><strong>第四步,<code>relay</code> 路由真正把请求发出去:</strong></p>
+<div class="highlight"><pre><span></span><code>route[relay] {
+    if (is_method(&quot;INVITE&quot;)) {
+        t_on_branch(&quot;per_branch_ops&quot;);   # 每个分支发出前的钩子
+        t_on_reply(&quot;handle_nat&quot;);        # 收到应答时的钩子
+        t_on_failure(&quot;missed_call&quot;);     # 失败时的钩子
+    }
+    if (!t_relay()) {
+        send_reply(500,&quot;Internal Error&quot;);
+    }
+    exit;
+}
+</code></pre></div>
+
+<p><code>t_relay()</code> 是整份配置里最重要的一个函数——它由 <code>tm</code>(transaction module,事务模块)提供,负责有状态地把请求转发出去、管理重传、匹配应答。<strong>忘了调 <code>t_relay()</code>,呼叫就石沉大海</strong>,这是新手第一大坑。</p>
+<p>配上前面注册的 <code>record_route()</code>,后续的 ACK、BYE 才能沿着同一条路径回到 OpenSIPS,整个对话才闭环。</p>
+<p>用一张图把这条呼叫链路画清楚:</p>
+<div class="highlight"><pre><span></span><code>sequenceDiagram
+    participant Alice as Alice (UAC)
+    participant OS as OpenSIPS (proxy)
+    participant Bob as Bob (UAS)
+
+    Alice-&gt;&gt;OS: INVITE
+    OS-&gt;&gt;OS: lookup(location) 查 usrloc
+    OS-&gt;&gt;OS: record_route() 记录路径
+    OS-&gt;&gt;Bob: INVITE (t_relay())
+    Bob--&gt;&gt;OS: 200 OK
+    OS--&gt;&gt;Alice: 200 OK (onreply_route)
+    Alice-&gt;&gt;OS: ACK
+    OS-&gt;&gt;Bob: ACK (loose_route) 对话内路由
+    Note over Alice,Bob: RTP 媒体流(不经过 OpenSIPS,除非用 rtpproxy)
+    Alice-&gt;&gt;OS: BYE
+    OS-&gt;&gt;Bob: BYE
+</code></pre></div>
+
+<p>注意最后那条:<strong>语音流(RTP)默认直接在 Alice 和 Bob 之间跑,不经过 OpenSIPS</strong>。这正是它能扛高并发的原因——它只处理小小的信令包。只有当双方在 NAT 后面互相看不见时,才需要 rtpproxy/rtpengine 出来中继媒体。</p>
+<hr>
+<h2 id="_8">五、代码结构</h2>
+<p>克隆下来的仓库,粗看文件很多,但脉络清晰。分三层理解:</p>
+<h3 id="core-ch">Core(仓库根目录的那堆 .c/.h)</h3>
+<p>这是引擎本身,不涉及具体业务。挑几个关键的:</p>
+<ul>
+<li><strong><code>main.c</code></strong>:进程入口,负责启动、fork worker、装载配置。</li>
+<li><strong><code>cfg.lex</code> / <code>cfg.y</code></strong>:那门路由脚本语言的词法和语法分析器(flex + bison)。</li>
+<li><strong><code>route.c</code> / <code>action.c</code></strong>:执行路由脚本、跑每个 action 的核心。</li>
+<li><strong><code>msg_translator.c</code> / <code>parser/</code></strong>:解析和重建 SIP 消息。<code>parser/</code> 是个独立目录,专管把文本 SIP 拆成结构体。</li>
+<li><strong><code>mem/</code></strong>:内存管理,区分 <strong>pkg</strong>(进程私有)和 <strong>shm</strong>(共享)两套分配器——这是理解 OpenSIPS 并发模型的关键。</li>
+<li><strong><code>net/</code></strong>:网络传输层,TCP/UDP 收发、<code>io_wait</code> 事件循环。</li>
+<li><strong><code>pt.c</code></strong>:进程表,管理那一组 worker 进程。</li>
+<li><strong><code>sr_module.c</code></strong>:模块加载和 API 注册机制(<code>dlopen</code> 动态加载 <code>.so</code>)。</li>
+<li><strong><code>pvar.c</code> / <code>transformations.c</code></strong>:脚本里 <code>$ru</code>、<code>$fu</code> 这类<strong>伪变量</strong>(pseudo-variable)和 <code>{s.len}</code> 这类<strong>变换</strong>的实现。</li>
+</ul>
+<h3 id="modulesmodules193">Modules(<code>modules/</code>,193 个模块)</h3>
+<p>OpenSIPS 的功能几乎全在模块里,core 只是骨架。193 个模块按用途大致分几类:</p>
+<table>
+<thead>
+<tr>
+<th>类别</th>
+<th>代表模块</th>
+<th>干什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>骨架(几乎必用)</td>
+<td><code>tm</code>、<code>rr</code>、<code>sl</code>、<code>maxfwd</code>、<code>sipmsgops</code></td>
+<td>事务、录路、无状态回复、跳数、消息操作</td>
+</tr>
+<tr>
+<td>注册与定位</td>
+<td><code>usrloc</code>、<code>registrar</code>、<code>mid_registrar</code></td>
+<td>用户位置存储、注册处理</td>
+</tr>
+<tr>
+<td>鉴权</td>
+<td><code>auth</code>、<code>auth_db</code>、<code>auth_jwt</code>、<code>auth_aka</code></td>
+<td>digest / JWT / AKA 认证</td>
+</tr>
+<tr>
+<td>数据库</td>
+<td><code>db_mysql</code>、<code>db_postgres</code>、<code>db_sqlite</code>、<code>db_text</code></td>
+<td>各种 DB 后端(统一 DB API)</td>
+</tr>
+<tr>
+<td>缓存</td>
+<td><code>cachedb_redis</code>、<code>cachedb_mongodb</code>、<code>cachedb_local</code></td>
+<td>分布式/本地缓存</td>
+</tr>
+<tr>
+<td>路由策略</td>
+<td><code>dispatcher</code>、<code>drouting</code>、<code>load_balancer</code>、<code>carrierroute</code></td>
+<td>负载均衡、动态路由、运营商路由</td>
+</tr>
+<tr>
+<td>对话与状态</td>
+<td><code>dialog</code>、<code>topology_hiding</code></td>
+<td>对话跟踪、拓扑隐藏</td>
+</tr>
+<tr>
+<td>NAT / 媒体</td>
+<td><code>nathelper</code>、<code>rtpproxy</code>、<code>rtpengine</code></td>
+<td>NAT 穿透、RTP 中继</td>
+</tr>
+<tr>
+<td>传输协议</td>
+<td><code>proto_udp</code>、<code>proto_tcp</code>、<code>proto_tls</code>、<code>proto_ws</code>、<code>proto_wss</code></td>
+<td>各种 SIP 传输层(含 WebRTC 用的 WSS)</td>
+</tr>
+<tr>
+<td>集群与高可用</td>
+<td><code>clusterer</code></td>
+<td>多节点数据同步</td>
+</tr>
+<tr>
+<td>安全</td>
+<td><code>fraud_detection</code>、<code>permissions</code></td>
+<td>防欺诈、权限控制</td>
+</tr>
+<tr>
+<td>管理接口</td>
+<td><code>mi_fifo</code>、<code>mi_http</code>、<code>mi_html</code></td>
+<td>运行时管理(MI)</td>
+</tr>
+</tbody>
+</table>
+<p>每个模块目录下都有 README(由 docbook XML 生成),写清了它导出的函数、参数、伪变量。这是查 API 的第一手资料。</p>
+<h3 id="liblib">Lib(<code>lib/</code>)与其他</h3>
+<p><code>lib/</code> 放公共库(JSON、CSV、URL、digest 鉴权、hash 等),<code>db/</code> 是数据库抽象层,<code>mem/</code> 内存,<code>evi/</code> 事件接口,<code>mi/</code> 管理接口框架。理解了 "core 提供机制、module 实现策略" 这条主线,整个仓库就不再是一团乱麻。</p>
+<hr>
+<h2 id="_9">六、最佳实践</h2>
+<p>真正跑生产,下面几条比语法更重要:</p>
+<ul>
+<li><strong>一切转发都走事务(<code>t_relay</code>)。</strong> 除非你非常清楚自己在干无状态转发,否则新请求一律用 <code>tm</code> 模块的 <code>t_relay()</code>,让它替你管重传和应答匹配。别自己 <code>forward()</code> 硬转。</li>
+<li><strong>对所有需要闭环的对话做 <code>record_route()</code>。</strong> 不然 ACK/BYE 找不到回来的路,对话半路断裂。记账、计费、拓扑隐藏也都依赖它。</li>
+<li><strong>鉴权别省。</strong> 默认配置关了鉴权是为了免依赖,生产必须开 <code>auth_db</code> + digest,否则任何人都能冒名注册、盗打。</li>
+<li><strong>NAT 要专门处理。</strong> 大量话机在 NAT 后面。用 <code>nathelper</code> 检测、<code>fix_nated_contact</code>/<code>fix_nated_sdp</code> 修正,媒体不通时上 <code>rtpproxy</code>/<code>rtpengine</code> 中继。这是实战里最耗时的一块。</li>
+<li><strong>限流与防欺诈前置。</strong> 用 <code>pike</code>(流控)、<code>fraud_detection</code>(异常呼叫模式)在最前面挡住攻击和话费盗刷——SIP 服务器天天被扫。</li>
+<li><strong>善用 MI 管理接口。</strong> <code>mi_fifo</code> / <code>mi_http</code> 让你运行时查状态、看统计、reload 数据,不用重启。配 <code>opensips-cli</code> 工具更顺手(老的 <code>opensipsctl</code> 已被移除)。</li>
+<li><strong>配置模块化。</strong> 用 <code>route(name)</code> 把逻辑拆成命名子路由,别把几百行塞进一个 <code>route{}</code>。<code>examples/templates/</code> 下有 M4 模板可以起步。</li>
+<li><strong>持久化和高可用。</strong> 注册、对话状态默认在内存,重启即失。生产用 DB 落库或 <code>clusterer</code> 做多节点同步。</li>
+</ul>
+<hr>
+<h2 id="_10">七、常见坑</h2>
+<p>老程序员的经验是:框架的坑,往往长得都一样。OpenSIPS 这几个几乎人人踩过:</p>
+<ul>
+<li><strong>483 Too Many Hops / 513 Message Too Large 的死循环。</strong> 十有八九是<strong>本域匹配没配对</strong>:OpenSIPS 没认出"这条请求是发给我自己的",于是又把它转给了自己,直到 Max-Forwards 归零。解法:配好 <code>alias=你的域名</code>,让 <code>is_myself()</code> 能正确判断。这是官方 INSTALL 文档里专门列出来的头号问题。</li>
+<li><strong>prefix 前后不一致,启动就找不到配置。</strong> 前面编译章节说过:<code>make</code> 和 <code>make install</code> 的 prefix 必须一致,否则二进制里硬编码的配置路径和实际安装路径对不上。</li>
+<li><strong>忘了 <code>t_relay()</code>,呼叫石沉大海。</strong> 脚本逻辑跑完了却没真正转发,对方永远等不到 INVITE。</li>
+<li><strong>忘了 <code>record_route()</code>,对话中途断。</strong> INVITE 通了,但 BYE 挂不掉、re-INVITE 失败,因为后续请求回不到 OpenSIPS。</li>
+<li><strong>NAT 后媒体不通:信令通,听不到声音。</strong> 典型症状是"电话接通了但双方都是哑巴"。因为 SDP 里写的是内网 IP。要用 <code>nathelper</code> 修 SDP,必要时用 rtpproxy 中继。</li>
+<li><strong>shm 内存耗尽。</strong> 对话/事务状态都在共享内存,并发一高、又没设合理超时(<code>fr_timeout</code>、对话生命周期),shm 会被撑爆。上线前用 <code>-m</code>(shm 大小)、<code>-M</code>(pkg 大小)算好容量。</li>
+<li><strong>改了 <code>DEFS</code> 不 <code>make proper</code> 直接重编。</strong> 会遇到莫名其妙的运行时错误,清理重编即可。</li>
+<li><strong>把默认配置直接搬上生产。</strong> residential 配置是教学用的最小示例,关了鉴权、没落库、没 NAT 处理、没限流——照抄上线等于裸奔。</li>
+</ul>
+<hr>
+<h2 id="_11">八、上手清单</h2>
+<p>想从零打通第一路电话,按这个顺序来:</p>
+<ol>
+<li><strong>装依赖</strong>:<code>gcc make bison flex libssl-dev</code>(要 DB 再加对应 lib)。</li>
+<li><strong>拉源码编译</strong>:<code>git clone</code> → <code>make all</code> → <code>sudo make install</code>(注意 prefix 一致)。</li>
+<li><strong>改配置</strong>:编辑 <code>/usr/local/etc/opensips/opensips.cfg</code>,把 <code>socket=udp:127.0.0.1:5060</code> 里的 IP 换成你的真实网卡地址,设好 <code>alias=你的域名</code>。</li>
+<li><strong>启动</strong>:<code>opensips -f /usr/local/etc/opensips/opensips.cfg</code>,先前台带 <code>-D</code> 看日志。</li>
+<li><strong>两个软电话注册</strong>:用 Linphone/Zoiper 注册两个账号到你的服务器(默认无鉴权,随便填用户名)。</li>
+<li><strong>互拨验证</strong>:A 拨 B,看能不能接通。</li>
+<li><strong>看状态</strong>:用 <code>opensips-cli</code> 或 <code>mi_fifo</code> 查在线注册、事务统计。</li>
+<li><strong>加鉴权和 NAT</strong>:验证通过后,再逐步加 <code>auth_db</code>、<code>nathelper</code>,向生产靠拢。</li>
+</ol>
+<hr>
+<h2 id="_12">总结:先分清信令和媒体,再谈路由</h2>
+<p>OpenSIPS 不难,难的是<strong>一开始就把它和 FreeSWITCH、和媒体服务器混为一谈</strong>。记住这条主线:它是一台只管 SIP 信令、不碰语音数据的<strong>可编程路由引擎</strong>;它的全部威力,来自那门"每来一条消息就执行一段路由脚本"的语言,和背后 193 个各司其职的模块。</p>
+<p>理解了 core 提供机制、module 实现策略、脚本编排流程这三层,再回头看任何一份 <code>opensips.cfg</code>,你都能顺着 <code>route{}</code> 一步步读懂它在干什么。剩下的,就是在真实流量里,把鉴权、NAT、限流、高可用一块块补齐。</p>
+<h3 id="_13">行动清单</h3>
+<ul>
+<li>[ ] 编译时确认 <code>make</code> 与 <code>make install</code> 的 prefix 一致</li>
+<li>[ ] 配好 <code>alias</code>,避免 483 死循环</li>
+<li>[ ] 所有需要闭环的对话都 <code>record_route()</code></li>
+<li>[ ] 所有转发都走 <code>t_relay()</code>(有状态)</li>
+<li>[ ] 生产环境务必开启 <code>auth_db</code> digest 鉴权</li>
+<li>[ ] NAT 场景配 <code>nathelper</code>,媒体不通上 rtpproxy/rtpengine</li>
+<li>[ ] 前置 <code>pike</code> 限流 + <code>fraud_detection</code> 防盗刷</li>
+<li>[ ] 用 DB 或 <code>clusterer</code> 解决状态持久化和高可用</li>
+<li>[ ] 上线前用 <code>-m</code>/<code>-M</code> 算好 shm/pkg 容量</li>
+</ul>
+<hr>
+<h2 id="_14">参考</h2>
+<ul>
+<li>OpenSIPS 源码与文档:<a href="https://github.com/OpenSIPS/opensips">https://github.com/OpenSIPS/opensips</a></li>
+<li>官方模块列表:<a href="https://www.opensips.org/Documentation/Modules">https://www.opensips.org/Documentation/Modules</a></li>
+<li>opensips-cli 管理工具:<a href="https://github.com/OpenSIPS/opensips-cli">https://github.com/OpenSIPS/opensips-cli</a></li>
+</ul>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/2026-09-14-opensips-intro.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/tech.html">tech</a>
+      <a href="https://www.fanyamin.com/blog/tag/sip.html">sip</a>
+      <a href="https://www.fanyamin.com/blog/tag/opensips.html">opensips</a>
+      <a href="https://www.fanyamin.com/blog/tag/voip.html">voip</a>
+      <a href="https://www.fanyamin.com/blog/tag/rtc.html">rtc</a>
+      <a href="https://www.fanyamin.com/blog/tag/telephony.html">telephony</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-09-14-webrtc-to-freeswitch.html" title="webrtc-to-freeswitch:一个浏览器软电话的架构、流程与协议全解">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/2026-09-14-freeswitch-dialplan-101.html" title="拨号计划 101：FreeSWITCH 里那台可编程状态机">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/2026-09-14-webrtc-to-freeswitch.html">webrtc-to-freeswitch:一个浏览器软电话的架构、流程与协议全解</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-09-11-sipjs-call-freeswitch.html">用 SIP.js 从浏览器打电话到 FreeSWITCH</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-29-sip-protocol-contact-center.html">SIP 协议回顾：从一通电话到呼叫中心</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-09-14-lua-in-freeswitch.html">重拾 Lua：从月亮语言到 FreeSWITCH 里的胶水</a></li>
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-testing-unit-and-integration.html">给 FreeSWITCH 写测试：从单元测试到集成测试，用一个真 bug 串起来</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

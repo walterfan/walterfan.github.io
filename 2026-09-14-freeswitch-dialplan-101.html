@@ -1,0 +1,1018 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="很多人把 FreeSWITCH 的拨号计划当成一个&#34;路由配置文件&#34;，改完 reloadxml 就完事。可它其实是一台按呼叫上下文运行的状态机：一通电话进来，它一条条判断条件、往 channel 上贴变量、排一串要执行的动作，最后决定这通电话走哪条路。理解了这一点，IVR、排队、转接、录音这些呼叫中心功能才不再是黑盒。本文以 XML 拨号计划为主，配少量 Lua，讲清它是什么、能干什么、怎么写、有哪些最佳实践和常见坑，最后用几个真实呼叫中心场景演示排障技巧。" />
+<meta name="keywords" content="freeswitch, dialplan, VoIP, Contact Center, routing">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "拨号计划 101：FreeSWITCH 里那台可编程状态机",
+  "description": "很多人把 FreeSWITCH 的拨号计划当成一个&#34;路由配置文件&#34;，改完 reloadxml 就完事。可它其实是一台按呼叫上下文运行的状态机：一通电话进来，它一条条判断条件、往 channel 上贴变量、排一串要执行的动作，最后决定这通电话走哪条路。理解了这一点，IVR、排队、转接、录音这些呼叫中心功能才不再是黑盒。本文以 XML 拨号计划为主，配少量 Lua，讲清它是什么、能干什么、怎么写、有哪些最佳实践和常见坑，最后用几个真实呼叫中心场景演示排障技巧。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-09-14T21:00:00+08:00",
+  "dateModified": "2026-09-14T21:00:00+08:00",
+  "url": "https://www.fanyamin.com/blog/2026-09-14-freeswitch-dialplan-101.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/2026-09-14-freeswitch-dialplan-101.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "freeswitch, dialplan, VoIP, Contact Center, routing"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="拨号计划 101：FreeSWITCH 里那台可编程状态机"/>
+  <meta property="og:description" content="很多人把 FreeSWITCH 的拨号计划当成一个&#34;路由配置文件&#34;，改完 reloadxml 就完事。可它其实是一台按呼叫上下文运行的状态机：一通电话进来，它一条条判断条件、往 channel 上贴变量、排一串要执行的动作，最后决定这通电话走哪条路。理解了这一点，IVR、排队、转接、录音这些呼叫中心功能才不再是黑盒。本文以 XML 拨号计划为主，配少量 Lua，讲清它是什么、能干什么、怎么写、有哪些最佳实践和常见坑，最后用几个真实呼叫中心场景演示排障技巧。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/2026-09-14-freeswitch-dialplan-101.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-09-14 21:00:00+08:00"/>
+  <meta property="article:modified_time" content="2026-09-14 21:00:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="freeswitch"/>
+  <meta property="article:tag" content="dialplan"/>
+  <meta property="article:tag" content="VoIP"/>
+  <meta property="article:tag" content="Contact Center"/>
+  <meta property="article:tag" content="routing"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 拨号计划 101：FreeSWITCH 里那台可编程状态机</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="2026-09-14-freeswitch-dialplan-101">拨号计划 101：FreeSWITCH 里那台可编程状态机</h1>
+    <p>
+      Posted on 一 14 9月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>拨号计划 101：FreeSWITCH 里那台可编程状态机</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Version</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-09-14</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">大纲</h2>
+<details>
+<summary>展开看看</summary>
+<ul>
+<li><strong>一个常见的误会</strong>：拨号计划不是"路由配置文件"，而是一台按呼叫上下文运行的可编程状态机。分不清这一点，排障时就会一直在错的地方找问题。</li>
+<li><strong>拨号计划是什么</strong>：一通电话进来后，FreeSWITCH 在某个 context 里从上往下匹配 extension，命中就把一串 application 排进 channel 的执行队列，再逐个执行。</li>
+<li><strong>五个核心概念</strong>：Context（上下文/安全边界）、Extension（一组条件+动作）、Condition（正则匹配）、Application（真正干活的动作）、Channel Variable（贴在通话上的状态）。</li>
+<li><strong>它能干什么、不能干什么</strong>：能做路由、变量运算、调用 IVR/排队/录音；不做媒体搬运、不管排队策略本身、复杂逻辑要交给 Lua/ESL。</li>
+<li><strong>最容易栽的五个坑</strong>：忘了 <code>continue</code>、正则锚点漏写、变量作用域搞混、<code>transfer</code> 后代码还在跑、context 权限边界失守。</li>
+<li><strong>呼叫中心实战</strong>：把 IVR 分流、工作时间判断、外呼加主叫、座席转接、按条件录音这几件事，用真实的 XML 片段串起来。</li>
+<li><strong>排障技巧</strong>：<code>sofia global siptrace</code>、<code>uuid_dump</code>、<code>fsctl loglevel</code>、xml_dialplan 的 debug、以及"从 CHANNEL_EXECUTE 事件倒推"的思路。</li>
+<li><strong>收尾</strong>：把拨号计划当状态机看，你才知道每一步 channel 上发生了什么，排障就从"猜"变成"读日志"。</li>
+</ul>
+</details>
+<hr>
+<p>我见过不止一个人，把 FreeSWITCH 的拨号计划当成 Nginx 那样的路由配置：写几条规则，<code>reloadxml</code> 一下，电话就该往对的地方走。等到某天电话莫名其妙挂断、录音只录了一半、外呼显示的主叫号码是空的，他们打开 <code>dialplan/default.xml</code>，盯着那几十行 <code>&lt;condition&gt;</code> 和 <code>&lt;action&gt;</code>，一脸茫然——明明写得清清楚楚，为什么不按预期走？</p>
+<p>问题就出在"配置文件"这三个字上。配置文件是静态的，你写什么它就是什么。可拨号计划不是：<strong>它是一台按呼叫上下文运行的状态机</strong>。同一份 XML，来电号码不同、时间不同、channel 上已经贴了什么变量不同，走出来的路就完全不同。你读那份 XML，读到的只是状态机的"转移规则"；真正决定这通电话命运的，是运行时那一份属于它自己的 channel 状态。</p>
+<p>这篇文章想让你记住一件事：<strong>拨号计划是路由的可编程状态机，不是配置文件。</strong> 想清楚这一点，你排障时就不会再对着 XML 干瞪眼，而是去看这通电话在运行时到底走到了哪一步、channel 上贴了什么、下一个要执行的 application 是谁。下面我以 XML 拨号计划为主，配少量 Lua，把它是什么、能干什么、怎么写、有哪些坑讲清楚，再用几个呼叫中心场景演示怎么排障。</p>
+<ul>
+<li>一句话立住主张：拨号计划 = 条件匹配（状态转移）+ 动作队列（状态机执行）。</li>
+<li>它<strong>不是</strong>媒体面，也不是完整的业务逻辑，别把整个呼叫中心塞进 XML。</li>
+</ul>
+<hr>
+<h2 id="_2">先搞清楚：一通电话进来后发生了什么</h2>
+<p>假设一个座席（或者外部来电）拨了 <code>1005</code>。从 FreeSWITCH 的视角，事情是这样发生的：</p>
+<ol>
+<li>呼叫落到某个 <strong>context</strong>（上下文）。context 由是谁发起的呼叫决定——内部分机通常落在 <code>default</code>，外部 SIP Trunk 进来的通常落在 <code>public</code>。</li>
+<li>FreeSWITCH 在这个 context 里，<strong>从上往下</strong>逐条看 <code>&lt;extension&gt;</code>。</li>
+<li>每个 extension 里有若干 <code>&lt;condition&gt;</code>，拿被叫号码（<code>destination_number</code>）之类的字段去做<strong>正则匹配</strong>。</li>
+<li>一旦某条 extension 的条件命中，里面的 <code>&lt;action&gt;</code> 就被<strong>依次排进 channel 的执行队列</strong>——注意，是"排队"，不是立刻执行。</li>
+<li>匹配阶段走完（或者遇到 <code>transfer</code>、<code>answer</code> 后进入某个阻塞 application），FreeSWITCH 开始<strong>逐个执行</strong>队列里的 application。</li>
+</ol>
+<p>一段最小的例子：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;extension</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;test_1005&quot;</span><span class="nt">&gt;</span>
+<span class="w">  </span><span class="nt">&lt;condition</span><span class="w"> </span><span class="na">field=</span><span class="s">&quot;destination_number&quot;</span><span class="w"> </span><span class="na">expression=</span><span class="s">&quot;^1005$&quot;</span><span class="nt">&gt;</span>
+<span class="w">    </span><span class="nt">&lt;action</span><span class="w"> </span><span class="na">application=</span><span class="s">&quot;answer&quot;</span><span class="nt">/&gt;</span>
+<span class="w">    </span><span class="nt">&lt;action</span><span class="w"> </span><span class="na">application=</span><span class="s">&quot;playback&quot;</span><span class="w"> </span><span class="na">data=</span><span class="s">&quot;ivr/ivr-welcome.wav&quot;</span><span class="nt">/&gt;</span>
+<span class="w">    </span><span class="nt">&lt;action</span><span class="w"> </span><span class="na">application=</span><span class="s">&quot;hangup&quot;</span><span class="nt">/&gt;</span>
+<span class="w">  </span><span class="nt">&lt;/condition&gt;</span>
+<span class="nt">&lt;/extension&gt;</span>
+</code></pre></div>
+
+<p><code>field="destination_number"</code> 是要匹配的字段，<code>expression="^1005$"</code> 是正则。命中后，<code>answer</code>、<code>playback</code>、<code>hangup</code> 三个 application 依次执行。看起来平平无奇，但这里已经藏着状态机的两个阶段：<strong>匹配（决定状态转移）</strong>和<strong>执行（跑动作队列）</strong>。很多坑，就来自把这两个阶段混为一谈。</p>
+<blockquote>
+<p><strong>拨号计划分两个阶段：先匹配、后执行。</strong>
+匹配阶段你在"选路"，执行阶段才在"干活"。搞混它们，<code>transfer</code> 之类的动作就会咬到你。</p>
+</blockquote>
+<hr>
+<h2 id="_3">五个核心概念，一张表看懂</h2>
+<p>拨号计划的词汇其实不多，就五个。搞懂它们各自的职责，读任何一份 dialplan 都不慌。</p>
+<table>
+<thead>
+<tr>
+<th>概念</th>
+<th>它是什么</th>
+<th>类比</th>
+<th>常踩的坑</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Context</strong></td>
+<td>一组 extension 的命名空间，也是安全边界</td>
+<td>小区的门禁分区：内部分机一个区，外线来电一个区</td>
+<td>把内部路由暴露在 <code>public</code>，等于给外人开了拨打内线的权限</td>
+</tr>
+<tr>
+<td><strong>Extension</strong></td>
+<td>一组"条件 + 动作"，匹配一类呼叫</td>
+<td><code>if</code> 分支</td>
+<td>顺序敏感，写在下面的可能永远匹配不到</td>
+</tr>
+<tr>
+<td><strong>Condition</strong></td>
+<td>用正则匹配 channel 上的某个字段</td>
+<td><code>if (号码 ~= 某模式)</code></td>
+<td>漏写锚点 <code>^...$</code>，<code>^10</code> 会把 <code>1000~1099</code> 全吃掉</td>
+</tr>
+<tr>
+<td><strong>Application</strong></td>
+<td>真正执行的动作（放音、桥接、转接……）</td>
+<td>函数调用</td>
+<td>有的会阻塞（<code>bridge</code>），有的立即返回（<code>set</code>）</td>
+</tr>
+<tr>
+<td><strong>Channel Variable</strong></td>
+<td>贴在这通电话上的运行时状态</td>
+<td>请求上下文/session</td>
+<td>作用域和生命周期搞不清，值读出来是空的</td>
+</tr>
+</tbody>
+</table>
+<p>这里要专门说 <strong>channel variable</strong>，因为它是"状态机"里"状态"那部分的载体。一通电话从进来到挂断，channel 上会不断被贴变量：主叫、被叫、录音路径、你自己 <code>set</code> 的业务标记……后面的 application 靠读这些变量决策。你可以用 <code>${变量名}</code> 引用它：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;action</span><span class="w"> </span><span class="na">application=</span><span class="s">&quot;set&quot;</span><span class="w"> </span><span class="na">data=</span><span class="s">&quot;effective_caller_id_name=客服热线&quot;</span><span class="nt">/&gt;</span>
+<span class="nt">&lt;action</span><span class="w"> </span><span class="na">application=</span><span class="s">&quot;log&quot;</span><span class="w"> </span><span class="na">data=</span><span class="s">&quot;INFO 主叫是 ${caller_id_number}, 被叫是 ${destination_number}&quot;</span><span class="nt">/&gt;</span>
+</code></pre></div>
+
+<p>理解 channel variable 的作用域，是写对拨号计划的关键——这也是下面"坑"那一节的重头。</p>
+<hr>
+<h2 id="_4">它能干什么，不能干什么</h2>
+<p>拨号计划的能力边界，和上一篇讲 SIP 时说的一样重要：<strong>知道它不管什么，比知道它管什么更能救命。</strong></p>
+<p><strong>它擅长的：</strong></p>
+<ul>
+<li><strong>路由决策</strong>：按被叫、主叫、时间、来源 context 选择呼叫去向。</li>
+<li><strong>变量运算与条件分支</strong>：<code>set</code>、<code>multiset</code>、正则捕获组、<code>cond()</code> 内联三元表达式。</li>
+<li><strong>编排动作</strong>：把 <code>answer</code>、<code>playback</code>、<code>ivr</code>、<code>bridge</code>、<code>record_session</code>、<code>transfer</code> 这些 application 串成一条流程。</li>
+<li><strong>对接子系统</strong>：调用 IVR（<code>ivr</code>）、排队（<code>callcenter</code> / <code>fifo</code>）、会议（<code>conference</code>）、录音（<code>record_session</code>）。</li>
+</ul>
+<p><strong>它不擅长、甚至不该做的：</strong></p>
+<ul>
+<li><strong>搬运媒体</strong>。声音走的是 RTP，拨号计划只负责"让谁和谁通话"，不碰音频流本身。</li>
+<li><strong>实现复杂业务逻辑</strong>。查数据库、调 HTTP、做复杂状态判断，塞进 XML 会变成一团乱麻。这时候该请 Lua 或 ESL（Event Socket Library）出场。</li>
+<li><strong>管理排队策略本身</strong>。拨号计划把电话交给 <code>callcenter</code>，但坐席怎么分、按什么算法轮转，那是 mod_callcenter 的事。</li>
+</ul>
+<p>一句话划界：<strong>拨号计划是"选路和编排"，不是"计算和搬运"。</strong> 一旦你发现自己在 XML 里写第三层嵌套的条件判断、或者想在里面拼 SQL，那就是该切到 Lua 的信号。</p>
+<p>XML 与 Lua 的分工，可以这样记：</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>用 XML</th>
+<th>用 Lua</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>静态路由、简单前缀匹配</td>
+<td>✅ 直接、可读、reloadxml 即生效</td>
+<td>杀鸡用牛刀</td>
+</tr>
+<tr>
+<td>按时间/来源做几个分支</td>
+<td>✅ <code>condition</code> 足够</td>
+<td>也行，但没必要</td>
+</tr>
+<tr>
+<td>查库/调 API 决定去向</td>
+<td>❌ 写不了</td>
+<td>✅ <code>mod_lua</code> 里跑逻辑</td>
+</tr>
+<tr>
+<td>循环、复杂数据结构</td>
+<td>❌ 很痛苦</td>
+<td>✅ Lua 的主场</td>
+</tr>
+<tr>
+<td>动态生成放音内容</td>
+<td>勉强</td>
+<td>✅ 拼字符串、<code>session:streamFile</code></td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="_5">最容易栽的五个坑</h2>
+<p>这几个坑，我把它们排在能力介绍之后专门讲，因为它们几乎都源自"没把拨号计划当状态机看"。</p>
+<h3 id="1-continue-extension">坑 1：忘了 <code>continue</code>，一条 extension 吃掉所有匹配</h3>
+<p>默认情况下，一条 extension 的 condition <strong>匹配成功后就停止</strong>继续往下找别的 extension。如果你想匹配完这条、还接着走下一条，得显式写 <code>continue="true"</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;extension</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;set_recording_flag&quot;</span><span class="w"> </span><span class="na">continue=</span><span class="s">&quot;true&quot;</span><span class="nt">&gt;</span>
+<span class="w">  </span><span class="nt">&lt;condition</span><span class="w"> </span><span class="na">field=</span><span class="s">&quot;destination_number&quot;</span><span class="w"> </span><span class="na">expression=</span><span class="s">&quot;^1\d{3}$&quot;</span><span class="nt">&gt;</span>
+<span class="w">    </span><span class="nt">&lt;action</span><span class="w"> </span><span class="na">application=</span><span class="s">&quot;set&quot;</span><span class="w"> </span><span class="na">data=</span><span class="s">&quot;recording_enabled=true&quot;</span><span class="nt">/&gt;</span>
+<span class="w">  </span><span class="nt">&lt;/condition&gt;</span>
+<span class="nt">&lt;/extension&gt;</span>
+
+<span class="nt">&lt;extension</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;dial_agent&quot;</span><span class="nt">&gt;</span>
+<span class="w">  </span><span class="nt">&lt;condition</span><span class="w"> </span><span class="na">field=</span><span class="s">&quot;destination_number&quot;</span><span class="w"> </span><span class="na">expression=</span><span class="s">&quot;^(1\d{3})$&quot;</span><span class="nt">&gt;</span>
+<span class="w">    </span><span class="nt">&lt;action</span><span class="w"> </span><span class="na">application=</span><span class="s">&quot;bridge&quot;</span><span class="w"> </span><span class="na">data=</span><span class="s">&quot;user/$1&quot;</span><span class="nt">/&gt;</span>
+<span class="w">  </span><span class="nt">&lt;/condition&gt;</span>
+<span class="nt">&lt;/extension&gt;</span>
+</code></pre></div>
+
+<p>第一条给内部分机打上"要录音"的标记，<code>continue="true"</code> 让它继续往下走；第二条才真正桥接。漏了 <code>continue</code>，第二条永远轮不到。</p>
+<h3 id="210">坑 2：正则漏锚点，<code>^10</code> 吞掉一片号码</h3>
+<p><code>expression="^10"</code> 会匹配 <code>10</code> 开头的<strong>所有</strong>号码——<code>100</code>、<code>1000</code>、<code>10086</code>…… 想精确匹配四位分机，必须写 <code>^(\d{4})$</code>。锚点 <code>^</code> 和 <code>$</code> 不是可选装饰，是划定边界的护栏。</p>
+<h3 id="3channel-variable">坑 3：channel variable 作用域搞混</h3>
+<p>这是最隐蔽的一个。<code>set</code> 设的变量默认贴在<strong>当前 channel（A-leg）</strong>上；桥接出去的对端（B-leg）读不到，除非用 <code>export</code>（同时留在 A-leg 并传给 B-leg）或者在 <code>bridge</code> 的拨号串上用内联前缀指定：</p>
+<div class="highlight"><pre><span></span><code><span class="cm">&lt;!-- 只在 A-leg 有效 --&gt;</span>
+<span class="nt">&lt;action</span><span class="w"> </span><span class="na">application=</span><span class="s">&quot;set&quot;</span><span class="w"> </span><span class="na">data=</span><span class="s">&quot;my_flag=1&quot;</span><span class="nt">/&gt;</span>
+
+<span class="cm">&lt;!-- export：A-leg 和后续 bridge 出去的 B-leg 都能读；</span>
+<span class="cm">     只想给 B-leg 用 nolocal: 前缀或 bridge_export --&gt;</span>
+<span class="nt">&lt;action</span><span class="w"> </span><span class="na">application=</span><span class="s">&quot;export&quot;</span><span class="w"> </span><span class="na">data=</span><span class="s">&quot;my_flag=1&quot;</span><span class="nt">/&gt;</span>
+
+<span class="cm">&lt;!-- {} 内联：作用于本次 bridge 的所有 leg --&gt;</span>
+<span class="nt">&lt;action</span><span class="w"> </span><span class="na">application=</span><span class="s">&quot;bridge&quot;</span><span class="w"> </span><span class="na">data=</span><span class="s">&quot;{my_flag=1}user/1005&quot;</span><span class="nt">/&gt;</span>
+
+<span class="cm">&lt;!-- [] 内联：只作用于紧跟其后的这一条 leg --&gt;</span>
+<span class="nt">&lt;action</span><span class="w"> </span><span class="na">application=</span><span class="s">&quot;bridge&quot;</span><span class="w"> </span><span class="na">data=</span><span class="s">&quot;[my_flag=1]user/1005&quot;</span><span class="nt">/&gt;</span>
+</code></pre></div>
+
+<p>一句话记住三个符号的差别：<code>export</code> 影响 A-leg 加所有 B-leg，<code>{}</code> 影响这次 bridge 的所有 leg，<code>[]</code> 只影响紧跟它的那一条 leg。</p>
+<p>排障时"变量读出来是空的"，八成是作用域问题：你在 A-leg 设的值，跑到 B-leg 去读了。</p>
+<h3 id="4transfer">坑 4：<code>transfer</code> 之后代码还在跑（其实不跑了）</h3>
+<p><code>transfer</code> 会把 channel 扔回拨号计划<strong>重新匹配</strong>，当前 extension 里 <code>transfer</code> 之后的 action <strong>不再执行</strong>：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;action</span><span class="w"> </span><span class="na">application=</span><span class="s">&quot;transfer&quot;</span><span class="w"> </span><span class="na">data=</span><span class="s">&quot;1005 XML default&quot;</span><span class="nt">/&gt;</span>
+<span class="nt">&lt;action</span><span class="w"> </span><span class="na">application=</span><span class="s">&quot;playback&quot;</span><span class="w"> </span><span class="na">data=</span><span class="s">&quot;never-reached.wav&quot;</span><span class="nt">/&gt;</span><span class="w">  </span><span class="cm">&lt;!-- 永远到不了 --&gt;</span>
+</code></pre></div>
+
+<p>想在转移后还做事，要么用 <code>transfer</code> 到的新 extension 里写，要么改用别的机制（比如 <code>bridge</code> 回来）。把 <code>transfer</code> 当成"跳转 + 清空后续队列"来记，就不会掉坑。</p>
+<h3 id="5context">坑 5：context 权限边界失守</h3>
+<p><code>public</code> context 处理的是<strong>不受信任的外部来电</strong>。如果你在 <code>public</code> 里直接写了能拨内部分机、甚至能拨国际长途的规则，等于把内网大门敞开。正确做法：<code>public</code> 里只做必要的落地和清洗，需要进内部时用 <code>transfer</code> 显式跳到 <code>default</code>，让边界清清楚楚。</p>
+<hr>
+<h2 id="_6">呼叫中心实战：把能力串起来</h2>
+<p>光讲概念太干，下面用一个简化但真实的呼叫中心呼入流程，把拨号计划的能力串一遍。场景：外部客户拨打热线 → 判断工作时间 → IVR 分流 → 进队列 → 座席接听并录音。</p>
+<h3 id="1">场景 1：工作时间判断 + 下班引导</h3>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;extension</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;business_hours&quot;</span><span class="nt">&gt;</span>
+<span class="w">  </span><span class="nt">&lt;condition</span><span class="w"> </span><span class="na">wday=</span><span class="s">&quot;2-6&quot;</span><span class="w"> </span><span class="na">hour=</span><span class="s">&quot;9-17&quot;</span><span class="nt">&gt;</span>
+<span class="w">    </span><span class="cm">&lt;!-- 周一到周五 9~17 点，转到 IVR --&gt;</span>
+<span class="w">    </span><span class="nt">&lt;action</span><span class="w"> </span><span class="na">application=</span><span class="s">&quot;transfer&quot;</span><span class="w"> </span><span class="na">data=</span><span class="s">&quot;ivr_main XML default&quot;</span><span class="nt">/&gt;</span>
+<span class="w">    </span><span class="nt">&lt;anti-action</span><span class="w"> </span><span class="na">application=</span><span class="s">&quot;playback&quot;</span><span class="w"> </span><span class="na">data=</span><span class="s">&quot;ivr/off-hours.wav&quot;</span><span class="nt">/&gt;</span>
+<span class="w">    </span><span class="nt">&lt;anti-action</span><span class="w"> </span><span class="na">application=</span><span class="s">&quot;hangup&quot;</span><span class="nt">/&gt;</span>
+<span class="w">  </span><span class="nt">&lt;/condition&gt;</span>
+<span class="nt">&lt;/extension&gt;</span>
+</code></pre></div>
+
+<p><code>condition</code> 里的 <code>wday</code>、<code>hour</code> 是 FreeSWITCH 内置的时间匹配字段。命中（工作时间）走 <code>action</code>，不命中走 <code>anti-action</code>——这对 <code>action</code>/<code>anti-action</code> 就是拨号计划里最朴素的 <code>if/else</code>。</p>
+<h3 id="2ivr">场景 2：IVR 分流</h3>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;extension</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;ivr_main&quot;</span><span class="nt">&gt;</span>
+<span class="w">  </span><span class="nt">&lt;condition</span><span class="w"> </span><span class="na">field=</span><span class="s">&quot;destination_number&quot;</span><span class="w"> </span><span class="na">expression=</span><span class="s">&quot;^ivr_main$&quot;</span><span class="nt">&gt;</span>
+<span class="w">    </span><span class="nt">&lt;action</span><span class="w"> </span><span class="na">application=</span><span class="s">&quot;answer&quot;</span><span class="nt">/&gt;</span>
+<span class="w">    </span><span class="nt">&lt;action</span><span class="w"> </span><span class="na">application=</span><span class="s">&quot;sleep&quot;</span><span class="w"> </span><span class="na">data=</span><span class="s">&quot;500&quot;</span><span class="nt">/&gt;</span>
+<span class="w">    </span><span class="nt">&lt;action</span><span class="w"> </span><span class="na">application=</span><span class="s">&quot;ivr&quot;</span><span class="w"> </span><span class="na">data=</span><span class="s">&quot;main_menu&quot;</span><span class="nt">/&gt;</span>
+<span class="w">  </span><span class="nt">&lt;/condition&gt;</span>
+<span class="nt">&lt;/extension&gt;</span>
+</code></pre></div>
+
+<p><code>ivr</code> application 加载名为 <code>main_menu</code> 的 IVR 菜单（定义在 <code>conf/ivr_menus/</code> 里），由它负责放提示音、收按键、按键分流。拨号计划在这里只做一件事：<strong>把电话交给 IVR</strong>，具体菜单逻辑不塞进 XML。</p>
+<h3 id="3">场景 3：进队列 + 条件录音</h3>
+<p>假设客户在 IVR 按 1 转人工，进 <code>support</code> 队列：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;extension</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;queue_support&quot;</span><span class="nt">&gt;</span>
+<span class="w">  </span><span class="nt">&lt;condition</span><span class="w"> </span><span class="na">field=</span><span class="s">&quot;destination_number&quot;</span><span class="w"> </span><span class="na">expression=</span><span class="s">&quot;^support$&quot;</span><span class="nt">&gt;</span>
+<span class="w">    </span><span class="nt">&lt;action</span><span class="w"> </span><span class="na">application=</span><span class="s">&quot;answer&quot;</span><span class="nt">/&gt;</span>
+<span class="w">    </span><span class="nt">&lt;action</span><span class="w"> </span><span class="na">application=</span><span class="s">&quot;set&quot;</span><span class="w"> </span><span class="na">data=</span><span class="s">&quot;record_path=/recordings/${strftime(%Y/%m/%d)}/${uuid}.wav&quot;</span><span class="nt">/&gt;</span>
+<span class="w">    </span><span class="nt">&lt;action</span><span class="w"> </span><span class="na">application=</span><span class="s">&quot;record_session&quot;</span><span class="w"> </span><span class="na">data=</span><span class="s">&quot;${record_path}&quot;</span><span class="nt">/&gt;</span>
+<span class="w">    </span><span class="nt">&lt;action</span><span class="w"> </span><span class="na">application=</span><span class="s">&quot;callcenter&quot;</span><span class="w"> </span><span class="na">data=</span><span class="s">&quot;support@default&quot;</span><span class="nt">/&gt;</span>
+<span class="w">  </span><span class="nt">&lt;/condition&gt;</span>
+<span class="nt">&lt;/extension&gt;</span>
+</code></pre></div>
+
+<p>这里有两个值得注意的点：一是用 <code>strftime</code> 和 <code>${uuid}</code> 拼出按日期归档、且唯一的录音路径——这正是 channel variable 参与运算的例子；二是 <code>record_session</code> 在 <code>callcenter</code> <strong>之前</strong>执行，这样从进队列到座席接听全程都录上了。顺序错了，你可能只录到排队等待音。</p>
+<h3 id="4">场景 4：外呼补上主叫号码（一个经典事故）</h3>
+<p>外呼时座席看到的主叫号码是空的、或者是内部分机号——这是呼叫中心最常见的投诉之一。原因通常是拨号计划没在桥接前把主叫身份贴上：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;extension</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;outbound_call&quot;</span><span class="nt">&gt;</span>
+<span class="w">  </span><span class="nt">&lt;condition</span><span class="w"> </span><span class="na">field=</span><span class="s">&quot;destination_number&quot;</span><span class="w"> </span><span class="na">expression=</span><span class="s">&quot;^0(\d{7,11})$&quot;</span><span class="nt">&gt;</span>
+<span class="w">    </span><span class="nt">&lt;action</span><span class="w"> </span><span class="na">application=</span><span class="s">&quot;set&quot;</span><span class="w"> </span><span class="na">data=</span><span class="s">&quot;effective_caller_id_number=05711234567&quot;</span><span class="nt">/&gt;</span>
+<span class="w">    </span><span class="nt">&lt;action</span><span class="w"> </span><span class="na">application=</span><span class="s">&quot;set&quot;</span><span class="w"> </span><span class="na">data=</span><span class="s">&quot;effective_caller_id_name=某某客服中心&quot;</span><span class="nt">/&gt;</span>
+<span class="w">    </span><span class="nt">&lt;action</span><span class="w"> </span><span class="na">application=</span><span class="s">&quot;bridge&quot;</span><span class="w"> </span><span class="na">data=</span><span class="s">&quot;sofia/gateway/pstn_gw/$1&quot;</span><span class="nt">/&gt;</span>
+<span class="w">  </span><span class="nt">&lt;/condition&gt;</span>
+<span class="nt">&lt;/extension&gt;</span>
+</code></pre></div>
+
+<p><code>$1</code> 是正则第一个捕获组（去掉外呼前缀 <code>0</code> 后的号码）。<code>effective_caller_id_number</code> 必须在 <code>bridge</code> <strong>之前</strong> set，否则主叫信息发不出去。这个坑我愿意反复强调：<strong>"顺序"在拨号计划里是有意义的，因为它是队列，不是集合。</strong></p>
+<h3 id="5-lua">场景 5：座席转接（用 Lua 做动态判断）</h3>
+<p>到了"根据客户等级把电话转给不同座席组"这种需要查数据的逻辑，XML 就该让位给 Lua 了：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;extension</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;smart_route&quot;</span><span class="nt">&gt;</span>
+<span class="w">  </span><span class="nt">&lt;condition</span><span class="w"> </span><span class="na">field=</span><span class="s">&quot;destination_number&quot;</span><span class="w"> </span><span class="na">expression=</span><span class="s">&quot;^smart_route$&quot;</span><span class="nt">&gt;</span>
+<span class="w">    </span><span class="nt">&lt;action</span><span class="w"> </span><span class="na">application=</span><span class="s">&quot;lua&quot;</span><span class="w"> </span><span class="na">data=</span><span class="s">&quot;route_by_vip.lua&quot;</span><span class="nt">/&gt;</span>
+<span class="w">  </span><span class="nt">&lt;/condition&gt;</span>
+<span class="nt">&lt;/extension&gt;</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="c1">-- route_by_vip.lua</span>
+<span class="kd">local</span> <span class="n">caller</span> <span class="o">=</span> <span class="n">session</span><span class="p">:</span><span class="n">getVariable</span><span class="p">(</span><span class="s2">&quot;caller_id_number&quot;</span><span class="p">)</span>
+<span class="c1">-- 这里可以查库/调 API 判断客户等级，示意用一个假函数</span>
+<span class="kd">local</span> <span class="n">level</span> <span class="o">=</span> <span class="n">lookup_customer_level</span><span class="p">(</span><span class="n">caller</span><span class="p">)</span>   <span class="c1">-- 返回 &quot;vip&quot; 或 &quot;normal&quot;</span>
+
+<span class="kr">if</span> <span class="n">level</span> <span class="o">==</span> <span class="s2">&quot;vip&quot;</span> <span class="kr">then</span>
+    <span class="n">session</span><span class="p">:</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;callcenter&quot;</span><span class="p">,</span> <span class="s2">&quot;vip_support@default&quot;</span><span class="p">)</span>
+<span class="kr">else</span>
+    <span class="n">session</span><span class="p">:</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;callcenter&quot;</span><span class="p">,</span> <span class="s2">&quot;support@default&quot;</span><span class="p">)</span>
+<span class="kr">end</span>
+</code></pre></div>
+
+<p>Lua 脚本跑在交换机进程里，<code>session</code> 对象就是当前这通电话的把手。<code>getVariable</code> 读 channel variable，<code>session:execute</code> 相当于在拨号计划里排一个 application。逻辑复杂的部分交给 Lua，路由的骨架仍留在 XML——<strong>这就是 XML 与 Lua 的正确分工</strong>。</p>
+<hr>
+<h2 id="_7">排障：从"猜"到"读日志"</h2>
+<p>前面反复说"拨号计划是状态机"，排障时这句话就能兑现价值：既然是状态机，你就能观测它在运行时到底走到了哪一步。下面这套工具，按"从粗到细"排列。</p>
+<p><strong>1. 先看拨号计划匹配日志。</strong> 把日志级别调高，<code>fs_cli</code> 里执行：</p>
+<div class="highlight"><pre><span></span><code>fsctl loglevel debug
+console loglevel debug
+</code></pre></div>
+
+<p>来一通测试电话，日志里会打印它在哪个 context、匹配到哪条 extension、每个 action 执行的结果。<strong>大部分"电话没走对路"的问题，看这段日志就破案了</strong>——你会直接看到它匹配到了一条你没预期的 extension。</p>
+<p><strong>2. 看单通电话的完整状态：<code>uuid_dump</code>。</strong> 先 <code>show channels</code> 拿到这通电话的 uuid，再：</p>
+<div class="highlight"><pre><span></span><code>uuid_dump &lt;uuid&gt;
+</code></pre></div>
+
+<p>它会把这个 channel 上所有变量、当前状态、caller profile 全打出来。"变量读出来是空的"这类问题，在这里一眼就能看到到底 set 上没有、set 在哪个 leg 上了。</p>
+<p><strong>3. 抓 SIP 信令：<code>sofia global siptrace on</code>。</strong> 如果问题出在信令层（对端根本没收到 INVITE、主叫号码在信令里就是错的、被叫号码被网关改写了），siptrace 让你看到进出的每一条 SIP 消息。配合上一篇讲的 SIP 事务/Dialog 知识，很多"拨号计划看着没问题但电话就是不通"的情况，其实是信令层的锅。</p>
+<p><strong>4. 用 CHANNEL_EXECUTE 事件倒推。</strong> 每执行一个 application，FreeSWITCH 都会发一个 <code>CHANNEL_EXECUTE</code> 事件。订阅事件（ESL 或 <code>fs_cli</code> 里 <code>/event plain CHANNEL_EXECUTE</code>）就能看到 application 一个个被执行的实况——这是把"动作队列"这件事亲眼看一遍的最直接方式。</p>
+<p>一张排障速查表：</p>
+<table>
+<thead>
+<tr>
+<th>症状</th>
+<th>先查什么</th>
+<th>常见根因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>电话没走到预期 extension</td>
+<td>匹配日志（loglevel debug）</td>
+<td>正则锚点、extension 顺序、context 不对</td>
+</tr>
+<tr>
+<td>变量读出来是空的</td>
+<td><code>uuid_dump</code></td>
+<td>作用域：A-leg / B-leg / export</td>
+</tr>
+<tr>
+<td>主叫号码错或空</td>
+<td>siptrace + <code>uuid_dump</code></td>
+<td><code>effective_caller_id_*</code> set 在 bridge 之后</td>
+</tr>
+<tr>
+<td>录音不全</td>
+<td>匹配日志看 action 顺序</td>
+<td><code>record_session</code> 排在 bridge/callcenter 之后</td>
+</tr>
+<tr>
+<td>转接后逻辑没执行</td>
+<td>匹配日志</td>
+<td><code>transfer</code> 之后的 action 不会跑</td>
+</tr>
+<tr>
+<td>外线能拨内线</td>
+<td>检查 <code>public</code> context</td>
+<td>权限边界失守</td>
+</tr>
+</tbody>
+</table>
+<p>排障心法就一句：<strong>别对着 XML 猜，去看那通电话运行时的状态和它执行动作的实况。</strong> 拨号计划是状态机，状态和执行都是可观测的。</p>
+<hr>
+<h2 id="_8">一份可抄的最佳实践清单</h2>
+<p>把上面的经验浓缩成能直接对照的清单：</p>
+<ol>
+<li><strong>正则永远写锚点</strong>。四位分机就是 <code>^(\d{4})$</code>，别用 <code>^1</code> 这种会误伤的写法。</li>
+<li><strong>想清楚变量作用域再 set</strong>。要传给 B-leg 用 <code>export</code> 或 <code>{}</code> 内联；只在本 leg 用普通 <code>set</code>。</li>
+<li><strong>顺序即逻辑</strong>。<code>record_session</code> 在 bridge 前、<code>effective_caller_id_*</code> 在 bridge 前——记住动作是队列。</li>
+<li><strong><code>public</code> 只做落地和清洗</strong>，进内部用 <code>transfer</code> 显式跳转，守住权限边界。</li>
+<li><strong><code>continue="true"</code> 用来做"贴标记"这类需要继续往下走的 extension</strong>，用完检查有没有漏。</li>
+<li><strong>复杂逻辑切 Lua/ESL</strong>，别在 XML 里写第三层嵌套或拼 SQL。</li>
+<li><strong>改完先在测试分机上验证，再上生产</strong>，<code>reloadxml</code> 只重载配置，正在通话的电话不受影响。</li>
+<li><strong>排障顺序</strong>：匹配日志 → <code>uuid_dump</code> → siptrace → 事件流，从粗到细。</li>
+</ol>
+<hr>
+<h2 id="_9">总结：把拨号计划当状态机，排障就从"猜"变成"读"</h2>
+<p>回到开头那个对着 XML 干瞪眼的人。他的问题不在于哪条规则写错了，而在于他把一台运行时的状态机，当成了一份静态配置去读。</p>
+<p>拨号计划的两个阶段——先匹配（决定状态转移）、后执行（跑动作队列）——决定了它的一切脾气：为什么顺序重要，为什么 <code>transfer</code> 之后的代码不跑，为什么变量会读空。你把这台状态机的运行方式记在脑子里，写的时候就知道该把动作排在哪、该在哪个 leg 设变量；排障的时候就知道该去看运行时状态，而不是回头再读一遍你早就背熟的 XML。</p>
+<p>FreeSWITCH 给了你一台可编程的路由状态机。<strong>你的任务不是把它配置对，而是把它编程对。</strong> 这两个词的差别，就是"配置文件"和"状态机"的差别。</p>
+<p>下次电话没走对路，先别改 XML——先调 loglevel debug，看它到底走到了哪一步。</p>
+<h2 id="_10">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* 拨号计划 = 可编程状态机
+** 两个阶段
+*** 匹配：决定状态转移
+*** 执行：跑动作队列
+** 五个核心概念
+*** Context 上下文/边界
+*** Extension 条件+动作
+*** Condition 正则匹配
+*** Application 动作
+*** Channel Variable 状态
+** 能力边界
+*** 能做：路由、编排、对接子系统
+*** 不做：搬媒体、复杂逻辑、排队算法
+** 五个坑
+*** 忘 continue
+*** 正则漏锚点
+*** 变量作用域
+*** transfer 后不执行
+*** public 权限失守
+** 呼叫中心实战
+*** 工作时间判断
+*** IVR 分流
+*** 队列+条件录音
+*** 外呼补主叫
+*** Lua 动态转接
+** 排障
+*** loglevel debug 看匹配
+*** uuid_dump 看状态
+*** siptrace 看信令
+*** CHANNEL_EXECUTE 看执行
+@endmindmap
+</code></pre></div>
+
+<p><img alt="拨号计划 101 - 思维导图" src="./images/tech_20260914_freeswitch_dialplan_101_mindmap.png"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/2026-09-14-freeswitch-dialplan-101.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/freeswitch.html">freeswitch</a>
+      <a href="https://www.fanyamin.com/blog/tag/dialplan.html">dialplan</a>
+      <a href="https://www.fanyamin.com/blog/tag/voip.html">VoIP</a>
+      <a href="https://www.fanyamin.com/blog/tag/contact-center.html">Contact Center</a>
+      <a href="https://www.fanyamin.com/blog/tag/routing.html">routing</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-09-14-opensips-intro.html" title="OpenSIPS 入门:一台 SIP 服务器,一个可编程的呼叫路由引擎">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/2026-09-14-lua-in-freeswitch.html" title="重拾 Lua：从月亮语言到 FreeSWITCH 里的胶水">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/2026-09-14-lua-in-freeswitch.html">重拾 Lua：从月亮语言到 FreeSWITCH 里的胶水</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-29-sip-protocol-contact-center.html">SIP 协议回顾：从一通电话到呼叫中心</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-24-ai-contact-center.html">AI 时代的 Contact Center，正在从接电话变成解决问题</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-09-14-webrtc-to-freeswitch.html">webrtc-to-freeswitch:一个浏览器软电话的架构、流程与协议全解</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-09-11-sipjs-call-freeswitch.html">用 SIP.js 从浏览器打电话到 FreeSWITCH</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

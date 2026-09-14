@@ -1,0 +1,994 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="十几年前我做过一个《A Glance of Lua》的分享，如今大半忘光了。这篇先用老程序员重拾旧语言的角度，把 Lua 最该记住的那几样东西——表即一切、元表、闭包、协程、C API——快速过一遍；再落到 FreeSWITCH：mod_lua 到底把脚本挂在哪几个位置（dialplan、XML handler、event hook、startup script），配一组能看懂的例子、几条最佳实践和最容易栽的坑。Lua 语法基于 5.x，FreeSWITCH 部分引用官方 scripting 文档。" />
+<meta name="keywords" content="tech, lua, freeswitch, scripting, mod_lua, dialplan">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "重拾 Lua：从月亮语言到 FreeSWITCH 里的胶水",
+  "description": "十几年前我做过一个《A Glance of Lua》的分享，如今大半忘光了。这篇先用老程序员重拾旧语言的角度，把 Lua 最该记住的那几样东西——表即一切、元表、闭包、协程、C API——快速过一遍；再落到 FreeSWITCH：mod_lua 到底把脚本挂在哪几个位置（dialplan、XML handler、event hook、startup script），配一组能看懂的例子、几条最佳实践和最容易栽的坑。Lua 语法基于 5.x，FreeSWITCH 部分引用官方 scripting 文档。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-09-14T23:30:00+08:00",
+  "dateModified": "2026-09-14T23:30:00+08:00",
+  "url": "https://www.fanyamin.com/blog/2026-09-14-lua-in-freeswitch.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/2026-09-14-lua-in-freeswitch.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "tech, lua, freeswitch, scripting, mod_lua, dialplan"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="重拾 Lua：从月亮语言到 FreeSWITCH 里的胶水"/>
+  <meta property="og:description" content="十几年前我做过一个《A Glance of Lua》的分享，如今大半忘光了。这篇先用老程序员重拾旧语言的角度，把 Lua 最该记住的那几样东西——表即一切、元表、闭包、协程、C API——快速过一遍；再落到 FreeSWITCH：mod_lua 到底把脚本挂在哪几个位置（dialplan、XML handler、event hook、startup script），配一组能看懂的例子、几条最佳实践和最容易栽的坑。Lua 语法基于 5.x，FreeSWITCH 部分引用官方 scripting 文档。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/2026-09-14-lua-in-freeswitch.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-09-14 23:30:00+08:00"/>
+  <meta property="article:modified_time" content="2026-09-14 23:30:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="tech"/>
+  <meta property="article:tag" content="lua"/>
+  <meta property="article:tag" content="freeswitch"/>
+  <meta property="article:tag" content="scripting"/>
+  <meta property="article:tag" content="mod_lua"/>
+  <meta property="article:tag" content="dialplan"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 重拾 Lua：从月亮语言到 FreeSWITCH 里的胶水</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="2026-09-14-lua-in-freeswitch">重拾 Lua：从月亮语言到 FreeSWITCH 里的胶水</h1>
+    <p>
+      Posted on 一 14 9月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>重拾 Lua：从月亮语言到 FreeSWITCH 里的胶水</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-09-14</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">大纲</h2>
+<details>
+<summary>展开看看</summary>
+<ul>
+<li><strong>缘起</strong>：十几年前我讲过一场《A Glance of Lua》，如今忘了大半。趁着最近在扒 FreeSWITCH，把这门语言重新拾起来，顺便讲清它在 FreeSWITCH 里到底干什么活。</li>
+<li><strong>Lua 是什么</strong>：一门为“被嵌入”而生的脚本语言。小、快、可移植，靠一个 C API 长在别人家的进程里。Photoshop Lightroom、魔兽世界、Wireshark、Nginx、Redis、FreeSWITCH——它专门干这个。</li>
+<li><strong>重拾要点（老程序员版）</strong>：表即一切（数组从 1 开始）、函数是一等公民、元表就是 JS 的原型、闭包和协程、以及那个把它送进无数大项目的 C API。</li>
+<li><strong>五个最容易忘、也最容易栽的坑</strong>：下标从 1、<code>~=</code> 不是 <code>!=</code>、<code>.</code> 与 <code>:</code> 的静态/实例之别、<code>#</code> 只数连续整数键、<code>pairs</code> vs <code>ipairs</code>。</li>
+<li><strong>落到 FreeSWITCH</strong>：mod_lua 默认加载，脚本直接跑在交换机进程里。四个挂载点——dialplan application、XML handler、event hook、startup script——各配一个能看懂的例子。</li>
+<li><strong>最佳实践 + 常见陷阱</strong>：脚本目录与 <code>require</code> 路径、<code>session</code> 是会阻塞的、别在 hook 里干重活、错误要 <code>pcall</code> 兜住、日志用 <code>freeswitch.consoleLog</code>。</li>
+<li><strong>收尾</strong>：Lua 在 FreeSWITCH 里的定位是“胶水”，不是“主料”——想清楚这一点，才知道什么该写进脚本，什么该留在 C 模块里。</li>
+</ul>
+</details>
+<hr>
+<p>我电脑里翻出一个 2013 年做的 PPT，标题叫《A Glance of Lua》。那会儿我还能顺手写出插入排序、元表继承、<code>lua_State</code> 压栈弹栈的 C API，甚至比过 Luabind、tolua++、SWIG 几种绑定方案的优劣。十几年过去，这门语言我基本没再碰，再看那些幻灯片，有些代码得盯半天才想起来当初为什么那么写。</p>
+<p>最近在扒 FreeSWITCH 的源码——<a href="https://www.fanyamin.com">前面几篇</a>分别拆了它的<a href="https://www.fanyamin.com/blog/c-dynamic-load-di-service-registry.html">动态加载与服务注册</a>、<a href="https://www.fanyamin.com/blog/apache-portable-runtime.html">APR 内存池</a>、<a href="https://www.fanyamin.com/blog/2026-09-14-webrtc-to-freeswitch.html">浏览器直连的 WebRTC 通话</a>——绕来绕去总会撞见 Lua。FreeSWITCH 默认就把 <code>mod_lua</code> 装上了，很多呼叫逻辑、IVR 菜单、动态配置都是 Lua 写的。于是干脆借这个由头，把 Lua 重新拾起来。</p>
+<p><strong>这篇分两半：上半场用“老程序员重拾旧语言”的角度，把 Lua 最该记住的东西快速过一遍；下半场落到 FreeSWITCH，讲清脚本到底挂在哪几个位置，配例子、最佳实践和坑。</strong> 语言部分基于 Lua 5.x 语法，FreeSWITCH 部分引用<a href="https://developer.signalwire.com/freeswitch/integration/scripting">官方 scripting 文档</a>。</p>
+<ul>
+<li>只想看 FreeSWITCH 怎么用的，可以直接跳到“落到 FreeSWITCH”那节。</li>
+<li>想先把 Lua 捡回来的，跟着上半场走。</li>
+</ul>
+<hr>
+<h2 id="lua">Lua 是什么：一门为“寄生”而生的语言</h2>
+<p>Lua（葡萄牙语里是“月亮”的意思，念作 LOO-ah）是一门<strong>小、快、可嵌入</strong>的脚本语言。关键词是“可嵌入”——它从设计第一天起就不打算独立当主角，而是长在别人家的进程里，负责那些“不值得用 C 重编一次、又需要灵活改”的活儿。</p>
+<p>看看它的用户名单就明白定位了：Adobe Photoshop Lightroom 用它做界面逻辑，魔兽世界用它写插件，Wireshark 用它写协议解析器，Nginx（OpenResty）、Redis、FreeSWITCH 都把它嵌进核心。<strong>它们要的都是同一件事：一个能安全地跑用户脚本、又不拖累主程序的小引擎。</strong></p>
+<p>为什么是 Lua 而不是别的？简单说：</p>
+<ul>
+<li><strong>小</strong>——整个解释器编译出来几百 KB，可以静态编进你的二进制。</li>
+<li><strong>快</strong>——它跑的是寄存器式虚拟机的字节码，在脚本语言里算快的。</li>
+<li><strong>可移植</strong>——纯 ANSI C 写的，凡是有 C 编译器的地方就能跑。</li>
+<li><strong>免费</strong>——MIT 协议，商用无负担。</li>
+</ul>
+<p>一句话概括它的性格：<strong>do more with less</strong>，用尽量少的东西干尽量多的事。这也是为什么它的语法学起来快，忘起来也快——因为核心概念真的没几个。</p>
+<hr>
+<h2 id="_2">重拾要点：老程序员该先想起哪几样</h2>
+<p>十几年没写，再上手其实不用从头学。Lua 的核心就那么几块，抓住它们，剩下的查手册就够了。</p>
+<h3 id="table">表（table）即一切</h3>
+<p>Lua 只有一种复合数据结构：<strong>表</strong>。它既是数组，又是哈希表，还是对象、模块、命名空间。你在别的语言里区分的 <code>list</code> / <code>dict</code> / <code>object</code>，在 Lua 里都是同一个 <code>table</code>。</p>
+<div class="highlight"><pre><span></span><code><span class="kd">local</span> <span class="n">user</span> <span class="o">=</span> <span class="p">{</span> <span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;tom&quot;</span><span class="p">,</span> <span class="n">age</span> <span class="o">=</span> <span class="mi">30</span> <span class="p">}</span>   <span class="c1">-- 当哈希表用</span>
+<span class="kd">local</span> <span class="n">arr</span>  <span class="o">=</span> <span class="p">{</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">30</span> <span class="p">}</span>               <span class="c1">-- 当数组用（下标从 1 开始！）</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">user</span><span class="p">.</span><span class="n">name</span><span class="p">)</span>   <span class="c1">-- tom</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">arr</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>      <span class="c1">-- 10，不是 arr[0]</span>
+</code></pre></div>
+
+<p><strong>下标从 1 开始</strong>，这是所有 C/Java/Python 程序员来写 Lua 的第一个坑，后面还要专门说。</p>
+<h3 id="_3">函数是一等公民</h3>
+<p>跟 JavaScript 一样，函数在 Lua 里是值：可以赋给变量、当参数传、当返回值。这带来了几个很好用的特性——多返回值、变长参数、闭包。</p>
+<div class="highlight"><pre><span></span><code><span class="c1">-- 多返回值：一次拆出字符串两侧</span>
+<span class="kd">local</span> <span class="kr">function</span> <span class="nf">split_once</span><span class="p">(</span><span class="n">str</span><span class="p">,</span> <span class="n">sep</span><span class="p">)</span>
+    <span class="kd">local</span> <span class="n">i</span><span class="p">,</span> <span class="n">j</span> <span class="o">=</span> <span class="nb">string.find</span><span class="p">(</span><span class="n">str</span><span class="p">,</span> <span class="n">sep</span><span class="p">)</span>
+    <span class="kr">return</span> <span class="nb">string.sub</span><span class="p">(</span><span class="n">str</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">i</span> <span class="o">-</span> <span class="mi">1</span><span class="p">),</span> <span class="nb">string.sub</span><span class="p">(</span><span class="n">str</span><span class="p">,</span> <span class="n">j</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+<span class="kr">end</span>
+
+<span class="kd">local</span> <span class="n">left</span><span class="p">,</span> <span class="n">right</span> <span class="o">=</span> <span class="n">split_once</span><span class="p">(</span><span class="s2">&quot;key=value&quot;</span><span class="p">,</span> <span class="s2">&quot;=&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">left</span><span class="p">,</span> <span class="n">right</span><span class="p">)</span>   <span class="c1">-- key    value</span>
+
+<span class="c1">-- 闭包：每调一次 counter，内部的 i 都还记得</span>
+<span class="kd">local</span> <span class="kr">function</span> <span class="nf">new_counter</span><span class="p">()</span>
+    <span class="kd">local</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="kr">return</span> <span class="kr">function</span><span class="p">()</span>
+        <span class="n">i</span> <span class="o">=</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="kr">return</span> <span class="n">i</span>
+    <span class="kr">end</span>
+<span class="kr">end</span>
+
+<span class="kd">local</span> <span class="n">next_id</span> <span class="o">=</span> <span class="n">new_counter</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">next_id</span><span class="p">(),</span> <span class="n">next_id</span><span class="p">(),</span> <span class="n">next_id</span><span class="p">())</span>   <span class="c1">-- 1    2    3</span>
+</code></pre></div>
+
+<p>闭包那个 <code>i</code> 被内层函数“记住”了——这就是闭包的全部魔法：函数带着它出生时的环境一起走。</p>
+<h3 id="metatable-javascript">元表（metatable）：就是 JavaScript 的原型</h3>
+<p>这是 Lua 最容易忘、也最能体现它“简单但强大”的地方。表本身没有继承、没有运算符重载，但你可以给一个表挂一个<strong>元表</strong>，在元表里定义一批 <code>__</code> 开头的“元方法”，来接管这个表的各种行为。</p>
+<p>最常用的是 <code>__index</code>：当你访问一个表里没有的键时，Lua 会去元表的 <code>__index</code> 里找。这一个机制就够拼出继承了。</p>
+<div class="highlight"><pre><span></span><code><span class="kd">local</span> <span class="n">Animal</span> <span class="o">=</span> <span class="p">{}</span>
+<span class="kr">function</span> <span class="nc">Animal</span><span class="p">:</span><span class="nf">speak</span><span class="p">()</span> <span class="kr">return</span> <span class="n">self</span><span class="p">.</span><span class="n">name</span> <span class="o">..</span> <span class="s2">&quot; makes a sound&quot;</span> <span class="kr">end</span>
+
+<span class="kd">local</span> <span class="n">dog</span> <span class="o">=</span> <span class="p">{</span> <span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;Rex&quot;</span> <span class="p">}</span>
+<span class="nb">setmetatable</span><span class="p">(</span><span class="n">dog</span><span class="p">,</span> <span class="p">{</span> <span class="n">__index</span> <span class="o">=</span> <span class="n">Animal</span> <span class="p">})</span>   <span class="c1">-- dog 找不到的，去 Animal 找</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">dog</span><span class="p">:</span><span class="n">speak</span><span class="p">())</span>   <span class="c1">-- Rex makes a sound</span>
+</code></pre></div>
+
+<p>我当年 PPT 里写过一句话形容它：<strong>“走起来像鸭子、游起来像鸭子、叫起来像鸭子，那它就是鸭子。”</strong> 元表就是 Lua 的“鸭子类型”开关——你不需要类，只需要让一个表在被访问、被调用、被相加时表现得像你要的那个东西。除了 <code>__index</code>，还有 <code>__call</code>（让表能像函数一样被调用）、<code>__add</code>（重载 <code>+</code>）、<code>__newindex</code>（拦截赋值）等一整套。</p>
+<h3 id="coroutine">协程（coroutine）</h3>
+<p>Lua 内建协程——可以主动让出（yield）和恢复（resume）的“协作式线程”。它不是抢占式的操作系统线程，而是你自己控制切换时机的执行流。写状态机、写生成器、写异步流程时特别顺手。FreeSWITCH 的一些异步场景底下就有它的影子。</p>
+<h3 id="c-api">C API：它能寄生的根本原因</h3>
+<p>前面说 Lua“为嵌入而生”，靠的就是一套干净的 C API。宿主程序（C/C++ 写的那个）通过一个 <code>lua_State</code> 跟脚本打交道，双方用一个<strong>栈</strong>传数据：C 往栈上压参数，Lua 取走；Lua 返回值压栈，C 弹出。</p>
+<div class="highlight"><pre><span></span><code><span class="n">lua_State</span><span class="w"> </span><span class="o">*</span><span class="n">L</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">luaL_newstate</span><span class="p">();</span><span class="w">   </span><span class="c1">// 新建一个 Lua 状态机</span>
+<span class="n">luaL_openlibs</span><span class="p">(</span><span class="n">L</span><span class="p">);</span><span class="w">                 </span><span class="c1">// 打开标准库</span>
+<span class="n">luaL_dostring</span><span class="p">(</span><span class="n">L</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;print(&#39;Hello from Lua&#39;)&quot;</span><span class="p">);</span><span class="w">   </span><span class="c1">// 跑一段脚本</span>
+<span class="n">lua_close</span><span class="p">(</span><span class="n">L</span><span class="p">);</span><span class="w">                     </span><span class="c1">// 别忘了关</span>
+</code></pre></div>
+
+<p>反过来，C 也能把自己的函数注册进去，让 Lua 调用；这正是 FreeSWITCH 把成百上千个 <code>switch_*</code> 能力暴露给脚本的方式——通过 SWIG 自动生成绑定，脚本里一个 <code>session:answer()</code> 背后就是一次 C 调用。<strong>理解了“C 和 Lua 靠一个栈来回倒数据”，你就理解了 mod_lua 的本质。</strong></p>
+<hr>
+<h2 id="_4">五个最容易栽的坑</h2>
+<p>我把当年 PPT 里那页 “The Pitfall of Lua” 重新校对了一遍，这五条到今天依然是新手（和忘光了的老手）最常摔的地方：</p>
+<table>
+<thead>
+<tr>
+<th>坑</th>
+<th>说明</th>
+<th>正确写法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>下标从 1</strong></td>
+<td>表当数组用时，第一个元素是 <code>t[1]</code> 不是 <code>t[0]</code></td>
+<td><code>for i = 1, #t do ... end</code></td>
+</tr>
+<tr>
+<td><strong><code>~=</code> 不是 <code>!=</code></strong></td>
+<td>Lua 的“不等于”是波浪号，写 <code>!=</code> 直接语法错误</td>
+<td><code>if a ~= b then ... end</code></td>
+</tr>
+<tr>
+<td><strong><code>.</code> 与 <code>:</code> 有别</strong></td>
+<td><code>obj.method</code> 是普通字段，<code>obj:method</code> 会隐式传 <code>self</code>；定义和调用要用同一种</td>
+<td><code>function obj:m() ... end</code> 配 <code>obj:m()</code></td>
+</tr>
+<tr>
+<td><strong><code>#</code> 只数连续整数键</strong></td>
+<td>表长度运算符 <code>#</code> 只统计从 1 开始、连续的整数键，中间断了就不准</td>
+<td>有空洞的表自己维护 count</td>
+</tr>
+<tr>
+<td><strong><code>pairs</code> vs <code>ipairs</code></strong></td>
+<td><code>ipairs</code> 按 1,2,3… 顺序遍历到第一个 <code>nil</code> 就停；<code>pairs</code> 遍历所有键但顺序不保证</td>
+<td>数组用 <code>ipairs</code>，哈希表用 <code>pairs</code></td>
+</tr>
+</tbody>
+</table>
+<p>第三条那个 <code>.</code> 和 <code>:</code> 的区别，是 FreeSWITCH 脚本里最常见的报错来源。你想调 <code>session</code> 上的方法，写成 <code>session.answer()</code> 就会因为少传 <code>self</code> 而出错，得写 <code>session:answer()</code>。记住：<strong>冒号 = 带 self 的实例调用</strong>。</p>
+<hr>
+<h2 id="freeswitchmod_lua">落到 FreeSWITCH：mod_lua 把脚本挂在哪</h2>
+<p>铺垫完语言，进正题。FreeSWITCH 是个开源软交换（软件电话交换机，处理呼叫、媒体、SIP 信令），几十万行 C。它把 Lua 解释器<strong>直接嵌进交换机进程</strong>——脚本不是外部程序，不走进程间通信，而是在一个专属的 <code>lua_State</code> 里跑，通过 SWIG 绑定直接够到 FreeSWITCH 的全部 C API。</p>
+<p><code>mod_lua</code> 是<strong>默认加载</strong>的（<code>modules.conf.xml</code> 里就配好了），Perl、Python3、V8（JavaScript）、Java 也能用，但都得手动打开。所以在 FreeSWITCH 世界里，Lua 是脚本的“默认语言”。</p>
+<p>它注册了四个挂载点，也就是你能把 Lua 脚本插进 FreeSWITCH 的四个位置：</p>
+<ol>
+<li><strong>dialplan application</strong>——在一路通话里同步执行脚本，控制呼叫流程。</li>
+<li><strong>XML handler</strong>——让脚本动态生成配置（dialplan / directory 等），替代静态 XML。</li>
+<li><strong>event hook</strong>——某个事件触发时跑脚本，做事件响应。</li>
+<li><strong>startup script</strong>——模块加载时起一个后台线程，跑常驻脚本。</li>
+</ol>
+<p>下面一个个看。</p>
+<h3 id="_5">脚本目录：相对路径去哪找</h3>
+<p>先记住一件事：脚本的相对路径是相对 <code>$${script_dir}</code> 解析的，标准安装通常是 <code>/usr/local/freeswitch/scripts</code>。你在 <code>fs_cli</code> 里可以确认：</p>
+<div class="highlight"><pre><span></span><code>eval $${script_dir}
+</code></pre></div>
+
+<p>只要脚本名不以 <code>/</code> 开头，FreeSWITCH 就会自动拼上这个目录；绝对路径则原样使用。</p>
+<h3 id="dialplan-application">挂载点一：dialplan application</h3>
+<p>这是最常用的。在 dialplan 里用 <code>lua</code> 这个 application，脚本会<strong>同步</strong>跑在当前通话腿上，整通电话会等它执行完。脚本里自动有一个全局的 <code>session</code> 对象，代表这路通话。</p>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;extension</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;ivr-entry&quot;</span><span class="nt">&gt;</span>
+<span class="w">  </span><span class="nt">&lt;condition</span><span class="w"> </span><span class="na">field=</span><span class="s">&quot;destination_number&quot;</span><span class="w"> </span><span class="na">expression=</span><span class="s">&quot;^1000$&quot;</span><span class="nt">&gt;</span>
+<span class="w">    </span><span class="nt">&lt;action</span><span class="w"> </span><span class="na">application=</span><span class="s">&quot;lua&quot;</span><span class="w"> </span><span class="na">data=</span><span class="s">&quot;ivr_menu.lua option1 option2&quot;</span><span class="nt">/&gt;</span>
+<span class="w">  </span><span class="nt">&lt;/condition&gt;</span>
+<span class="nt">&lt;/extension&gt;</span>
+</code></pre></div>
+
+<p><code>ivr_menu.lua</code> 因为是相对路径，会被解析成 <code>$${script_dir}/ivr_menu.lua</code>。传进去的参数，脚本里用全局表 <code>argv</code> 取：<code>argv[0]</code> 是脚本名，<code>argv[1]</code> 起是真正的参数。</p>
+<p>一个能看懂的 IVR 小例子：</p>
+<div class="highlight"><pre><span></span><code><span class="c1">-- ivr_menu.lua：一个极简的语音菜单</span>
+<span class="n">session</span><span class="p">:</span><span class="n">answer</span><span class="p">()</span>                          <span class="c1">-- 接起来</span>
+<span class="n">session</span><span class="p">:</span><span class="n">sleep</span><span class="p">(</span><span class="mi">500</span><span class="p">)</span>                        <span class="c1">-- 等半秒，别把提示音说太急</span>
+
+<span class="c1">-- 放一段提示音，收一位按键；参数：提示音、超时、位数……</span>
+<span class="kd">local</span> <span class="n">digit</span> <span class="o">=</span> <span class="n">session</span><span class="p">:</span><span class="n">playAndGetDigits</span><span class="p">(</span>
+    <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">5000</span><span class="p">,</span> <span class="s2">&quot;#&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;ivr/ivr-welcome.wav&quot;</span><span class="p">,</span>                <span class="c1">-- 提示音</span>
+    <span class="s2">&quot;ivr/ivr-that_was_an_invalid_entry.wav&quot;</span><span class="p">,</span> <span class="c1">-- 错误音</span>
+    <span class="s2">&quot;</span><span class="se">\\</span><span class="s2">d&quot;</span>                                 <span class="c1">-- 只收一位数字</span>
+<span class="p">)</span>
+
+<span class="kr">if</span> <span class="n">digit</span> <span class="o">==</span> <span class="s2">&quot;1&quot;</span> <span class="kr">then</span>
+    <span class="n">session</span><span class="p">:</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;transfer&quot;</span><span class="p">,</span> <span class="s2">&quot;2001 XML default&quot;</span><span class="p">)</span>   <span class="c1">-- 转到分机 2001</span>
+<span class="kr">elseif</span> <span class="n">digit</span> <span class="o">==</span> <span class="s2">&quot;2&quot;</span> <span class="kr">then</span>
+    <span class="n">session</span><span class="p">:</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;transfer&quot;</span><span class="p">,</span> <span class="s2">&quot;2002 XML default&quot;</span><span class="p">)</span>
+<span class="kr">else</span>
+    <span class="n">session</span><span class="p">:</span><span class="n">streamFile</span><span class="p">(</span><span class="s2">&quot;ivr/ivr-invalid_extension.wav&quot;</span><span class="p">)</span>
+    <span class="n">session</span><span class="p">:</span><span class="n">hangup</span><span class="p">()</span>
+<span class="kr">end</span>
+</code></pre></div>
+
+<p>注意所有方法都是 <code>session:xxx()</code>，冒号——这就是前面那第三条坑的实战。</p>
+<h3 id="xml-handler">挂载点二：XML handler（动态配置）</h3>
+<p>FreeSWITCH 需要某段配置时，会去问注册过的 XML handler。你可以让一个 Lua 脚本来“现造”这段 XML，把 dialplan、directory 这些从静态文件变成动态生成——比如从数据库里查用户、按时间段路由。</p>
+<p>在 <code>lua.conf.xml</code> 里绑定，注意两个参数<strong>必须有先后顺序</strong>，<code>xml-handler-script</code> 要在 <code>xml-handler-bindings</code> 前面：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;param</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;xml-handler-script&quot;</span><span class="w"> </span><span class="na">value=</span><span class="s">&quot;xml_handler.lua&quot;</span><span class="nt">/&gt;</span>
+<span class="nt">&lt;param</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;xml-handler-bindings&quot;</span><span class="w"> </span><span class="na">value=</span><span class="s">&quot;dialplan&quot;</span><span class="nt">/&gt;</span>
+</code></pre></div>
+
+<p>脚本被调用时，FreeSWITCH 通过全局变量传上下文：<code>XML_REQUEST</code> 是个表，带 <code>section</code> / <code>tag_name</code> / <code>key_name</code> / <code>key_value</code> 说明在请求什么；<code>params</code> 是个事件对象，带通道变量。脚本的活儿是把最终 XML 塞进全局变量 <code>XML_STRING</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="c1">-- xml_handler.lua</span>
+<span class="kd">local</span> <span class="n">req</span> <span class="o">=</span> <span class="n">XML_REQUEST</span>   <span class="c1">-- req.section / req.key_value 由 FreeSWITCH 填好</span>
+
+<span class="c1">-- 真实场景里，这里会根据 req.key_value 去数据库查路由</span>
+<span class="n">XML_STRING</span> <span class="o">=</span> <span class="s">[[</span>
+<span class="s">&lt;document type=&quot;freeswitch/xml&quot;&gt;</span>
+<span class="s">  &lt;section name=&quot;dialplan&quot;&gt;</span>
+<span class="s">    &lt;context name=&quot;default&quot;&gt;</span>
+<span class="s">      &lt;extension name=&quot;dynamic&quot;&gt;</span>
+<span class="s">        &lt;condition field=&quot;destination_number&quot; expression=&quot;^(\d+)$&quot;&gt;</span>
+<span class="s">          &lt;action application=&quot;bridge&quot; data=&quot;user/${1}&quot;/&gt;</span>
+<span class="s">        &lt;/condition&gt;</span>
+<span class="s">      &lt;/extension&gt;</span>
+<span class="s">    &lt;/context&gt;</span>
+<span class="s">  &lt;/section&gt;</span>
+<span class="s">&lt;/document&gt;</span>
+<span class="s">]]</span>
+</code></pre></div>
+
+<p><code>[[ ... ]]</code> 是 Lua 的长字符串语法，写多行 XML 正合适。</p>
+<h3 id="event-hook">挂载点三：event hook（事件响应）</h3>
+<p><code>lua.conf.xml</code> 里 <code>&lt;settings&gt;</code> 中的 <code>&lt;hook&gt;</code> 元素，把一个 Lua 脚本绑到某个 FreeSWITCH 事件上。事件每触发一次，脚本在一个专属线程里跑一次，事件对象通过全局 <code>event</code> 拿到。</p>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;hook</span><span class="w"> </span><span class="na">event=</span><span class="s">&quot;CHANNEL_HANGUP&quot;</span><span class="w"> </span><span class="na">script=</span><span class="s">&quot;on_hangup.lua&quot;</span><span class="nt">/&gt;</span>
+<span class="nt">&lt;hook</span><span class="w"> </span><span class="na">event=</span><span class="s">&quot;CUSTOM&quot;</span><span class="w"> </span><span class="na">subclass=</span><span class="s">&quot;conference::maintenance&quot;</span><span class="w"> </span><span class="na">script=</span><span class="s">&quot;catch-event.lua&quot;</span><span class="nt">/&gt;</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="c1">-- on_hangup.lua：每次挂机都记一笔</span>
+<span class="kd">local</span> <span class="n">uuid</span>  <span class="o">=</span> <span class="n">event</span><span class="p">:</span><span class="n">getHeader</span><span class="p">(</span><span class="s2">&quot;Unique-ID&quot;</span><span class="p">)</span>
+<span class="kd">local</span> <span class="n">cause</span> <span class="o">=</span> <span class="n">event</span><span class="p">:</span><span class="n">getHeader</span><span class="p">(</span><span class="s2">&quot;Hangup-Cause&quot;</span><span class="p">)</span>
+<span class="n">freeswitch</span><span class="p">.</span><span class="n">consoleLog</span><span class="p">(</span><span class="s2">&quot;notice&quot;</span><span class="p">,</span>
+    <span class="nb">string.format</span><span class="p">(</span><span class="s2">&quot;call %s hung up, cause=%s</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">cause</span><span class="p">))</span>
+</code></pre></div>
+
+<p>用 <code>event:getHeader(...)</code> 取事件头，冒号，还是那第三条坑。</p>
+<h3 id="startup-script">挂载点四：startup script（常驻后台）</h3>
+<p><code>startup-script</code> 参数让脚本在 <code>mod_lua</code> 加载时起一个后台线程，可以一直跑。适合做常驻的事件监听器、定时器、跟外部系统对接的循环。它<strong>没有通话 session</strong>。</p>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;param</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;startup-script&quot;</span><span class="w"> </span><span class="na">value=</span><span class="s">&quot;event_daemon.lua&quot;</span><span class="nt">/&gt;</span>
+<span class="nt">&lt;param</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;startup-script&quot;</span><span class="w"> </span><span class="na">value=</span><span class="s">&quot;presence_manager.lua&quot;</span><span class="nt">/&gt;</span>
+</code></pre></div>
+
+<p>多个 startup script 会依次启动，每个之间有 10 毫秒的间隔，避免 Lua 初始化打架。</p>
+<hr>
+<h2 id="_6">最佳实践与常见陷阱</h2>
+<p>例子会写只是及格，知道哪里会炸才算入门。下面几条是 FreeSWITCH + Lua 组合里最值得先记住的。</p>
+<h3 id="session"><code>session</code> 是会阻塞的——想清楚再用</h3>
+<p>dialplan 里的 <code>lua</code> application 是<strong>同步</strong>的：脚本不返回，这通电话就一直被你占着。所以脚本里别干耗时的活儿（同步 HTTP 请求、慢查询），否则这路通话会一直挂着。要做重活，考虑放到 startup script 的后台线程里，或者走异步。</p>
+<h3 id="hook-startup-session-session-api">hook 和 startup 里没有 session，别乱用 session API</h3>
+<p>event hook、startup script 都<strong>没有通话 session</strong>——它们不在某一路电话的上下文里。在这些脚本里调 <code>session:xxx()</code> 会直接出错。它们能用的是 <code>event</code>（hook 里）和各种 <code>freeswitch.API()</code> 这类全局能力。</p>
+<h3 id="pcall">错误要用 <code>pcall</code> 兜住</h3>
+<p>Lua 脚本里一个未捕获的错误，轻则中断这段逻辑，重则在关键路径上留下半截状态。对可能失败的调用（尤其是外部 IO），用 <code>pcall</code> 包一层：</p>
+<div class="highlight"><pre><span></span><code><span class="kd">local</span> <span class="n">ok</span><span class="p">,</span> <span class="n">err</span> <span class="o">=</span> <span class="nb">pcall</span><span class="p">(</span><span class="kr">function</span><span class="p">()</span>
+    <span class="c1">-- 可能抛错的代码</span>
+    <span class="n">do_something_risky</span><span class="p">()</span>
+<span class="kr">end</span><span class="p">)</span>
+<span class="kr">if</span> <span class="ow">not</span> <span class="n">ok</span> <span class="kr">then</span>
+    <span class="n">freeswitch</span><span class="p">.</span><span class="n">consoleLog</span><span class="p">(</span><span class="s2">&quot;err&quot;</span><span class="p">,</span> <span class="s2">&quot;failed: &quot;</span> <span class="o">..</span> <span class="nb">tostring</span><span class="p">(</span><span class="n">err</span><span class="p">)</span> <span class="o">..</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="c1">-- 兜底处理，别让整通电话烂在这里</span>
+<span class="kr">end</span>
+</code></pre></div>
+
+<h3 id="freeswitchconsolelog-print">日志走 <code>freeswitch.consoleLog</code>，别用 <code>print</code></h3>
+<p>脚本里 <code>print</code> 出来的东西不一定进 FreeSWITCH 的日志体系。要留痕迹用 <code>freeswitch.consoleLog(level, message)</code>，level 是 <code>debug</code> / <code>info</code> / <code>notice</code> / <code>warning</code> / <code>err</code> 之一，消息记得自己带换行 <code>\n</code>。</p>
+<h3 id="require-script-directory"><code>require</code> 找不到模块？检查 <code>script-directory</code></h3>
+<p>想在脚本里 <code>require</code> 别的 <code>.lua</code> 模块，得先在 <code>lua.conf.xml</code> 里配 <code>script-directory</code>，用 <code>?.lua</code> 通配：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;param</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;script-directory&quot;</span><span class="w"> </span><span class="na">value=</span><span class="s">&quot;$${script_dir}/?.lua&quot;</span><span class="nt">/&gt;</span>
+</code></pre></div>
+
+<p>这实际上是往 Lua 的 <code>LUA_PATH</code> 前面加路径。native 的 C 扩展（<code>.so</code>）则用 <code>module-directory</code> 配 <code>LUA_CPATH</code>。这两个配错，是“我明明放了模块却 <code>require</code> 不到”的头号原因。</p>
+<h3 id="_7">改了脚本不一定要重启</h3>
+<p>dialplan / hook 里引用的脚本，通常每次执行都重新读，改完直接生效。但 <code>lua.conf.xml</code> 本身是模块加载时读一次的，改了配置要在 <code>fs_cli</code> 里 <code>reload mod_lua</code>。startup script 改了则要重载模块或重启进程才会重新起线程。</p>
+<h3 id="_8">陷阱清单速查</h3>
+<table>
+<thead>
+<tr>
+<th>症状</th>
+<th>多半是</th>
+<th>怎么办</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>attempt to index a nil value</code></td>
+<td>用了 <code>.</code> 该用 <code>:</code>，或 session 不存在</td>
+<td>实例方法用冒号；hook/startup 里别用 session</td>
+</tr>
+<tr>
+<td>脚本报语法错却看不出哪</td>
+<td>写了 <code>!=</code></td>
+<td>改成 <code>~=</code></td>
+</tr>
+<tr>
+<td>遍历表漏了元素</td>
+<td>表有空洞还用 <code>ipairs</code>/<code>#</code></td>
+<td>哈希表用 <code>pairs</code>；数组保持连续</td>
+</tr>
+<tr>
+<td><code>require</code> 报 module not found</td>
+<td>没配 <code>script-directory</code></td>
+<td>在 <code>lua.conf.xml</code> 里加 <code>?.lua</code> 路径</td>
+</tr>
+<tr>
+<td>改了配置不生效</td>
+<td>改的是 <code>lua.conf.xml</code></td>
+<td><code>reload mod_lua</code></td>
+</tr>
+<tr>
+<td>一通电话卡住不挂</td>
+<td>在 <code>lua</code> application 里做了慢 IO</td>
+<td>挪到后台线程或改异步</td>
+</tr>
+<tr>
+<td>日志里找不到脚本输出</td>
+<td>用了 <code>print</code></td>
+<td>换 <code>freeswitch.consoleLog</code></td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="lua-freeswitch">总结：Lua 在 FreeSWITCH 里是胶水，不是主料</h2>
+<p>重新拾起 Lua，最大的感受是：<strong>这门语言的定位从头到尾没变过——它是胶水，不是主料。</strong></p>
+<p>FreeSWITCH 的重活（媒体处理、协议栈、状态机）都在 C 模块里，Lua 负责的是那些“需要经常改、又不值得重编一次核心”的黏合逻辑：呼叫怎么路由、IVR 菜单怎么走、事件来了记什么。想清楚这条边界，你就知道什么该写进 Lua 脚本、什么该老老实实回到 C 模块里去。写脚本时贪多，把重逻辑堆进 <code>lua</code> application，卡住通话；或者该动态生成配置时死抱着静态 XML——都是没认清这层定位。</p>
+<p>一句话收尾：</p>
+<blockquote>
+<p><strong>Lua 之所以能长在这么多大项目里，靠的不是功能多，而是够克制。</strong>
+在 FreeSWITCH 里用它，也请保持这份克制——脚本只做胶水该做的事。</p>
+</blockquote>
+<h4 id="_9">上手清单</h4>
+<ul>
+<li>[ ] <code>fs_cli</code> 里 <code>eval $${script_dir}</code> 确认脚本目录。</li>
+<li>[ ] 分清四个挂载点：dialplan（同步、有 session）、XML handler（动态配置）、hook（事件、无 session）、startup（常驻、无 session）。</li>
+<li>[ ] 所有实例方法用冒号：<code>session:answer()</code>、<code>event:getHeader()</code>。</li>
+<li>[ ] 外部 IO 用 <code>pcall</code> 兜错，日志用 <code>freeswitch.consoleLog</code>。</li>
+<li>[ ] 要 <code>require</code> 别的模块，先在 <code>lua.conf.xml</code> 配好 <code>script-directory</code>。</li>
+<li>[ ] 改了 <code>lua.conf.xml</code> 记得 <code>reload mod_lua</code>。</li>
+<li>[ ] 别在 <code>lua</code> application 里做慢 IO，重活挪到后台。</li>
+</ul>
+<h2 id="_10">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* 重拾 Lua
+** Lua 是什么
+*** 为嵌入而生
+*** 小 / 快 / 可移植 / 免费
+*** 用户：Lightroom / WoW / Nginx / Redis / FreeSWITCH
+** 语言要点
+*** 表即一切（下标从 1）
+*** 函数一等公民 / 闭包
+*** 元表 = JS 原型
+*** 协程
+*** C API（靠栈传数据）
+** 五个坑
+*** 下标从 1
+*** ~= 不是 !=
+*** . 与 : 之别
+*** &quot;#&quot; 只数连续整数键
+*** pairs vs ipairs
+** FreeSWITCH 挂载点
+*** dialplan application（同步、有 session）
+*** XML handler（动态配置）
+*** event hook（无 session）
+*** startup script（常驻）
+** 最佳实践
+*** session 会阻塞
+*** pcall 兜错
+*** consoleLog 记日志
+*** script-directory 配 require
+@endmindmap
+</code></pre></div>
+
+<p><img alt="重拾 Lua - 思维导图" src="./images/tech_20260914_lua_in_freeswitch_mindmap.png"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/2026-09-14-lua-in-freeswitch.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/tech.html">tech</a>
+      <a href="https://www.fanyamin.com/blog/tag/lua.html">lua</a>
+      <a href="https://www.fanyamin.com/blog/tag/freeswitch.html">freeswitch</a>
+      <a href="https://www.fanyamin.com/blog/tag/scripting.html">scripting</a>
+      <a href="https://www.fanyamin.com/blog/tag/mod_lua.html">mod_lua</a>
+      <a href="https://www.fanyamin.com/blog/tag/dialplan.html">dialplan</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-09-14-freeswitch-dialplan-101.html" title="拨号计划 101：FreeSWITCH 里那台可编程状态机">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/2026-09-14-webrtc-to-freeswitch.html">webrtc-to-freeswitch:一个浏览器软电话的架构、流程与协议全解</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-09-11-sipjs-call-freeswitch.html">用 SIP.js 从浏览器打电话到 FreeSWITCH</a></li>
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-testing-unit-and-integration.html">给 FreeSWITCH 写测试：从单元测试到集成测试，用一个真 bug 串起来</a></li>
+      <li><a href="https://www.fanyamin.com/blog/c-dynamic-load-di-service-registry.html">C 语言的动态加载、依赖注入与服务注册：把 FreeSWITCH 的模块机制拆到底</a></li>
+      <li><a href="https://www.fanyamin.com/blog/apache-portable-runtime.html">APR 入门：一个 30 年前的答案，为什么还在你的代码库里</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

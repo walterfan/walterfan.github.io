@@ -1,0 +1,1785 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="C 没有反射，凭什么能用字符串 &#34;answer&#34; 找到一个函数？把 FreeSWITCH 的模块系统从 dlopen 拆到函数指针派发，四层结构讲透：动态加载、依赖注入、服务注册、运行时查找。所有结论都在 FreeSWITCH 1.11.3-dev 上实测过，包括亲手写一个 50 行模块热加载进跑着的进程，以及三个实测出来的坑。" />
+<meta name="keywords" content="tech, C, freeswitch, dlopen, plugin, dependency-injection, service-registry, abi">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "C 语言的动态加载、依赖注入与服务注册：把 FreeSWITCH 的模块机制拆到底",
+  "description": "C 没有反射，凭什么能用字符串 &#34;answer&#34; 找到一个函数？把 FreeSWITCH 的模块系统从 dlopen 拆到函数指针派发，四层结构讲透：动态加载、依赖注入、服务注册、运行时查找。所有结论都在 FreeSWITCH 1.11.3-dev 上实测过，包括亲手写一个 50 行模块热加载进跑着的进程，以及三个实测出来的坑。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-09-07T21:30:00+08:00",
+  "dateModified": "2026-09-07T21:30:00+08:00",
+  "url": "https://www.fanyamin.com/blog/c-dynamic-load-di-service-registry.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/c-dynamic-load-di-service-registry.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "tech, C, freeswitch, dlopen, plugin, dependency-injection, service-registry, abi"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="C 语言的动态加载、依赖注入与服务注册：把 FreeSWITCH 的模块机制拆到底"/>
+  <meta property="og:description" content="C 没有反射，凭什么能用字符串 &#34;answer&#34; 找到一个函数？把 FreeSWITCH 的模块系统从 dlopen 拆到函数指针派发，四层结构讲透：动态加载、依赖注入、服务注册、运行时查找。所有结论都在 FreeSWITCH 1.11.3-dev 上实测过，包括亲手写一个 50 行模块热加载进跑着的进程，以及三个实测出来的坑。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/c-dynamic-load-di-service-registry.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-09-07 21:30:00+08:00"/>
+  <meta property="article:modified_time" content="2026-09-07 21:30:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="tech"/>
+  <meta property="article:tag" content="C"/>
+  <meta property="article:tag" content="freeswitch"/>
+  <meta property="article:tag" content="dlopen"/>
+  <meta property="article:tag" content="plugin"/>
+  <meta property="article:tag" content="dependency-injection"/>
+  <meta property="article:tag" content="service-registry"/>
+  <meta property="article:tag" content="abi"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; C 语言的动态加载、依赖注入与服务注册：把 FreeSWITCH 的模块机制拆到底</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="c-dynamic-load-di-service-registry">C 语言的动态加载、依赖注入与服务注册：把 FreeSWITCH 的模块机制拆到底</h1>
+    <p>
+      Posted on 一 07 9月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>C 语言的动态加载、依赖注入与服务注册</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-09-07</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">大纲</h2>
+<details>
+<summary>展开看看</summary>
+<ul>
+<li><strong>核心问题</strong>：C 没有反射、没有运行时类型发现。那 <code>&lt;action application="answer"/&gt;</code> 这一行 XML，凭什么能在运行时找到 <code>answer_function()</code> 这个 C 函数？</li>
+<li><strong>核心结论</strong>：FreeSWITCH 手搓了一套 <strong>Manual Reflection</strong>：<code>dlopen</code> + 一个约定名字的导出数据符号 + 模块自己上报能力 + Core 统一发布到全局注册表 + 字符串查表拿函数指针。它不需要 IDL，因为<strong>函数指针本身就是接口</strong>，而 header 就是那份 IDL。</li>
+<li><strong>四层结构</strong>（本文主干）：① 动态加载（谁来找到 <code>.so</code>、找到入口）；② 依赖注入（Core 怎么把能力交给模块，模块怎么反向依赖 Core）；③ 服务注册（模块上报 vs Core 发布，两个阶段）；④ 运行时查找与派发（查表、加锁、调用）。</li>
+<li><strong>最反直觉的一处</strong>：Loader <strong>先在主程序/<code>libfreeswitch</code> 里找符号，找不到才 <code>dlopen</code> 那个 <code>.so</code></strong>。因为 <code>CORE_PCM_MODULE</code>、<code>CORE_SOFTTIMER_MODULE</code> 这些"模块"根本不是 <code>.so</code>，它们编在 core 里面 —— 同一套注册协议同时服务静态和动态模块。实测 <code>nm</code> 能在 <code>libfreeswitch.dylib</code> 里看到 4 个 <code>CORE_*_MODULE_module_interface</code>。</li>
+<li><strong>注册不是模块干的</strong>：模块的 load 函数只往<strong>自己的私有链表</strong>挂接口；真正写进全局 hash 的是 Core 的 <code>switch_loadable_module_process()</code>。实测日志里 <code>Successfully Loaded [mod_dptools]</code> 打在 <code>Adding Application 'answer'</code> <strong>前面</strong>，就是这个两阶段的铁证。这也是 interface allowlist 门禁能生效的位置。</li>
+<li><strong><code>SWITCH_ADD_APP</code> 逐行拆解</strong>：七个参数各是什么、回调签名为什么是 <code>void</code>、六个字段填进哪个结构体、<code>for(;;){...break;}</code> 的用意，以及 <strong>7 个 <code>SAF_*</code> flag 各自的实际检查点</strong>（<code>SAF_SUPPORT_NOMEDIA</code> 不设，core 会先替你 <code>pre_answer</code>）。附 <code>SWITCH_ADD_APP</code> / <code>SWITCH_ADD_API</code> / <code>SWITCH_ADD_CHAT_APP</code> 三兄弟对照表。</li>
+<li><strong>两种注册表形态</strong>：application / api 是<strong>平坦 hash，后来者覆盖</strong>；codec / file / database 是<strong>链表 + modname 消歧</strong>。这正好对应现代 DI 的"单绑定"与"multibinding + qualifier"。</li>
+<li><strong>三个实测出来的坑</strong>：① 我写了个模块注册同名 API <code>uptime</code>，热加载后 <code>uptime</code> 返回 <code>HIJACKED by mod_walter</code>；② <strong>卸载我的模块后，<code>uptime</code> 彻底消失</strong>（<code>-ERR uptime Command not found!</code>），而 mod_commands 是 <code>NOUNLOAD</code> 的，重启进程才能救回来；③ <code>show application</code> 把 chat application 混显成 application，观测层把类型信息丢了。</li>
+<li><strong>动手环节</strong>：50 行写一个模块，编译成 <code>.so</code>，<code>load</code> 进正在跑的 FreeSWITCH，全过程实测输出都贴出来了。含 ABI 版本守卫和"符号名必须等于文件名"两个失败实验。</li>
+<li><strong>收尾</strong>：想在自己的 C 项目里抄这套设计，一张 12 条的 checklist。</li>
+</ul>
+</details>
+<hr>
+<p>你去读 FreeSWITCH 的 dialplan，会看到这么一行：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;action</span><span class="w"> </span><span class="na">application=</span><span class="s">&quot;answer&quot;</span><span class="nt">/&gt;</span>
+</code></pre></div>
+
+<p>字符串 <code>"answer"</code>。然后 FreeSWITCH 就调用了 <code>mod_dptools.so</code> 里的 <code>answer_function()</code>。</p>
+<p>停一下，这件事在 C 里其实挺离谱的。Java 有反射，Python 有 <code>getattr</code>，Go 有 <code>reflect</code>，C 有什么？C 编译完之后，函数名连符号表都不一定留得下来。标准 C 甚至不允许你把 <code>void *</code> 合法地转成函数指针（<code>dlsym</code> 返回 <code>void *</code> 这事本身就是 POSIX 对 ISO C 的一次公开违规）。</p>
+<p>所以 FreeSWITCH 必须<strong>自己造一套反射</strong>。它造得非常朴素，也非常有效 —— 朴素到我认为任何写 C/C++ 长期项目的人都该读一遍：<strong>这是一套用 <code>dlopen</code> + 函数指针 + 内存池 + 一个约定俗成的符号名拼出来的 Plugin Framework、Service Registry 和 Dependency Injection 容器</strong>。</p>
+<p>本文把这条链路拆成四层来讲。代码引用来自 <strong>FreeSWITCH 1.11.3-dev（git ea429c9）</strong>，实测输出来自 macOS 上运行的实例。</p>
+<hr>
+<h2 id="_2">全景：五步，两次解耦</h2>
+<p>先把地图摊开：</p>
+<div class="highlight"><pre><span></span><code>① 发现        modules.conf.xml  →  &quot;mod_dptools&quot;
+                     │
+② 加载        dlopen → dlsym(&quot;mod_dptools_module_interface&quot;)
+                     │            ↓
+                     │      { api_version, load, shutdown, runtime, flags }
+                     │
+③ 上报        mod_dptools_load(&amp;module_interface, pool)
+                     │      模块把 139 个 app / 6 个 api / 4 个 endpoint
+                     │      挂到“自己的”私有链表上
+                     │
+④ 发布        switch_loadable_module_process()
+                     │      Core 遍历私有链表，插入全局 hash
+                     │      （门禁在这一步）
+                     │
+⑤ 派发        &quot;answer&quot; → hash lookup → 函数指针 → answer_function(session, data)
+</code></pre></div>
+
+<p>这张图里有<strong>两次解耦</strong>，是整个设计的灵魂：</p>
+<ol>
+<li><strong>③ 和 ④ 之间</strong>：模块从来不碰全局注册表。它只填自己的结构体。发布与否，Core 说了算。</li>
+<li><strong>④ 和 ⑤ 之间</strong>：消费者只知道 <code>"answer"</code>，不知道 <code>mod_dptools</code>。dialplan 里没有任何一处写着模块名。</li>
+</ol>
+<p>第 1 点让你能加门禁、能审计、能在 sqldb 没起来的时候把事件缓存住；第 2 点让 dialplan 完全不依赖模块布局。现代 DI 容器承诺的，无非也是这两件事。</p>
+<p>下面逐层拆。</p>
+<hr>
+<h2 id="dlopen">第一层：动态加载 —— <code>dlopen</code> 只是开始，难的是“找入口”</h2>
+<h3 id="switch_module_definition"><code>SWITCH_MODULE_DEFINITION</code> 到底展开成什么</h3>
+<p>一个 FreeSWITCH 模块的全部"元数据"就一行（<code>mod_dptools.c:44</code>）：</p>
+<div class="highlight"><pre><span></span><code><span class="n">SWITCH_MODULE_DEFINITION</span><span class="p">(</span><span class="n">mod_dptools</span><span class="p">,</span><span class="w"> </span><span class="n">mod_dptools_load</span><span class="p">,</span><span class="w"> </span><span class="n">mod_dptools_shutdown</span><span class="p">,</span><span class="w"> </span><span class="nb">NULL</span><span class="p">);</span>
+</code></pre></div>
+
+<p>宏的真身在 <code>switch_types.h:2640</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="cp">#define SWITCH_MODULE_DEFINITION_EX(name, load, shutdown, runtime, flags)   \</span>
+<span class="cp">static const char modname[] =  #name ;                                      \</span>
+<span class="cp">SWITCH_MOD_DECLARE_DATA switch_loadable_module_function_table_t name##_module_interface = { \</span>
+<span class="cp">    SWITCH_API_VERSION,                                                     \</span>
+<span class="cp">    load,                                                                   \</span>
+<span class="cp">    shutdown,                                                               \</span>
+<span class="cp">    runtime,                                                                \</span>
+<span class="cp">    flags                                                                   \</span>
+<span class="cp">}</span>
+</code></pre></div>
+
+<p>它只干两件事：</p>
+<ol>
+<li>定义一个 <code>static const char modname[]</code>（后面 load 函数会偷偷用到，见第二层）；</li>
+<li>导出一个<strong>数据符号</strong> <code>mod_dptools_module_interface</code>，类型是：</li>
+</ol>
+<div class="highlight"><pre><span></span><code><span class="k">typedef</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">switch_loadable_module_function_table</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">switch_api_version</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_module_load_t</span><span class="w"> </span><span class="n">load</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_module_shutdown_t</span><span class="w"> </span><span class="n">shutdown</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_module_runtime_t</span><span class="w"> </span><span class="n">runtime</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_module_flag_t</span><span class="w"> </span><span class="n">flags</span><span class="p">;</span>
+<span class="p">}</span><span class="w"> </span><span class="n">switch_loadable_module_function_table_t</span><span class="p">;</span>
+</code></pre></div>
+
+<p>注意 <code>SWITCH_MOD_DECLARE_DATA</code> —— 在 GCC/Clang 下它是 <code>__attribute__((visibility("default")))</code>（<code>switch_platform.h:192</code>），Windows 下是 <code>__declspec(dllexport)</code>。也就是说，模块的<strong>公开 ABI 面积被刻意压到了一个符号</strong>。</p>
+<p>实测一下 <code>mod_dptools.so</code> 到底导出了什么：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>nm<span class="w"> </span>-gU<span class="w"> </span>~/fs/lib/freeswitch/mod/mod_dptools.so
+<span class="go">0000000000002c34 T _att_thread_run</span>
+<span class="go">000000000000483c T _call_monitor_thread</span>
+<span class="go">000000000001c740 S _error_endpoint_interface</span>
+<span class="go">000000000001c1a0 D _error_io_routines</span>
+<span class="go">000000000001c748 S _group_endpoint_interface</span>
+<span class="go">000000000001c260 D _group_io_routines</span>
+<span class="go">00000000000006a8 T _mod_dptools_load</span>
+<span class="go">000000000001c000 D _mod_dptools_module_interface   ← 唯一真正必需的</span>
+<span class="go">0000000000002bac T _mod_dptools_shutdown</span>
+<span class="go">0000000000004610 T _page_thread</span>
+<span class="go">000000000001c758 S _pickup_endpoint_interface</span>
+<span class="go">000000000001c0e8 D _pickup_event_handlers</span>
+<span class="go">000000000001c028 D _pickup_io_routines</span>
+<span class="go">000000000001c750 S _user_endpoint_interface</span>
+<span class="go">000000000001c320 D _user_io_routines</span>
+</code></pre></div>
+
+<p>一共 15 个全局符号（那几个 <code>endpoint_interface</code>/<code>io_routines</code> 是漏出来的实现细节，<code>static</code> 忘加了）。Loader 只关心其中一个。<strong>六千八百行的模块，对外的契约面积是一个结构体。</strong></p>
+<p>顺便解掉开头那个 ISO C 的小尴尬：因为入口是<strong>数据符号</strong>而不是函数符号，loader 用的是 <code>switch_dso_data_sym()</code>（<code>void *</code> → <code>void *</code>，完全合法），全程不需要把 <code>void *</code> 转成函数指针。函数指针都藏在结构体字段里，由编译器保证类型。<code>switch_dso.c</code> 里那个需要 <code>(switch_dso_func_t)(intptr_t)</code> 双重强转的 <code>switch_dso_func_sym()</code>，全树只有 <code>mod_java</code> 拿 <code>JNI_CreateJavaVM</code> 时用过一次。<strong>"入口用数据符号"不只是为了塞版本号和 flags，它顺手把这个 UB 边缘的转换也绕掉了。</strong></p>
+<h3 id="_module_interface">陷阱一：符号名 = 文件名 + <code>_module_interface</code></h3>
+<p>Loader 怎么知道要找哪个符号？看 <code>switch_loadable_module.c:1718</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="n">struct_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">switch_core_sprintf</span><span class="p">(</span><span class="n">pool</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;%s_module_interface&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">filename</span><span class="p">);</span>
+</code></pre></div>
+
+<p><code>filename</code> 是<strong>去掉扩展名的文件名</strong>，不是宏里写的 <code>name</code>。这两个必须一致，否则模块加载失败。我把 <code>mod_walter.so</code> 复制成 <code>mod_renamed.so</code> 试了一下：</p>
+<div class="highlight"><pre><span></span><code><span class="go">freeswitch@fs&gt; load mod_renamed</span>
+<span class="go">-ERR [module load file routine returned an error]</span>
+
+<span class="gp"># </span>日志：
+<span class="go">[CRIT] switch_loadable_module.c:1815 Error Loading module .../mod_renamed.so</span>
+<span class="go">**dlsym(0x8251ea80, mod_renamed_module_interface): symbol not found**</span>
+</code></pre></div>
+
+<p>这就是为什么 FreeSWITCH 模块的文件名从来不能随便改。它不是风格约定，是<strong>符号查找协议</strong>。</p>
+<h3 id="switch_api_version-abi">陷阱二：<code>switch_api_version</code> 是穷人版 ABI 检查</h3>
+<p><code>SWITCH_API_VERSION</code> 目前是 <code>5</code>（<code>switch_types.h:2604</code>）。Loader 拿到结构体第一件事就是（<code>switch_loadable_module.c:1757</code>）：</p>
+<div class="highlight"><pre><span></span><code><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">interface_struct_handle</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">interface_struct_handle</span><span class="o">-&gt;</span><span class="n">switch_api_version</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">SWITCH_API_VERSION</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">err</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;Trying to load an out of date module, please rebuild the module.&quot;</span><span class="p">;</span>
+<span class="w">    </span><span class="k">break</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>我把自己模块的表手写成 <code>api_version = 4</code>，实测：</p>
+<div class="highlight"><pre><span></span><code><span class="go">freeswitch@fs&gt; load mod_walter2</span>
+<span class="go">-ERR [module load file routine returned an error]</span>
+
+<span class="gp"># </span>日志：
+<span class="go">[CRIT] Error Loading module .../mod_walter2.so</span>
+<span class="go">**Trying to load an out of date module, please rebuild the module.**</span>
+</code></pre></div>
+
+<p>这个设计很土，但它解决的问题真实存在：<strong>In-process plugin 共享同一个地址空间和同一套结构体布局，一旦 header 变了而模块没重编，你得到的不是编译错误，而是运行时随机内存踩踏。</strong> 把版本号放在结构体第一个字段，是能想到的最便宜的保险。</p>
+<p>代价也很明显：粒度太粗。<code>SWITCH_API_VERSION</code> 只有一个，任何一个结构体加字段都得全体重编。所以 FreeSWITCH 又加了第二道保险 —— 后面讲 <code>padding[10]</code>。</p>
+<h3 id="_3">最反直觉的一处：先在主程序里找符号</h3>
+<p>这段是我读这个 loader 时最意外的（<code>switch_loadable_module.c:1721</code>）：</p>
+<div class="highlight"><pre><span></span><code><span class="cp">#ifdef WIN32</span>
+<span class="w">    </span><span class="n">dso</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">switch_dso_open</span><span class="p">(</span><span class="s">&quot;FreeSwitch.dll&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">load_global</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">derr</span><span class="p">);</span>
+<span class="cp">#elif defined (MACOSX) || defined(DARWIN)</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">        </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">lib_path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">switch_mprintf</span><span class="p">(</span><span class="s">&quot;%s/libfreeswitch.dylib&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">SWITCH_GLOBAL_dirs</span><span class="p">.</span><span class="n">lib_dir</span><span class="p">);</span>
+<span class="w">        </span><span class="n">dso</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">switch_dso_open</span><span class="p">(</span><span class="n">lib_path</span><span class="p">,</span><span class="w"> </span><span class="n">load_global</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">derr</span><span class="p">);</span>
+<span class="w">        </span><span class="n">switch_safe_free</span><span class="p">(</span><span class="n">lib_path</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="cp">#else</span>
+<span class="w">    </span><span class="n">dso</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">switch_dso_open</span><span class="p">(</span><span class="nb">NULL</span><span class="p">,</span><span class="w"> </span><span class="n">load_global</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">derr</span><span class="p">);</span><span class="w">   </span><span class="cm">/* dlopen(NULL) = 主程序全局作用域 */</span>
+<span class="cp">#endif</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">derr</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">dso</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">interface_struct_handle</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">switch_dso_data_sym</span><span class="p">(</span><span class="n">dso</span><span class="p">,</span><span class="w"> </span><span class="n">struct_name</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">derr</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="p">...</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">interface_struct_handle</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">dso</span><span class="p">)</span><span class="w"> </span><span class="n">switch_dso_destroy</span><span class="p">(</span><span class="o">&amp;</span><span class="n">dso</span><span class="p">);</span>
+<span class="w">        </span><span class="n">dso</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">switch_dso_open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span><span class="w"> </span><span class="n">load_global</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">derr</span><span class="p">);</span><span class="w">   </span><span class="cm">/* 才轮到真正的 .so */</span>
+<span class="w">    </span><span class="p">}</span>
+</code></pre></div>
+
+<p>它<strong>先在 core 自己身上找</strong>这个符号，找不到才去开 <code>.so</code>。为什么？</p>
+<p>因为有些"模块"根本不是 <code>.so</code>。<code>src/switch_pcm.c:42</code> 里有这么一行：</p>
+<div class="highlight"><pre><span></span><code><span class="n">SWITCH_MODULE_DEFINITION</span><span class="p">(</span><span class="n">CORE_PCM_MODULE</span><span class="p">,</span><span class="w"> </span><span class="n">core_pcm_load</span><span class="p">,</span><span class="w"> </span><span class="n">core_pcm_shutdown</span><span class="p">,</span><span class="w"> </span><span class="nb">NULL</span><span class="p">);</span>
+</code></pre></div>
+
+<p>这是编在 <code>libfreeswitch</code> 里面的。启动时 core 会"加载"它（<code>switch_loadable_module.c:2340</code>）：</p>
+<div class="highlight"><pre><span></span><code><span class="n">switch_loadable_module_load_module_ex</span><span class="p">(</span><span class="s">&quot;&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;CORE_SOFTTIMER_MODULE&quot;</span><span class="p">,</span><span class="w"> </span><span class="p">...);</span>
+<span class="n">switch_loadable_module_load_module_ex</span><span class="p">(</span><span class="s">&quot;&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;CORE_PCM_MODULE&quot;</span><span class="p">,</span><span class="w"> </span><span class="p">...);</span>
+<span class="n">switch_loadable_module_load_module_ex</span><span class="p">(</span><span class="s">&quot;&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;CORE_SPEEX_MODULE&quot;</span><span class="p">,</span><span class="w"> </span><span class="p">...);</span>
+</code></pre></div>
+
+<p>目录是空串。于是走的正是上面那个"先在自己身上找"的分支。</p>
+<p>我写了个 30 行的程序把这个过程复现出来：</p>
+<div class="highlight"><pre><span></span><code><span class="cm">/* peek.c —— 手动重放 FreeSWITCH loader 的符号查找 */</span>
+<span class="k">typedef</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">api_version</span><span class="p">;</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">load</span><span class="p">,</span><span class="w"> </span><span class="o">*</span><span class="n">shutdown</span><span class="p">,</span><span class="w"> </span><span class="o">*</span><span class="n">runtime</span><span class="p">;</span><span class="w"> </span><span class="kt">uint32_t</span><span class="w"> </span><span class="n">flags</span><span class="p">;</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="n">mod_table_t</span><span class="p">;</span>
+
+<span class="kt">int</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">argc</span><span class="p">,</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">**</span><span class="n">argv</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">core</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dlopen</span><span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span><span class="w"> </span><span class="n">RTLD_NOW</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">RTLD_GLOBAL</span><span class="p">);</span><span class="w">   </span><span class="cm">/* libfreeswitch.dylib */</span>
+<span class="w">    </span><span class="n">peek</span><span class="p">(</span><span class="n">core</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;CORE_PCM_MODULE_module_interface&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="n">peek</span><span class="p">(</span><span class="n">core</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;CORE_SOFTTIMER_MODULE_module_interface&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="n">peek</span><span class="p">(</span><span class="n">core</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;mod_dptools_module_interface&quot;</span><span class="p">);</span>
+
+<span class="w">    </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">m</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dlopen</span><span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span><span class="w"> </span><span class="n">RTLD_NOW</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">RTLD_LOCAL</span><span class="p">);</span><span class="w">       </span><span class="cm">/* mod_dptools.so */</span>
+<span class="w">    </span><span class="n">peek</span><span class="p">(</span><span class="n">m</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;mod_dptools_module_interface&quot;</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>实测输出：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>./peek<span class="w"> </span>~/fs/lib/libfreeswitch.dylib<span class="w"> </span>~/fs/lib/freeswitch/mod/mod_dptools.so
+<span class="go">-- symbols found inside libfreeswitch itself --</span>
+<span class="go">CORE_PCM_MODULE_module_interface        api=5 load=0x1096f97b8 shutdown=0x1096faf88 runtime=0x0        flags=0x0</span>
+<span class="go">CORE_SOFTTIMER_MODULE_module_interface  api=5 load=0x1096f5c24 shutdown=0x1096f5db0 runtime=0x1096f5ef4 flags=0x0</span>
+<span class="go">mod_dptools_module_interface            NOT FOUND (symbol not found)</span>
+
+<span class="go">-- now dlopen mod_dptools.so --</span>
+<span class="go">mod_dptools_module_interface            api=5 load=0x1095c46a8 shutdown=0x1095c6bac runtime=0x0        flags=0x0</span>
+</code></pre></div>
+
+<p>和 loader 的分支逐字对应：core 里的三个 <code>CORE_*</code> 找得到，<code>mod_dptools</code> 找不到 → 落到 <code>dlopen</code> 那条路。</p>
+<p>顺手也能验证 <code>nm</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>nm<span class="w"> </span>-gU<span class="w"> </span>~/fs/lib/libfreeswitch.dylib<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>MODULE_module_interface
+<span class="go">00000000002f9f88 D _CORE_PCM_MODULE_module_interface</span>
+<span class="go">00000000002f9f58 D _CORE_SOFTTIMER_MODULE_module_interface</span>
+<span class="go">00000000002f9fb0 D _CORE_SPEEX_MODULE_module_interface</span>
+<span class="go">00000000002fa090 D _CORE_VPX_MODULE_module_interface</span>
+</code></pre></div>
+
+<p><strong>这是很漂亮的设计</strong>：静态编入和动态加载走同一套注册协议、同一套生命周期、同一套注册表。你想把某个模块编进 core？改构建，代码一行不动。上面输出里还能顺手读出：<code>CORE_SOFTTIMER</code> 有 <code>runtime</code> 函数（非 0），会拿到一个独立线程；<code>CORE_PCM</code> 和 <code>mod_dptools</code> 是 <code>NULL</code>，纯被动。</p>
+<h3 id="rtld_local-rtld_global"><code>RTLD_LOCAL</code> 还是 <code>RTLD_GLOBAL</code>：为什么要重开一次</h3>
+<p><code>switch_dso.c</code> 的 Unix 实现很短：</p>
+<div class="highlight"><pre><span></span><code><span class="n">switch_dso_lib_t</span><span class="w"> </span><span class="nf">switch_dso_open</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">path</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">global</span><span class="p">,</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">**</span><span class="n">err</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">lib</span><span class="p">;</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">global</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">lib</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dlopen</span><span class="p">(</span><span class="n">path</span><span class="p">,</span><span class="w"> </span><span class="n">RTLD_NOW</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">RTLD_GLOBAL</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">lib</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dlopen</span><span class="p">(</span><span class="n">path</span><span class="p">,</span><span class="w"> </span><span class="n">RTLD_NOW</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">RTLD_LOCAL</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="p">...</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>默认 <code>RTLD_LOCAL</code> —— 模块的符号不进全局命名空间，避免模块之间互相污染（想想两个模块各自静态链了不同版本的 zlib）。</p>
+<p>但有些模块必须 <code>RTLD_GLOBAL</code>：脚本语言模块（<code>mod_lua</code>、<code>mod_python</code>）要让解释器再去 <code>dlopen</code> 的扩展能找到自己的符号。FreeSWITCH 的处理办法有点憨但很实用（<code>switch_loadable_module.c:1762</code>）：</p>
+<div class="highlight"><pre><span></span><code><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">load_global</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">interface_struct_handle</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">switch_test_flag</span><span class="p">(</span><span class="n">interface_struct_handle</span><span class="p">,</span><span class="w"> </span><span class="n">SMODF_GLOBAL_SYMBOLS</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">load_global</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">SWITCH_TRUE</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_dso_destroy</span><span class="p">(</span><span class="o">&amp;</span><span class="n">dso</span><span class="p">);</span>
+<span class="w">    </span><span class="n">interface_struct_handle</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">NULL</span><span class="p">;</span>
+<span class="w">    </span><span class="n">dso</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">switch_dso_open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span><span class="w"> </span><span class="n">load_global</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">derr</span><span class="p">);</span>
+<span class="w">    </span><span class="n">switch_log_printf</span><span class="p">(...,</span><span class="w"> </span><span class="s">&quot;Loading module with global namespace at request of module</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="k">continue</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong>先用 <code>RTLD_LOCAL</code> 打开，读出 flags，发现模块要求全局，<code>dlclose</code> 掉重新用 <code>RTLD_GLOBAL</code> 打开一次。</strong> 因为 flags 存在模块自己身上，不读进来就不知道该怎么打开它 —— 一个鸡生蛋问题，用"开两次"暴力解决。<code>modules.conf.xml</code> 里也可以外部指定 <code>global="true"</code>。</p>
+<p>还有一处很小但值得注意：</p>
+<div class="highlight"><pre><span></span><code><span class="kt">void</span><span class="w"> </span><span class="nf">switch_dso_destroy</span><span class="p">(</span><span class="n">switch_dso_lib_t</span><span class="w"> </span><span class="o">*</span><span class="n">lib</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">lib</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="o">*</span><span class="n">lib</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="cp">#ifndef HAVE_FAKE_DLCLOSE</span>
+<span class="w">        </span><span class="n">dlclose</span><span class="p">(</span><span class="o">*</span><span class="n">lib</span><span class="p">);</span>
+<span class="cp">#endif</span>
+<span class="w">        </span><span class="o">*</span><span class="n">lib</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">NULL</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><code>HAVE_FAKE_DLCLOSE</code> —— 在某些平台上，<strong>根本不 <code>dlclose</code></strong>。这是 in-process plugin 的通用现实：只要有一个残留的函数指针、一个还没 join 的线程、一个 atexit 注册、一个 TLS destructor 指向被卸载的代码段，<code>dlclose</code> 就是一颗定时炸弹。很多项目最后的结论都是"卸载即泄漏，泄漏比崩溃好"。</p>
+<hr>
+<h2 id="_4">第二层：依赖注入 —— 两个方向都在注入</h2>
+<p>这一层是我认为最值得单独拎出来讲的，因为大部分讲 FreeSWITCH 模块的文章都跳过了。</p>
+<h3 id="di">反向依赖：链接器就是 DI 容器</h3>
+<p>模块调用 core 的几百个函数，这些函数从哪来？</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>nm<span class="w"> </span>-u<span class="w"> </span>~/fs/lib/freeswitch/mod/mod_dptools.so<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-c<span class="w"> </span>switch_
+<span class="go">288</span>
+
+<span class="gp">$ </span>nm<span class="w"> </span>-u<span class="w"> </span>~/fs/lib/freeswitch/mod/mod_dptools.so<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>loadable_module
+<span class="go">_switch_loadable_module_create_interface</span>
+<span class="go">_switch_loadable_module_create_module_interface</span>
+<span class="go">_switch_loadable_module_get_limit_interface</span>
+</code></pre></div>
+
+<p><strong>288 个未定义符号。</strong> 模块编译时不链接任何 core 库（macOS 上用 <code>-undefined dynamic_lookup</code>，Linux 上默认就允许），这些符号在 <code>dlopen</code> 那一刻由动态链接器绑定到已经加载的 <code>libfreeswitch</code>。</p>
+<p>这就是最原始的依赖注入：<strong>模块声明"我需要这些能力"（未定义符号），运行时由容器（动态链接器 + 宿主进程）填上</strong>。它甚至满足 DI 的核心属性 —— 模块代码里没有任何一处决定 <code>switch_core_alloc</code> 的实现来自哪里。</p>
+<p>顺手一提：这也是为什么第一层那个 ABI 版本检查非可选。288 个符号的调用约定、参数布局、结构体偏移，全靠"你和我编译时看的是同一份 header"这个假设撑着。</p>
+<h3 id="load">正向注入：load 函数的签名就是构造函数</h3>
+<p>看 <code>switch_types.h:2605</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="cp">#define SWITCH_MODULE_LOAD_ARGS (switch_loadable_module_interface_t **module_interface, \</span>
+<span class="cp">                                 switch_memory_pool_t *pool)</span>
+<span class="cp">#define SWITCH_MODULE_LOAD_FUNCTION(name) switch_status_t name SWITCH_MODULE_LOAD_ARGS</span>
+</code></pre></div>
+
+<p>Core 调用模块时注入两样东西：</p>
+<ul>
+<li><strong><code>module_interface</code>（出参）</strong>：一个"你要把能力填到这里"的槽位。</li>
+<li><strong><code>pool</code>（入参）</strong>：一块内存池。这才是重点 —— 这个 pool 是 <code>switch_loadable_module_load_file()</code> 里 <code>switch_core_new_memory_pool(&amp;pool)</code> 新建的，<strong>它的生命周期就是模块的生命周期</strong>。模块所有长期存活的对象都挂在它上面，模块卸载时整块销毁。</li>
+</ul>
+<p>这叫<strong>生命周期注入</strong>（lifetime injection）。你不用管谁 <code>free</code>，你只需要用 core 给你的那块池子。（APR 内存池这套思路我在<a href="https://www.fanyamin.com/blog/apache-portable-runtime.html">《APR 入门》</a>里单独写过，这里不展开。）</p>
+<h3 id="switch_add_app"><code>SWITCH_ADD_APP</code> 逐行拆解</h3>
+<p>一句话：<strong><code>SWITCH_ADD_APP</code> 把一个 C 函数挂成一条 dialplan application</strong>。注册之后，XML 里就能写 <code>&lt;action application="名字" data="..."/&gt;</code>。</p>
+<p>宏本体（<code>switch_loadable_module.h:401</code>）：</p>
+<div class="highlight"><pre><span></span><code><span class="cp">#define SWITCH_ADD_APP(app_int, int_name, short_descript, long_descript, funcptr, syntax_string, app_flags) \</span>
+<span class="cp">    for (;;) { \</span>
+<span class="cp">    app_int = (switch_application_interface_t *)switch_loadable_module_create_interface(*module_interface, SWITCH_APPLICATION_INTERFACE); \</span>
+<span class="cp">    app_int-&gt;interface_name = int_name; \</span>
+<span class="cp">    app_int-&gt;application_function = funcptr; \</span>
+<span class="cp">    app_int-&gt;short_desc = short_descript; \</span>
+<span class="cp">    app_int-&gt;long_desc = long_descript; \</span>
+<span class="cp">    app_int-&gt;syntax = syntax_string; \</span>
+<span class="cp">    app_int-&gt;flags = app_flags; \</span>
+<span class="cp">    break; \</span>
+<span class="cp">    }</span>
+</code></pre></div>
+
+<p>它只做三件事：</p>
+<ol>
+<li>调 <code>switch_loadable_module_create_interface(*module_interface, SWITCH_APPLICATION_INTERFACE)</code> —— 在<strong>模块自己的内存池</strong>上分配一个 <code>switch_application_interface_t</code>，挂到<strong>该模块的</strong> application 链表尾部。注意不是全局注册表，这个区别是第三层的主题。</li>
+<li>填六个字段：名字、函数指针、长短描述、语法提示、flags。</li>
+<li>把新节点的指针写回调用方的 <code>app_int</code>。</li>
+</ol>
+<h4 id="_5">七个参数</h4>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>类型 / 取值</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>app_int</code></td>
+<td><code>switch_application_interface_t *</code> 局部变量</td>
+<td><strong>出参</strong>，宏给它赋值</td>
+</tr>
+<tr>
+<td><code>int_name</code></td>
+<td>字符串</td>
+<td>应用名。dialplan 和 <code>show application</code> 里看到的就是它</td>
+</tr>
+<tr>
+<td><code>short_descript</code></td>
+<td>字符串</td>
+<td>短描述，<code>show application</code> 的第二列</td>
+</tr>
+<tr>
+<td><code>long_descript</code></td>
+<td>字符串</td>
+<td>长描述</td>
+</tr>
+<tr>
+<td><code>funcptr</code></td>
+<td><code>switch_application_function_t</code></td>
+<td>真正执行的函数</td>
+</tr>
+<tr>
+<td><code>syntax_string</code></td>
+<td>字符串</td>
+<td>参数语法提示，如 <code>"&lt;file&gt;"</code>，<code>show application</code> 第三列</td>
+</tr>
+<tr>
+<td><code>app_flags</code></td>
+<td><code>SAF_*</code> 位掩码</td>
+<td>行为约束，<strong>core 在调用你之前会读它</strong></td>
+</tr>
+</tbody>
+</table>
+<p><code>app_int</code> 是出参不是入参。这就是为什么 <code>mod_dptools</code> 里 <strong>139 次 <code>SWITCH_ADD_APP</code> 只声明了 1 个 <code>app_interface</code> 变量</strong>：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>grep<span class="w"> </span>-c<span class="w"> </span><span class="s1">&#39;SWITCH_ADD_APP(&#39;</span><span class="w"> </span>src/mod/applications/mod_dptools/mod_dptools.c
+<span class="go">139</span>
+<span class="gp">$ </span>grep<span class="w"> </span>-c<span class="w"> </span><span class="s1">&#39;switch_application_interface_t \*app_interface&#39;</span><span class="w"> </span>src/mod/applications/mod_dptools/mod_dptools.c
+<span class="go">1</span>
+</code></pre></div>
+
+<p>每次调用都新建一个节点挂到链表尾，变量只是被反复覆盖，最后指向最新那一项。<strong>基本没人会去读它</strong> —— 它存在只是因为 C 的宏没法返回值。</p>
+<h4 id="_6">回调长什么样</h4>
+<div class="highlight"><pre><span></span><code><span class="k">typedef</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="p">(</span><span class="o">*</span><span class="n">switch_application_function_t</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="n">switch_core_session_t</span><span class="w"> </span><span class="o">*</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="p">);</span>
+<span class="cp">#define SWITCH_STANDARD_APP(name) static void name (switch_core_session_t *session, const char *data)</span>
+</code></pre></div>
+
+<p><code>session</code> 是当前这通电话，<code>data</code> 是 dialplan 里 <code>data="..."</code> 的原文 —— 而且是<strong>已经展开过 <code>${变量}</code></strong> 的，展开发生在 <code>switch_core_session_exec()</code> 里（<code>switch_core_session.c:2870</code> 附近的 <code>switch_channel_expand_variables</code>）。</p>
+<p>返回值是 <code>void</code>，所以 application 没法用返回值报错。要往外传结果只能设通道变量，惯例是 <code>SWITCH_CURRENT_APPLICATION_RESPONSE_VARIABLE</code>。</p>
+<h4 id="_7">填进了哪个结构体</h4>
+<div class="highlight"><pre><span></span><code><span class="k">struct</span><span class="w"> </span><span class="nc">switch_application_interface</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">interface_name</span><span class="p">;</span><span class="w">                        </span><span class="cm">/* ← 宏填 */</span>
+<span class="w">    </span><span class="n">switch_application_function_t</span><span class="w"> </span><span class="n">application_function</span><span class="p">;</span><span class="w"> </span><span class="cm">/* ← 宏填 */</span>
+<span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">long_desc</span><span class="p">;</span><span class="w">                             </span><span class="cm">/* ← 宏填 */</span>
+<span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">short_desc</span><span class="p">;</span><span class="w">                            </span><span class="cm">/* ← 宏填 */</span>
+<span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">syntax</span><span class="p">;</span><span class="w">                                </span><span class="cm">/* ← 宏填 */</span>
+<span class="w">    </span><span class="kt">uint32_t</span><span class="w"> </span><span class="n">flags</span><span class="p">;</span><span class="w">                                    </span><span class="cm">/* ← 宏填 */</span>
+<span class="w">    </span><span class="n">switch_thread_rwlock_t</span><span class="w"> </span><span class="o">*</span><span class="n">rwlock</span><span class="p">;</span><span class="w">                    </span><span class="cm">/* ↓ create_interface 填 */</span>
+<span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">refs</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_mutex_t</span><span class="w"> </span><span class="o">*</span><span class="n">reflock</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_loadable_module_interface_t</span><span class="w"> </span><span class="o">*</span><span class="n">parent</span><span class="p">;</span>
+<span class="w">    </span><span class="k">struct</span><span class="w"> </span><span class="nc">switch_application_interface</span><span class="w"> </span><span class="o">*</span><span class="n">next</span><span class="p">;</span>
+<span class="p">};</span>
+</code></pre></div>
+
+<p>宏只填前六个。后面五个由 <code>create_interface()</code> 负责：<code>parent</code> 指回模块，<code>next</code> 串链表，<code>rwlock</code>/<code>refs</code>/<code>reflock</code> 是第四层要讲的引用计数和读写锁。</p>
+<h4 id="saf_-flags-core"><code>SAF_*</code> flags 不是装饰，是 core 的执行前置条件</h4>
+<p>七个 flag 全在 <code>switch_types.h:1715</code>。我把每个 flag 的<strong>实际检查点</strong>都定位了一遍：</p>
+<table>
+<thead>
+<tr>
+<th>flag</th>
+<th>值</th>
+<th>core 在哪检查</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SAF_NONE</code></td>
+<td>0</td>
+<td>—</td>
+<td>默认：需要媒体，只在 execute 阶段跑</td>
+</tr>
+<tr>
+<td><code>SAF_SUPPORT_NOMEDIA</code></td>
+<td><code>1&lt;&lt;0</code></td>
+<td><code>switch_core_session.c:2785</code></td>
+<td>无媒体也能跑。<strong>不设的话 core 会先替你 <code>pre_answer</code> 把媒体建起来</strong></td>
+</tr>
+<tr>
+<td><code>SAF_ROUTING_EXEC</code></td>
+<td><code>1&lt;&lt;1</code></td>
+<td><code>mod_dialplan_xml.c:68</code></td>
+<td>允许 routing 阶段 inline 执行；不设则报 "This application cannot be executed inline"</td>
+</tr>
+<tr>
+<td><code>SAF_MEDIA_TAP</code></td>
+<td><code>1&lt;&lt;2</code></td>
+<td><code>switch_ivr_async.c:5724</code></td>
+<td>媒体旁路类（<code>eavesdrop</code>），强制 <code>nomedia = 0</code></td>
+</tr>
+<tr>
+<td><code>SAF_ZOMBIE_EXEC</code></td>
+<td><code>1&lt;&lt;3</code></td>
+<td><code>switch_core_session.c:2753</code></td>
+<td>通道<strong>已挂断</strong>仍允许执行（清理、计费类）</td>
+</tr>
+<tr>
+<td><code>SAF_NO_LOOPBACK</code></td>
+<td><code>1&lt;&lt;4</code></td>
+<td><code>mod_loopback.c:468</code></td>
+<td>不能在 loopback 腿上跑，遇到就 bowout</td>
+</tr>
+<tr>
+<td><code>SAF_SUPPORT_TEXT_ONLY</code></td>
+<td><code>1&lt;&lt;5</code></td>
+<td><code>switch_core_session.c:2821</code></td>
+<td>纯文本通道（MSRP）可用；不设则挂断并报 SERVICE_NOT_IMPLEMENTED</td>
+</tr>
+</tbody>
+</table>
+<p>按位或组合，upstream 的例子：</p>
+<div class="highlight"><pre><span></span><code><span class="n">SWITCH_ADD_APP</span><span class="p">(</span><span class="n">app_interface</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;eval&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;Do Nothing&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;Do Nothing&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">eval_function</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;&quot;</span><span class="p">,</span>
+<span class="w">               </span><span class="n">SAF_SUPPORT_NOMEDIA</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">SAF_ROUTING_EXEC</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">SAF_ZOMBIE_EXEC</span><span class="p">);</span>
+</code></pre></div>
+
+<p><code>eval</code> 什么都不做，所以三个约束全放开：不要媒体、routing 阶段能跑、挂断了也能跑。</p>
+<p><strong>这张表是"注册表不只存怎么调，还存调之前要做什么"的具体化。</strong> 第四层那条完整调用链里的一大段前置校验，读的全是这里填进去的 flags。</p>
+<h4 id="for-break">为什么是 <code>for (;;) { ... break; }</code></h4>
+<p>和常见的 <code>do { ... } while (0)</code> 作用一样：把多条语句合成<strong>一条语句</strong>，这样 <code>if (x) SWITCH_ADD_APP(...);</code> 展开后不会和 <code>else</code> 粘错，而且后面必须跟分号。<code>for (;;)</code> 跑一次就 <code>break</code>，没有循环语义。我个人还是偏好 <code>do-while(0)</code>，更符合大家的肌肉记忆。</p>
+<h4 id="_8">三个兄弟宏，别用混</h4>
+<table>
+<thead>
+<tr>
+<th>宏</th>
+<th>注册到</th>
+<th>由谁派发</th>
+<th>回调签名</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SWITCH_ADD_APP</code></td>
+<td><code>application_hash</code></td>
+<td>dialplan <code>&lt;action application=…/&gt;</code></td>
+<td><code>void (switch_core_session_t *, const char *)</code></td>
+</tr>
+<tr>
+<td><code>SWITCH_ADD_API</code></td>
+<td><code>api_hash</code></td>
+<td>fs_cli / ESL / <code>switch_api_execute()</code></td>
+<td><code>switch_status_t (const char *cmd, switch_core_session_t *, switch_stream_handle_t *)</code></td>
+</tr>
+<tr>
+<td><code>SWITCH_ADD_CHAT_APP</code></td>
+<td><code>chat_application_hash</code></td>
+<td><strong>chatplan</strong>（<code>mod_sms</code> 的 <code>chatplan_hunt()</code>），和通话无关</td>
+<td><code>switch_status_t (switch_event_t *, const char *)</code></td>
+</tr>
+</tbody>
+</table>
+<p>三点区别值得记住：</p>
+<ul>
+<li><strong>App 挂在 session 上，API 挂在 CLI/ESL 上，chat app 挂在 message event 上。</strong> 第一个参数的类型就说明了一切。</li>
+<li><strong>只有 API 能往调用方写输出</strong>（<code>stream-&gt;write_function</code>）。App 返回 <code>void</code>，想给出反馈只能打日志或设通道变量。</li>
+<li><strong>三张 hash 表互相独立。</strong> 所以同一个名字可以既是 application 又是 chat application 而不冲突 —— 后面"坑三"里我就是被这一点骗了。</li>
+</ul>
+<h3 id="_9">宏偷偷捕获了上下文</h3>
+<p>回头再看一眼上面那个宏展开，里面藏着 C 里最"魔法"的一处。</p>
+<p>看见 <code>*module_interface</code> 了吗？<strong>它不是参数。</strong> 宏直接引用了外层函数作用域里那个叫 <code>module_interface</code> 的变量 —— 也就是 <code>SWITCH_MODULE_LOAD_ARGS</code> 注入进来的那个。<code>SWITCH_ADD_CODEC</code> 更狠，同时用了 <code>pool</code> 和 <code>(*module_interface)-&gt;module_name</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="cp">#define SWITCH_ADD_CODEC(codec_int, int_name) \</span>
+<span class="cp">    for (;;) { \</span>
+<span class="cp">        codec_int = (switch_codec_interface_t *)switch_loadable_module_create_interface(*module_interface, SWITCH_CODEC_INTERFACE); \</span>
+<span class="cp">        codec_int-&gt;modname = switch_core_strdup(pool, (*module_interface)-&gt;module_name); \</span>
+<span class="cp">        codec_int-&gt;interface_name = switch_core_strdup(pool, int_name); \</span>
+<span class="cp">        codec_int-&gt;codec_id = switch_core_codec_next_id(); \</span>
+<span class="cp">        break; \</span>
+<span class="cp">    }</span>
+</code></pre></div>
+
+<p>而 <code>modname</code>（<code>SWITCH_ADD_*</code> 之外常用到的那个）来自 <code>SWITCH_MODULE_DEFINITION</code> 生成的 <code>static const char modname[]</code>。</p>
+<p>所以典型模块开头那句：</p>
+<div class="highlight"><pre><span></span><code><span class="o">*</span><span class="n">module_interface</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">switch_loadable_module_create_module_interface</span><span class="p">(</span><span class="n">pool</span><span class="p">,</span><span class="w"> </span><span class="n">modname</span><span class="p">);</span>
+</code></pre></div>
+
+<p>三个标识符 —— <code>module_interface</code>、<code>pool</code>、<code>modname</code> —— <strong>一个是注入的出参，一个是注入的入参，一个是宏生成的文件级静态变量</strong>。全都不是你声明的。</p>
+<p>这是好设计还是坏设计？我的看法：<strong>它是"C 里没有 DI 容器时的必然选择"，代价是可读性</strong>。这些宏只能在 <code>SWITCH_MODULE_LOAD_FUNCTION</code> 体内使用，一旦你想抽个 helper 函数出来批量注册，就会撞上"<code>module_interface</code> 未定义"的编译错误，然后一头雾水。第一次写 FreeSWITCH 模块的人几乎都踩过。</p>
+<hr>
+<h2 id="core">第三层：服务注册 —— 模块只"申报"，Core 才"发布"</h2>
+<p>这是全文的核心洞察，也是最容易被讲错的地方。</p>
+<p><strong>很多文章说"模块把自己注册到 Core 的注册表"。这不准确。</strong> 模块的 load 函数从来没碰过全局注册表。</p>
+<h3 id="create_interface"><code>create_interface</code> 只是往私有链表尾插</h3>
+<p><code>switch_loadable_module_create_interface()</code> 的实现（<code>switch_loadable_module.c:3233</code>）：</p>
+<div class="highlight"><pre><span></span><code><span class="cp">#define ALLOC_INTERFACE(_TYPE_) { \</span>
+<span class="cp">        switch_##_TYPE_##_interface_t *i, *ptr; \</span>
+<span class="cp">        i = switch_core_alloc(mod-&gt;pool, sizeof(switch_##_TYPE_##_interface_t)); \</span>
+<span class="cp">        switch_assert(i != NULL); \</span>
+<span class="cp">        for (ptr = mod-&gt;_TYPE_##_interface; ptr &amp;&amp; ptr-&gt;next; ptr = ptr-&gt;next);  </span><span class="cm">/* 走到尾 */</span><span class="cp"> \</span>
+<span class="cp">        if (ptr) { ptr-&gt;next = i; } else { mod-&gt;_TYPE_##_interface = i; } \</span>
+<span class="cp">        switch_thread_rwlock_create(&amp;i-&gt;rwlock, mod-&gt;pool); \</span>
+<span class="cp">        switch_mutex_init(&amp;i-&gt;reflock, SWITCH_MUTEX_NESTED, mod-&gt;pool); \</span>
+<span class="cp">        i-&gt;parent = mod; \</span>
+<span class="cp">        return i; }</span>
+</code></pre></div>
+
+<p>三件事：从<strong>模块自己的 pool</strong> 分配、挂到<strong>模块自己的链表</strong>尾部、建好 rwlock 和 reflock、回填 <code>parent</code>。</p>
+<p>全局 hash？没提。</p>
+<p>所以 <code>switch_loadable_module_interface_t</code> 的真身就是 17 条链表的表头（<code>switch_loadable_module.h:64</code>）：</p>
+<div class="highlight"><pre><span></span><code><span class="k">struct</span><span class="w"> </span><span class="nc">switch_loadable_module_interface</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">module_name</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_endpoint_interface_t</span><span class="w"> </span><span class="o">*</span><span class="n">endpoint_interface</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_timer_interface_t</span><span class="w"> </span><span class="o">*</span><span class="n">timer_interface</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_dialplan_interface_t</span><span class="w"> </span><span class="o">*</span><span class="n">dialplan_interface</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_codec_interface_t</span><span class="w"> </span><span class="o">*</span><span class="n">codec_interface</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_application_interface_t</span><span class="w"> </span><span class="o">*</span><span class="n">application_interface</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_chat_application_interface_t</span><span class="w"> </span><span class="o">*</span><span class="n">chat_application_interface</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_api_interface_t</span><span class="w"> </span><span class="o">*</span><span class="n">api_interface</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_json_api_interface_t</span><span class="w"> </span><span class="o">*</span><span class="n">json_api_interface</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_file_interface_t</span><span class="w"> </span><span class="o">*</span><span class="n">file_interface</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_speech_interface_t</span><span class="w"> </span><span class="o">*</span><span class="n">speech_interface</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_directory_interface_t</span><span class="w"> </span><span class="o">*</span><span class="n">directory_interface</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_chat_interface_t</span><span class="w"> </span><span class="o">*</span><span class="n">chat_interface</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_say_interface_t</span><span class="w"> </span><span class="o">*</span><span class="n">say_interface</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_asr_interface_t</span><span class="w"> </span><span class="o">*</span><span class="n">asr_interface</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_management_interface_t</span><span class="w"> </span><span class="o">*</span><span class="n">management_interface</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_limit_interface_t</span><span class="w"> </span><span class="o">*</span><span class="n">limit_interface</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_database_interface_t</span><span class="w"> </span><span class="o">*</span><span class="n">database_interface</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_thread_rwlock_t</span><span class="w"> </span><span class="o">*</span><span class="n">rwlock</span><span class="p">;</span>
+<span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">refs</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_memory_pool_t</span><span class="w"> </span><span class="o">*</span><span class="n">pool</span><span class="p">;</span>
+<span class="p">};</span>
+</code></pre></div>
+
+<p>用现代术语说，这是一份 <strong>capability manifest</strong>：模块的 load 函数其实是在<strong>填一份申报表</strong>，而不是在写注册表。</p>
+<h3 id="_10">日志里的铁证</h3>
+<p>发布发生在 <code>switch_loadable_module_process()</code>（<code>switch_loadable_module.c:209</code>），由 <code>load_module_ex()</code> 在 <code>load_file()</code> <strong>返回之后</strong>调用。这个顺序在日志里看得一清二楚 —— 下面是我这台机器 <code>freeswitch.log</code> 第 601 行起：</p>
+<div class="highlight"><pre><span></span><code><span class="go">2026-09-07 22:04:20.287186 [CONSOLE] switch_loadable_module.c:1833 Successfully Loaded [mod_dptools]</span>
+<span class="go">2026-09-07 22:04:20.287502 [NOTICE]  switch_loadable_module.c:225  Adding Endpoint &#39;error&#39;</span>
+<span class="go">2026-09-07 22:04:20.288374 [NOTICE]  switch_loadable_module.c:225  Adding Endpoint &#39;group&#39;</span>
+<span class="go">2026-09-07 22:04:20.289214 [NOTICE]  switch_loadable_module.c:225  Adding Endpoint &#39;user&#39;</span>
+<span class="go">2026-09-07 22:04:20.290067 [NOTICE]  switch_loadable_module.c:225  Adding Endpoint &#39;pickup&#39;</span>
+<span class="go">...</span>
+<span class="go">2026-09-07 22:04:20.317709 [NOTICE]  switch_loadable_module.c:384  Adding Application &#39;answer&#39;</span>
+<span class="go">...</span>
+<span class="go">2026-09-07 22:04:20.402339 [NOTICE]  switch_loadable_module.c:384  Adding Application &#39;bridge&#39;</span>
+</code></pre></div>
+
+<p><strong><code>Successfully Loaded</code> 打在 <code>Adding Application</code> 前面。</strong> 如果模块直接写全局 hash，顺序必然反过来。这一行日志顺序，就是两阶段设计的证据。</p>
+<p>这一段区间里 <code>mod_dptools</code> 一共申报了：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>sed<span class="w"> </span>-n<span class="w"> </span><span class="s1">&#39;601,757p&#39;</span><span class="w"> </span>freeswitch.log<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;Adding Application&quot;</span>
+<span class="go">139</span>
+<span class="gp">$ </span>sed<span class="w"> </span>-n<span class="w"> </span><span class="s1">&#39;601,757p&#39;</span><span class="w"> </span>freeswitch.log<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;Adding API Function&quot;</span>
+<span class="go">6</span>
+</code></pre></div>
+
+<p>139 个 application + 6 个 API + 4 个 endpoint。一个模块，一次注册。</p>
+<h3 id="_11">为什么这个两阶段值钱：门禁装在这里</h3>
+<p>上游 PR #3086 加了一个 <code>interface-allowlist</code>，实现位置就在 <code>process()</code> 里（<code>switch_loadable_module.c:382</code>）：</p>
+<div class="highlight"><pre><span></span><code><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">switch_loadable_module_interface_allowed</span><span class="p">(</span><span class="n">key</span><span class="p">,</span><span class="w"> </span><span class="n">ptr</span><span class="o">-&gt;</span><span class="n">interface_name</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;app&quot;</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">switch_log_printf</span><span class="p">(...,</span><span class="w"> </span><span class="s">&quot;Skipping Application &#39;%s&#39; from %s: not permitted by interface allowlist</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span>
+<span class="w">                      </span><span class="n">ptr</span><span class="o">-&gt;</span><span class="n">interface_name</span><span class="p">,</span><span class="w"> </span><span class="n">key</span><span class="p">);</span>
+<span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">switch_log_printf</span><span class="p">(...,</span><span class="w"> </span><span class="s">&quot;Adding Application &#39;%s&#39;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">ptr</span><span class="o">-&gt;</span><span class="n">interface_name</span><span class="p">);</span>
+<span class="w">    </span><span class="p">...</span>
+<span class="w">    </span><span class="n">switch_core_hash_insert</span><span class="p">(</span><span class="n">loadable_modules</span><span class="p">.</span><span class="n">application_hash</span><span class="p">,</span><span class="w"> </span><span class="n">ptr</span><span class="o">-&gt;</span><span class="n">interface_name</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="n">ptr</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>配置支持三级精度（源码注释写得挺清楚）：</p>
+<div class="highlight"><pre><span></span><code>&quot;mod_commands&quot;             — 整个模块的全部接口
+&quot;mod_commands.system&quot;      — 任何类型的、叫 system 的接口
+&quot;mod_commands.system.api&quot;  — 只有 api 类型的 system
+</code></pre></div>
+
+<p>这是个真实的安全需求：<code>mod_dptools</code> 有个 <code>system</code> application 能执行 shell 命令。在某些部署里你想放行 <code>bridge</code> 但禁掉 <code>system</code>。<strong>因为发布权在 Core 手上，这个门禁只需要改一个地方，对所有模块（含第三方模块）自动生效。</strong> 如果当初让模块自己写 hash，这个 feature 就得改 200 个模块。</p>
+<p>两阶段的另一个红利藏在 <code>switch_loadable_module_init()</code> 里：注册事件不是立刻 fire 的，而是先塞进 <code>event_hash</code>，等 <code>switch_core_sqldb_init()</code> 成功之后再一起发（<code>switch_loadable_module.c:2391</code>）。源码注释很直白：</p>
+<blockquote>
+<p><code>switch_core_sqldb_init()</code> is not yet ready and is executed after starting modules from <code>pre_load_modules.conf</code>. Modules loading procedure generates events used by sqldb. This is why we should hold those events (storing in the event_hash) not firing them until sqldb is ready.</p>
+</blockquote>
+<p>这是个经典的<strong>循环依赖</strong>：模块加载要发事件，事件消费者是 sqldb，sqldb 又是个模块。解法是把启动切成 <code>pre_load_modules.conf</code> → <code>sqldb init</code> → <code>modules.conf</code> → <code>post_load_modules.conf</code> 四段，中间那段的事件缓冲起来。加上 <code>critical="true"</code> 时失败直接 <code>abort()</code>，这就是一套手写的启动依赖图。</p>
+<h3 id="hash-vs">两种注册表：平坦 hash vs 多提供者链表</h3>
+<p>全局注册表长这样（<code>switch_loadable_module.c:81</code>）：</p>
+<div class="highlight"><pre><span></span><code><span class="k">struct</span><span class="w"> </span><span class="nc">switch_loadable_module_container</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">switch_hash_t</span><span class="w"> </span><span class="o">*</span><span class="n">module_hash</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_hash_t</span><span class="w"> </span><span class="o">*</span><span class="n">endpoint_hash</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_hash_t</span><span class="w"> </span><span class="o">*</span><span class="n">codec_hash</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_hash_t</span><span class="w"> </span><span class="o">*</span><span class="n">dialplan_hash</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_hash_t</span><span class="w"> </span><span class="o">*</span><span class="n">timer_hash</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_hash_t</span><span class="w"> </span><span class="o">*</span><span class="n">application_hash</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_hash_t</span><span class="w"> </span><span class="o">*</span><span class="n">chat_application_hash</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_hash_t</span><span class="w"> </span><span class="o">*</span><span class="n">api_hash</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_hash_t</span><span class="w"> </span><span class="o">*</span><span class="n">json_api_hash</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_hash_t</span><span class="w"> </span><span class="o">*</span><span class="n">file_hash</span><span class="p">;</span>
+<span class="w">    </span><span class="p">...</span>
+<span class="w">    </span><span class="n">switch_hash_t</span><span class="w"> </span><span class="o">*</span><span class="n">interface_allowlist</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_mutex_t</span><span class="w"> </span><span class="o">*</span><span class="n">mutex</span><span class="p">;</span>
+<span class="p">};</span>
+</code></pre></div>
+
+<p>17 张接口注册表 + 3 张辅助表 + 一把大锁。但<strong>这 17 张表不是一种东西</strong>，这点很关键。</p>
+<p><strong>类型 A：命令型（application / api / json_api / chat_application / dialplan / timer / limit / asr / speech / chat / directory）</strong></p>
+<div class="highlight"><pre><span></span><code><span class="n">switch_core_hash_insert</span><span class="p">(</span><span class="n">loadable_modules</span><span class="p">.</span><span class="n">application_hash</span><span class="p">,</span><span class="w"> </span><span class="n">ptr</span><span class="o">-&gt;</span><span class="n">interface_name</span><span class="p">,</span><span class="w"> </span><span class="n">ptr</span><span class="p">);</span>
+</code></pre></div>
+
+<p><code>name → interface</code>，一对一。而 <code>switch_core_hash_insert</code> 的语义是（<code>switch_core_hash.c:144</code>）：</p>
+<div class="highlight"><pre><span></span><code><span class="n">switch_hashtable_insert_destructor</span><span class="p">(</span><span class="n">hash</span><span class="p">,</span><span class="w"> </span><span class="n">dkey</span><span class="p">,</span><span class="w"> </span><span class="n">data</span><span class="p">,</span><span class="w"> </span><span class="n">HASHTABLE_FLAG_FREE_KEY</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">HASHTABLE_DUP_CHECK</span><span class="p">,</span><span class="w"> </span><span class="n">destructor</span><span class="p">)</span>
+</code></pre></div>
+
+<p><code>HASHTABLE_DUP_CHECK</code> 会先 <code>_switch_hashtable_remove(h, k, ...)</code> 再插。<strong>后来者覆盖前者。</strong> 记住这句，第五节我会用一个实验把它变成一个坑。</p>
+<p><strong>类型 B：提供者型（codec / file / database）</strong></p>
+<p>这些用的是 <code>node</code> 链表（<code>switch_loadable_module.c:2678</code>）：</p>
+<div class="highlight"><pre><span></span><code><span class="n">SWITCH_DECLARE</span><span class="p">(</span><span class="n">switch_file_interface_t</span><span class="w"> </span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="n">switch_loadable_module_get_file_interface</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">modname</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="n">switch_file_interface_t</span><span class="w"> </span><span class="o">*</span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">NULL</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_file_node_t</span><span class="w"> </span><span class="o">*</span><span class="n">node</span><span class="p">,</span><span class="w"> </span><span class="o">*</span><span class="n">head</span><span class="p">;</span>
+
+<span class="w">    </span><span class="n">switch_mutex_lock</span><span class="p">(</span><span class="n">loadable_modules</span><span class="p">.</span><span class="n">mutex</span><span class="p">);</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">((</span><span class="n">head</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">switch_core_hash_find</span><span class="p">(</span><span class="n">loadable_modules</span><span class="p">.</span><span class="n">file_hash</span><span class="p">,</span><span class="w"> </span><span class="n">name</span><span class="p">)))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">modname</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">node</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">head</span><span class="p">;</span><span class="w"> </span><span class="n">node</span><span class="p">;</span><span class="w"> </span><span class="n">node</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">node</span><span class="o">-&gt;</span><span class="n">next</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">strcasecmp</span><span class="p">(</span><span class="n">node</span><span class="o">-&gt;</span><span class="n">interface_name</span><span class="p">,</span><span class="w"> </span><span class="n">modname</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                    </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">switch_file_interface_t</span><span class="w"> </span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="n">node</span><span class="o">-&gt;</span><span class="n">ptr</span><span class="p">;</span>
+<span class="w">                    </span><span class="k">break</span><span class="p">;</span>
+<span class="w">                </span><span class="p">}</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">        </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">switch_file_interface_t</span><span class="w"> </span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="n">head</span><span class="o">-&gt;</span><span class="n">ptr</span><span class="p">;</span><span class="w">   </span><span class="cm">/* 默认取头部 */</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="n">switch_mutex_unlock</span><span class="p">(</span><span class="n">loadable_modules</span><span class="p">.</span><span class="n">mutex</span><span class="p">);</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">i</span><span class="p">)</span><span class="w"> </span><span class="n">PROTECT_INTERFACE</span><span class="p">(</span><span class="n">i</span><span class="p">);</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">i</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><code>name → 提供者链表</code>，可以按 <code>modname</code> 消歧，不指定就取头部（也就是最后注册的那个）。这解决的是真实需求：<code>.wav</code> 可以由 <code>mod_sndfile</code> 或 <code>mod_av</code> 处理，<code>OPUS</code> 可以有多个实现，你需要能指定。</p>
+<p><strong>这两类恰好对应现代 DI 的两个概念：</strong></p>
+<table>
+<thead>
+<tr>
+<th>FreeSWITCH</th>
+<th>Spring</th>
+<th>Guice/Dagger</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>平坦 hash（app/api）</td>
+<td><code>@Bean</code> 单绑定</td>
+<td><code>bind(X.class).to(...)</code></td>
+</tr>
+<tr>
+<td>node 链表 + modname</td>
+<td><code>@Qualifier</code> + <code>List&lt;X&gt;</code> 注入</td>
+<td>multibinding + <code>@Named</code></td>
+</tr>
+</tbody>
+</table>
+<p>区别在于：Spring 遇到重复 bean 会<strong>启动失败</strong>，FreeSWITCH 遇到重复 application 会<strong>静默覆盖</strong>。这是设计取舍，不是遗漏 —— 覆盖能力让你可以写一个模块去替换核心行为。但代价是真金白银的，见第五节。</p>
+<p>活体注册表长什么样？在我这台跑着的实例上：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>fs_cli<span class="w"> </span>-x<span class="w"> </span><span class="s2">&quot;show interfaces&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>awk<span class="w"> </span>-F,<span class="w"> </span><span class="s1">&#39;NR&gt;1 &amp;&amp; NF&gt;1 {print $1}&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>sort<span class="w"> </span><span class="p">|</span><span class="w"> </span>uniq<span class="w"> </span>-c<span class="w"> </span><span class="p">|</span><span class="w"> </span>sort<span class="w"> </span>-rn
+<span class="go"> 226 api</span>
+<span class="go"> 181 application</span>
+<span class="go">  72 file</span>
+<span class="go">  29 codec</span>
+<span class="go">  13 endpoint</span>
+<span class="go">   8 json_api</span>
+<span class="go">   6 dialplan</span>
+<span class="go">   5 chat</span>
+<span class="go">   3 database</span>
+<span class="go">   2 limit</span>
+<span class="go">   1 timer</span>
+<span class="go">   1 say</span>
+<span class="go">   1 management</span>
+<span class="go">   1 generic</span>
+</code></pre></div>
+
+<p>547 个接口实例，来自 43 个模块。<strong>这就是那个"注册表"的规模。</strong></p>
+<hr>
+<h2 id="_12">第四层：运行时查找与派发 —— 查表容易，管生命周期难</h2>
+<h3 id="11-getter">11 个 getter 是一个宏生成的</h3>
+<p><code>switch_loadable_module.c:2760</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="cp">#define HASH_FUNC(_kind_) SWITCH_DECLARE(switch_##_kind_##_interface_t *) switch_loadable_module_get_##_kind_##_interface(const char *name) \</span>
+<span class="cp">    { \</span>
+<span class="cp">        switch_##_kind_##_interface_t *i = NULL; \</span>
+<span class="cp">        if (loadable_modules._kind_##_hash &amp;&amp; (i = switch_core_hash_find_locked(loadable_modules._kind_##_hash, name, loadable_modules.mutex))) { \</span>
+<span class="cp">            PROTECT_INTERFACE(i); \</span>
+<span class="cp">        } \</span>
+<span class="cp">        return i; \</span>
+<span class="cp">    }</span>
+
+<span class="n">HASH_FUNC</span><span class="p">(</span><span class="n">dialplan</span><span class="p">)</span>
+<span class="n">HASH_FUNC</span><span class="p">(</span><span class="n">timer</span><span class="p">)</span>
+<span class="n">HASH_FUNC</span><span class="p">(</span><span class="n">application</span><span class="p">)</span>
+<span class="n">HASH_FUNC</span><span class="p">(</span><span class="n">chat_application</span><span class="p">)</span>
+<span class="n">HASH_FUNC</span><span class="p">(</span><span class="n">api</span><span class="p">)</span>
+<span class="n">HASH_FUNC</span><span class="p">(</span><span class="n">json_api</span><span class="p">)</span>
+<span class="n">HASH_FUNC</span><span class="p">(</span><span class="n">speech</span><span class="p">)</span>
+<span class="n">HASH_FUNC</span><span class="p">(</span><span class="n">asr</span><span class="p">)</span>
+<span class="n">HASH_FUNC</span><span class="p">(</span><span class="n">directory</span><span class="p">)</span>
+<span class="n">HASH_FUNC</span><span class="p">(</span><span class="n">chat</span><span class="p">)</span>
+<span class="n">HASH_FUNC</span><span class="p">(</span><span class="n">limit</span><span class="p">)</span>
+</code></pre></div>
+
+<p>11 行代码生成 11 个函数。C 没有泛型，宏就是泛型。</p>
+<h3 id="protect_interface"><code>PROTECT_INTERFACE</code>：查找即加锁</h3>
+<p>这是整个机制里技术含量最高的一块。<code>switch_module_interfaces.h:864</code>（我加了换行）：</p>
+<div class="highlight"><pre><span></span><code><span class="cp">#define PROTECT_INTERFACE(_it) if (_it) { \</span>
+<span class="cp">    switch_thread_rwlock_rdlock(_it-&gt;parent-&gt;rwlock);   </span><span class="cm">/* 模块级读锁 */</span><span class="cp"> \</span>
+<span class="cp">    switch_thread_rwlock_rdlock(_it-&gt;rwlock);           </span><span class="cm">/* 接口级读锁 */</span><span class="cp"> \</span>
+<span class="cp">    switch_mutex_lock(_it-&gt;reflock); \</span>
+<span class="cp">    _it-&gt;refs++; _it-&gt;parent-&gt;refs++;                   </span><span class="cm">/* 双层引用计数 */</span><span class="cp"> \</span>
+<span class="cp">    switch_mutex_unlock(_it-&gt;reflock); }</span>
+
+<span class="cp">#define UNPROTECT_INTERFACE(_it) if (_it) { \</span>
+<span class="cp">    switch_mutex_lock(_it-&gt;reflock); \</span>
+<span class="cp">    _it-&gt;refs--; _it-&gt;parent-&gt;refs--; \</span>
+<span class="cp">    switch_mutex_unlock(_it-&gt;reflock); \</span>
+<span class="cp">    switch_thread_rwlock_unlock(_it-&gt;rwlock); \</span>
+<span class="cp">    switch_thread_rwlock_unlock(_it-&gt;parent-&gt;rwlock); }</span>
+</code></pre></div>
+
+<p><strong>每一次成功的 lookup 都会拿两把读锁并加两个引用计数。</strong> 这是 C 里做"服务定位器"绕不过去的问题：你把一个指向 <code>.so</code> 里代码的函数指针交给调用方，那这个 <code>.so</code> 在调用返回前就不能被卸载。</p>
+<p>所以调用方<strong>必须</strong>配对释放。看 <code>switch_api_execute()</code>（<code>switch_loadable_module.c:3157</code>）：</p>
+<div class="highlight"><pre><span></span><code><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">cmd_used</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="p">(</span><span class="n">api</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">switch_loadable_module_get_api_interface</span><span class="p">(</span><span class="n">cmd_used</span><span class="p">))</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">((</span><span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">api</span><span class="o">-&gt;</span><span class="n">function</span><span class="p">(</span><span class="n">arg_used</span><span class="p">,</span><span class="w"> </span><span class="n">session</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">))</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">SWITCH_STATUS_SUCCESS</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">stream</span><span class="o">-&gt;</span><span class="n">write_function</span><span class="p">(</span><span class="n">stream</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;COMMAND RETURNED ERROR!</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="n">UNPROTECT_INTERFACE</span><span class="p">(</span><span class="n">api</span><span class="p">);</span><span class="w">      </span><span class="cm">/* ← 忘了这行就是永久锁死 */</span>
+<span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">stream</span><span class="o">-&gt;</span><span class="n">write_function</span><span class="p">(</span><span class="n">stream</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;INVALID COMMAND!</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>Application 侧用 <code>goto done</code> 保证配对（<code>switch_core_session.c:2834</code>）：</p>
+<div class="highlight"><pre><span></span><code><span class="w"> </span><span class="nl">exec</span><span class="p">:</span>
+<span class="w">    </span><span class="n">switch_core_session_exec</span><span class="p">(</span><span class="n">session</span><span class="p">,</span><span class="w"> </span><span class="n">application_interface</span><span class="p">,</span><span class="w"> </span><span class="n">arg</span><span class="p">);</span>
+<span class="w">  </span><span class="nl">done</span><span class="p">:</span>
+<span class="w">    </span><span class="n">UNPROTECT_INTERFACE</span><span class="p">(</span><span class="n">application_interface</span><span class="p">);</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">status</span><span class="p">;</span>
+</code></pre></div>
+
+<p>这套 API 的形状很危险 —— 它把生命周期管理外包给了调用方，而 C 没有 RAII、没有 <code>defer</code>。<strong>如果我今天设计，会把 lookup 和 invoke 合成一个函数，让调用方拿不到裸接口指针。</strong> FreeSWITCH 也确实提供了 <code>switch_api_execute()</code> / <code>switch_core_session_execute_application()</code> 这样的包装，但裸的 getter 也是公开 API，谁都能调。</p>
+<h3 id="_13">卸载：等读者排空，然后放弃</h3>
+<p>对应的卸载侧（<code>switch_loadable_module.c:1289-1300</code>）：</p>
+<div class="highlight"><pre><span></span><code><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">ptr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">old_module</span><span class="o">-&gt;</span><span class="n">module_interface</span><span class="o">-&gt;</span><span class="n">application_interface</span><span class="p">;</span><span class="w"> </span><span class="n">ptr</span><span class="p">;</span><span class="w"> </span><span class="n">ptr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ptr</span><span class="o">-&gt;</span><span class="n">next</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">ptr</span><span class="o">-&gt;</span><span class="n">interface_name</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">switch_log_printf</span><span class="p">(...,</span><span class="w"> </span><span class="s">&quot;Deleting Application &#39;%s&#39;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">ptr</span><span class="o">-&gt;</span><span class="n">interface_name</span><span class="p">);</span>
+<span class="w">        </span><span class="n">switch_core_session_hupall_matching_var</span><span class="p">(</span><span class="n">SWITCH_CURRENT_APPLICATION_VARIABLE</span><span class="p">,</span><span class="w"> </span><span class="n">ptr</span><span class="o">-&gt;</span><span class="n">interface_name</span><span class="p">,</span><span class="w"> </span><span class="n">SWITCH_CAUSE_MANAGER_REQUEST</span><span class="p">);</span>
+<span class="w">        </span><span class="n">switch_log_printf</span><span class="p">(...,</span><span class="w"> </span><span class="s">&quot;Write lock interface &#39;%s&#39; to wait for existing references.</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">ptr</span><span class="o">-&gt;</span><span class="n">interface_name</span><span class="p">);</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">switch_thread_rwlock_trywrlock_timeout</span><span class="p">(</span><span class="n">ptr</span><span class="o">-&gt;</span><span class="n">rwlock</span><span class="p">,</span><span class="w"> </span><span class="mi">10</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">SWITCH_STATUS_SUCCESS</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">switch_thread_rwlock_unlock</span><span class="p">(</span><span class="n">ptr</span><span class="o">-&gt;</span><span class="n">rwlock</span><span class="p">);</span>
+<span class="w">        </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">switch_log_printf</span><span class="p">(...,</span><span class="w"> </span><span class="n">SWITCH_LOG_ERROR</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;Giving up on &#39;%s&#39; waiting for existing references.</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">ptr</span><span class="o">-&gt;</span><span class="n">interface_name</span><span class="p">);</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="p">...</span>
+</code></pre></div>
+
+<p>流程是：<strong>先挂断所有正在执行这个 application 的通话，再尝试拿写锁等最多 10 秒让读者排空，等不到就打个 ERROR 然后继续卸载。</strong></p>
+<p>"Giving up ... 然后继续" —— 这是诚实的工程妥协。等不到就硬拆，可能崩；不拆就永远卸不掉。选了前者，并且留了日志。</p>
+<h3 id="_14">完整调用链</h3>
+<p>把四层串起来，<code>&lt;action application="answer"/&gt;</code> 的完整旅程：</p>
+<div class="highlight"><pre><span></span><code>XML dialplan
+    │  application=&quot;answer&quot;, data=NULL
+    ▼
+switch_core_session_execute_application_get_flags()      switch_core_session.c:2749
+    │
+    ├─ switch_loadable_module_get_application_interface(&quot;answer&quot;)
+    │      │  HASH_FUNC(application) 生成
+    │      ├─ switch_core_hash_find_locked(application_hash, &quot;answer&quot;, mutex)
+    │      └─ PROTECT_INTERFACE(i)      ← 2 把读锁 + 2 个 refcount
+    │
+    ├─ 前置校验（都读自 interface-&gt;flags）
+    │      SAF_ZOMBIE_EXEC       通道已挂断还能不能跑
+    │      SAF_SUPPORT_NOMEDIA   要不要先 pre_answer 建媒体
+    │      SAF_SUPPORT_TEXT_ONLY 纯文本通道能不能跑
+    │
+    ├─ switch_core_session_exec()                        switch_core_session.c:2841
+    │      ├─ switch_channel_expand_variables(arg)       ${var} 展开
+    │      ├─ fire CHANNEL_EXECUTE 事件
+    │      ├─ set CURRENT_APPLICATION 通道变量
+    │      ├─ application_interface-&gt;application_function(session, expanded);   ← 真正的调用，:2970
+    │      └─ fire CHANNEL_EXECUTE_COMPLETE 事件
+    │
+    └─ UNPROTECT_INTERFACE(application_interface)
+</code></pre></div>
+
+<p>中间那一大段前置校验，<strong>读的全是第二层那张 <code>SAF_*</code> 表里的 flags</strong>：<code>SAF_ZOMBIE_EXEC</code> 决定挂断后还跑不跑，<code>SAF_SUPPORT_NOMEDIA</code> 决定要不要先 <code>pre_answer</code>，<code>SAF_SUPPORT_TEXT_ONLY</code> 决定纯文本通道上直接挂断还是放行。这就是 metadata 驱动的行为 —— 注册表不只存"怎么调"，还存"调之前要做什么"。</p>
+<p><code>mod_dptools.c:6674</code> 的那一行：</p>
+<div class="highlight"><pre><span></span><code><span class="n">SWITCH_ADD_APP</span><span class="p">(</span><span class="n">app_interface</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;answer&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;Answer the call&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;Answer the call for a channel.&quot;</span><span class="p">,</span>
+<span class="w">               </span><span class="n">answer_function</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">SAF_SUPPORT_NOMEDIA</span><span class="p">);</span>
+</code></pre></div>
+
+<h3 id="interface-pattern-padding10">两种 interface pattern，以及 <code>padding[10]</code></h3>
+<p>FreeSWITCH 的 17 种接口其实只有两种形状。</p>
+<p><strong>Pattern A：Command —— <code>name → 单个函数指针</code></strong></p>
+<div class="highlight"><pre><span></span><code><span class="k">typedef</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="p">(</span><span class="o">*</span><span class="n">switch_application_function_t</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="n">switch_core_session_t</span><span class="w"> </span><span class="o">*</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="p">);</span>
+<span class="cp">#define SWITCH_STANDARD_APP(name) static void name (switch_core_session_t *session, const char *data)</span>
+</code></pre></div>
+
+<p>application / api / json_api / chat_application / dialplan 都是这个形状。签名固定，注册表里存的就是一个入口。</p>
+<p><strong>Pattern B：Service VTable —— <code>name → 函数表</code></strong></p>
+<p>endpoint / codec / file / asr / speech 是这个形状。看 <code>switch_endpoint_interface</code>（<code>switch_module_interfaces.h:182</code>）：</p>
+<div class="highlight"><pre><span></span><code><span class="k">struct</span><span class="w"> </span><span class="nc">switch_endpoint_interface</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">interface_name</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_io_routines_t</span><span class="w"> </span><span class="o">*</span><span class="n">io_routines</span><span class="p">;</span><span class="w">          </span><span class="cm">/* ← VTable */</span>
+<span class="w">    </span><span class="n">switch_state_handler_table_t</span><span class="w"> </span><span class="o">*</span><span class="n">state_handler</span><span class="p">;</span><span class="w"> </span><span class="cm">/* ← 又一个 VTable */</span>
+<span class="w">    </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">private_info</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_thread_rwlock_t</span><span class="w"> </span><span class="o">*</span><span class="n">rwlock</span><span class="p">;</span>
+<span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">refs</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_mutex_t</span><span class="w"> </span><span class="o">*</span><span class="n">reflock</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_loadable_module_interface_t</span><span class="w"> </span><span class="o">*</span><span class="n">parent</span><span class="p">;</span>
+<span class="w">    </span><span class="k">struct</span><span class="w"> </span><span class="nc">switch_endpoint_interface</span><span class="w"> </span><span class="o">*</span><span class="n">next</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_core_recover_callback_t</span><span class="w"> </span><span class="n">recover_callback</span><span class="p">;</span>
+<span class="p">};</span>
+</code></pre></div>
+
+<p>而 <code>switch_io_routines</code> 就是一张手写的虚函数表（<code>switch_module_interfaces.h:144</code>）：</p>
+<div class="highlight"><pre><span></span><code><span class="k">struct</span><span class="w"> </span><span class="nc">switch_io_routines</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">switch_io_outgoing_channel_t</span><span class="w"> </span><span class="n">outgoing_channel</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_io_read_frame_t</span><span class="w"> </span><span class="n">read_frame</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_io_write_frame_t</span><span class="w"> </span><span class="n">write_frame</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_io_kill_channel_t</span><span class="w"> </span><span class="n">kill_channel</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_io_send_dtmf_t</span><span class="w"> </span><span class="n">send_dtmf</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_io_receive_message_t</span><span class="w"> </span><span class="n">receive_message</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_io_receive_event_t</span><span class="w"> </span><span class="n">receive_event</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_io_state_change_t</span><span class="w"> </span><span class="n">state_change</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_io_read_video_frame_t</span><span class="w"> </span><span class="n">read_video_frame</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_io_write_video_frame_t</span><span class="w"> </span><span class="n">write_video_frame</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_io_read_text_frame_t</span><span class="w"> </span><span class="n">read_text_frame</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_io_write_text_frame_t</span><span class="w"> </span><span class="n">write_text_frame</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_io_state_run_t</span><span class="w"> </span><span class="n">state_run</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_io_get_jb_t</span><span class="w"> </span><span class="n">get_jb</span><span class="p">;</span>
+<span class="w">    </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">padding</span><span class="p">[</span><span class="mi">10</span><span class="p">];</span><span class="w">        </span><span class="cm">/* ← 这行是重点 */</span>
+<span class="p">};</span>
+</code></pre></div>
+
+<p><strong><code>void *padding[10]</code>。</strong> 这是 in-process plugin 的 ABI 保险：给未来预留 10 个槽位，以后加 <code>read_dtmf_frame</code> 之类的新方法时，结构体大小不变，已编译的模块不用重编。COM 靠"接口不可变，只能加新接口"解决同一个问题，C++ 靠 pimpl，C 就靠留白。</p>
+<p>这也解释了为什么 <code>SWITCH_API_VERSION</code> 至今才 5 —— 大改一次是全生态重编，能靠 padding 混过去就靠 padding。</p>
+<p>顺手也能理解 <code>mod_dptools</code> 那 4 个 endpoint（<code>error</code> / <code>group</code> / <code>user</code> / <code>pickup</code>）为什么在 <code>nm</code> 里是全局符号：它们是文件级的 <code>switch_endpoint_interface</code> 和 <code>io_routines</code> 静态实例，注册时只是把地址填进去。</p>
+<hr>
+<h2 id="50-freeswitch">动手：50 行写一个模块，热加载进正在跑的 FreeSWITCH</h2>
+<p>上面全是读代码。现在把它跑起来 —— 我认为这一步比读十遍源码有用。</p>
+<div class="highlight"><pre><span></span><code><span class="cm">/* mod_walter.c */</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;switch.h&gt;</span>
+
+<span class="n">SWITCH_MODULE_LOAD_FUNCTION</span><span class="p">(</span><span class="n">mod_walter_load</span><span class="p">);</span>
+<span class="n">SWITCH_MODULE_SHUTDOWN_FUNCTION</span><span class="p">(</span><span class="n">mod_walter_shutdown</span><span class="p">);</span>
+<span class="n">SWITCH_MODULE_DEFINITION</span><span class="p">(</span><span class="n">mod_walter</span><span class="p">,</span><span class="w"> </span><span class="n">mod_walter_load</span><span class="p">,</span><span class="w"> </span><span class="n">mod_walter_shutdown</span><span class="p">,</span><span class="w"> </span><span class="nb">NULL</span><span class="p">);</span>
+
+<span class="n">SWITCH_STANDARD_API</span><span class="p">(</span><span class="n">walter_ping_function</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="n">stream</span><span class="o">-&gt;</span><span class="n">write_function</span><span class="p">(</span><span class="n">stream</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;pong from mod_walter, arg=[%s]</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">zstr</span><span class="p">(</span><span class="n">cmd</span><span class="p">)</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="s">&quot;&quot;</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">cmd</span><span class="p">);</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">SWITCH_STATUS_SUCCESS</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="cm">/* 故意注册一个 mod_commands 已经占了的名字 */</span>
+<span class="n">SWITCH_STANDARD_API</span><span class="p">(</span><span class="n">uptime_function</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="n">stream</span><span class="o">-&gt;</span><span class="n">write_function</span><span class="p">(</span><span class="n">stream</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;HIJACKED by mod_walter</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">SWITCH_STATUS_SUCCESS</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="n">SWITCH_STANDARD_APP</span><span class="p">(</span><span class="n">walter_shout_function</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="n">switch_log_printf</span><span class="p">(</span><span class="n">SWITCH_CHANNEL_LOG</span><span class="p">,</span><span class="w"> </span><span class="n">SWITCH_LOG_WARNING</span><span class="p">,</span>
+<span class="w">                      </span><span class="s">&quot;walter_shout says: %s</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">zstr</span><span class="p">(</span><span class="n">data</span><span class="p">)</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="s">&quot;(nothing)&quot;</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">data</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="n">SWITCH_MODULE_LOAD_FUNCTION</span><span class="p">(</span><span class="n">mod_walter_load</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="n">switch_api_interface_t</span><span class="w"> </span><span class="o">*</span><span class="n">api_interface</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_application_interface_t</span><span class="w"> </span><span class="o">*</span><span class="n">app_interface</span><span class="p">;</span>
+
+<span class="w">    </span><span class="o">*</span><span class="n">module_interface</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">switch_loadable_module_create_module_interface</span><span class="p">(</span><span class="n">pool</span><span class="p">,</span><span class="w"> </span><span class="n">modname</span><span class="p">);</span>
+
+<span class="w">    </span><span class="n">switch_log_printf</span><span class="p">(</span><span class="n">SWITCH_CHANNEL_LOG</span><span class="p">,</span><span class="w"> </span><span class="n">SWITCH_LOG_NOTICE</span><span class="p">,</span>
+<span class="w">                      </span><span class="s">&quot;mod_walter_load: modname=[%s] pool=%p module_interface=%p</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span>
+<span class="w">                      </span><span class="n">modname</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="p">)</span><span class="n">pool</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="p">)</span><span class="o">*</span><span class="n">module_interface</span><span class="p">);</span>
+
+<span class="w">    </span><span class="n">SWITCH_ADD_API</span><span class="p">(</span><span class="n">api_interface</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;walter_ping&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;ping demo&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">walter_ping_function</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;[text]&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="n">SWITCH_ADD_API</span><span class="p">(</span><span class="n">api_interface</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;uptime&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;shadow demo&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">uptime_function</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="n">SWITCH_ADD_APP</span><span class="p">(</span><span class="n">app_interface</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;walter_shout&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;shout&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;log a line&quot;</span><span class="p">,</span>
+<span class="w">                   </span><span class="n">walter_shout_function</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;&lt;text&gt;&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">SAF_NONE</span><span class="p">);</span>
+
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">SWITCH_STATUS_SUCCESS</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="n">SWITCH_MODULE_SHUTDOWN_FUNCTION</span><span class="p">(</span><span class="n">mod_walter_shutdown</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="n">switch_log_printf</span><span class="p">(</span><span class="n">SWITCH_CHANNEL_LOG</span><span class="p">,</span><span class="w"> </span><span class="n">SWITCH_LOG_NOTICE</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;mod_walter shutting down</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">SWITCH_STATUS_SUCCESS</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>编译。注意 <code>-undefined dynamic_lookup</code>（macOS）—— 就是那 288 个未定义符号需要的开关：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>cc<span class="w"> </span>-shared<span class="w"> </span>-fPIC<span class="w"> </span>-o<span class="w"> </span>mod_walter.so<span class="w"> </span>mod_walter.c<span class="w"> </span><span class="se">\</span>
+<span class="w">     </span>-I<span class="nv">$HOME</span>/fs/include/freeswitch<span class="w"> </span>-L<span class="nv">$HOME</span>/fs/lib<span class="w"> </span>-lfreeswitch<span class="w"> </span><span class="se">\</span>
+<span class="w">     </span>-undefined<span class="w"> </span>dynamic_lookup
+
+<span class="gp">$ </span>nm<span class="w"> </span>-gU<span class="w"> </span>mod_walter.so
+<span class="go">0000000000000600 T _mod_walter_load</span>
+<span class="go">0000000000008018 D _mod_walter_module_interface</span>
+<span class="go">00000000000007b8 T _mod_walter_shutdown</span>
+</code></pre></div>
+
+<p>三个符号。Loader 只要中间那个。</p>
+<p>装进模块目录，在<strong>已经跑起来的</strong> FreeSWITCH 上热加载：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>cp<span class="w"> </span>mod_walter.so<span class="w"> </span>~/fs/lib/freeswitch/mod/
+
+<span class="gp">$ </span>fs_cli<span class="w"> </span>-x<span class="w"> </span><span class="s2">&quot;uptime&quot;</span>
+<span class="go">215                          ← mod_commands 的原始 uptime，单位毫秒</span>
+
+<span class="gp">$ </span>fs_cli<span class="w"> </span>-x<span class="w"> </span><span class="s2">&quot;load mod_walter&quot;</span>
+<span class="go">+OK</span>
+
+<span class="gp">$ </span>fs_cli<span class="w"> </span>-x<span class="w"> </span><span class="s2">&quot;walter_ping hello&quot;</span>
+<span class="go">pong from mod_walter, arg=[hello]</span>
+</code></pre></div>
+
+<p>从写代码到线上可调用，进程没有重启。日志：</p>
+<div class="highlight"><pre><span></span><code><span class="go">[NOTICE]  mod_walter.c:34 mod_walter_load: modname=[mod_walter] pool=0xa3d25e028 module_interface=0xa3d25e150</span>
+<span class="go">[CONSOLE] switch_loadable_module.c:1833 Successfully Loaded [mod_walter]</span>
+</code></pre></div>
+
+<p><code>modname</code>、<code>pool</code>、<code>module_interface</code> 三个"我没声明的变量"都有值，注入生效。</p>
+<hr>
+<h2 id="_15">三个实测出来的坑</h2>
+<p>热加载爽完了，说代价。下面三个都是在上面那个实例上实测的结果。</p>
+<h3 id="_16">坑一：平坦命名空间，后来者静默劫持</h3>
+<p>接着上面的会话：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>fs_cli<span class="w"> </span>-x<span class="w"> </span><span class="s2">&quot;uptime&quot;</span>
+<span class="go">HIJACKED by mod_walter</span>
+</code></pre></div>
+
+<p>我的模块<strong>静默劫持</strong>了 <code>mod_commands</code> 的 <code>uptime</code>。没有警告，没有报错，日志里只有一行温柔的 <code>Adding API Function 'uptime'</code>。</p>
+<p>原因就是第三层讲的 <code>HASHTABLE_DUP_CHECK</code>：先删再插，后来者覆盖。</p>
+<p>FreeSWITCH 自己怎么规避的？靠纪律。我扫了整个 <code>src/mod</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>grep<span class="w"> </span>-rh<span class="w"> </span><span class="s2">&quot;SWITCH_ADD_APP(&quot;</span><span class="w"> </span>src/mod<span class="w"> </span>--include<span class="o">=</span><span class="s1">&#39;*.c&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="p">|</span><span class="w"> </span>sed<span class="w"> </span>-E<span class="w"> </span><span class="s1">&#39;s/.*SWITCH_ADD_APP\([^,]+,[[:space:]]*&quot;([^&quot;]+)&quot;.*/\1/&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="p">|</span><span class="w"> </span>sort<span class="w"> </span><span class="p">|</span><span class="w"> </span>uniq<span class="w"> </span>-d
+<span class="go">（无输出）</span>
+</code></pre></div>
+
+<p><strong>in-tree 的几百个 application 名字零重复。</strong> 但这是社区 review 挡住的，不是代码挡住的。第三方模块随时能踩。</p>
+<h3 id="_17">坑二：卸载之后，核心命令永久消失</h3>
+<p>这个比坑一严重得多：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>fs_cli<span class="w"> </span>-x<span class="w"> </span><span class="s2">&quot;unload mod_walter&quot;</span>
+<span class="go">+OK</span>
+
+<span class="gp">$ </span>fs_cli<span class="w"> </span>-x<span class="w"> </span><span class="s2">&quot;uptime&quot;</span>
+<span class="go">-ERR uptime Command not found!</span>
+</code></pre></div>
+
+<p><code>uptime</code> <strong>没了</strong>。不是回到 <code>mod_commands</code> 的版本，是彻底消失。</p>
+<p>因为卸载逻辑是"按名字从 hash 里删"。我的模块把 <code>uptime</code> 这个 key 覆盖成了自己的接口，卸载时把这个 key 删掉 —— <code>mod_commands</code> 那个 <code>switch_api_interface_t</code> 还好好地挂在它自己的私有链表上，但全局 hash 里再没有任何东西指向它了。</p>
+<p>能救回来吗？不能：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>fs_cli<span class="w"> </span>-x<span class="w"> </span><span class="s2">&quot;show interfaces&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-i<span class="w"> </span>uptime
+<span class="go">（无输出）</span>
+
+<span class="gp">$ </span>fs_cli<span class="w"> </span>-x<span class="w"> </span><span class="s2">&quot;module_exists mod_commands&quot;</span>
+<span class="go">true</span>
+
+<span class="gp">$ </span>fs_cli<span class="w"> </span>-x<span class="w"> </span><span class="s2">&quot;reload mod_commands&quot;</span>
+<span class="go">-ERR unloading module [Module is not unloadable]</span>
+<span class="go">-ERR loading module [Module already loaded]</span>
+</code></pre></div>
+
+<p><code>mod_commands</code> 的 load 函数返回 <code>SWITCH_STATUS_NOUNLOAD</code>（<code>mod_commands.c:8002</code>），loader 会给它 <code>module-&gt;perm++</code>（<code>switch_loadable_module.c:1799</code>），从此永久驻留、拒绝卸载（<code>:1962</code>）。</p>
+<p>于是形成一个死结：<strong>它不能重载，所以它注册的接口一旦被别人的 load/unload 循环从 hash 里抹掉，就只能重启整个进程。</strong></p>
+<p>这不是"我构造了一个恶意场景"。任何两个第三方模块撞名，再卸掉其中一个，就会命中。我会把它算作一个真实的设计缺陷 —— 修法也不难：hash 里存链表（像 codec 那样）、或者插入时检测重复并拒绝、或者卸载时只删"key 确实指向我"的项。三种都比现在好。</p>
+<h3 id="_18">坑三：观测层丢了类型信息</h3>
+<p>我一开始以为发现了一堆命名冲突：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>fs_cli<span class="w"> </span>-x<span class="w"> </span><span class="s2">&quot;load mod_sms&quot;</span>
+<span class="go">+OK</span>
+
+<span class="gp">$ </span>fs_cli<span class="w"> </span>-x<span class="w"> </span><span class="s2">&quot;show application&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-E<span class="w"> </span><span class="s2">&quot;^(set|system|info),&quot;</span><span class="w"> </span>
+<span class="go">info,Display Call Info,,mod_dptools</span>
+<span class="go">info,Display Call Info,,mod_sms</span>
+<span class="go">set,Set a channel variable,&lt;varname&gt;=&lt;value&gt;,mod_dptools</span>
+<span class="go">set,set a variable,,mod_sms</span>
+<span class="go">system,Execute a system command,&lt;command&gt;,mod_dptools</span>
+<span class="go">system,execute a system command,,mod_sms</span>
+</code></pre></div>
+
+<p><code>set</code>、<code>system</code>、<code>info</code> 全都双份？那 dialplan 里的 <code>set</code> 到底走谁？</p>
+<p>翻源码才发现是<strong>误报</strong>。<code>mod_sms.c:641</code> 用的是 <code>SWITCH_ADD_CHAT_APP</code>，不是 <code>SWITCH_ADD_APP</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="n">SWITCH_ADD_CHAT_APP</span><span class="p">(</span><span class="n">chat_app_interface</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;set&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;set a variable&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;set a variable&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">set_function</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">SCAF_NONE</span><span class="p">);</span>
+</code></pre></div>
+
+<p>它进的是 <code>chat_application_hash</code>，一张<strong>完全独立</strong>的表，由 <code>switch_core_execute_chat_app()</code> 派发。跟 dialplan 的 <code>set</code> 井水不犯河水。</p>
+<p>那为什么 <code>show application</code> 显示成一样的？因为 <code>process()</code> 里给 chat application 发的事件写的 type 是 <code>"application"</code>（<code>switch_loadable_module.c:418</code>）：</p>
+<div class="highlight"><pre><span></span><code><span class="n">switch_log_printf</span><span class="p">(...,</span><span class="w"> </span><span class="s">&quot;Adding Chat Application &#39;%s&#39;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">ptr</span><span class="o">-&gt;</span><span class="n">interface_name</span><span class="p">);</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">switch_event_create</span><span class="p">(</span><span class="o">&amp;</span><span class="n">event</span><span class="p">,</span><span class="w"> </span><span class="n">SWITCH_EVENT_MODULE_LOAD</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">SWITCH_STATUS_SUCCESS</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">switch_event_add_header_string</span><span class="p">(</span><span class="n">event</span><span class="p">,</span><span class="w"> </span><span class="n">SWITCH_STACK_BOTTOM</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;type&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;application&quot;</span><span class="p">);</span><span class="w">   </span><span class="cm">/* ← 丢了类型 */</span>
+</code></pre></div>
+
+<p>日志层是对的（<code>Adding Chat Application 'set'</code>），事件层把类型压平了，而 <code>show interfaces</code> 是从事件灌进去的 SQL 表读的。<strong>注册表本身分得清清楚楚，观测面把两个命名空间混成了一个。</strong></p>
+<p>这个坑的杀伤力在于：它会让你在排查真实冲突时得出完全错误的结论。教训很通用 —— <strong>注册表的观测接口必须暴露和内部一致的类型维度，否则观测本身会制造 bug。</strong></p>
+<hr>
+<h2 id="freeswitch-gstreamer-com-di">横向对照：FreeSWITCH / GStreamer / COM / 现代 DI</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>FreeSWITCH</th>
+<th>GStreamer</th>
+<th>COM</th>
+<th>Spring / Guice</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>发现机制</td>
+<td>文件名 → 约定符号名</td>
+<td>plugin registry 缓存 + <code>plugin_init</code></td>
+<td>注册表 CLSID</td>
+<td>classpath 扫描 / 编译期</td>
+</tr>
+<tr>
+<td>入口</td>
+<td>导出数据符号 <code>X_module_interface</code></td>
+<td>导出 <code>gst_plugin_desc</code></td>
+<td><code>DllGetClassObject</code></td>
+<td>注解 / 显式绑定</td>
+</tr>
+<tr>
+<td>接口描述</td>
+<td><strong>C header 就是 IDL</strong></td>
+<td>GObject 类型系统（真运行时类型）</td>
+<td><code>.idl</code> → typelib</td>
+<td>反射 / 编译期代码生成</td>
+</tr>
+<tr>
+<td>注册表键</td>
+<td>字符串 → 函数指针 or VTable</td>
+<td>字符串 → ElementFactory → GType</td>
+<td>GUID → 类工厂</td>
+<td>类型（+ qualifier）</td>
+</tr>
+<tr>
+<td>产出</td>
+<td>函数指针（无对象）</td>
+<td>对象实例</td>
+<td>对象实例</td>
+<td>对象实例</td>
+</tr>
+<tr>
+<td>重名处理</td>
+<td><strong>静默覆盖</strong></td>
+<td>rank 排序</td>
+<td>GUID 不会撞</td>
+<td>启动报错</td>
+</tr>
+<tr>
+<td>ABI 演进</td>
+<td>全局版本号 + <code>padding[10]</code></td>
+<td>GObject 属性内省</td>
+<td>接口不可变，只加新接口</td>
+<td>JVM 处理</td>
+</tr>
+<tr>
+<td>生命周期</td>
+<td>rwlock + 双层 refcount + memory pool</td>
+<td>GObject refcount</td>
+<td><code>AddRef</code>/<code>Release</code></td>
+<td>容器托管</td>
+</tr>
+<tr>
+<td>跨进程</td>
+<td>不支持（同地址空间）</td>
+<td>不支持</td>
+<td>支持（marshalling）</td>
+<td>不支持</td>
+</tr>
+</tbody>
+</table>
+<p>我的看法：</p>
+<ul>
+<li><strong>FreeSWITCH 用最少的机制解决了同一类问题。</strong> 没有 IDL、没有类型系统、没有代码生成，只有 <code>dlopen</code> + 一个结构体 + 一张 hash。代价是重名不报错、生命周期靠调用方配对、ABI 演进靠留白。</li>
+<li><strong>GStreamer 多花的钱买到了"运行时类型"</strong>。它有 GObject，所以能做属性内省、能自动协商、能 <code>gst-inspect</code> 出完整接口。FreeSWITCH 的 <code>fs_cli</code> 只能告诉你名字和一句描述。这不是懒，是当年（2005）不想在 core 里塞一整套 GObject。</li>
+<li><strong><code>padding[10]</code> 和 <code>switch_api_version</code> 是同一个问题的两种答案。</strong> 前者细粒度、便宜、有上限（用满了就没了）；后者粗粒度、无上限、代价是全生态重编。真实项目往往两者都要。</li>
+</ul>
+<hr>
+<h2 id="c-12-checklist">如果你要在自己的 C 项目里抄这套：12 条 checklist</h2>
+<p>我在 C++/C 项目里做过两次类似的东西，踩过的和上面重合度很高。整理成清单：</p>
+<blockquote>
+<p>这一节只列要点。完整的通用做法 —— 五种入口点 pattern 的对比、<code>RTLD_*</code> flags 怎么选、Linux/macOS 差异、一份 220 行可编译运行的参考实现、以及 10 个带崩溃现场的常见错误 —— 我单独写在了<a href="https://www.fanyamin.com/blog/c-plugin-dlopen-practical-guide.html">《C 插件系统实战指南：dlopen 没告诉你的四件事》</a>。</p>
+</blockquote>
+<p><strong>加载层</strong></p>
+<ol>
+<li><strong>入口用导出的数据符号，不要用导出函数</strong>。结构体能带版本号、能带 flags、能一次拿全生命周期回调；函数只能带一个入口。</li>
+<li><strong>符号名的推导规则要写进文档并且加构建期检查</strong>。"文件名必须等于模块名"这种隐式协议，第一次踩的人会浪费半天。</li>
+<li><strong>结构体第一个字段永远是 ABI 版本号</strong>。放在第一个，这样即使后面全变了你也能安全地读出它。</li>
+<li><strong>默认 <code>RTLD_LOCAL</code>，需要 global 的模块自己声明</strong>。并且接受"为了读 flags 得开两次"的丑陋。</li>
+<li><strong>默认不 <code>dlclose</code></strong>。想支持卸载，先想清楚线程、TLS destructor、atexit、残留函数指针这四件事怎么办。</li>
+</ol>
+<p><strong>注入层</strong></p>
+<ol>
+<li><strong>把 pool / allocator / logger / config 从 load 函数参数注入进去</strong>，不要让模块直接调全局单例。这是你以后能做多实例、能做测试替身的唯一机会。</li>
+<li><strong>注册宏偷偷捕获外层变量是可以的，但要在文档里明说"只能在 load 函数体内使用"</strong>，并且给出无法抽 helper 时的解决方案（比如把 <code>module_interface</code> 显式传参的第二套宏）。</li>
+</ol>
+<p><strong>注册层</strong></p>
+<ol>
+<li><strong>两阶段：模块申报，容器发布。</strong> 这是最值钱的一条。它让你可以后加门禁、后加审计、后加启动顺序编排，而不用改任何模块。</li>
+<li><strong>重名要报错，不要静默覆盖。</strong> 如果业务上确实需要覆盖，那就存链表 + 显式 qualifier，让"取哪一个"变成调用方的显式决定。FreeSWITCH 的坑二就是这条没做。</li>
+<li><strong>每张注册表想清楚是"单绑定"还是"多提供者"</strong>，不要一开始全用 <code>name → ptr</code>，后面发现要多提供者时已经有 200 个调用点了。</li>
+</ol>
+<p><strong>运行时</strong></p>
+<ol>
+<li><strong>不要把裸接口指针交给调用方</strong>。提供 <code>execute(name, args)</code> 而不是 <code>get(name)</code> + <code>invoke()</code>。C 没有 RAII，配对释放的责任放在调用方就一定会漏。</li>
+<li><strong>观测接口必须和内部注册表保持相同的类型维度</strong>。你的 <code>show</code> 命令是排障的第一现场，它一撒谎，后面全错。</li>
+</ol>
+<hr>
+<h2 id="_19">回到最初那个问题</h2>
+<p><code>&lt;action application="answer"/&gt;</code> 怎么找到 <code>answer_function()</code>？</p>
+<p>答案是：<strong>它不需要反射，因为 <code>switch.h</code> 就是那份 IDL。</strong></p>
+<p>Core 和模块编译时看同一份 header，所以双方都知道 <code>switch_application_function_t</code> 是 <code>void (*)(switch_core_session_t *, const char *)</code>。运行时唯一缺的信息只有一条 —— <strong>名字到指针的映射</strong>。而这条信息，模块在 <code>mod_dptools_load()</code> 里主动交出来了。</p>
+<p>剩下的全是工程：一个约定的符号名解决"入口在哪"，一个版本号解决"ABI 对不对"，一次两阶段解决"谁有权发布"，一对 rwlock 加 refcount 解决"调用期间别卸载"，一个 <code>padding[10]</code> 解决"以后还能不能加方法"。</p>
+<p>没有一处是聪明的技巧。全是二十年里被同一个问题咬过之后留下的疤。这也是我建议每个写长期 C/C++ 项目的人都读一遍它的原因 —— <strong>你迟早会遇到同样的五个问题，而这里有一份已经在生产环境跑了二十年的参考答案，连它的缺陷都标注得很清楚。</strong></p>
+<hr>
+<h2 id="1113-dev">源码索引（1.11.3-dev）</h2>
+<p>想自己走一遍，按这个顺序读：</p>
+<div class="highlight"><pre><span></span><code># 加载
+src/include/switch_types.h:2604-2660       SWITCH_API_VERSION / function_table / SWITCH_MODULE_DEFINITION
+src/switch_dso.c:89-148                    dlopen / dlsym 的薄封装
+src/switch_loadable_module.c:1697          switch_loadable_module_load_file()      ← 从这里开始
+src/switch_loadable_module.c:1845          switch_loadable_module_load_module_ex()
+src/switch_loadable_module.c:2226          switch_loadable_module_init()           ← 启动顺序与事件缓冲
+
+# 注册
+src/include/switch_loadable_module.h:64    switch_loadable_module_interface_t（18 条链表）
+src/include/switch_loadable_module.h:373+  SWITCH_ADD_API / SWITCH_ADD_APP / SWITCH_ADD_CODEC ...
+src/switch_loadable_module.c:3219          create_module_interface()
+src/switch_loadable_module.c:3233          ALLOC_INTERFACE 宏（私有链表尾插）
+src/switch_loadable_module.c:209           switch_loadable_module_process()        ← 发布 + 门禁
+
+# 查找与派发
+src/switch_loadable_module.c:2760          HASH_FUNC 宏（11 个 getter）
+src/include/switch_module_interfaces.h:864 PROTECT_INTERFACE / UNPROTECT_INTERFACE
+src/switch_loadable_module.c:3119          switch_api_execute()
+src/switch_core_session.c:2749             execute_application_get_flags()
+src/switch_core_session.c:2970             application_interface-&gt;application_function(...)  ← 终点
+
+# 两种 pattern
+src/include/switch_module_interfaces.h:144 switch_io_routines（VTable + padding[10]）
+src/include/switch_module_interfaces.h:788 switch_application_interface（Command）
+
+# 一个真实模块
+src/mod/applications/mod_dptools/mod_dptools.c:44     SWITCH_MODULE_DEFINITION
+src/mod/applications/mod_dptools/mod_dptools.c:6529   load 函数入口
+src/mod/applications/mod_dptools/mod_dptools.c:6674   SWITCH_ADD_APP(..., &quot;answer&quot;, ...)
+</code></pre></div>
+
+<hr>
+<p>你在自己的 C/C++ 项目里做过插件系统吗？是选了 <code>dlopen</code> + 约定符号，还是上了 COM/GObject 这种更重的方案？重名冲突和卸载安全这两件事你是怎么处理的 —— 尤其是，你有没有像 FreeSWITCH 这样，最后决定"干脆不 <code>dlclose</code>"？评论区聊聊。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/c-dynamic-load-di-service-registry.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/tech.html">tech</a>
+      <a href="https://www.fanyamin.com/blog/tag/c.html">C</a>
+      <a href="https://www.fanyamin.com/blog/tag/freeswitch.html">freeswitch</a>
+      <a href="https://www.fanyamin.com/blog/tag/dlopen.html">dlopen</a>
+      <a href="https://www.fanyamin.com/blog/tag/plugin.html">plugin</a>
+      <a href="https://www.fanyamin.com/blog/tag/dependency-injection.html">dependency-injection</a>
+      <a href="https://www.fanyamin.com/blog/tag/service-registry.html">service-registry</a>
+      <a href="https://www.fanyamin.com/blog/tag/abi.html">abi</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/llm-api-evolution-and-compatibility.html" title="LLM API 的变迁：OpenAI-compatible 为什么不等于兼容">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/c-plugin-dlopen-practical-guide.html" title="C 插件系统实战指南：dlopen 没告诉你的四件事">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/c-plugin-dlopen-practical-guide.html">C 插件系统实战指南：dlopen 没告诉你的四件事</a></li>
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-testing-unit-and-integration.html">给 FreeSWITCH 写测试：从单元测试到集成测试，用一个真 bug 串起来</a></li>
+      <li><a href="https://www.fanyamin.com/blog/apache-portable-runtime.html">APR 入门：一个 30 年前的答案，为什么还在你的代码库里</a></li>
+      <li><a href="https://www.fanyamin.com/blog/cpp-memory-management-evolution.html">C/C++ 内存管理方法的变迁：把纪律写进类型系统</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-09-14-webrtc-to-freeswitch.html">webrtc-to-freeswitch:一个浏览器软电话的架构、流程与协议全解</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,1043 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="我手上就一个自建网关、一把 API key，可 Claude Code 要写进 settings.json 的 env，Codex 要写进 config.toml 加 auth.json，OpenCode 要在 opencode.json 里手搓一个 provider——同一件事写三遍，三种格式。cc-switch 把这三份配置收进一个 SQLite 当唯一数据源，托盘点一下就切。这篇讲清它是什么、为什么自建用户尤其需要它、两种接法怎么选，附上我本机三条真实链路（脱敏）和四个只有自建才会踩的坑：opencode.jsonc 会盖掉 cc-switch 的写入、网关的 /models 不是 OpenAI 形状所以自动拉模型没用、密钥两周过期后要改的地方变多了、以及 settings.json 里那个 PROXY_MANAGED 占位符是干什么的。最后是一页 cheatsheet。" />
+<meta name="keywords" content="journal, AI, LLM, tooling, claude-code, codex, opencode, self-host">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "一个网关一把钥匙，三个客户端三种格式：用 cc-switch 收拢 AI 编码配置",
+  "description": "我手上就一个自建网关、一把 API key，可 Claude Code 要写进 settings.json 的 env，Codex 要写进 config.toml 加 auth.json，OpenCode 要在 opencode.json 里手搓一个 provider——同一件事写三遍，三种格式。cc-switch 把这三份配置收进一个 SQLite 当唯一数据源，托盘点一下就切。这篇讲清它是什么、为什么自建用户尤其需要它、两种接法怎么选，附上我本机三条真实链路（脱敏）和四个只有自建才会踩的坑：opencode.jsonc 会盖掉 cc-switch 的写入、网关的 /models 不是 OpenAI 形状所以自动拉模型没用、密钥两周过期后要改的地方变多了、以及 settings.json 里那个 PROXY_MANAGED 占位符是干什么的。最后是一页 cheatsheet。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-09-03T14:20:00+08:00",
+  "dateModified": "2026-09-03T14:20:00+08:00",
+  "url": "https://www.fanyamin.com/blog/2026-09-03-cc-switch-self-host-llm.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/2026-09-03-cc-switch-self-host-llm.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "journal, AI, LLM, tooling, claude-code, codex, opencode, self-host"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="一个网关一把钥匙，三个客户端三种格式：用 cc-switch 收拢 AI 编码配置"/>
+  <meta property="og:description" content="我手上就一个自建网关、一把 API key，可 Claude Code 要写进 settings.json 的 env，Codex 要写进 config.toml 加 auth.json，OpenCode 要在 opencode.json 里手搓一个 provider——同一件事写三遍，三种格式。cc-switch 把这三份配置收进一个 SQLite 当唯一数据源，托盘点一下就切。这篇讲清它是什么、为什么自建用户尤其需要它、两种接法怎么选，附上我本机三条真实链路（脱敏）和四个只有自建才会踩的坑：opencode.jsonc 会盖掉 cc-switch 的写入、网关的 /models 不是 OpenAI 形状所以自动拉模型没用、密钥两周过期后要改的地方变多了、以及 settings.json 里那个 PROXY_MANAGED 占位符是干什么的。最后是一页 cheatsheet。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/2026-09-03-cc-switch-self-host-llm.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-09-03 14:20:00+08:00"/>
+  <meta property="article:modified_time" content="2026-09-03 14:20:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="journal"/>
+  <meta property="article:tag" content="AI"/>
+  <meta property="article:tag" content="LLM"/>
+  <meta property="article:tag" content="tooling"/>
+  <meta property="article:tag" content="claude-code"/>
+  <meta property="article:tag" content="codex"/>
+  <meta property="article:tag" content="opencode"/>
+  <meta property="article:tag" content="self-host"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 一个网关一把钥匙，三个客户端三种格式：用 cc-switch 收拢 AI 编码配置</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="2026-09-03-cc-switch-self-host-llm">一个网关一把钥匙，三个客户端三种格式：用 cc-switch 收拢 AI 编码配置</h1>
+    <p>
+      Posted on 四 03 9月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>一个网关一把钥匙，三个客户端三种格式：用 cc-switch 收拢 AI 编码配置</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>learning note</td>
+</tr>
+<tr>
+<td><strong>Version</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-09-03</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">大纲</h2>
+<details>
+<summary>展开看看</summary>
+<ul>
+<li><strong>一个 401 引出的问题</strong>：不是密钥错了，是同一把密钥散在三个地方</li>
+<li><strong>它是什么</strong>：一个配置遥控器，不是网关、不是代理服务、不是模型路由</li>
+<li><strong>为什么自建用户更需要它</strong>：三个客户端三种配置格式，预设列表帮不上你</li>
+<li><strong>两种接法</strong>：直写配置文件，还是走本地代理</li>
+<li><strong>我的三条链路</strong>：Claude 走代理、Codex 直连、OpenCode 手搓</li>
+<li><strong>用量统计不依赖代理</strong>：我库里 4 万条记录，只有 24 条真的过了代理</li>
+<li><strong>自建才会踩的四个坑</strong>：jsonc 覆盖、/models 形状、密钥过期、PROXY_MANAGED</li>
+<li><strong>Cheatsheet</strong>：路径、字段、判断树、排错顺序</li>
+</ul>
+</details>
+<hr>
+<p>前几天我在 CC Switch 里配好公司自建的 LLM 网关，起 <code>claude</code>，屏幕上刷出来这么一行：</p>
+<div class="highlight"><pre><span></span><code><span class="go">✻ 401 {&quot;status&quot;:&quot;failed&quot;,&quot;error_message&quot;:{&quot;code&quot;:401,&quot;message&quot;:&quot;Invalid credential&quot;}}</span>
+<span class="go">  · Retrying in 4s · attempt 4/10</span>
+</code></pre></div>
+
+<p>排查完发现是密钥本身失效了——网关那头换过一轮。<strong>但让我停下来想了一会儿的不是这个 401，是我意识到：为了修它，我得去三个地方改同一把钥匙。</strong></p>
+<p>我的处境很多人都有：手上只有一个 base_url、一把 key，可能是公司的统一网关，也可能是自己用 vLLM 或 one-api 搭的。逻辑上这是<strong>一份</strong>配置。但落到磁盘上，它是三份：</p>
+<ul>
+<li>Claude Code 读 <code>~/.claude/settings.json</code>，钥匙塞在 <code>env.ANTHROPIC_AUTH_TOKEN</code> 里；</li>
+<li>Codex 读 <code>~/.codex/config.toml</code>，还要配一个 <code>~/.codex/auth.json</code>，TOML 和 JSON 各一份；</li>
+<li>OpenCode 读 <code>~/.config/opencode/opencode.json</code>，得自己声明一个 provider，指定 npm 适配包，再把模型一个个列出来。</li>
+</ul>
+<p>三种文件格式，三套字段名，三种“改完要不要重启”的规矩。<strong>这篇讲的就是怎么把这三份收成一份，以及自建场景下会踩到哪些只有自建才会踩的坑。</strong></p>
+<hr>
+<h2 id="_2">它是什么</h2>
+<p><a href="https://github.com/farion1231/cc-switch">cc-switch</a> 是个跨平台桌面应用，Tauri 2 + Rust 写的，MIT 协议，官网 <a href="https://ccswitch.io">ccswitch.io</a>。当前 8 个客户端在它管辖范围内：Claude Code、Claude Desktop、Codex、Gemini CLI、Grok Build、OpenCode、OpenClaw、Hermes。</p>
+<p>一句话：<strong>它是你那几个 AI 编码客户端的配置遥控器。</strong></p>
+<p>关键设计是 SSOT（single source of truth，唯一数据源）：所有供应商配置存在 <code>~/.cc-switch/cc-switch.db</code> 这个 SQLite 里，切换时才把它渲染成各客户端认识的格式，写进那些 live 配置文件。写入走临时文件加 rename 的原子替换，避免写一半断电留个半截 JSON——这点对 <code>settings.json</code> 这种一坏就起不来的文件不是小事。</p>
+<p>先说清它<strong>不是</strong>什么，省得期待错位：</p>
+<ul>
+<li><strong>不是网关</strong>，不聚合、不转发模型，你的模型能力全部来自你配的上游；</li>
+<li><strong>不是账号池</strong>，它不帮你攒额度、不做负载均衡（failover 是有的，但那是“上游挂了换下一个”，不是分流）；</li>
+<li><strong>不是必需品</strong>。它改的都是你本来就能手改的文件。卸载了之后 CLI 照常工作——这是作者明确的“最小侵入”原则，也是我愿意用它的前提。</li>
+</ul>
+<h2 id="_3">为什么自建用户更需要它</h2>
+<p>它的默认受众其实不是我们。翻一眼 README 就知道：赞助商列表长到要折叠，全是各种 API 中转服务，内置 50 多个预设也大半是这些中转商。<strong>对那些用户，cc-switch 的价值是“填个 key 就能用”。</strong></p>
+<p>自建用户拿不到这个便利——预设列表里没有你的网关。但反过来，配置管理这块的痛苦，自建用户比中转用户更重：中转商通常宣称“兼容 Anthropic 格式”，直接填进 Claude Code 就跑；自建网关的协议、模型名、推理参数都是你自己那一套，每个客户端都要单独适配一遍。</p>
+<p>三个客户端要写的东西，摊开是这样：</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Claude Code</th>
+<th>Codex</th>
+<th>OpenCode</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>配置文件</td>
+<td><code>~/.claude/settings.json</code></td>
+<td><code>~/.codex/config.toml</code> + <code>auth.json</code></td>
+<td><code>~/.config/opencode/opencode.json</code></td>
+</tr>
+<tr>
+<td>格式</td>
+<td>JSON，键都在 <code>env</code> 下</td>
+<td>TOML + JSON 两份</td>
+<td>JSON，<code>provider</code> 树</td>
+</tr>
+<tr>
+<td>端点字段</td>
+<td><code>ANTHROPIC_BASE_URL</code></td>
+<td><code>[model_providers.x] base_url</code></td>
+<td><code>provider.x.options.baseURL</code></td>
+</tr>
+<tr>
+<td>密钥字段</td>
+<td><code>ANTHROPIC_AUTH_TOKEN</code></td>
+<td><code>auth.json</code> 的 <code>OPENAI_API_KEY</code></td>
+<td><code>provider.x.options.apiKey</code></td>
+</tr>
+<tr>
+<td>模型怎么定</td>
+<td>四个角色各一个环境变量</td>
+<td><code>model</code> + <code>model_catalog_json</code></td>
+<td><code>provider.x.models</code> 逐个列，带 context/output 上限</td>
+</tr>
+<tr>
+<td>切完要重启吗</td>
+<td>不用（支持热切）</td>
+<td>要</td>
+<td>要</td>
+</tr>
+</tbody>
+</table>
+<p>最后一行那个差异不是小事。Claude Code 支持热切换，是因为 cc-switch 可以把它的 <code>ANTHROPIC_BASE_URL</code> 指向本地代理，换供应商只是代理换个上游，客户端毫无感知。Codex 和 OpenCode 得重开终端。</p>
+<p>模型那一行也值得多说一句。Claude Code 的模型不是一个字段，是<strong>四个角色</strong>：opus / sonnet / haiku，再加一个 fable。自建网关上通常没有这些名字，所以要做角色映射——把 <code>ANTHROPIC_DEFAULT_OPUS_MODEL</code> 指到你网关上真实存在的模型 ID。手写这四组八个环境变量，抄错一个就是半天排查。</p>
+<h2 id="_4">两种接法：直连还是走代理</h2>
+<p>这是自建用户唯一需要认真做的决定。</p>
+<p><strong>直连</strong>：cc-switch 把 base_url 和 key 直接写进客户端配置，请求从客户端直达你的网关。链路短，没有额外进程，代价是切换要重启客户端，也没有用量记录。</p>
+<p><strong>本地代理</strong>：cc-switch 起一个本地 HTTP 服务（默认 <code>127.0.0.1:15721</code>），把客户端的 base_url 改指向它，由它转发到真实上游。多一跳，作者给的数是通常 10ms 以内。</p>
+<p>判断很简单——<strong>下面任何一条成立，就必须走代理</strong>：</p>
+<ol>
+<li><strong>协议不匹配</strong>。你的网关只认 OpenAI Chat Completions，而 Claude Code 说的是 Anthropic Messages。代理负责双向翻译，包括流式 SSE、reasoning 内容和 tool call。Codex 那边对应的开关叫 “Needs Local Routing”，把 Codex 的 Responses 请求转成上游的 Chat Completions。</li>
+<li><strong>模型名不匹配</strong>。Codex 原生只认 GPT 系列名字，你网关上叫 <code>deepseek_v4_flash</code> 之类的，需要代理做模型映射，<code>/model</code> 命令才列得出来。</li>
+<li><strong>要注入自定义请求参数</strong>。比如给每个请求塞 <code>chat_template_kwargs</code> 打开推理——这种上游私有参数只能在代理层加。</li>
+<li><strong>要热切换</strong>，不想每次换供应商都重开终端。</li>
+<li><strong>要 failover</strong>，多个端点熔断切换。这功能以代理为前提。</li>
+</ol>
+<p>反过来，<strong>如果你的网关原生同时支持 Anthropic Messages 和 OpenAI Responses，模型名也能直接用，那就直连</strong>，少一跳少一个故障点。</p>
+<p>我验过自己这个网关：<code>/v1/chat/completions</code> 和 <code>/v1/responses</code> 都返 200。所以 Codex 那条链路我用直连，<code>wire_api = "responses"</code>，不需要本地路由。</p>
+<h2 id="_5">我的三条链路</h2>
+<p>脱敏后的真实配置，网关地址统一写成 <code>https://llm-gw.example.com/v1</code>，密钥写成 <code>&lt;YOUR_TOKEN&gt;</code>。</p>
+<p><strong>Claude Code：走本地代理，因为要转协议加塞参数。</strong></p>
+<p>cc-switch 里这个供应商的 API 格式设为 <code>openai_chat</code>（网关只认 Chat Completions），并带一段请求改写：</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;body&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;temperature&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;top_p&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;chat_template_kwargs&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;enable_thinking&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;reasoning_effort&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;max&quot;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>供应商本体则是那套角色映射：</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;env&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;ANTHROPIC_BASE_URL&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;https://llm-gw.example.com/v1&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;ANTHROPIC_AUTH_TOKEN&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&lt;YOUR_TOKEN&gt;&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;ANTHROPIC_DEFAULT_OPUS_MODEL&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;deepseek_v4_flash[1M]&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;ANTHROPIC_DEFAULT_SONNET_MODEL&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;deepseek_v4_flash[1M]&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;ANTHROPIC_DEFAULT_HAIKU_MODEL&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;deepseek_v4_flash&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;ANTHROPIC_MODEL&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;deepseek_v4_flash&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;CLAUDE_CODE_EFFORT_LEVEL&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;max&quot;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>代理接管之后，落到 <code>~/.claude/settings.json</code> 里的是这样：</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;env&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;ANTHROPIC_BASE_URL&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;http://127.0.0.1:15721&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;ANTHROPIC_AUTH_TOKEN&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;PROXY_MANAGED&quot;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong>Codex：直连，保留官方 ChatGPT 登录。</strong></p>
+<p>我在 cc-switch 里放了两个 Codex 供应商：一个是官方 OAuth 登录（当前启用），一个是网关。网关那份生成的 <code>config.toml</code> 片段：</p>
+<div class="highlight"><pre><span></span><code><span class="n">model_provider</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;custom&quot;</span>
+<span class="n">model</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;deepseek_v4_flash&quot;</span>
+<span class="n">model_reasoning_effort</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;high&quot;</span>
+<span class="n">disable_response_storage</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+
+<span class="k">[model_providers.custom]</span>
+<span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;NewAPI&quot;</span>
+<span class="n">base_url</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;https://llm-gw.example.com/v1&quot;</span>
+<span class="n">wire_api</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;responses&quot;</span>
+<span class="n">requires_openai_auth</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+</code></pre></div>
+
+<p>托盘菜单里点一下就能在两者之间横跳，重开终端生效。这是我用得最顺手的一个场景——官方额度和网关额度分工，不用记两套配置。</p>
+<p><strong>OpenCode：手搓 provider，暂时没交给 cc-switch 管。</strong></p>
+<div class="highlight"><pre><span></span><code>{
+  &quot;$schema&quot;: &quot;https://opencode.ai/config.json&quot;,
+  &quot;provider&quot;: {
+    &quot;llm-gateway&quot;: {
+      &quot;name&quot;: &quot;llm-gateway&quot;,
+      &quot;npm&quot;: &quot;@ai-sdk/openai-compatible&quot;,
+      &quot;options&quot;: {
+        &quot;baseURL&quot;: &quot;https://llm-gw.example.com/v1&quot;,
+        &quot;apiKey&quot;: &quot;&lt;YOUR_TOKEN&gt;&quot;
+      },
+      &quot;models&quot;: {
+        &quot;claude-opus-5&quot;: { &quot;name&quot;: &quot;claude-opus-5&quot; },
+        &quot;gpt-5.6-luna&quot;:  { &quot;name&quot;: &quot;gpt-5.6-luna&quot; }
+      }
+    }
+  }
+}
+</code></pre></div>
+
+<p>那个 <code>npm</code> 字段是 OpenCode 特有的：它用 Vercel AI SDK 的适配包接上游，自建网关基本都是 <code>@ai-sdk/openai-compatible</code>。cc-switch 的 OpenCode 表单里也是选这个（另外还有 <code>@ai-sdk/openai</code>、<code>@ai-sdk/anthropic</code>、<code>@ai-sdk/amazon-bedrock</code>、<code>@ai-sdk/google</code> 可选）。</p>
+<h2 id="_6">顺带一个发现：用量统计不依赖代理</h2>
+<p>我库里现在有 41994 条请求记录。按来源拆开是这样：</p>
+<table>
+<thead>
+<tr>
+<th>客户端</th>
+<th>条数</th>
+<th>来源</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Claude</td>
+<td>24</td>
+<td>真的走了代理</td>
+</tr>
+<tr>
+<td>Claude</td>
+<td>1485</td>
+<td>从 <code>~/.claude/projects/*.jsonl</code> 会话日志扒的</td>
+</tr>
+<tr>
+<td>Codex</td>
+<td>20590</td>
+<td>从 Codex 会话日志扒的</td>
+</tr>
+<tr>
+<td>OpenCode</td>
+<td>19900</td>
+<td>从 <code>~/.local/share/opencode/opencode.db</code> 读的</td>
+</tr>
+</tbody>
+</table>
+<p><strong>只有 24 条真的过了代理——就是那批 401。</strong> 其余 4 万条是 cc-switch 自己去翻各客户端的会话记录还原出来的：Claude 读 jsonl，OpenCode 直接查它的 SQLite（<code>session</code> 表拿会话，<code>message</code> 表拿 assistant 消息，解析 <code>data</code> JSON 里的 token 和 cost）。</p>
+<p>这个实现细节的意思是：<strong>你不开代理，用量统计照样有。</strong> 我原以为“看花了多少钱”得付出走代理那一跳，其实不用。如果你只是想知道账，直连加会话日志导入就够了。</p>
+<p>顺便说，MCP 那块也是同一个思路：一个面板，每个 server 一行，后面若干个开关分别对应 Claude / Codex / Gemini / Grok Build / OpenCode / Hermes，勾上就同步进对应客户端的配置文件。我现在挂着三个 server，其中一个同时给 Claude 和 Codex 用——以前这是两个文件里各写一遍的事。</p>
+<h2 id="_7">自建才会踩的四个坑</h2>
+<p>前三个我实测过，第四个是读源码发现的。</p>
+<p><strong>1. <code>opencode.jsonc</code> 会盖掉 cc-switch 的写入。</strong></p>
+<p>cc-switch 写的是 <code>~/.config/opencode/opencode.json</code>（源码里写死的：<code>get_opencode_dir().join("opencode.json")</code>）。而 OpenCode 加载全局配置时，按顺序读 <code>config.json</code> → <code>opencode.json</code> → <code>opencode.jsonc</code>，<strong>逐层深合并，后面的覆盖前面冲突的键</strong>。</p>
+<p>我本机就有一个 <code>opencode.jsonc</code>。所以如果我在 cc-switch 里加一个 OpenCode 供应商、provider 的键名又和 jsonc 里的撞上，<strong>cc-switch 写的会被我自己那份 jsonc 悄悄盖掉，界面上却显示切换成功。</strong> 我目前还没真踩到，因为 cc-switch 里我一个 OpenCode 供应商都没建（数据库里是 0 条）——但这个坑埋在那儿。</p>
+<p>要交给 cc-switch 管 OpenCode，先把 <code>opencode.jsonc</code> 里的 <code>provider</code> 段挪走或改名，只留一处。这是深合并而不是整文件替换，所以 <code>skills</code>、<code>agent</code> 这些不冲突的键留在 jsonc 里没问题。</p>
+<p><strong>2. “自动获取模型”那个按钮对自建网关大概用不上。</strong></p>
+<p>cc-switch 有个贴心功能：填好 key 和端点，点一下就去调 <code>/v1/models</code> 把模型列表拉回来，省得手抄模型 ID。</p>
+<p>我这个网关的 <code>/v1/models</code> 返 200，233 个模型，但形状是这样：</p>
+<div class="highlight"><pre><span></span><code><span class="p">[</span>
+<span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;model&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;zoom_content_moderation&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;vendor&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;zoom&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;routes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;model&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;baai_bge_m3&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;vendor&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;baai&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;routes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span><span class="w"> </span><span class="p">}</span>
+<span class="p">]</span>
+</code></pre></div>
+
+<p>裸数组，字段叫 <code>model</code>。OpenAI 的规范形状是 <code>{"data": [{"id": "..."}]}</code>。cc-switch 文档明确说它按 OpenAI 兼容格式解析，解析不了会报 parse failure——所以这个按钮对它无效，模型得手填。</p>
+<p>不算 cc-switch 的问题，但值得提前知道：<strong>自建网关的 <code>/v1/models</code> 只要没严格照 OpenAI 抄，这个便利就没了。</strong> 顺手可以自己验一下：</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$BASE</span><span class="s2">/models&quot;</span><span class="w"> </span>-H<span class="w"> </span><span class="s2">&quot;Authorization: Bearer </span><span class="nv">$KEY</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>python3<span class="w"> </span>-c<span class="w"> </span><span class="s1">&#39;import json,sys; d=json.load(sys.stdin); print(type(d).__name__, isinstance(d,dict) and &quot;data&quot; in d)&#39;</span>
+</code></pre></div>
+
+<p>出来 <code>dict True</code> 就能用，<code>list False</code> 就手填。</p>
+<p><strong>3. 收拢配置之后，密钥轮换要改的地方反而变多了。</strong></p>
+<p>我这把网关密钥是 CSMS 签发的 JWT，<code>iat</code> 到 <code>exp</code> 正好 14 天。也就是说每两周这个 401 会准时回来一次。</p>
+<p>而我现在有三处存着它：cc-switch 的 SQLite、<code>opencode.jsonc</code>、以及导出 <code>LLM_API_KEY</code> 的那份 shell 配置。<strong>这就是单一数据源的反讽——你以为收成一处了，实际上只收了它管得着的那部分。</strong> cc-switch 管三个客户端的配置文件，但管不到你的环境变量，也管不到你没交给它的那个 OpenCode。</p>
+<p>我的解法是让能引用文件的都去引用同一个文件。OpenCode 原生支持变量替换：</p>
+<div class="highlight"><pre><span></span><code>{
+  &quot;provider&quot;: {
+    &quot;llm-gateway&quot;: {
+      &quot;options&quot;: { &quot;apiKey&quot;: &quot;{file:~/.secrets/llm-gw-token}&quot; }
+    }
+  }
+}
+</code></pre></div>
+
+<p><code>{env:VAR}</code> 也支持。这样轮换时只改 <code>~/.secrets/llm-gw-token</code> 一个文件，OpenCode 那份就跟着走了，剩下 cc-switch 里改一次。</p>
+<p><strong>4. <code>settings.json</code> 里那个 <code>PROXY_MANAGED</code> 是正常的，不要手动改。</strong></p>
+<p>开了代理接管之后，<code>~/.claude/settings.json</code> 里的 <code>ANTHROPIC_AUTH_TOKEN</code> 会变成字面量 <code>PROXY_MANAGED</code>——真钥匙留在 cc-switch 的库里，由代理在转发时注入。第一次看见容易以为配置写坏了，跑去手填真 key，反而制造混乱。</p>
+<p>同理，<code>cc-switch.db</code> 不要手改。应用对它持有 mutex，你改的东西要么被覆盖，要么撞上并发写。要改就在界面上改，或者用它的导入导出。</p>
+<p>另外还有个方向的坑：<strong>你手改了客户端配置文件，cc-switch 不会自动知道。</strong> 它的机制是“编辑当前供应商时回填”（backfill）——你得去界面上打开那个正在生效的供应商，它才把你手改的内容读回来，然后你保存进库。顺序反了就会丢改动。</p>
+<h2 id="cheatsheet">Cheatsheet</h2>
+<p><strong>装</strong></p>
+<div class="highlight"><pre><span></span><code><span class="c1"># macOS</span>
+brew<span class="w"> </span>install<span class="w"> </span>--cask<span class="w"> </span>cc-switch
+brew<span class="w"> </span>upgrade<span class="w"> </span>--cask<span class="w"> </span>cc-switch
+
+<span class="c1"># Arch</span>
+paru<span class="w"> </span>-S<span class="w"> </span>cc-switch-bin
+</code></pre></div>
+
+<p>Windows 用 <code>.msi</code> 或免安装 zip；Linux 有 deb / rpm / AppImage。macOS 版本有 Apple 签名和公证，直接开就行。</p>
+<p><strong>它的数据在哪</strong></p>
+<div class="highlight"><pre><span></span><code>~/.cc-switch/
+├── cc-switch.db        # SQLite，唯一数据源（供应商 / MCP / prompts / skills）
+├── settings.json       # 设备级偏好，不跨机同步
+├── backups/            # 自动备份，保留最近 10 份
+└── skills/             # skill 本体，默认软链到各客户端
+</code></pre></div>
+
+<p><strong>客户端配置文件对照</strong></p>
+<table>
+<thead>
+<tr>
+<th>客户端</th>
+<th>路径</th>
+<th>格式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Claude Code</td>
+<td><code>~/.claude/settings.json</code></td>
+<td>JSON，<code>env</code> 下</td>
+</tr>
+<tr>
+<td>Claude MCP</td>
+<td><code>~/.claude.json</code></td>
+<td>JSON，<code>mcpServers</code></td>
+</tr>
+<tr>
+<td>Codex</td>
+<td><code>~/.codex/config.toml</code> + <code>auth.json</code></td>
+<td>TOML + JSON</td>
+</tr>
+<tr>
+<td>Gemini CLI</td>
+<td><code>~/.gemini/.env</code> + <code>settings.json</code></td>
+<td>dotenv + JSON</td>
+</tr>
+<tr>
+<td>OpenCode</td>
+<td><code>~/.config/opencode/opencode.json</code></td>
+<td>JSON，<code>provider</code> 树</td>
+</tr>
+<tr>
+<td>OpenCode 用量库</td>
+<td><code>~/.local/share/opencode/opencode.db</code></td>
+<td>SQLite</td>
+</tr>
+</tbody>
+</table>
+<p><strong>自建接入判断树</strong></p>
+<div class="highlight"><pre><span></span><code>你的网关原生支持客户端的协议吗？
+├─ 是 ──&gt; 模型名能直接用吗？
+│         ├─ 能 ──&gt; 直连。少一跳。
+│         └─ 不能 ──&gt; 走代理，配模型映射
+└─ 否 ──&gt; 走代理
+          ├─ Claude：供应商 API 格式选 openai_chat / openai_responses
+          └─ Codex：打开 Needs Local Routing + 填模型映射表
+
+另外这三条任意一条成立，也走代理：
+要热切换 / 要 failover / 要注入上游私有请求参数
+</code></pre></div>
+
+<p><strong>排错顺序</strong>（我那个 401 就是照这个顺序定位的）</p>
+<ol>
+<li><strong>代理在听吗</strong>：<code>lsof -nP -iTCP:15721 -sTCP:LISTEN</code></li>
+<li>
+<p><strong>钥匙本身有效吗</strong>——绕过所有客户端，直接打网关：</p>
+<p><code>bash
+curl -s -o /dev/null -w '%{http_code}\n' "$BASE/chat/completions" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $KEY" \
+  -d '{"model":"YOUR_MODEL","max_tokens":5,"messages":[{"role":"user","content":"hi"}]}'</code></p>
+<p>401 就是密钥问题，跟 cc-switch 无关，别在界面上瞎点。
+3. <strong>JWT 过期了吗</strong>：</p>
+<p><code>bash
+python3 -c "
+import base64,json,datetime,os
+d=json.loads(base64.urlsafe_b64decode(os.environ['KEY'].split('.')[1]+'=='))
+print(datetime.datetime.fromtimestamp(d['exp']))"</code>
+4. <strong>切了没生效</strong>：除 Claude Code 外都要重开终端。Claude Code 不生效就看代理是不是没起。
+5. <strong>改完消失了</strong>：先在界面上打开当前供应商触发回填，再保存。</p>
+</li>
+</ol>
+<p><strong>别做的事</strong></p>
+<ul>
+<li>别手改 <code>~/.cc-switch/cc-switch.db</code></li>
+<li>别把 <code>settings.json</code> 里的 <code>PROXY_MANAGED</code> 换成真 key</li>
+<li>别同时留着 <code>opencode.json</code> 和 <code>opencode.jsonc</code> 里冲突的 <code>provider</code> 段</li>
+<li>别指望它管你的环境变量</li>
+</ul>
+<h2 id="_8">总结：收拢配置是对的，但要知道它收不到哪儿</h2>
+<p>cc-switch 值得装。三个客户端三种格式这件事，本来就不该由人的记性来兜。托盘点一下切供应商、MCP 一处配置多端同步、不开代理也能算账——这些是实打实省下来的时间。对自建和公司网关用户，它省的比中转用户更多，因为我们本来要抄的东西更多。</p>
+<p>但那个 401 教我的是另一件事：<strong>单一数据源的边界，就是它的失效边界。</strong> cc-switch 是三个客户端的唯一数据源，不是我整个环境的唯一数据源。环境变量在它外面，我手搓的那份 <code>opencode.jsonc</code> 在它外面，两周一换的密钥在它外面。收到一处的东西，也会一处坏掉给你看。</p>
+<p>所以我现在的做法是：<strong>能交给它管的全交给它，交不出去的收进一个文件，然后让所有引用都指向那个文件。</strong> 遥控器管设备，钥匙串管钥匙，别指望一个东西干两件事。</p>
+<p>下次配环境的时候，不妨先花两分钟画一下：我这把钥匙，到底存在几个地方？</p>
+<h2 id="_9">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* cc-switch + 自建网关
+** 问题
+*** 一个 base_url 一把 key
+*** 却要写三遍三种格式
+*** Claude 四个角色环境变量
+*** 切完要不要重启还各不相同
+** 它是什么
+*** 配置遥控器，非网关非代理
+*** SSOT 收进 SQLite
+*** 原子写，卸载后 CLI 照常
+*** 8 个客户端，50+ 预设
+** 两种接法
+*** 直连：链路短，切换要重启
+*** 代理：127.0.0.1:15721，约 10ms
+*** 协议不匹配必须走代理
+*** 模型名不匹配要做映射
+*** 热切换与 failover 以代理为前提
+** 我的三条链路
+*** Claude 走代理，openai_chat 转协议
+*** Codex 直连，wire_api responses
+*** Codex 官方与网关托盘横跳
+*** OpenCode 手搓 openai-compatible
+** 用量统计
+*** 4 万条记录只有 24 条过代理
+*** 其余从会话日志与 SQLite 还原
+*** 不开代理也能算账
+** 四个坑
+*** opencode.jsonc 深合并会覆盖
+*** /models 非 OpenAI 形状则手填
+*** 密钥两周过期，改点反而变多
+*** PROXY_MANAGED 是占位符别动
+** 结论
+*** 单一数据源的边界即失效边界
+*** 交不出去的收进一个文件
+*** 让所有引用指向那个文件
+@endmindmap
+</code></pre></div>
+
+<p><img alt="一个网关一把钥匙，三个客户端三种格式 - 思维导图" src="./images/tech_20260903_cc_switch_mindmap.svg"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/2026-09-03-cc-switch-self-host-llm.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/journal.html">journal</a>
+      <a href="https://www.fanyamin.com/blog/tag/ai.html">AI</a>
+      <a href="https://www.fanyamin.com/blog/tag/llm.html">LLM</a>
+      <a href="https://www.fanyamin.com/blog/tag/tooling.html">tooling</a>
+      <a href="https://www.fanyamin.com/blog/tag/claude-code.html">claude-code</a>
+      <a href="https://www.fanyamin.com/blog/tag/codex.html">codex</a>
+      <a href="https://www.fanyamin.com/blog/tag/opencode.html">opencode</a>
+      <a href="https://www.fanyamin.com/blog/tag/self-host.html">self-host</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-09-02-read-code-in-ai-era.html" title="AI 时代怎么读代码：把 AI 当导游，别当替身">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/cpp-memory-management-evolution.html" title="C/C++ 内存管理方法的变迁：把纪律写进类型系统">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/2026-08-17-typescript-in-ai-era.html">TypeScript 凭什么成了 AI 时代的新宠：一个不写 TS 的老程序员的读码笔记</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-08-mem0-memory-layer.html">如何管理 AI Agent 的记忆之三：让 mem0 给 AI Agent 装一层"通用记忆"</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-07-ai-coding-shared-memory.html">如何管理 AI Agent 的记忆之二：让 Claude Code、Codex、OpenCode 共享同一份记忆</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-09-02-read-code-in-ai-era.html">AI 时代怎么读代码：把 AI 当导游，别当替身</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-09-02-graphify-code-knowledge-graph.html">别让 agent 再 grep 了：用 graphify 给代码库先画一张图</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

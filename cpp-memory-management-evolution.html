@@ -1,0 +1,1295 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="从 malloc/free 到 unique_ptr，再到 span 与 pmr，C/C++ 三十年的内存管理演进有一条清晰的主线：把原来只能靠人记住的纪律，一点点搬进类型系统，让编译器去查。本文按 C、C++98、C++11、C++17/20 四个阶段讲清各自的特点与难点，配可编译运行的实例、最佳实践、常见陷阱和一张检查清单。" />
+<meta name="keywords" content="tech, C, C++, memory, RAII, smart-pointer, modern-cpp">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "C/C++ 内存管理方法的变迁：把纪律写进类型系统",
+  "description": "从 malloc/free 到 unique_ptr，再到 span 与 pmr，C/C++ 三十年的内存管理演进有一条清晰的主线：把原来只能靠人记住的纪律，一点点搬进类型系统，让编译器去查。本文按 C、C++98、C++11、C++17/20 四个阶段讲清各自的特点与难点，配可编译运行的实例、最佳实践、常见陷阱和一张检查清单。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-09-04T21:30:00+08:00",
+  "dateModified": "2026-09-04T21:30:00+08:00",
+  "url": "https://www.fanyamin.com/blog/cpp-memory-management-evolution.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/cpp-memory-management-evolution.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "tech, C, C++, memory, RAII, smart-pointer, modern-cpp"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="C/C++ 内存管理方法的变迁：把纪律写进类型系统"/>
+  <meta property="og:description" content="从 malloc/free 到 unique_ptr，再到 span 与 pmr，C/C++ 三十年的内存管理演进有一条清晰的主线：把原来只能靠人记住的纪律，一点点搬进类型系统，让编译器去查。本文按 C、C++98、C++11、C++17/20 四个阶段讲清各自的特点与难点，配可编译运行的实例、最佳实践、常见陷阱和一张检查清单。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/cpp-memory-management-evolution.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-09-04 21:30:00+08:00"/>
+  <meta property="article:modified_time" content="2026-09-04 21:30:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="tech"/>
+  <meta property="article:tag" content="C"/>
+  <meta property="article:tag" content="C++"/>
+  <meta property="article:tag" content="memory"/>
+  <meta property="article:tag" content="RAII"/>
+  <meta property="article:tag" content="smart-pointer"/>
+  <meta property="article:tag" content="modern-cpp"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; C/C++ 内存管理方法的变迁：把纪律写进类型系统</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="cpp-memory-management-evolution">C/C++ 内存管理方法的变迁：把纪律写进类型系统</h1>
+    <p>
+      Posted on 五 04 9月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>C/C++ 内存管理方法的变迁</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-09-04</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">大纲</h2>
+<details>
+<summary>展开看看</summary>
+<ul>
+<li><strong>核心结论</strong>：C/C++ 内存管理的演进，本质是把"谁负责释放、对象活多久"这条纪律，从注释里搬进类型系统。能让编译器查的，就别指望人自觉。</li>
+<li><strong>先约定三个词</strong>：UB（未定义行为，实测同一段代码 <code>-O0</code> 返回 0、<code>-O2</code> 返回 1，汇编里整个函数被优化成一条 <code>mov</code>）、左值/右值（<code>std::move</code> 本身不搬东西，只是一次类型转换）、ASan/UBSan（让"运气好才崩"变成"每次必崩且告诉你崩在哪"，实测在分配密集的负载上慢约 40 倍，只能进测试环境）。</li>
+<li><strong>C 语言</strong>：<code>malloc</code>/<code>free</code> 必须成对，但配对关系不在类型里——它在注释里、在文档里、在写代码那个人的脑子里。错误处理路径一多就崩。</li>
+<li><strong>C++98</strong>：RAII 让"释放"变成语言机制（析构函数），异常安全有救了；但没有 move 语义，"转移所有权"这件事表达不出来，<code>auto_ptr</code> 是个错误的答案。</li>
+<li><strong>C++11</strong>：<code>unique_ptr</code>/<code>shared_ptr</code>/<code>weak_ptr</code> + move 语义，函数签名第一次能说清所有权。难点转移到了 <code>shared_ptr</code> 滥用和循环引用。</li>
+<li><strong>引用</strong>：C++ 最早的借用机制，能表达"借一个对象"却不表达"活多久"——这个缺口单独成篇。</li>
+<li><strong>C++17/20</strong>：<code>string_view</code>/<code>span</code> 把"借用"显式化（但生命周期还得自己管），<code>pmr</code> 把分配策略从类型里解耦，顺带讲清 arena（先批发一块地，用完整块扔）该用在哪。</li>
+<li><strong>实测</strong>：一段 8 行的 <code>shared_ptr</code> 循环引用，析构函数一次都没跑；<code>pmr</code> 换掉分配器，57 次 <code>operator new</code> 降到 0 次；开一个宏，越界访问从静默返回 0 变成当场 trap；<code>string_view</code> 的悬垂一跨函数边界，<code>-Wall -Wextra</code> 全开也一声不响。</li>
+<li><strong>最佳实践</strong>：优先值语义 → 容器 → <code>unique_ptr</code> → <code>shared_ptr</code>；签名即契约；<code>make_</code> 系列；sanitizer 进 CI。</li>
+<li><strong>常见陷阱</strong>：8 个，每个都配了触发条件和修法。</li>
+<li><strong>检查清单</strong>：一张能直接抄进 code review 模板的表。</li>
+</ul>
+</details>
+<hr>
+<p>代码评审里有一个问题，我问过几百遍，也被问过几百遍：</p>
+<blockquote>
+<p><strong>"这个指针，谁负责 free？"</strong></p>
+</blockquote>
+<p>这个问题本身三十年没变，但<strong>答案存放在什么地方</strong>，变了好几轮。在 C 里，答案在注释里；在早期 C++ 里，答案在析构函数里；在现代 C++ 里，答案在函数签名里——编译器能读懂，也能拦住你。</p>
+<p><strong>C/C++ 内存管理的演进史，是一部"把纪律写进类型系统"的历史。</strong> 不是发明了更花哨的指针，而是把原本只能靠人记住、靠 code review 抓的规矩，一点点变成编译器能检查的东西。</p>
+<p>Chromium 团队分析了 2015 年以来 912 个高危/严重级别安全漏洞，<strong>约 70% 是内存安全问题，其中一半是 use-after-free</strong>（<a href="https://www.chromium.org/Home/chromium-security/memory-safety/">Chromium Memory Safety</a>）；微软那边在 2019 年也给出了几乎一样的数字——过去十几年约 70% 的安全更新在处理内存安全问题。所以下面这些"语法糖"，其实是在填一个每年吃掉无数人力的坑。</p>
+<p>下面的例子都在 Apple clang 21 上真跑过，贴的是实测输出。</p>
+<hr>
+<h2 id="_2">先约定三个词</h2>
+<p>后面会反复用到三个词，各自对应一件很实际的事：<strong>为什么错了不报错</strong>、<strong>为什么能"搬"而不是"拷"</strong>、<strong>怎么让错误当场现形</strong>。已经熟的读者可以跳到下一节。</p>
+<h3 id="ub">UB：未定义行为——错了，但没人负责报错</h3>
+<p>UB 是 undefined behavior 的缩写，中文叫<strong>未定义行为</strong>。标准里的意思很朴素：<strong>你违反了规则，那接下来发生什么，标准不做任何规定。</strong></p>
+<p>关键在于"不做任何规定"这几个字。它不是"会崩溃"，也不是"结果不确定"，而是<strong>编译器可以假设这件事根本不会发生</strong>，并基于这个假设去优化。看一段 C 代码：</p>
+<div class="highlight"><pre><span></span><code><span class="kt">int</span><span class="w"> </span><span class="nf">f</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">x</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">x</span><span class="p">;</span><span class="w">      </span><span class="cm">/* 有符号整数溢出是 UB */</span>
+<span class="p">}</span>
+<span class="n">printf</span><span class="p">(</span><span class="s">&quot;f(INT_MAX) = %d</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">f</span><span class="p">(</span><span class="n">INT_MAX</span><span class="p">));</span>
+</code></pre></div>
+
+<p>数学上，<code>INT_MAX + 1</code> 会溢出，所以这个表达式应该是假。实测：</p>
+<div class="highlight"><pre><span></span><code><span class="go">--- -O0 ---</span>
+<span class="go">f(INT_MAX) = 0</span>
+<span class="go">--- -O2 ---</span>
+<span class="go">f(INT_MAX) = 1</span>
+</code></pre></div>
+
+<p><strong>同一份代码，换个优化级别，答案从 0 变成 1。</strong> 为什么？看 <code>-O2</code> 生成的汇编：</p>
+<div class="highlight"><pre><span></span><code><span class="go">_f:</span>
+<span class="go">    mov w0, #1        ; 直接返回 1，加法和比较全没了</span>
+<span class="go">    ret</span>
+</code></pre></div>
+
+<p>编译器的推理是这样的：溢出是 UB，UB 不会发生，那 <code>x + 1</code> 必然大于 <code>x</code>，所以 <code>f</code> 恒等于 1——<strong>整个函数体被优化成一条 <code>mov</code></strong>。它没有出错，它是严格按标准在做优化；错的是我写了一段 UB。</p>
+<p>UB 最难缠的地方在于：</p>
+<ul>
+<li><strong>它不保证崩溃。</strong> 崩了反而是运气好。更常见的是悄悄给个错值，一路算下去。</li>
+<li><strong>它会随编译器、优化级别、平台而变。</strong> 本地 debug build 跑了一年好好的，上线 release build 出事——这类线上事故我见过不止一次。</li>
+<li><strong>它不"局部"。</strong> 上面那个例子里，UB 不只是让加法出错，而是让编译器删掉了整段逻辑。</li>
+</ul>
+<p>后面出现的悬垂指针、use-after-free、越界访问、解空指针，<strong>全都属于 UB</strong>。所以说"这是 UB"，意思不是"这样写不好看"，而是：<strong>这段代码的行为不再由你决定了。</strong></p>
+<h3 id="c11">左值与右值：为什么 C++11 能"搬"而不是"拷"</h3>
+<p>要理解 move 语义，得先分清两个词。最实用的判断法是问一句：<strong>它有名字吗？还能不能再用一次？</strong></p>
+<ul>
+<li><strong>左值（lvalue）</strong>：有名字、有身份、后面还可能被用到的东西。<code>std::string s;</code> 里的 <code>s</code> 就是左值。</li>
+<li><strong>右值（rvalue）</strong>：临时的、没名字、这个表达式结束就没人认识它的东西。函数返回的临时对象、字面量，都是右值。</li>
+</ul>
+<p>这个区分为什么值得进标准？因为它给了编译器一个<strong>安全的判断依据</strong>：如果一个对象是右值，说明<strong>没有别人还会用它</strong>，那我就可以把它肚子里的资源（堆上那块内存）直接掏出来据为己有，而不必老老实实拷一份。这就是 move（移动）。C++11 新增的 <code>&amp;&amp;</code>（右值引用）就是用来在函数签名上说"我要的是一个右值，我打算搬它"。</p>
+<div class="highlight"><pre><span></span><code><span class="kt">void</span><span class="w"> </span><span class="nf">take</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;&amp;</span><span class="p">)</span><span class="w">      </span><span class="p">{</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">puts</span><span class="p">(</span><span class="s">&quot;绑到右值引用：可以下手搬&quot;</span><span class="p">);</span><span class="w"> </span><span class="p">}</span>
+<span class="kt">void</span><span class="w"> </span><span class="nf">take</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">puts</span><span class="p">(</span><span class="s">&quot;绑到 const 左值引用：只能看&quot;</span><span class="p">);</span><span class="w"> </span><span class="p">}</span>
+<span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="nf">make</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="s">&quot;temp&quot;</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+
+<span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;named&quot;</span><span class="p">;</span>
+<span class="n">take</span><span class="p">(</span><span class="n">s</span><span class="p">);</span><span class="w">              </span><span class="c1">// s 有名字 → 左值</span>
+<span class="n">take</span><span class="p">(</span><span class="n">make</span><span class="p">());</span><span class="w">         </span><span class="c1">// 临时对象 → 右值</span>
+<span class="n">take</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">move</span><span class="p">(</span><span class="n">s</span><span class="p">));</span><span class="w">   </span><span class="c1">// 把左值&quot;当作&quot;右值交出去</span>
+</code></pre></div>
+
+<p>实测：</p>
+<div class="highlight"><pre><span></span><code><span class="go">绑到 const 左值引用：只能看</span>
+<span class="go">绑到右值引用：可以下手搬</span>
+<span class="go">绑到右值引用：可以下手搬</span>
+</code></pre></div>
+
+<p>一个<strong>特别常见的误解</strong>：<code>std::move</code> 本身不搬任何东西。它只是一次类型转换，作用是"把这个左值标记成右值，允许别人来搬"。真正的搬运发生在接手方的移动构造/移动赋值里。实测能看得很清楚：</p>
+<div class="highlight"><pre><span></span><code><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;a-string-long-enough-to-live-on-the-heap&quot;</span><span class="p">;</span>
+<span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">move</span><span class="p">(</span><span class="n">a</span><span class="p">);</span><span class="w">      </span><span class="c1">// 这里真的搬了（调用移动构造）</span>
+
+<span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;another-long-string-on-the-heap-as-well&quot;</span><span class="p">;</span>
+<span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">move</span><span class="p">(</span><span class="n">c</span><span class="p">);</span><span class="w">    </span><span class="c1">// 只绑了个引用，没构造任何对象</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="go">b = &quot;a-string-long-enough-to-live-on-the-heap&quot;</span>
+<span class="go">a = &quot;&quot; (长度 0)                                   ← a 被搬空了</span>
+<span class="go">c = &quot;another-long-string-on-the-heap-as-well&quot; (长度 39) &lt;- 什么都没被搬走</span>
+</code></pre></div>
+
+<p><code>a</code> 被搬空了，<code>c</code> 一根头发都没少——差别在于有没有人真的来接。顺带记住被搬走之后的规矩：<strong>被 move 过的对象处于"有效但未指定"的状态</strong>，你可以给它赋新值、可以销毁它，但<strong>不该假设它里面还剩什么</strong>。（<code>std::string</code> 通常变空，但那是实现行为，不是标准承诺。）</p>
+<p>这套机制正是 C++11 能用 <code>unique_ptr</code> 表达"所有权转移"的地基：<strong>独占的所有权不能拷贝，但可以搬。</strong></p>
+<h3 id="asan-ubsan">ASan / UBSan：让错误当场现形</h3>
+<p>前面说 UB 的可怕之处是"不保证崩溃"。那有没有办法让它<strong>必须</strong>崩？有，这就是 sanitizer（消毒器）——编译器在生成代码时插入额外检查，运行到出错那一刻立刻停下并打印现场。</p>
+<p>用到两个：</p>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>全称</th>
+<th>抓什么</th>
+<th>开关</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>ASan</strong></td>
+<td>AddressSanitizer</td>
+<td>内存地址类错误：use-after-free、越界读写、栈上对象过期后被访问、内存泄漏</td>
+<td><code>-fsanitize=address</code></td>
+</tr>
+<tr>
+<td><strong>UBSan</strong></td>
+<td>UndefinedBehaviorSanitizer</td>
+<td>其他各类 UB：整数溢出、除零、空指针解引用、错误的类型转换</td>
+<td><code>-fsanitize=undefined</code></td>
+</tr>
+</tbody>
+</table>
+<p>拿刚才那段溢出代码开上 UBSan，它不再默默返回 1：</p>
+<div class="highlight"><pre><span></span><code><span class="go">ub.c:4:12: runtime error: signed integer overflow: 2147483647 + 1</span>
+<span class="go">           cannot be represented in type &#39;int&#39;</span>
+</code></pre></div>
+
+<p><strong>报错精确到文件、行、列，还告诉你溢出的具体数值。</strong> 它们把"运气好才会崩"的问题，变成了"每次必崩、且告诉你崩在哪"。</p>
+<p>三点使用须知：</p>
+<ol>
+<li>
+<p><strong>两个可以一起开</strong>，<code>-fsanitize=address,undefined</code> 能正常编译。但 <strong>ASan 和 TSan（ThreadSanitizer，查数据竞争）不能同时用</strong>，clang 会直接拒绝：</p>
+<p><code>console
+clang++: error: invalid argument '-fsanitize=address'
+         not allowed with '-fsanitize=thread'</code></p>
+</li>
+<li>
+<p><strong>有性能代价，所以只在测试环境开，不上生产。</strong> 我拿一段分配密集的循环交替跑了 5 轮：</p>
+<p><code>console
+不开 sanitizer：      7 ms
+开 ASan+UBSan：   ~300 ms</code></p>
+<p>这个例子里慢了约 40 倍，内存占用也会明显上升。倍数和负载强相关——内存操作越密集差得越多，计算密集型的代码则轻得多，所以这个数字只能当量级参考。</p>
+</li>
+<li>
+<p><strong>它只能发现"真的被执行到"的错误。</strong> sanitizer 是运行期工具，没有测试用例覆盖到的那行代码，它一样查不出来。<strong>所以它的效果取决于你的测试覆盖率</strong>，别指望开了就万事大吉。</p>
+</li>
+</ol>
+<p>还有个平台坑：<code>ASAN_OPTIONS=detect_leaks=1</code> 这个查泄漏的功能在 Linux 上好用，<strong>在 macOS/ARM 上不支持</strong>：</p>
+<div class="highlight"><pre><span></span><code><span class="go">AddressSanitizer: detect_leaks is not supported on this platform.</span>
+</code></pre></div>
+
+<p>所以下文讲循环引用泄漏时，我是靠析构函数打印来证明泄漏的，而不是靠 LeakSanitizer 的报告。</p>
+<hr>
+<h2 id="c">一、C 语言：纪律全靠人记</h2>
+<p>C 的内存模型干净得近乎冷酷：<code>malloc</code> 要一块，<code>free</code> 还回去，<code>realloc</code> 换个大小。没有隐藏动作，没有额外开销，你写什么它做什么。这是 C 至今在内核、嵌入式、驱动里不可替代的原因——<strong>可预测性本身就是一种功能</strong>。</p>
+<p>难点也在这里：<strong><code>malloc</code> 和 <code>free</code> 必须严格配对，但这个配对关系不体现在任何类型上。</strong></p>
+<p>看这个函数签名：</p>
+<div class="highlight"><pre><span></span><code><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="nf">build_message</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">user</span><span class="p">);</span>
+</code></pre></div>
+
+<p>返回的这块内存，是调用方 <code>free</code>，还是库内部有个 <code>release_message()</code>？还是说它指向一块静态缓冲区，你 <code>free</code> 了就崩？<strong>签名一个字都没说。</strong> 答案在头文件的注释里，在文档里，在写这个函数那个人的脑子里。</p>
+<p>更麻烦的是错误处理。一个函数申请三块内存，中间任何一步失败都要把前面的还回去，于是就有了 C 程序员都熟悉的 <code>goto cleanup</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="kt">int</span><span class="w"> </span><span class="nf">handle</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">a</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">NULL</span><span class="p">,</span><span class="w"> </span><span class="o">*</span><span class="n">b</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">NULL</span><span class="p">,</span><span class="w"> </span><span class="o">*</span><span class="n">c</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">NULL</span><span class="p">;</span>
+<span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">rc</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">-1</span><span class="p">;</span>
+
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="p">(</span><span class="n">a</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">malloc</span><span class="p">(</span><span class="n">N</span><span class="p">)))</span><span class="w"> </span><span class="k">goto</span><span class="w"> </span><span class="n">done</span><span class="p">;</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="p">(</span><span class="n">b</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">malloc</span><span class="p">(</span><span class="n">N</span><span class="p">)))</span><span class="w"> </span><span class="k">goto</span><span class="w"> </span><span class="n">done</span><span class="p">;</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="p">(</span><span class="n">c</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">malloc</span><span class="p">(</span><span class="n">N</span><span class="p">)))</span><span class="w"> </span><span class="k">goto</span><span class="w"> </span><span class="n">done</span><span class="p">;</span>
+<span class="w">    </span><span class="cm">/* ... 真正的业务逻辑 ... */</span>
+<span class="w">    </span><span class="n">rc</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="nl">done</span><span class="p">:</span>
+<span class="w">    </span><span class="n">free</span><span class="p">(</span><span class="n">c</span><span class="p">);</span><span class="w"> </span><span class="n">free</span><span class="p">(</span><span class="n">b</span><span class="p">);</span><span class="w"> </span><span class="n">free</span><span class="p">(</span><span class="n">a</span><span class="p">);</span><span class="w">   </span><span class="cm">/* free(NULL) 是安全的，所以能这么写 */</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">rc</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这个模式是有效的，而且在优秀的 C 代码库里随处可见——但它的正确性完全依赖人的自觉：新加一个 <code>d</code> 分配，你得记得在 <code>done:</code> 加一行，还得记得初始化成 <code>NULL</code>。<strong>漏了编译器不会说话。</strong></p>
+<p>再看一个特别容易踩、连老手都栽的坑——<code>realloc</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="n">buf</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">realloc</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span><span class="w"> </span><span class="n">new_size</span><span class="p">);</span><span class="w">   </span><span class="cm">/* 看起来天经地义 */</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">buf</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="mi">-1</span><span class="p">;</span>
+</code></pre></div>
+
+<p><code>realloc</code> 失败时返回 <code>NULL</code>，但<strong>原来那块内存还在</strong>。上面这行已经把 <code>buf</code> 覆盖成 <code>NULL</code> 了，旧地址永久丢失，妥妥的泄漏。我拿 ASan 跑了一个必然失败的 <code>realloc</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="go">==24110==ERROR: AddressSanitizer: allocation-size-too-big</span>
+<span class="gp">    #</span><span class="m">1</span><span class="w"> </span>0x000104e6083c<span class="w"> </span><span class="k">in</span><span class="w"> </span>main<span class="w"> </span>realloc.c:7
+</code></pre></div>
+
+<p>正确写法必须借一个临时变量：</p>
+<div class="highlight"><pre><span></span><code><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">tmp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">realloc</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span><span class="w"> </span><span class="n">new_size</span><span class="p">);</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">tmp</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* buf 还有效，可以继续用或自行释放 */</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="mi">-1</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+<span class="n">buf</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">tmp</span><span class="p">;</span>
+</code></pre></div>
+
+<p><strong>C 阶段的特点与难点，一句话总结：</strong></p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>特点</strong></td>
+<td>透明、零开销、完全可控；内存布局所见即所得</td>
+</tr>
+<tr>
+<td><strong>难点</strong></td>
+<td>所有权只存在于注释里；错误路径上的释放靠人肉配对；<code>realloc</code> 语义反直觉；指针和长度分离（数组一旦传参就丢了长度）</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="c9803raii">二、C++98/03：RAII 出场，但所有权还在注释里</h2>
+<p>C++ 带来的第一个真正的突破，不是 <code>new</code>/<code>delete</code>——那只是 <code>malloc</code>/<code>free</code> 加了个构造析构。真正的突破是 <strong>RAII</strong>（Resource Acquisition Is Initialization，资源获取即初始化）：<strong>把"释放"绑定到对象析构上，而析构是语言保证的，不是约定。</strong></p>
+<p>差别在异常面前最明显。我写了两个版本跑一下：</p>
+<div class="highlight"><pre><span></span><code><span class="k">struct</span><span class="w"> </span><span class="nc">Conn</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="o">~</span><span class="n">Conn</span><span class="p">(){</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">puts</span><span class="p">(</span><span class="s">&quot;~Conn&quot;</span><span class="p">);</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">};</span>
+<span class="kt">void</span><span class="w"> </span><span class="nf">may_throw</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">&quot;boom&quot;</span><span class="p">);</span><span class="w"> </span><span class="p">}</span>
+
+<span class="kt">void</span><span class="w"> </span><span class="nf">old_way</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w">           </span><span class="c1">// C++98 里非常常见的写法</span>
+<span class="w">    </span><span class="n">Conn</span><span class="o">*</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Conn</span><span class="p">();</span>
+<span class="w">    </span><span class="n">may_throw</span><span class="p">();</span><span class="w">           </span><span class="c1">// 抛了，下面这行永远执行不到</span>
+<span class="w">    </span><span class="k">delete</span><span class="w"> </span><span class="n">c</span><span class="p">;</span>
+<span class="p">}</span>
+<span class="kt">void</span><span class="w"> </span><span class="nf">raii_way</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">Conn</span><span class="w"> </span><span class="n">c</span><span class="p">;</span><span class="w">                </span><span class="c1">// 栈对象，栈展开时照样析构</span>
+<span class="w">    </span><span class="n">may_throw</span><span class="p">();</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>实测输出：</p>
+<div class="highlight"><pre><span></span><code><span class="go">caught from old_way          ← 注意：没有 ~Conn，泄漏了</span>
+<span class="go">~Conn</span>
+<span class="go">caught from raii_way</span>
+</code></pre></div>
+
+<p><code>old_way</code> 里的 <code>delete</code> 被异常直接跳过，<code>Conn</code> 的析构函数一次都没跑。而 <code>raii_way</code> 里那个栈对象，在栈展开（stack unwinding）过程中被老老实实析构了。<strong>同一个"释放"动作，一个靠你记得写，一个靠语言保证——这就是 RAII 的全部价值。</strong></p>
+<p>但 C++98 的故事只讲了一半，因为它缺一样关键东西：<strong>move 语义</strong>。</p>
+<p>没有 move，"把所有权从 A 交给 B"这个动作在语言里表达不出来。当年标准库的答案是 <code>std::auto_ptr</code>，它的做法是让<strong>拷贝构造去偷源对象的指针</strong>：</p>
+<div class="highlight"><pre><span></span><code><span class="n">std</span><span class="o">::</span><span class="n">auto_ptr</span><span class="o">&lt;</span><span class="n">Foo</span><span class="o">&gt;</span><span class="w"> </span><span class="n">a</span><span class="p">(</span><span class="k">new</span><span class="w"> </span><span class="n">Foo</span><span class="p">);</span>
+<span class="n">std</span><span class="o">::</span><span class="n">auto_ptr</span><span class="o">&lt;</span><span class="n">Foo</span><span class="o">&gt;</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">a</span><span class="p">;</span><span class="w">   </span><span class="c1">// 编译通过！但 a 现在是空的</span>
+<span class="c1">// 之后用 a 就是解空指针</span>
+</code></pre></div>
+
+<p>一个看起来像拷贝的操作，把源对象改了。这违反了所有人对拷贝的直觉，也让 <code>auto_ptr</code> 不能放进 STL 容器（容器会在你不知道的时候拷贝元素，一拷贝所有权就跑了）。<code>auto_ptr</code> 在 C++11 里被弃用、C++17 里被移除，是标准库里少见的"承认设计错了"的案例。</p>
+<p>于是 C++98 时代的现实是：RAII 解决了<strong>局部资源</strong>的释放，但<strong>跨函数、跨容器的所有权转移</strong>依然只能靠裸指针加注释。容器里装 <code>Foo*</code> 是那个年代的家常饭，谁 <code>delete</code> 全靠约定。</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>特点</strong></td>
+<td>RAII 让释放成为语言机制；异常安全第一次可行；三法则（拷贝构造/赋值/析构要么都写要么都不写）成为共识</td>
+</tr>
+<tr>
+<td><strong>难点</strong></td>
+<td>没有 move，所有权转移无法表达；<code>auto_ptr</code> 拷贝语义错误且不能进容器；容器装裸指针是常态；深拷贝到处发生，性能只能靠手写 swap 之类的技巧绕</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="c11_1">三、C++11：所有权终于进了类型系统</h2>
+<p>C++11 是分水岭。它给了两样东西：<strong>move 语义</strong>（右值引用），以及建立在它之上的一套智能指针。</p>
+<p>意义不在于"不用手写 delete 了"——那只是副产品。真正的意义是：<strong>函数签名第一次能说清所有权。</strong></p>
+<div class="highlight"><pre><span></span><code><span class="kt">void</span><span class="w"> </span><span class="nf">take</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><span class="n">Session</span><span class="o">&gt;</span><span class="p">);</span><span class="w">   </span><span class="c1">// 我接管，你别管了</span>
+<span class="kt">void</span><span class="w"> </span><span class="nf">borrow</span><span class="p">(</span><span class="n">Session</span><span class="o">&amp;</span><span class="p">);</span><span class="w">                 </span><span class="c1">// 我只用，不负责生死</span>
+<span class="kt">void</span><span class="w"> </span><span class="nf">share</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">shared_ptr</span><span class="o">&lt;</span><span class="n">Session</span><span class="o">&gt;</span><span class="p">);</span><span class="w">  </span><span class="c1">// 我要和你一起持有</span>
+</code></pre></div>
+
+<p>三个签名，三种契约，不需要读注释。而且这不只是"表达清楚了"，是<strong>编译器会强制执行</strong>：</p>
+<div class="highlight"><pre><span></span><code><span class="k">auto</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">make_unique</span><span class="o">&lt;</span><span class="n">Session</span><span class="o">&gt;</span><span class="p">();</span>
+<span class="n">borrow</span><span class="p">(</span><span class="o">*</span><span class="n">s</span><span class="p">);</span>
+<span class="n">take</span><span class="p">(</span><span class="n">s</span><span class="p">);</span><span class="w">              </span><span class="c1">// ← 编译错误</span>
+<span class="n">take</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">move</span><span class="p">(</span><span class="n">s</span><span class="p">));</span><span class="w">   </span><span class="c1">// ← 这样才行</span>
+</code></pre></div>
+
+<p>第 3 行的实测报错：</p>
+<div class="highlight"><pre><span></span><code><span class="go">own.cpp:8:8: error: call to implicitly-deleted copy constructor of</span>
+<span class="go">              &#39;std::unique_ptr&lt;Session&gt;&#39;</span>
+<span class="go">note: copy constructor is implicitly deleted because &#39;unique_ptr&lt;Session&gt;&#39;</span>
+<span class="go">      has a user-declared move constructor</span>
+</code></pre></div>
+
+<p>同一个错误——"两个地方都以为自己该释放"——在 C 里是运行期的 double free，在 C++98 里是 code review 该抓出来的疏忽，<strong>在 C++11 里是一条编译错误。</strong> 纪律进了类型系统，检查就交给了机器。</p>
+<p>再说个常被误解的成本问题，实测量一下：</p>
+<div class="highlight"><pre><span></span><code><span class="go">sizeof(T*)=8  unique_ptr=8  shared_ptr=16  weak_ptr=16</span>
+<span class="go">shared_ptr&lt;T&gt;(new T): 2 次分配, 36 字节</span>
+<span class="go">make_shared&lt;T&gt;():     1 次分配, 32 字节</span>
+</code></pre></div>
+
+<p><code>unique_ptr</code> 和裸指针一样大，是真正的零开销抽象——<strong>没有理由不用它</strong>。<code>shared_ptr</code> 是两倍大（对象指针 + 控制块指针），而且 <code>shared_ptr&lt;T&gt;(new T)</code> 要分配两次（一次给对象、一次给控制块），<code>make_shared</code> 合成一次。所以规矩是：<strong>能 <code>make_</code> 就 <code>make_</code></strong>，既省一次分配，也顺手避免了"参数求值顺序导致异常泄漏"的老问题。</p>
+<h3 id="_3">难点转移了，但没消失</h3>
+<p>C++11 之后，"忘记 delete"基本绝迹了，取而代之的是两类新问题。</p>
+<p><strong>第一类：<code>shared_ptr</code> 被当成 GC 用。</strong> 很多从 Java/Go 过来的同事，一上手就全套 <code>shared_ptr</code>，图个省心。代价是引用计数的原子操作开销、对象生命周期变得无法推理（谁还持有它？不知道），以及最经典的<strong>循环引用</strong>：</p>
+<div class="highlight"><pre><span></span><code><span class="k">struct</span><span class="w"> </span><span class="nc">Node</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">shared_ptr</span><span class="o">&lt;</span><span class="n">Node</span><span class="o">&gt;</span><span class="w"> </span><span class="n">peer</span><span class="p">;</span>
+<span class="w">    </span><span class="o">~</span><span class="n">Node</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">puts</span><span class="p">(</span><span class="s">&quot;~Node&quot;</span><span class="p">);</span><span class="w"> </span><span class="p">}</span>
+<span class="p">};</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">make_shared</span><span class="o">&lt;</span><span class="n">Node</span><span class="o">&gt;</span><span class="p">();</span>
+<span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">make_shared</span><span class="o">&lt;</span><span class="n">Node</span><span class="o">&gt;</span><span class="p">();</span>
+<span class="w">    </span><span class="n">a</span><span class="o">-&gt;</span><span class="n">peer</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">b</span><span class="p">;</span>
+<span class="w">    </span><span class="n">b</span><span class="o">-&gt;</span><span class="n">peer</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">a</span><span class="p">;</span><span class="w">      </span><span class="c1">// 互相持有</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>实测输出：</p>
+<div class="highlight"><pre><span></span><code><span class="go">a.use_count=2 b.use_count=2</span>
+<span class="go">scope exited</span>
+</code></pre></div>
+
+<p><strong><code>~Node</code> 一次都没打印。</strong> <code>a</code> 和 <code>b</code> 出作用域时计数各减 1，从 2 变成 1，永远到不了 0——两个对象手拉手一起泄漏，ASan 都不一定报（它只报"程序结束时还没释放"，而很多长跑服务根本不结束）。</p>
+<p>修法是把<strong>反向边</strong>换成 <code>weak_ptr</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="k">struct</span><span class="w"> </span><span class="nc">Node</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">shared_ptr</span><span class="o">&lt;</span><span class="n">Node</span><span class="o">&gt;</span><span class="w"> </span><span class="n">child</span><span class="p">;</span>
+<span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">weak_ptr</span><span class="o">&lt;</span><span class="n">Node</span><span class="o">&gt;</span><span class="w">   </span><span class="n">parent</span><span class="p">;</span><span class="w">   </span><span class="c1">// 反向边不持有所有权</span>
+<span class="w">    </span><span class="o">~</span><span class="n">Node</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">puts</span><span class="p">(</span><span class="s">&quot;~Node&quot;</span><span class="p">);</span><span class="w"> </span><span class="p">}</span>
+<span class="p">};</span>
+</code></pre></div>
+
+<p>实测：</p>
+<div class="highlight"><pre><span></span><code><span class="go">p.use_count=1 c.use_count=2</span>
+<span class="go">parent 还活着，lock 成功</span>
+<span class="go">~Node</span>
+<span class="go">~Node</span>
+<span class="go">scope exited</span>
+</code></pre></div>
+
+<p>计数正常归零，析构正常触发。经验规则：<strong>图结构里，"往下"用 <code>shared_ptr</code>，"往上"和"横向"用 <code>weak_ptr</code>；用之前 <code>lock()</code> 拿一个临时的强引用，拿不到就说明对象没了。</strong></p>
+<p><strong>第二类：把"指针线程安全"理解错了。</strong> <code>shared_ptr</code> 的引用计数是原子的，这不等于它指向的对象是线程安全的，也不等于<strong>同一个 <code>shared_ptr</code> 变量</strong>能被多线程同时读写。前者要你自己加锁，后者在 C++20 之前得用 <code>std::atomic_load/store</code> 那套自由函数（C++20 起有了 <code>std::atomic&lt;std::shared_ptr&lt;T&gt;&gt;</code>）。</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>特点</strong></td>
+<td>所有权进入类型系统，编译器强制；move 语义消除了大量无谓拷贝；<code>unique_ptr</code> 零开销</td>
+</tr>
+<tr>
+<td><strong>难点</strong></td>
+<td><code>shared_ptr</code> 滥用导致生命周期无法推理；循环引用泄漏且难发现；引用计数的原子开销与线程安全边界易误解；裸指针依然合法，旧代码不会自动变好</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="_4">引用是最早的"借用"，也是漏得最厉害的一处</h2>
+<p>智能指针管住了所有权，但 C++ 最早的借用机制——引用（<code>T&amp;</code>、<code>const T&amp;</code>）——始终有个缺口：<strong>它能表达"借一个对象"，却完全不表达"这个对象活多久"。</strong></p>
+<p>于是所有权进了类型系统，寿命还留在外面。悬垂引用、<code>[=]</code> 按指针捕 <code>this</code>、参数别名（<code>f(v, v[0])</code>）这些坑，全长在这个缺口上，而且大多数连警告都没有。</p>
+<blockquote>
+<p>这块单独写了一篇：<strong><a href="https://www.fanyamin.com/blog/cpp-dangling-reference-lambda-capture.html">《C++ 悬垂引用与 lambda 捕获：语法上最省事，出事时最难查》</a></strong> —— 四种悬垂来源、lambda 捕获的五种误用、该用与不该用引用的对照，外加一个默认关掉、不开就查不出栈上悬垂的 ASan 开关。</p>
+</blockquote>
+<hr>
+<h2 id="c1720">四、C++17/20：把"借用"和"分配策略"也交出去</h2>
+<p>C++11 解决了<strong>所有权</strong>，但留了一块空白：<strong>借用的类型化表达</strong>。</p>
+<p>引用能表达"借一个对象"，但表达不了"借一段连续的元素"。传一个只读字符串，写 <code>const std::string&amp;</code> 会在调用方是 <code>const char*</code> 时悄悄构造一个临时 <code>string</code>（一次分配）；传一个数组，<code>(int* p, size_t n)</code> 这对参数天生可能对不上。C++17 的 <code>string_view</code> 和 C++20 的 <code>span</code> 就是来填这块的：<strong>它们是"我只看，不持有"的类型化表达，而且带着长度。</strong></p>
+<div class="highlight"><pre><span></span><code><span class="kt">void</span><span class="w"> </span><span class="nf">sum</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">span</span><span class="o">&lt;</span><span class="k">const</span><span class="w"> </span><span class="kt">int</span><span class="o">&gt;</span><span class="w"> </span><span class="n">xs</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">      </span><span class="c1">// 不关心你是数组、vector 还是 array</span>
+<span class="w">    </span><span class="kt">long</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">xs</span><span class="p">)</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">x</span><span class="p">;</span>
+<span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;n=%zu sum=%ld</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">xs</span><span class="p">.</span><span class="n">size</span><span class="p">(),</span><span class="w"> </span><span class="n">s</span><span class="p">);</span>
+<span class="p">}</span>
+<span class="kt">int</span><span class="w"> </span><span class="n">raw</span><span class="p">[</span><span class="mi">4</span><span class="p">]{</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="mi">4</span><span class="p">};</span>
+<span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="w"> </span><span class="n">v</span><span class="p">{</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="mi">4</span><span class="p">,</span><span class="mi">5</span><span class="p">};</span>
+<span class="n">sum</span><span class="p">(</span><span class="n">raw</span><span class="p">);</span><span class="w"> </span><span class="n">sum</span><span class="p">(</span><span class="n">v</span><span class="p">);</span><span class="w"> </span><span class="n">sum</span><span class="p">({</span><span class="n">v</span><span class="p">.</span><span class="n">data</span><span class="p">(),</span><span class="w"> </span><span class="mi">2</span><span class="p">});</span>
+</code></pre></div>
+
+<p>实测：</p>
+<div class="highlight"><pre><span></span><code><span class="go">n=4 sum=10</span>
+<span class="go">n=5 sum=15</span>
+<span class="go">n=2 sum=3</span>
+</code></pre></div>
+
+<p>一个签名吃三种容器，长度自带，不用再传 <code>size</code> 参数——<strong>参数对不上这个错误类别，直接消失了。</strong></p>
+<p>但要注意：<strong><code>span</code> 和 <code>string_view</code> 只解决了"表达借用"，没有解决"借用的东西还活着吗"。</strong> 这是它们最大的陷阱：</p>
+<div class="highlight"><pre><span></span><code><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="nf">name</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="s">&quot;walter&quot;</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+<span class="n">std</span><span class="o">::</span><span class="n">string_view</span><span class="w"> </span><span class="n">sv</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">name</span><span class="p">();</span><span class="w">   </span><span class="c1">// 临时 string 立刻死了</span>
+<span class="n">std</span><span class="o">::</span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;[%.*s]</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="p">)</span><span class="n">sv</span><span class="p">.</span><span class="n">size</span><span class="p">(),</span><span class="w"> </span><span class="n">sv</span><span class="p">.</span><span class="n">data</span><span class="p">());</span>
+</code></pre></div>
+
+<p>clang 给了警告，ASan 给了报错：</p>
+<div class="highlight"><pre><span></span><code><span class="go">warning: object backing the pointer will be destroyed at the end of</span>
+<span class="go">         the full-expression [-Wdangling-gsl]</span>
+<span class="go">ERROR: AddressSanitizer: stack-use-after-scope</span>
+<span class="go">       [64, 88) &#39;ref.tmp&#39; (line 6) &lt;== 访问落在这个临时对象里</span>
+</code></pre></div>
+
+<p>编译器在这方面能帮多少，我也实测划了条线。同一表达式内的悬垂（上面那种），<code>-Wdangling-gsl</code> 抓得到；返回指向局部对象的视图，<code>-Wreturn-stack-address</code> 也抓得到。但<strong>一旦跨了函数边界，它就沉默了</strong>：</p>
+<div class="highlight"><pre><span></span><code><span class="k">struct</span><span class="w"> </span><span class="nc">Cache</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string_view</span><span class="w"> </span><span class="n">key</span><span class="p">;</span><span class="w"> </span><span class="p">};</span><span class="w">            </span><span class="c1">// 视图当成员</span>
+<span class="kt">void</span><span class="w"> </span><span class="nf">store</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">Cache</span><span class="o">&gt;&amp;</span><span class="w"> </span><span class="n">c</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">s</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">c</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="n">Cache</span><span class="p">{</span><span class="n">s</span><span class="p">});</span><span class="w">                         </span><span class="c1">// s 活多久？调用方说了算</span>
+<span class="p">}</span>
+<span class="kt">void</span><span class="w"> </span><span class="nf">use</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">Cache</span><span class="o">&gt;</span><span class="w"> </span><span class="n">c</span><span class="p">;</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">tmp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;walter&quot;</span><span class="p">;</span><span class="w"> </span><span class="n">store</span><span class="p">(</span><span class="n">c</span><span class="p">,</span><span class="w"> </span><span class="n">tmp</span><span class="p">);</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="c1">// tmp 死了，c[0].key 悬垂</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><code>-Wall -Wextra</code> 全开，clang 一句警告都没有——因为 <code>store</code> 单看没错，<code>use</code> 单看也没错，错在两者的生命周期假设对不上，而这个信息不在任何一个函数的签名里。<strong>这正是 C 时代那个老问题换了层皮：所有权和寿命的约定又一次跑到类型系统之外去了。</strong></p>
+<p>所以规矩是：<strong><code>span</code>/<code>string_view</code> 只做参数，不做成员、不做返回值、不存起来。</strong></p>
+<p>同样属于"生命周期陷阱"的还有 <code>vector</code> 扩容：</p>
+<div class="highlight"><pre><span></span><code><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="w"> </span><span class="n">v</span><span class="p">{</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">3</span><span class="p">};</span>
+<span class="kt">int</span><span class="o">*</span><span class="w"> </span><span class="n">p</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">&amp;</span><span class="n">v</span><span class="p">[</span><span class="mi">0</span><span class="p">];</span>
+<span class="n">v</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="mi">4</span><span class="p">);</span><span class="w">          </span><span class="c1">// 扩容，整块内存搬家</span>
+<span class="n">std</span><span class="o">::</span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;%d</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="o">*</span><span class="n">p</span><span class="p">);</span><span class="w"> </span><span class="c1">// p 已经指向被释放的内存</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="go">ERROR: AddressSanitizer: heap-use-after-free</span>
+<span class="go">freed by thread T0 here: ... __libcpp_deallocate ...</span>
+</code></pre></div>
+
+<h3 id="pmr">pmr：分配策略不该写死在类型里</h3>
+<p>C++17 的另一件大事是 <code>&lt;memory_resource&gt;</code>（polymorphic memory resource，简称 pmr）。在此之前，自定义分配器要写进模板参数——<code>std::vector&lt;T, MyAlloc&gt;</code> 和 <code>std::vector&lt;T&gt;</code> 是<strong>两个不同类型</strong>，一旦用了就污染整个接口。pmr 把分配器变成一个运行期传入的指针，类型不变。</p>
+<p>最实用的场景是<strong>请求级的短生命周期对象</strong>：一次请求里造几十上百个小对象，请求结束全扔。这类场景的标准解法叫 <strong>arena</strong>（竞技场，也叫 region、bump allocator）——<strong>先批发一大块内存，然后在这块地里划分给各个小对象；不逐个归还，用完了整块一起扔。</strong></p>
+<p>打个比方：普通的 <code>malloc</code>/<code>free</code> 像去食堂，每买一份饭都要排队结账，吃完还要各自还餐盘；arena 是包场，一次把整张桌子包下来，中间随便用，散场时桌子整个收走，不管谁用过哪个盘子。</p>
+<p>它快在两处：<strong>分配只是把一个指针往前推</strong>（所以又叫 bump allocator，"撞"一下指针就完事），<strong>释放则退化成一次操作</strong>——把整块地还掉，中间那几百个对象一个都不用单独析构回收。代价是不能挑着还：你没法只归还其中某一个对象。</p>
+<p>C++17 里 <code>monotonic_buffer_resource</code> 就是标准库版的 arena：</p>
+<div class="highlight"><pre><span></span><code><span class="n">std</span><span class="o">::</span><span class="n">array</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">byte</span><span class="p">,</span><span class="w"> </span><span class="mi">8192</span><span class="o">&gt;</span><span class="w"> </span><span class="n">buf</span><span class="p">{};</span><span class="w">                 </span><span class="c1">// 栈上 8KB</span>
+<span class="n">std</span><span class="o">::</span><span class="n">pmr</span><span class="o">::</span><span class="n">monotonic_buffer_resource</span><span class="w"> </span><span class="n">pool</span><span class="p">{</span><span class="n">buf</span><span class="p">.</span><span class="n">data</span><span class="p">(),</span><span class="w"> </span><span class="n">buf</span><span class="p">.</span><span class="n">size</span><span class="p">()};</span>
+<span class="n">std</span><span class="o">::</span><span class="n">pmr</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">pmr</span><span class="o">::</span><span class="n">string</span><span class="o">&gt;</span><span class="w"> </span><span class="n">v</span><span class="p">{</span><span class="o">&amp;</span><span class="n">pool</span><span class="p">};</span><span class="w">       </span><span class="c1">// 分配全走 pool</span>
+<span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">50</span><span class="p">;</span><span class="w"> </span><span class="o">++</span><span class="n">i</span><span class="p">)</span>
+<span class="w">    </span><span class="n">v</span><span class="p">.</span><span class="n">emplace_back</span><span class="p">(</span><span class="s">&quot;request-scoped-string-longer-than-sso-buffer&quot;</span><span class="p">);</span>
+<span class="c1">// pool 出作用域时一次性回收，不逐个 free</span>
+</code></pre></div>
+
+<p>我重载了全局 <code>operator new</code> 数了一下，两个版本的对照：</p>
+<div class="highlight"><pre><span></span><code><span class="go">普通 vector&lt;string&gt;: operator new 调用 57 次</span>
+<span class="go">pmr + 栈上 8KB:      operator new 调用 0 次</span>
+</code></pre></div>
+
+<p>57 次 → 0 次。省掉的不只是分配耗时，还有堆碎片和缓存不友好——50 个字符串散落在堆上，和挤在同一块 8KB 里，遍历时的缓存表现是两码事。</p>
+<p>代价是 <code>monotonic_buffer_resource</code> <strong>不复用已释放的空间</strong>，只单向推进。反复"分配 64 字节、马上释放"，看它给的偏移量：</p>
+<div class="highlight"><pre><span></span><code><span class="go">第 1 次分配 64 字节 -&gt; 偏移 960</span>
+<span class="go">第 2 次分配 64 字节 -&gt; 偏移 896</span>
+<span class="go">第 3 次分配 64 字节 -&gt; 偏移 832</span>
+<span class="go">第 4 次分配 64 字节 -&gt; 偏移 768</span>
+</code></pre></div>
+
+<p><strong>指针一路往前推，<code>deallocate</code> 根本没起作用</strong>——对 arena 来说它就是个空操作。换成 <code>unsynchronized_pool_resource</code>（标准库里会维护自由链表的那个），同样的代码每次都给回同一个地址：</p>
+<div class="highlight"><pre><span></span><code><span class="go">第 1 次分配 64 字节 -&gt; 0x102a2e2b0</span>
+<span class="go">第 2 次分配 64 字节 -&gt; 0x102a2e2b0</span>
+<span class="go">第 3 次分配 64 字节 -&gt; 0x102a2e2b0</span>
+<span class="go">第 4 次分配 64 字节 -&gt; 0x102a2e2b0</span>
+</code></pre></div>
+
+<p>选型规则因此很清楚：<strong>"一批对象同生共死"用 arena（<code>monotonic_buffer_resource</code>），"生命周期长短交错、反复建了又扔"用池（<code>*_pool_resource</code>）。</strong> 选错的代价是 arena 撑爆缓冲区后会回退到上游 resource（默认就是堆），优势全没，还白占了那块地。</p>
+<h3 id="c26">C++26 收了什么</h3>
+<p>C++26 在内存安全上收了一件很实在的东西：<strong>加固标准库</strong>（hardened standard library，P3471），把一批原本是 UB 的常见错误——<code>vector::operator[]</code> 越界、解空 <code>unique_ptr</code>、字符串越界——变成可检测的契约违反。好消息是，各家标准库早就以自己的开关提供了同等能力，<strong>今天就能用</strong>。我实测了同一段越界代码：</p>
+<div class="highlight"><pre><span></span><code><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="w"> </span><span class="n">v</span><span class="p">{</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">3</span><span class="p">};</span>
+<span class="n">std</span><span class="o">::</span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;%d</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">v</span><span class="p">[</span><span class="mi">7</span><span class="p">]);</span><span class="w">   </span><span class="c1">// 标准说这是 UB</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="go">--- 不开硬化 ---</span>
+<span class="go">0            ← 静默返回垃圾值，程序继续跑</span>
+<span class="go">exit=0</span>
+<span class="go">--- 开硬化（-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_FAST）---</span>
+<span class="go">exit=133     ← 当场 trap（SIGTRAP）</span>
+</code></pre></div>
+
+<p><strong>同一份代码，一个宏的差别：静默错下去，还是当场停下。</strong> libstdc++ 对应的是 <code>-D_GLIBCXX_ASSERTIONS</code>，MSVC 是 <code>_ITERATOR_DEBUG_LEVEL=1</code>。</p>
+<p>它和 sanitizer 的分工不同。三个版本交替跑 5 轮（同一段分配密集的循环）：</p>
+<div class="highlight"><pre><span></span><code><span class="go">不开任何检查：      7 ms</span>
+<span class="go">开加固标准库：      7~8 ms      ← 这个负载上量不出差别</span>
+<span class="go">开 ASan+UBSan：   ~300 ms      ← 几十倍</span>
+</code></pre></div>
+
+<p><strong>加固标准库便宜到这个基准测不出来</strong>——它只在容器访问这类地方插一次边界比较，分支预测基本都能命中；代价是覆盖面窄，只管标准库那几类错误。ASan 覆盖面宽得多，但几十倍的代价只能留在测试环境。</p>
+<p>（别把这两个数字当通用结论：加固的开销取决于你有多少容器下标访问，热路径密集的代码是能量出来的，上线前自己测。）</p>
+<p>两者不冲突，该一起上：<strong>加固进生产，ASan 进 CI。</strong> 如果你的项目还没开加固，这大概是投入产出比最高的一行改动。</p>
+<p>至于 Herb Sutter 推的"安全剖面"（<code>[[profiles::enforce(bounds, type, lifetime)]]</code>，P3081），据 <a href="https://wrocpp.github.io/toolset/memory-safety-cpp26-and-beyond/">WrocPP 的整理</a>，它没进 C++26，推到了后续标准，目前也没有编译器实现。所以<strong>别把希望寄托在语言未来的关键字上，先把手上能开的检查开起来</strong>。</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>特点</strong></td>
+<td><code>span</code>/<code>string_view</code> 把借用类型化并自带长度；<code>pmr</code> 让分配策略与类型解耦；加固标准库把 UB 变成可检测错误</td>
+</tr>
+<tr>
+<td><strong>难点</strong></td>
+<td>视图类型的悬垂是新的头号陷阱，编译器只能部分帮忙；<code>pmr</code> 要选对 resource（arena 还是池，取决于对象是否同生共死）；裸指针、C 风格数组、<code>memcpy</code> 依然合法</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="_5">最佳实践</h2>
+<p>按优先级排，从上往下选，<strong>能停在第几条就停在第几条</strong>：</p>
+<ol>
+<li><strong>优先值语义和栈对象。</strong> 能 <code>Foo f;</code> 就别 <code>new Foo</code>。这是唯一一种"不可能出错"的内存管理。</li>
+<li><strong>需要动态数量，先想容器。</strong> <code>vector</code>、<code>string</code>、<code>unordered_map</code> 已经把 RAII 做好了，比你自己攒一套强。</li>
+<li><strong>需要多态或者要跨接口交付，用 <code>unique_ptr</code>。</strong> 它和裸指针一样大，独占语义清晰，是智能指针的默认选择。</li>
+<li><strong>真的需要共享所有权，才用 <code>shared_ptr</code>。</strong> 判断标准是"确实存在多个独立的、无法排序的持有者"，而不是"我懒得想谁该释放"。</li>
+<li><strong>反向引用一律 <code>weak_ptr</code>。</strong> parent 指针、observer 列表、缓存条目，全走 <code>weak_ptr</code> + <code>lock()</code>。</li>
+<li><strong>签名即契约。</strong> 参数写 <code>T&amp;</code>/<code>const T&amp;</code>/<code>span&lt;const T&gt;</code> 表示借用，写 <code>unique_ptr&lt;T&gt;</code> 表示接管，写 <code>shared_ptr&lt;T&gt;</code> 表示共享。让读代码的人不用翻注释。</li>
+<li><strong>一律用 <code>make_unique</code>/<code>make_shared</code>。</strong> 少一次分配，也堵住异常安全的漏洞。</li>
+<li><strong><code>new</code>/<code>delete</code> 只出现在两个地方：</strong> 你自己写的资源封装类内部，以及和 C API 的边界上。业务代码里出现裸 <code>delete</code>，就是一个 review 意见。</li>
+<li>
+<p><strong>和 C API 打交道，用自定义 deleter 包一层。</strong></p>
+<p><code>cpp
+using FilePtr = std::unique_ptr&lt;FILE, decltype(&amp;fclose)&gt;;
+FilePtr fp{fopen("a.txt", "r"), &amp;fclose};</code></p>
+</li>
+<li>
+<p><strong>热路径考虑 arena（<code>pmr</code>）。</strong> 请求级、帧级、批处理级这类同生共死的短命对象，用 <code>monotonic_buffer_resource</code> 圈一块地、统一回收；生命周期交错的用 <code>*_pool_resource</code>。别一上来就优化，先测。</p>
+</li>
+<li>
+<p><strong>把检查工具变成 CI 的一部分。</strong> 这条是所有条里性价比最高的：</p>
+</li>
+</ol>
+<div class="highlight"><pre><span></span><code><span class="c1"># 编译期：开加固标准库</span>
+-D_LIBCPP_HARDENING_MODE<span class="o">=</span>_LIBCPP_HARDENING_MODE_FAST<span class="w">   </span><span class="c1"># clang/libc++</span>
+-D_GLIBCXX_ASSERTIONS<span class="w">                                  </span><span class="c1"># gcc/libstdc++</span>
+
+<span class="c1"># 测试期：ASan + UBSan 一起上</span>
+-fsanitize<span class="o">=</span>address,undefined<span class="w"> </span>-fno-omit-frame-pointer<span class="w"> </span>-g
+
+<span class="c1"># 并发问题另开一轮（和 ASan 不能同时用）</span>
+-fsanitize<span class="o">=</span>thread
+
+<span class="c1"># 运行时：默认关的，务必打开——栈上悬垂全靠它</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">ASAN_OPTIONS</span><span class="o">=</span><span class="nv">detect_stack_use_after_return</span><span class="o">=</span><span class="m">1</span>
+</code></pre></div>
+
+<p><strong>这些工具能在几秒内抓到人眼看半天看不出来的问题。</strong> 三条边界：只在测试环境开（上面那个负载慢约 40 倍）、ASan 和 TSan 不能同时用、覆盖不到的代码它也查不到。</p>
+<hr>
+<h2 id="_6">常见陷阱</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>陷阱</th>
+<th>什么时候咬你</th>
+<th>修法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>buf = realloc(buf, n)</code></td>
+<td><code>realloc</code> 失败，旧地址被 <code>NULL</code> 覆盖</td>
+<td>先接到 <code>tmp</code>，成功后再赋值</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>shared_ptr</code> 循环引用</td>
+<td>双向链表、parent 指针、observer 互持</td>
+<td>反向边改 <code>weak_ptr</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>string_view</code>/<code>span</code> 悬垂</td>
+<td>绑定到临时对象，或存成成员/返回值</td>
+<td>只做参数；留意 <code>-Wdangling-gsl</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td>迭代器/指针在扩容后失效</td>
+<td><code>push_back</code>、<code>insert</code>、<code>erase</code> 之后还用旧指针</td>
+<td>改用下标；或 <code>reserve</code>；或选指针稳定的容器</td>
+</tr>
+<tr>
+<td>5</td>
+<td>同一个对象被两个 <code>shared_ptr</code> 组各自管</td>
+<td>从裸指针二次构造 <code>shared_ptr(raw)</code></td>
+<td>全程只从 <code>make_shared</code> 出发；需要从内部拿引用用 <code>enable_shared_from_this</code></td>
+</tr>
+<tr>
+<td>6</td>
+<td>基类析构函数不是 <code>virtual</code></td>
+<td>通过基类指针 <code>delete</code> 派生对象</td>
+<td>多态基类的析构一律 <code>virtual</code>（<code>unique_ptr&lt;Base&gt;</code> 也救不了你）</td>
+</tr>
+<tr>
+<td>7</td>
+<td>混用不同的分配家族</td>
+<td><code>malloc</code> 的内存用 <code>delete</code> 放，<code>new[]</code> 的用 <code>delete</code> 放</td>
+<td>谁分配谁释放，配对使用；包一层 RAII</td>
+</tr>
+<tr>
+<td>8</td>
+<td>以为智能指针管住了线程安全</td>
+<td>多线程读写同一个 <code>shared_ptr</code> 变量，或并发改它指向的对象</td>
+<td>对象要自己加锁；指针变量本身用 <code>atomic&lt;shared_ptr&gt;</code>（C++20）</td>
+</tr>
+</tbody>
+</table>
+<p>第 6 条最反直觉：<code>std::unique_ptr&lt;Base&gt; p = std::make_unique&lt;Derived&gt;();</code> 看着人畜无害，但如果 <code>Base::~Base()</code> 不是 <code>virtual</code>，销毁时只会调 <code>Base</code> 的析构，<code>Derived</code> 的成员全部泄漏——<strong>智能指针不会替你修好类设计的问题</strong>。</p>
+<hr>
+<h2 id="_7">检查清单</h2>
+<p>拿去直接贴进 code review 模板：</p>
+<ul>
+<li>[ ] 这块内存的<strong>所有者</strong>是谁？能不能从类型上看出来（而不是从注释）？</li>
+<li>[ ] 业务代码里还有裸 <code>new</code>/<code>delete</code> 吗？能不能换成容器、<code>make_unique</code> 或值语义？</li>
+<li>[ ] 每个 <code>shared_ptr</code> 都问一遍：<strong>真的有多个独立持有者吗？</strong> 能降级成 <code>unique_ptr</code> 或引用吗？</li>
+<li>[ ] 对象图里有没有环？反向边是不是都用了 <code>weak_ptr</code>？</li>
+<li>[ ] <code>string_view</code>/<code>span</code> 有没有被存成成员变量、返回值，或者绑到临时对象上？</li>
+<li>[ ] 拿了容器元素的指针/引用/迭代器之后，中间有没有可能发生扩容或删除？</li>
+<li>[ ] 多态基类的析构函数是 <code>virtual</code> 吗？</li>
+<li>[ ] 有异常或提前 <code>return</code> 的路径上，资源还能正确释放吗（也就是：是不是都 RAII 化了）？</li>
+<li>[ ] 跨线程共享的对象，锁在哪？指针变量本身有没有并发读写？</li>
+<li>[ ] CI 里跑了 ASan/UBSan 吗？加固标准库的宏开了吗？<code>ASAN_OPTIONS</code> 里加了 <code>detect_stack_use_after_return=1</code> 吗？</li>
+<li>[ ] 和 C API 的边界上，有没有用 <code>unique_ptr</code> + 自定义 deleter 包住？</li>
+</ul>
+<hr>
+<h2 id="_8">总结：能让编译器查的，就别指望人自觉</h2>
+<p>回到开头那个问题——"这个指针谁负责 free？"</p>
+<p>三十年演进，这个问题的答案换了三次住址：从<strong>注释</strong>（C），到<strong>析构函数</strong>（C++98 的 RAII），到<strong>函数签名</strong>（C++11 的智能指针），再到<strong>编译选项和 sanitizer</strong>（C++17/20 的加固与检查）。每一步都在做同一件事：<strong>把只有人能读的约定，翻译成机器能读的约束。</strong></p>
+<p>这不是 C++ 独有的思路。类型注解、静态检查、契约测试、CI 门禁，说到底都是同一招——<strong>依赖人的自觉不可持续，把规矩变成机器能执行的检查才可持续</strong>。我写了大半辈子后端，见过太多"这个约定我们都知道"的团队规范，最后活下来的从来不是文档写得最全的，而是被 CI 拦住的那几条。</p>
+<p>所以如果你的 C++ 项目今天只能做一件事：<strong>把加固标准库的宏打开，把 ASan 塞进 CI</strong>。就那两行——上面那些静默出错的例子，全靠它们才现形。</p>
+<p>剩下的部分——<strong>编译器管不到的地方，还是得靠人想清楚"这个对象该活多久"</strong>。工具进步了三十年，这个问题一天也没被替代过。栽跟头最多的是引用和 lambda 捕获，见 <a href="https://www.fanyamin.com/blog/cpp-dangling-reference-lambda-capture.html">《C++ 悬垂引用与 lambda 捕获》</a>。</p>
+<h2 id="_9">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* C/C++ 内存管理的变迁\n把纪律写进类型系统
+** 三个前置概念
+*** UB：错了没人报错\n编译器假设它不发生
+*** 左值/右值：有名字吗\nmove 只是类型转换
+*** ASan/UBSan：让错误当场现形\n测试环境用，约 40 倍代价
+** C：纪律在注释里
+*** malloc/free 手工配对
+*** 所有权不在签名上
+*** goto cleanup 靠自觉
+*** realloc 覆盖原指针即泄漏
+** C++98：RAII 出场
+*** 析构是语言机制，不是约定
+*** 异常安全第一次可行
+*** 缺 move，所有权转移无法表达
+*** auto_ptr 拷贝语义错误
+** C++11：所有权进类型
+*** unique_ptr 零开销、独占
+*** shared_ptr 共享 + weak_ptr 断环
+*** move 语义消除无谓拷贝
+*** 新难点：滥用与循环引用
+** 引用与 lambda 捕获
+*** 借用的表达进了语法\n寿命仍在类型系统之外
+*** 单独成篇
+** C++17/20：借用与分配
+*** string_view / span 自带长度
+*** 新头号陷阱：视图悬垂
+*** pmr 解耦分配策略
+*** arena：批发一块地\n用完整块扔
+*** 实测 57 次 new 降到 0 次
+** 立刻能做的两件事
+*** 开加固标准库宏
+*** ASan/UBSan 进 CI
+@endmindmap
+</code></pre></div>
+
+<p><img alt="C/C++ 内存管理的变迁 - 思维导图" src="./images/tech_20260904_cpp_memory_management_mindmap.png"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/cpp-memory-management-evolution.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/tech.html">tech</a>
+      <a href="https://www.fanyamin.com/blog/tag/c.html">C</a>
+      <a href="https://www.fanyamin.com/blog/tag/c.html">C++</a>
+      <a href="https://www.fanyamin.com/blog/tag/memory.html">memory</a>
+      <a href="https://www.fanyamin.com/blog/tag/raii.html">RAII</a>
+      <a href="https://www.fanyamin.com/blog/tag/smart-pointer.html">smart-pointer</a>
+      <a href="https://www.fanyamin.com/blog/tag/modern-cpp.html">modern-cpp</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-09-03-cc-switch-self-host-llm.html" title="一个网关一把钥匙，三个客户端三种格式：用 cc-switch 收拢 AI 编码配置">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/cpp-dangling-reference-lambda-capture.html" title="C++ 悬垂引用与 lambda 捕获：语法上最省事，出事时最难查">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/cpp-dangling-reference-lambda-capture.html">C++ 悬垂引用与 lambda 捕获：语法上最省事，出事时最难查</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-01-17-cplusplus.html">C 与 C++：一对父子的渐行渐远</a></li>
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-testing-unit-and-integration.html">给 FreeSWITCH 写测试：从单元测试到集成测试，用一个真 bug 串起来</a></li>
+      <li><a href="https://www.fanyamin.com/blog/c-plugin-dlopen-practical-guide.html">C 插件系统实战指南：dlopen 没告诉你的四件事</a></li>
+      <li><a href="https://www.fanyamin.com/blog/c-dynamic-load-di-service-registry.html">C 语言的动态加载、依赖注入与服务注册：把 FreeSWITCH 的模块机制拆到底</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

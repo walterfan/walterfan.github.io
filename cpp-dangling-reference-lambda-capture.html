@@ -1,0 +1,1002 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="引用和 lambda 捕获是 C++ 里最省事的两个语法，也是最容易悄悄出事的两个。悬垂引用在使用处和普通变量一模一样，还没有&#34;空&#34;这个状态可判；[=] 看着像全按值拷，其实按指针捕了 this。本文用九个能编译运行的实例，讲清悬垂引用的四种来源、lambda 捕获的五种误用、什么时候该用引用什么时候不该用，附一张捕获速查表和检查清单。" />
+<meta name="keywords" content="tech, C++, memory, reference, lambda, dangling, sanitizer, modern-cpp">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "C++ 悬垂引用与 lambda 捕获：语法上最省事，出事时最难查",
+  "description": "引用和 lambda 捕获是 C++ 里最省事的两个语法，也是最容易悄悄出事的两个。悬垂引用在使用处和普通变量一模一样，还没有&#34;空&#34;这个状态可判；[=] 看着像全按值拷，其实按指针捕了 this。本文用九个能编译运行的实例，讲清悬垂引用的四种来源、lambda 捕获的五种误用、什么时候该用引用什么时候不该用，附一张捕获速查表和检查清单。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-09-05T08:30:00+08:00",
+  "dateModified": "2026-09-05T09:30:00+08:00",
+  "url": "https://www.fanyamin.com/blog/cpp-dangling-reference-lambda-capture.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/cpp-dangling-reference-lambda-capture.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "tech, C++, memory, reference, lambda, dangling, sanitizer, modern-cpp"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="C++ 悬垂引用与 lambda 捕获：语法上最省事，出事时最难查"/>
+  <meta property="og:description" content="引用和 lambda 捕获是 C++ 里最省事的两个语法，也是最容易悄悄出事的两个。悬垂引用在使用处和普通变量一模一样，还没有&#34;空&#34;这个状态可判；[=] 看着像全按值拷，其实按指针捕了 this。本文用九个能编译运行的实例，讲清悬垂引用的四种来源、lambda 捕获的五种误用、什么时候该用引用什么时候不该用，附一张捕获速查表和检查清单。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/cpp-dangling-reference-lambda-capture.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-09-05 08:30:00+08:00"/>
+  <meta property="article:modified_time" content="2026-09-05 09:30:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="tech"/>
+  <meta property="article:tag" content="C++"/>
+  <meta property="article:tag" content="memory"/>
+  <meta property="article:tag" content="reference"/>
+  <meta property="article:tag" content="lambda"/>
+  <meta property="article:tag" content="dangling"/>
+  <meta property="article:tag" content="sanitizer"/>
+  <meta property="article:tag" content="modern-cpp"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; C++ 悬垂引用与 lambda 捕获：语法上最省事，出事时最难查</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="cpp-dangling-reference-lambda-capture">C++ 悬垂引用与 lambda 捕获：语法上最省事，出事时最难查</h1>
+    <p>
+      Posted on 六 05 9月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>C++ 悬垂引用与 lambda 捕获的陷阱与实践</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-09-05</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">大纲</h2>
+<details>
+<summary>展开看看</summary>
+<ul>
+<li><strong>核心结论</strong>：引用和 lambda 捕获的危险不在于难懂，而在于<strong>语法太省事</strong>——写起来只有一两个字符，却是在声明一份生命周期契约；而违约之后，代码在使用处看不出任何异样。</li>
+<li><strong>为什么引用比裸指针更阴险</strong>：使用处和普通变量一模一样，且<strong>没有"空"这个状态可判</strong>——一个悬垂引用在语言层面无法被检测。</li>
+<li><strong>悬垂引用的四种来源</strong>：返回局部对象（唯一有警告的）、引用成员绑临时对象（寿命延长不传递）、指向容器元素（扩容即废）、参数别名（<code>f(v, v[0])</code>，我认为最阴险）。</li>
+<li><strong>一个 ASan 默认关掉的开关</strong>：<code>detect_stack_use_after_return</code> 默认是关的，不开的话 lambda 悬垂只打印乱码，不报错。</li>
+<li><strong>lambda 捕获的五种误用</strong>：<code>[&amp;]</code> 存起来、<code>[=]</code> 其实按指针捕 <code>this</code>（C++17 无警告，C++20 才废弃）、扔给线程、捕获循环变量、捕引用当成"有 <code>shared_ptr</code> 就安全"。</li>
+<li><strong>一个真实调试现象</strong>：同一个悬垂 bug，因为程序里另一段"毫不相干"的代码持有 <code>shared_ptr</code>，ASan 就是不报——删掉那段才现形。</li>
+<li><strong>捕获还是个语义选择</strong>：<code>by_val</code> 看到 1，<code>by_ref</code> 看到 42。选错了不崩，只算错。</li>
+<li><strong>该用/不该用引用</strong>：两份对照清单，加一张 lambda 捕获速查表和检查清单。</li>
+</ul>
+</details>
+<hr>
+<p>先看一行代码，你在 code review 里能看出问题吗？</p>
+<div class="highlight"><pre><span></span><code><span class="n">add_bonus</span><span class="p">(</span><span class="n">v</span><span class="p">,</span><span class="w"> </span><span class="n">v</span><span class="p">[</span><span class="mi">0</span><span class="p">]);</span>
+</code></pre></div>
+
+<p>我不一定能。两个参数都是有效对象，函数签名也人畜无害。但如果 <code>add_bonus</code> 内部往 <code>v</code> 里加了一个元素，<code>v</code> 扩容、元素搬家，那个 <code>v[0]</code> 的引用当场失效——<strong>编译器一句警告都没有，程序也可能不崩，就是算错。</strong></p>
+<p>C++ 里有两个语法特别省事：<strong>引用</strong>（<code>T&amp;</code>、<code>const T&amp;</code>）和 <strong>lambda 捕获</strong>（<code>[&amp;]</code>、<code>[=]</code>）。省事到什么程度？加一个 <code>&amp;</code>，或者在方括号里写两个字符。但这一两个字符，实际上是在<strong>声明一份生命周期契约</strong>：我保证被引用的那个对象，在我用它的时候还活着。</p>
+<p>问题在于，<strong>契约写得这么短，人就不当回事</strong>；而一旦违约，代码在使用处看不出任何异样。</p>
+<blockquote>
+<p>裸指针至少长得像个指针，看到 <code>p-&gt;foo()</code> 你会警觉一下"p 还有效吗"。
+<strong>引用在使用处和普通变量一模一样</strong>——<code>who.name</code> 看不出 <code>who</code> 是别人家的对象，还是一块已经被释放的内存。</p>
+</blockquote>
+<p>还有一层：引用<strong>没有"空"这个状态</strong>。指针可以 <code>if (p)</code> 判一下，引用没有对应的检查手段——一个悬垂引用在语言层面<strong>无法被检测</strong>，你连"它还活着吗"都问不出口。</p>
+<p>下面的例子都在 Apple clang 21 上真跑过，输出是贴上来的实测结果。</p>
+<p><strong>ASan</strong>（AddressSanitizer，<code>-fsanitize=address</code>）在生成的代码里插入检查，让 use-after-free、越界这类错误在出错那一刻就崩掉并打印现场，而不是悄悄给个错值；<strong>UBSan</strong>（<code>-fsanitize=undefined</code>）管整数溢出、空指针解引用这类未定义行为。两个都只在测试环境开。</p>
+<hr>
+<h2 id="dangling-reference">悬垂引用 (dangling reference) 的四种典型来源</h2>
+<p>按"编译器能帮你多少"从多到少排。</p>
+<h3 id="_2">第一种：返回局部对象的引用</h3>
+<p>最经典，也是唯一编译器基本能拦住的：</p>
+<div class="highlight"><pre><span></span><code><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="nf">bad_return</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">local</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;local-string-...&quot;</span><span class="p">;</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">local</span><span class="p">;</span><span class="w">                 </span><span class="c1">// 函数一返回，local 就没了</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="go">warning: reference to stack memory associated with local variable</span>
+<span class="go">         &#39;local&#39; returned [-Wreturn-stack-address]</span>
+</code></pre></div>
+
+<p>跑起来 ASan 直接报 <code>heap-use-after-free</code>，调用栈里还能看到 <code>~basic_string</code> 是在 <code>bad_return()</code> 里调用的。</p>
+<p><strong>这种能被警告抓住，是运气好。下面三种就没这么幸运了。</strong></p>
+<h3 id="_3">第二种：引用成员绑到临时对象</h3>
+<p>这里藏着一个连老手都容易记错的规则，我实测对比了一下：</p>
+<div class="highlight"><pre><span></span><code><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="nf">make</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="s">&quot;a-temporary-string-...&quot;</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+
+<span class="c1">// A. 绑到局部 const 引用 —— 合法！临时对象的寿命被延长</span>
+<span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">ok</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">make</span><span class="p">();</span>
+
+<span class="c1">// B. 绑到引用成员 —— 悬垂！寿命不延长</span>
+<span class="k">struct</span><span class="w"> </span><span class="nc">Holder</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">ref</span><span class="p">;</span>
+<span class="w">    </span><span class="k">explicit</span><span class="w"> </span><span class="n">Holder</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">s</span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">ref</span><span class="p">(</span><span class="n">s</span><span class="p">)</span><span class="w"> </span><span class="p">{}</span>
+<span class="p">};</span>
+<span class="n">Holder</span><span class="w"> </span><span class="n">h</span><span class="p">{</span><span class="n">make</span><span class="p">()};</span>
+</code></pre></div>
+
+<p>A 干干净净，ASan + UBSan 全开都没话说：</p>
+<div class="highlight"><pre><span></span><code><span class="go">[a-temporary-string-long-enough-for-heap] len=39  &lt;- 完全合法，没有任何报错</span>
+</code></pre></div>
+
+<p>B 则是：</p>
+<div class="highlight"><pre><span></span><code><span class="go">ERROR: AddressSanitizer: stack-use-after-scope</span>
+<span class="gp">    #</span><span class="m">4</span><span class="w"> </span>...<span class="w"> </span><span class="k">in</span><span class="w"> </span>main<span class="w"> </span>ref2.cpp:14
+</code></pre></div>
+
+<p><strong>同样是 <code>const&amp;</code> 绑一个临时对象，当局部变量安全，当成员就悬垂。</strong></p>
+<p>差别在于"生命周期延长"（lifetime extension）这条规则<strong>只对局部 const 引用生效，而且只延长一次</strong>——它不会顺着构造函数的参数传递下去。构造函数里那个 <code>s</code> 参数确实延长到了构造函数结束，然后就结束了，<code>ref</code> 从此指向坟墓。这一整段 <code>-Wall -Wextra</code> <strong>不给任何警告</strong>。</p>
+<p>引用成员还有个副作用：<strong>它会让整个类不可赋值</strong>。</p>
+<div class="highlight"><pre><span></span><code><span class="go">error: object of type &#39;Bad&#39; cannot be assigned because its copy</span>
+<span class="go">       assignment operator is implicitly deleted</span>
+<span class="go">note: copy assignment operator of &#39;Bad&#39; is implicitly deleted</span>
+<span class="go">      because field &#39;r&#39; is of reference type &#39;std::string &amp;&#39;</span>
+</code></pre></div>
+
+<p>引用一旦绑定就不能改指向，所以编译器直接把赋值运算符删了。你的类从此进不了 <code>vector</code>、不能 <code>sort</code>、不能重新赋值——<strong>这通常不是你想要的</strong>。</p>
+<h3 id="_4">第三种：指向容器元素的引用，容器一动就废</h3>
+<div class="highlight"><pre><span></span><code><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&gt;</span><span class="w"> </span><span class="n">v</span><span class="p">{</span><span class="s">&quot;alpha&quot;</span><span class="p">,</span><span class="s">&quot;beta&quot;</span><span class="p">};</span>
+<span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">first</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">v</span><span class="p">[</span><span class="mi">0</span><span class="p">];</span>
+<span class="n">v</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="s">&quot;gamma&quot;</span><span class="p">);</span><span class="w">          </span><span class="c1">// 扩容，元素整体搬家</span>
+<span class="n">std</span><span class="o">::</span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;[%s]</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">first</span><span class="p">.</span><span class="n">c_str</span><span class="p">());</span>
+</code></pre></div>
+
+<p>编译期无警告，ASan 报 <code>heap-use-after-free</code>。</p>
+<p><strong>记住这份名单：<code>push_back</code>、<code>insert</code>、<code>erase</code>、<code>resize</code>、<code>reserve</code> 都可能让已有的引用、指针、迭代器全部失效。</strong></p>
+<h3 id="_5">第四种：参数别名——我认为最阴险的一种</h3>
+<p>就是开头那个例子，展开看：</p>
+<div class="highlight"><pre><span></span><code><span class="kt">void</span><span class="w"> </span><span class="nf">add_bonus</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">Account</span><span class="o">&gt;&amp;</span><span class="w"> </span><span class="n">v</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">Account</span><span class="o">&amp;</span><span class="w"> </span><span class="n">who</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">v</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="n">Account</span><span class="p">{</span><span class="s">&quot;audit-log-entry&quot;</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">});</span><span class="w">   </span><span class="c1">// 扩容 → who 失效</span>
+<span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;who.name = [%s]</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">who</span><span class="p">.</span><span class="n">name</span><span class="p">.</span><span class="n">c_str</span><span class="p">());</span>
+<span class="p">}</span>
+
+<span class="n">add_bonus</span><span class="p">(</span><span class="n">v</span><span class="p">,</span><span class="w"> </span><span class="n">v</span><span class="p">[</span><span class="mi">0</span><span class="p">]);</span><span class="w">        </span><span class="c1">// ← 调用点看起来天经地义</span>
+</code></pre></div>
+
+<p><strong>两个参数其实指向同一块内存</strong>（这叫 aliasing，别名）。函数内部往 <code>v</code> 里加了个元素，<code>who</code> 当场失效。编译期无警告，ASan 报 <code>heap-use-after-free</code>。</p>
+<p>这类 bug 的特点是<strong>跨函数边界</strong>：<code>add_bonus</code> 单独看没错（谁知道 <code>who</code> 来自 <code>v</code>），调用点单独看也没错（传的都是有效对象）。<strong>错在两者的假设撞上了，而这个假设不在任何一方的签名里。</strong></p>
+<p><strong>寿命假设一旦跑到类型系统之外，就没人替你检查了。</strong></p>
+<hr>
+<h2 id="asan">ASan 有个默认关掉的开关</h2>
+<p>lambda 按引用捕获局部变量，是引用悬垂的高发地：</p>
+<div class="highlight"><pre><span></span><code><span class="n">std</span><span class="o">::</span><span class="n">function</span><span class="o">&lt;</span><span class="kt">void</span><span class="p">()</span><span class="o">&gt;</span><span class="w"> </span><span class="n">make_task</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">msg</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;task-message-...&quot;</span><span class="p">;</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="p">[</span><span class="o">&amp;</span><span class="p">]{</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;[%s]</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">msg</span><span class="p">.</span><span class="n">c_str</span><span class="p">());</span><span class="w"> </span><span class="p">};</span><span class="w">   </span><span class="c1">// 按引用捕获</span>
+<span class="p">}</span>
+<span class="k">auto</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">make_task</span><span class="p">();</span>
+<span class="n">f</span><span class="p">();</span><span class="w">                    </span><span class="c1">// msg 早没了</span>
+</code></pre></div>
+
+<p>开着 ASan 跑，它不报错，只打出一串乱码：</p>
+<div class="highlight"><pre><span></span><code><span class="go">[!�n]        ← 开着 ASan，但没有报错，只有垃圾数据</span>
+</code></pre></div>
+
+<p>原因是 <strong>ASan 的"栈上对象返回后被使用"检测默认是关的</strong>，得显式打开：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span><span class="nv">ASAN_OPTIONS</span><span class="o">=</span><span class="nv">detect_stack_use_after_return</span><span class="o">=</span><span class="m">1</span><span class="w"> </span>./lam
+<span class="go">ERROR: AddressSanitizer: stack-use-after-return</span>
+<span class="gp">    #</span><span class="m">4</span><span class="w"> </span>...<span class="w"> </span><span class="k">in</span><span class="w"> </span>make_task<span class="o">()</span>::<span class="nv">$_0</span>::operator<span class="o">()()</span><span class="w"> </span>const<span class="w"> </span>lam.cpp:6
+</code></pre></div>
+
+<p><strong>把这个选项写进 CI 的 <code>ASAN_OPTIONS</code>。</strong> 不开 ASan 编译时，这段代码打印的是空字符串——不崩、不报、安静地输出错误结果，这正是未定义行为（UB）最讨人厌的形态。</p>
+<hr>
+<h2 id="lambda">lambda 捕获的五种误用</h2>
+<p>lambda 是引用误用的重灾区，因为它把"什么时候读这个变量"和"在哪里写这段代码"<strong>分开了</strong>——你在 A 处写下捕获，在 B 处才真正执行，而 A 和 B 之间那个对象可能已经没了。</p>
+<h3 id="lambda_1">误用一：<code>[&amp;]</code> 捕获后把 lambda 存起来</h3>
+<p>就是上面那个例子。判断标准很简单：<strong>这个 lambda 会活过当前作用域吗？</strong> 会（存进 <code>std::function</code>、容器、成员变量）就不能用 <code>[&amp;]</code>。</p>
+<h3 id="this">误用二：<code>[=]</code> 以为"全都按值拷了"，其实 <code>this</code> 是按指针捕的</h3>
+<p>这个坑最隐蔽，因为写法看起来最"安全"：</p>
+<div class="highlight"><pre><span></span><code><span class="k">struct</span><span class="w"> </span><span class="nc">Service</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;service-name-...&quot;</span><span class="p">;</span>
+<span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">function</span><span class="o">&lt;</span><span class="kt">void</span><span class="p">()</span><span class="o">&gt;</span><span class="w"> </span><span class="n">make_callback</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="p">[</span><span class="o">=</span><span class="p">]{</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;[%s]</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">name</span><span class="p">.</span><span class="n">c_str</span><span class="p">());</span><span class="w"> </span><span class="p">};</span><span class="w">  </span><span class="c1">// 看着像&quot;全部按值拷&quot;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">};</span>
+<span class="n">std</span><span class="o">::</span><span class="n">function</span><span class="o">&lt;</span><span class="kt">void</span><span class="p">()</span><span class="o">&gt;</span><span class="w"> </span><span class="n">cb</span><span class="p">;</span>
+<span class="p">{</span><span class="w"> </span><span class="n">Service</span><span class="w"> </span><span class="n">s</span><span class="p">;</span><span class="w"> </span><span class="n">cb</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="n">make_callback</span><span class="p">();</span><span class="w"> </span><span class="p">}</span><span class="w">   </span><span class="c1">// s 已经销毁</span>
+<span class="n">cb</span><span class="p">();</span>
+</code></pre></div>
+
+<p><code>[=]</code> 给人的暗示是"该拷的都拷了"，但<strong>成员变量 <code>name</code> 并不是被直接拷走的</strong>——lambda 捕获的是 <code>this</code> 指针，<code>name</code> 每次都通过 <code>this-&gt;name</code> 去访问。对象一死，<code>this</code> 就是野指针：</p>
+<div class="highlight"><pre><span></span><code><span class="go">ERROR: AddressSanitizer: stack-use-after-scope</span>
+<span class="gp">    #</span><span class="m">4</span><span class="w"> </span>...<span class="w"> </span><span class="k">in</span><span class="w"> </span>Service::make_callback<span class="o">()</span>::<span class="s1">&#39;lambda&#39;</span><span class="o">()</span>::operator<span class="o">()()</span><span class="w"> </span>const
+</code></pre></div>
+
+<p>C++17 下 <code>-Wall -Wextra</code> <strong>一句警告都没有</strong>。好消息是这个写法在 C++20 里被明确废弃了，换标准就能收到提醒：</p>
+<div class="highlight"><pre><span></span><code><span class="go">warning: implicit capture of &#39;this&#39; with a capture default of &#39;=&#39;</span>
+<span class="go">         is deprecated [-Wdeprecated-this-capture]</span>
+<span class="go">note: add an explicit capture of &#39;this&#39; to capture &#39;*this&#39; by reference</span>
+</code></pre></div>
+
+<p>三种修法我都跑通了，按场景挑：</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// A. 把整个对象拷进闭包（C++17 起）</span>
+<span class="k">return</span><span class="w"> </span><span class="p">[</span><span class="o">*</span><span class="k">this</span><span class="p">]{</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;[%s]</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">name</span><span class="p">.</span><span class="n">c_str</span><span class="p">());</span><span class="w"> </span><span class="p">};</span>
+<span class="c1">// B. 只拷需要的那个成员（最省，推荐优先考虑）</span>
+<span class="k">return</span><span class="w"> </span><span class="p">[</span><span class="n">n</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">name</span><span class="p">]{</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;[%s]</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">n</span><span class="p">.</span><span class="n">c_str</span><span class="p">());</span><span class="w"> </span><span class="p">};</span>
+<span class="c1">// C. 延长自身寿命（前提：对象由 shared_ptr 管理）</span>
+<span class="k">return</span><span class="w"> </span><span class="p">[</span><span class="n">self</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">shared_from_this</span><span class="p">()]{</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;[%s]</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">self</span><span class="o">-&gt;</span><span class="n">name</span><span class="p">.</span><span class="n">c_str</span><span class="p">());</span><span class="w"> </span><span class="p">};</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="go">A [*this]:          [service-name-long-enough-to-be-on-the-heap]</span>
+<span class="go">B [n = name]:       [service-name-long-enough-to-be-on-the-heap]</span>
+<span class="go">C shared_from_this: [service-name-long-enough-to-be-on-the-heap]</span>
+</code></pre></div>
+
+<p>A 和 B 在 C++20 下也都是干净的，没有那条 deprecated 警告。</p>
+<h3 id="_6">误用三：<code>[&amp;]</code> 捕获后扔给线程</h3>
+<p>后果比前面都严重，因为它还叠加了时序不确定：</p>
+<div class="highlight"><pre><span></span><code><span class="kt">void</span><span class="w"> </span><span class="nf">spawn</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">msg</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;message-owned-by-spawn-frame-...&quot;</span><span class="p">;</span>
+<span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="kr">thread</span><span class="w"> </span><span class="n">t</span><span class="p">([</span><span class="o">&amp;</span><span class="p">]{</span>
+<span class="w">        </span><span class="n">std</span><span class="o">::</span><span class="n">this_thread</span><span class="o">::</span><span class="n">sleep_for</span><span class="p">(</span><span class="mi">50</span><span class="n">ms</span><span class="p">);</span>
+<span class="w">        </span><span class="n">std</span><span class="o">::</span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;[%s]</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">msg</span><span class="p">.</span><span class="n">c_str</span><span class="p">());</span><span class="w">   </span><span class="c1">// spawn 早返回了</span>
+<span class="w">    </span><span class="p">});</span>
+<span class="w">    </span><span class="n">t</span><span class="p">.</span><span class="n">detach</span><span class="p">();</span><span class="w">                               </span><span class="c1">// 不 join，spawn 立刻返回</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>不开 ASan 跑三遍，稳定输出空字符串——<strong>不崩、不报、结果错</strong>：</p>
+<div class="highlight"><pre><span></span><code><span class="go">[]</span>
+<span class="go">[]</span>
+<span class="go">[]</span>
+</code></pre></div>
+
+<p>开了 ASan 才现形（<code>stack-use-after-return</code>，注意报在 <code>thread T1</code>）。</p>
+<p><strong>规矩：往线程、线程池、异步任务里传的 lambda，一律按值捕获或捕 <code>shared_ptr</code>；要按引用捕，就必须 <code>join()</code> 保证不越过作用域。</strong></p>
+<h3 id="_7">误用四：捕获循环变量的引用</h3>
+<p>range-for 的循环变量本身就是引用，<code>[&amp;]</code> 把这个引用又捕了一层：</p>
+<div class="highlight"><pre><span></span><code><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">function</span><span class="o">&lt;</span><span class="kt">void</span><span class="p">()</span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="n">tasks</span><span class="p">;</span>
+<span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&gt;</span><span class="w"> </span><span class="n">names</span><span class="p">{</span><span class="s">&quot;alpha&quot;</span><span class="p">,</span><span class="s">&quot;beta&quot;</span><span class="p">,</span><span class="s">&quot;gamma&quot;</span><span class="p">};</span>
+<span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="o">&amp;</span><span class="w"> </span><span class="n">n</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">names</span><span class="p">)</span>
+<span class="w">    </span><span class="n">tasks</span><span class="p">.</span><span class="n">push_back</span><span class="p">([</span><span class="o">&amp;</span><span class="p">]{</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;[%s] &quot;</span><span class="p">,</span><span class="w"> </span><span class="n">n</span><span class="p">.</span><span class="n">c_str</span><span class="p">());</span><span class="w"> </span><span class="p">});</span><span class="w">   </span><span class="c1">// 捕获循环变量</span>
+<span class="n">names</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="s">&quot;delta&quot;</span><span class="p">);</span><span class="w">        </span><span class="c1">// 扩容，元素搬家</span>
+<span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="k">auto</span><span class="o">&amp;</span><span class="w"> </span><span class="n">t</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">tasks</span><span class="p">)</span><span class="w"> </span><span class="n">t</span><span class="p">();</span>
+</code></pre></div>
+
+<p>两层问题叠加：循环变量 <code>n</code> 出了循环体就不在了，<code>names</code> 扩容又让元素整体搬家。实测 <code>heap-use-after-free</code>，编译期无警告。</p>
+<p><strong>修法：<code>[n]</code> 按值捕，或 <code>[n = n]</code> 明确拷一份。</strong></p>
+<h3 id="shared_ptr">误用五：捕了引用，却以为"对象有 <code>shared_ptr</code> 管着就没事"</h3>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">tmp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">make_shared</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&gt;</span><span class="p">(</span><span class="s">&quot;temp-payload-...&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">*</span><span class="n">tmp</span><span class="p">;</span><span class="w">                      </span><span class="c1">// 引用指向 shared_ptr 管的对象</span>
+<span class="w">    </span><span class="n">bad</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="o">&amp;</span><span class="n">r</span><span class="p">]{</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;[%s]</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="n">c_str</span><span class="p">());</span><span class="w"> </span><span class="p">};</span><span class="w">  </span><span class="c1">// 只捕引用，不持有</span>
+<span class="p">}</span><span class="w">   </span><span class="c1">// tmp 计数归零 → 对象销毁 → r 悬垂</span>
+<span class="n">bad</span><span class="p">();</span>
+</code></pre></div>
+
+<p><strong>捕引用不增加引用计数。</strong> <code>shared_ptr</code> 只在有人持有它时才保对象不死，而这个 lambda 捕的是解引用之后的引用，一份所有权都没拿。实测 <code>heap-use-after-free</code>。</p>
+<p><strong>要延长寿命就得捕 <code>shared_ptr</code> 本身（<code>[tmp]</code>），而不是捕 <code>*tmp</code> 的引用。</strong></p>
+<p>这个 bug 还有个更难缠的版本。把 <code>bad</code> 和一个捕了 <code>shared_ptr</code> 的 <code>good</code> 放进同一个程序，<code>bad</code> 会打印出<strong>正确内容</strong>，ASan 也<strong>不报错</strong>——因为 <code>good</code> 持有的那份所有权让内存一直活着。删掉 <code>good</code>，错误立刻现形。</p>
+<p><strong>这就是内存错误最气人的地方：它的表现取决于程序里别的、看起来毫不相干的代码。</strong> 你删了一行"无关"代码，bug 出现了；你加了一行日志，bug 消失了。查这种问题查到半夜，靠猜是不行的，得靠工具。</p>
+<hr>
+<h2 id="_8">捕获方式还是个语义选择</h2>
+<p>上面全在讲生命周期，但捕获方式还决定<strong>读到的是什么时候的值</strong>——这是另一类 bug，不崩，但结果错：</p>
+<div class="highlight"><pre><span></span><code><span class="kt">int</span><span class="w"> </span><span class="n">n</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+<span class="k">auto</span><span class="w"> </span><span class="n">by_val</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="o">=</span><span class="p">]{</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;by_val 看到 n = %d</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">n</span><span class="p">);</span><span class="w"> </span><span class="p">};</span><span class="w">  </span><span class="c1">// 捕获时定格</span>
+<span class="k">auto</span><span class="w"> </span><span class="n">by_ref</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="o">&amp;</span><span class="p">]{</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;by_ref 看到 n = %d</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">n</span><span class="p">);</span><span class="w"> </span><span class="p">};</span><span class="w">  </span><span class="c1">// 执行时才读</span>
+<span class="n">n</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">42</span><span class="p">;</span>
+<span class="n">by_val</span><span class="p">();</span>
+<span class="n">by_ref</span><span class="p">();</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="go">by_val 看到 n = 1</span>
+<span class="go">by_ref 看到 n = 42</span>
+</code></pre></div>
+
+<p><strong>同一个 <code>n</code>，同一个执行时刻，两个答案。</strong> 按值捕获是在<strong>定义 lambda 那一刻</strong>拍了张快照；按引用捕获是到<strong>执行那一刻</strong>才去读。</p>
+<p>所以不能简单地说"按值捕获更安全，那就一律按值"——<strong>它俩语义不同，选错了不会崩，只会算错</strong>。而算错的 bug，通常比崩溃更难查。</p>
+<hr>
+<h2 id="lambda_2">lambda 捕获速查</h2>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>怎么捕</th>
+<th>理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>就地执行（<code>sort</code> 比较器、<code>for_each</code>、算法回调）</td>
+<td><code>[&amp;]</code></td>
+<td>最快，不拷贝；lambda 活不过当前语句</td>
+</tr>
+<tr>
+<td>存进 <code>std::function</code> / 容器 / 成员</td>
+<td><code>[x]</code>、<code>[x = ...]</code></td>
+<td>lambda 会活过当前作用域</td>
+</tr>
+<tr>
+<td>扔给线程 / 线程池 / 异步任务</td>
+<td>按值，或 <code>[self = shared_from_this()]</code></td>
+<td>执行时机完全不可控</td>
+</tr>
+<tr>
+<td>类成员函数里返回 lambda</td>
+<td><code>[n = name]</code> 优先，或 <code>[*this]</code></td>
+<td><code>[=]</code> 只捕 <code>this</code> 指针，对象一死就悬垂</td>
+</tr>
+<tr>
+<td>需要对象活到 lambda 执行完</td>
+<td><code>[p = shared_ptr]</code></td>
+<td>捕引用不增加引用计数</td>
+</tr>
+<tr>
+<td>需要"执行时的最新值"</td>
+<td><code>[&amp;]</code> 且保证寿命</td>
+<td>按值捕获是定义时的快照</td>
+</tr>
+</tbody>
+</table>
+<p>一句话：</p>
+<blockquote>
+<p><strong><code>[&amp;]</code> 的意思不是"高效捕获"，而是"我保证这个 lambda 死在被捕对象之前"。</strong>
+保证不了，就别写 <code>[&amp;]</code>。</p>
+</blockquote>
+<hr>
+<h2 id="_9">什么时候该用引用</h2>
+<p>说了这么多陷阱，别把引用一脚踢开——<strong>它在正确的场景里是最好的选择</strong>，性能白拿。</p>
+<p>引用的正确定位是：<strong>在一次函数调用的时间窗口内，临时借用一个由别人保管、且调用期间肯定活着的对象。</strong></p>
+<ul>
+<li>
+<p><strong>函数参数，只读且对象较大</strong> → <code>const T&amp;</code>。省掉一次拷贝，实测很直观：</p>
+<p><code>console
+传值：      1000 次分配
+传 const&amp;： 0 次分配</code></p>
+<p>小对象（<code>int</code>、<code>double</code>、指针、<code>string_view</code> 这类）例外，直接传值更快。</p>
+</li>
+<li>
+<p><strong>函数参数，需要修改调用方的对象</strong> → <code>T&amp;</code>。比传指针好，因为不用判空、不用担心调用方传 <code>nullptr</code>。</p>
+</li>
+<li><strong>range-for 遍历容器</strong> → <code>for (auto&amp; x : v)</code> 改元素，<code>for (const auto&amp; x : v)</code> 只读。这是引用最安全的场景，因为循环体内通常不动容器结构（<strong>动了就回到第三种悬垂</strong>）。</li>
+<li><strong>返回类成员的引用</strong> → 可以，但要清楚这是把成员的寿命绑给了调用方，前提是对象本身还活着（<code>v[0]</code>、<code>map::at()</code> 都是这么干的）。</li>
+</ul>
+<h2 id="_10">什么时候不要用引用</h2>
+<ul>
+<li><strong>不要返回局部对象的引用。</strong> 返回值就好，有 move 语义和返回值优化兜底，不慢。</li>
+<li><strong>不要用引用做类成员</strong>，除非你能证明被引用对象一定活得比这个类久。默认改用值、<code>unique_ptr</code>、<code>shared_ptr</code>，实在要弱引用就用 <code>weak_ptr</code> 或裸指针（裸指针至少能判空、能重新赋值）。别忘了引用成员还会让类不可赋值。</li>
+<li><strong>不要在会存起来、会延后执行的地方按引用捕获。</strong> <code>[&amp;]</code> 只适合"就地用完"的场景，而且别忘了 <code>[=]</code> 在成员函数里同样是按指针捕 <code>this</code>。</li>
+<li><strong>不要跨线程传引用</strong>，除非有明确的同步和生命周期保证。对方线程什么时候用它，你不知道。</li>
+<li><strong>不要在持有引用期间修改容器结构。</strong> 要么先 <code>reserve</code>，要么改用下标，要么用指针稳定的容器。</li>
+<li><strong>不要用引用表达"可有可无"。</strong> 引用不能为空，硬要表达"可能没有"就该用指针、<code>std::optional</code>，别去构造一个假对象。</li>
+</ul>
+<p>一句话记法：</p>
+<blockquote>
+<p><strong>引用是"借"，不是"存"。</strong>
+借的东西用完就还——<strong>放进成员、放进容器、放进 lambda、放进另一个线程，都不叫用完。</strong></p>
+</blockquote>
+<hr>
+<h2 id="_11">检查清单</h2>
+<p>拿去贴进 code review 模板：</p>
+<ul>
+<li>[ ] <strong>有没有引用/<code>const&amp;</code> 成员？</strong> 被引用的对象一定活得比这个类久吗？（顺便：这个类还需要可赋值吗？）</li>
+<li>[ ] <strong>有没有返回引用？</strong> 指向的是成员（可以）还是局部对象（不行）？</li>
+<li>[ ] <strong>函数签名里有没有可能传进同一个对象的两个参数（别名）？</strong> 函数内部改动其中一个吗？</li>
+<li>[ ] 拿了容器元素的引用/指针/迭代器之后，中间有没有可能 <code>push_back</code>/<code>insert</code>/<code>erase</code>/<code>resize</code>/<code>reserve</code>？</li>
+<li>[ ] <strong>lambda 里的 <code>[&amp;]</code>，这个 lambda 会被存起来或延后执行吗？</strong>（存进 <code>std::function</code>、容器、成员、线程池都算）</li>
+<li>[ ] <strong>成员函数里的 <code>[=]</code> 或 <code>[this]</code>，对象保证活到 lambda 执行完吗？</strong> 能不能换成 <code>[n = name]</code> / <code>[*this]</code> / <code>[self = shared_from_this()]</code>？</li>
+<li>[ ] <strong>想靠 <code>shared_ptr</code> 保命的 lambda，捕的是 <code>sp</code> 本身还是 <code>*sp</code> 的引用？</strong>（捕引用不增加计数）</li>
+<li>[ ] 捕获方式选对了吗——要的是"定义时的快照"还是"执行时的最新值"？</li>
+<li>[ ] CI 里跑了 ASan/UBSan 吗？<code>ASAN_OPTIONS</code> 里加了 <code>detect_stack_use_after_return=1</code> 吗？</li>
+<li>[ ] 有条件的话，试着用 C++20 编一遍——<code>-Wdeprecated-this-capture</code> 能白捡几个 <code>[=]</code> 的坑。</li>
+</ul>
+<hr>
+<h2 id="_12">总结：<code>&amp;</code> 和 <code>[&amp;]</code> 都是在签生命周期契约</h2>
+<p>上面九个例子，只有一个（返回局部对象）被编译器警告拦住，其余八个在 <code>-Wall -Wextra</code> 下<strong>一片安静</strong>。这不是编译器不努力，而是这类信息<strong>天生跨函数、跨作用域</strong>：<code>add_bonus</code> 不知道 <code>who</code> 来自 <code>v</code>，<code>make_callback</code> 不知道 <code>Service s</code> 什么时候销毁。<strong>寿命假设一旦离开类型系统，就只能靠人和工具。</strong></p>
+<p>所以落到三条能立刻做的事：</p>
+<ol>
+<li><strong>写 <code>&amp;</code> 或 <code>[&amp;]</code> 之前，问一句"我能保证它活到我用完吗"。</strong> 保证不了就换成值、<code>unique_ptr</code>、<code>shared_ptr</code>，或者 <code>[n = name]</code>。</li>
+<li><strong>把 ASan 和 <code>detect_stack_use_after_return=1</code> 塞进 CI。</strong> 上面那些"不崩不报只输出乱码"的例子，全靠它才现形。</li>
+<li><strong>有条件就用 C++20 编一遍</strong>，白捡 <code>-Wdeprecated-this-capture</code> 这类警告。</li>
+</ol>
+<p>C++ 三十年一直在把这类纪律往类型系统里搬——从 <code>malloc</code> 到 <code>unique_ptr</code> 到 <code>pmr</code>，我在 <a href="https://www.fanyamin.com/blog/cpp-memory-management-evolution.html">《C/C++ 内存管理方法的变迁》</a> 里梳过这条线。引用和 lambda 捕获，是这条线上<strong>还没搬完的那一段</strong>。</p>
+<p>工具一年比一年强，但"这个对象该活多久"这个问题，三十年来一天也没被替代过。</p>
+<h2 id="_13">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* 悬垂引用与 lambda 捕获\n&amp; 和 [&amp;] 都是生命周期契约
+** 为什么比裸指针阴险
+*** 使用处和普通变量一样
+*** 没有&quot;空&quot;可判\n语言层面无法检测
+** 悬垂引用四种来源
+*** 返回局部对象\n（唯一有警告）
+*** 引用成员绑临时对象\n寿命延长不传递
+*** 指向容器元素\n扩容/插入/删除即废
+*** 参数别名 f(v, v[0])\n跨函数，最阴险
+** lambda 捕获五种误用
+*** [&amp;] 存进 function/容器
+*** [=] 仍按指针捕 this\nC++20 才废弃
+*** [&amp;] 扔给线程\n不崩不报只算错
+*** 捕获循环变量
+*** 捕引用不增加\nshared_ptr 计数
+** 捕获也是语义选择
+*** 按值 = 定义时快照
+*** 按引用 = 执行时读取
+*** 选错不崩，只算错
+** 能立刻做的三件事
+*** 写 &amp; 前先问能否保证寿命
+*** ASan + detect_stack_\nuse_after_return=1
+*** 用 C++20 编一遍捡警告
+@endmindmap
+</code></pre></div>
+
+<p><img alt="悬垂引用与 lambda 捕获 - 思维导图" src="./images/tech_20260905_cpp_dangling_reference_mindmap.png"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/cpp-dangling-reference-lambda-capture.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/tech.html">tech</a>
+      <a href="https://www.fanyamin.com/blog/tag/c.html">C++</a>
+      <a href="https://www.fanyamin.com/blog/tag/memory.html">memory</a>
+      <a href="https://www.fanyamin.com/blog/tag/reference.html">reference</a>
+      <a href="https://www.fanyamin.com/blog/tag/lambda.html">lambda</a>
+      <a href="https://www.fanyamin.com/blog/tag/dangling.html">dangling</a>
+      <a href="https://www.fanyamin.com/blog/tag/sanitizer.html">sanitizer</a>
+      <a href="https://www.fanyamin.com/blog/tag/modern-cpp.html">modern-cpp</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/cpp-memory-management-evolution.html" title="C/C++ 内存管理方法的变迁：把纪律写进类型系统">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/2026-09-05-power-of-character.html" title="人格的力量：知识不再稀缺之后，靠什么立得住">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/cpp-memory-management-evolution.html">C/C++ 内存管理方法的变迁：把纪律写进类型系统</a></li>
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-testing-unit-and-integration.html">给 FreeSWITCH 写测试：从单元测试到集成测试，用一个真 bug 串起来</a></li>
+      <li><a href="https://www.fanyamin.com/blog/c-plugin-dlopen-practical-guide.html">C 插件系统实战指南：dlopen 没告诉你的四件事</a></li>
+      <li><a href="https://www.fanyamin.com/blog/c-dynamic-load-di-service-registry.html">C 语言的动态加载、依赖注入与服务注册：把 FreeSWITCH 的模块机制拆到底</a></li>
+      <li><a href="https://www.fanyamin.com/blog/apache-portable-runtime.html">APR 入门：一个 30 年前的答案，为什么还在你的代码库里</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

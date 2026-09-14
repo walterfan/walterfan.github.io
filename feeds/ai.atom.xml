@@ -1,5 +1,625 @@
 <?xml version="1.0" encoding="utf-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom"><title>Walter Fan's Blog - AI</title><link href="https://www.fanyamin.com/blog/" rel="alternate"/><link href="https://www.fanyamin.com/blog/feeds/ai.atom.xml" rel="self"/><id>https://www.fanyamin.com/blog/</id><updated>2026-08-31T21:30:00+08:00</updated><subtitle>手握灵珠常奋笔, 心开天籁不吹箫</subtitle><entry><title>AI 时代知识到底怎么存、怎么找：一个后端工程师的知识库工作流</title><link href="https://www.fanyamin.com/blog/2026-08-31-knowledge-base-workflow.html" rel="alternate"/><published>2026-08-31T21:30:00+08:00</published><updated>2026-08-31T21:30:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-08-31:/blog/2026-08-31-knowledge-base-workflow.html</id><summary type="html">&lt;p&gt;我这个博客仓库有 611 篇 Markdown、791 个文档源文件，可我问 AI “我以前是怎么讲鉴权的”，它照样答不上来。存了等于没存。这篇给一套后端工程师能长期跑下去的方案：先按“AI 知道 / AI 不知道”把知识分层，再用“源文件是唯一事实源、索引全部可重建”的四层结构去存，组织上 Tree 做骨架 Graph 做补充，检索上从目录到混合检索到图检索三级递进。附可抄的目录结构、frontmatter 规范、reindex 脚本骨架、工具三档选型，和一份精选论文清单。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Walter Fan's Blog - AI</title><link href="https://www.fanyamin.com/blog/" rel="alternate"/><link href="https://www.fanyamin.com/blog/feeds/ai.atom.xml" rel="self"/><id>https://www.fanyamin.com/blog/</id><updated>2026-09-02T22:10:00+08:00</updated><subtitle>手握灵珠常奋笔, 心开天籁不吹箫</subtitle><entry><title>AI 时代怎么读代码：把 AI 当导游，别当替身</title><link href="https://www.fanyamin.com/blog/2026-09-02-read-code-in-ai-era.html" rel="alternate"/><published>2026-09-02T22:10:00+08:00</published><updated>2026-09-02T22:10:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-09-02:/blog/2026-09-02-read-code-in-ai-era.html</id><summary type="html">&lt;p&gt;接手陌生代码库，我用了很多年的仪式是画 mindmap、写 wiki——慢，但画完脑子里是有一张图的。现在最直接的提效办法看着是把仓库丢给 AI 要一份摘要，但"读过一份好摘要"和"脑子里有那张图"是两件事。这篇写我定下来的分工：AI 只负责找路，代码还是我自己读。附五个固定使用的 code reading prompt、四种防止被 AI 带偏的验证手段、怎么用 graphify 存结构和 PKB 存判断把地图沉淀下来（省得每个会话都从零 grep），以及怎么把唯一能自动化的那条验证做成 skill 的硬门槛。最后是读懂之后接 OpenSpec 的档位选择——"写代码这一步反而要降档"是最反直觉的一条。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
+&lt;th&gt;AI 时代怎么读代码：把 AI 当导游，别当替身&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="https://www.fanyamin.com"&gt;Walter Fan&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Category&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;learning note&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Version&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;v1.0&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Updated&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;2026-09-02&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;License&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0"&gt;CC-BY-NC-ND 4.0&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 id="_1"&gt;大纲&lt;/h2&gt;
+&lt;details&gt;
+&lt;summary&gt;展开看看&lt;/summary&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;一个诱惑&lt;/strong&gt;：让 AI 替你读完仓库，你得到的是"读过的错觉"&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;老办法为什么不能直接丢&lt;/strong&gt;：mindmap 和 wiki 的价值在画的过程，不在产物&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;新分工&lt;/strong&gt;：AI 找路，你走路&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;五个 prompt&lt;/strong&gt;：建地图、追一条请求、追身份、追错误、找隐藏的复杂度&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;四种验证&lt;/strong&gt;：抽检路径、逼它标不确定、反向再追一遍、问哪里没测试&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;把地图沉淀下来&lt;/strong&gt;：图谱存"是什么"，知识库存"为什么"&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;打包成 skill&lt;/strong&gt;：四条验证里只有一条能自动化，那就必须自动化&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;读懂之后才动手&lt;/strong&gt;：一个工作台 + 一个 agent + 一个流程&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;档位选择&lt;/strong&gt;：为什么写代码那一步反而要降档&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/details&gt;
+&lt;hr&gt;
+&lt;p&gt;接手一个陌生代码库，我有一套用了很多年的仪式：先画 mindmap，把模块、边界、依赖一层层摊开；再写一篇 wiki，把"这个请求是怎么走到数据库的"用大白话讲一遍。慢，慢得让人心焦。但画完之后，我脑子里是有一张图的——出了故障，我能直接说出该去哪个文件看。&lt;/p&gt;
+&lt;p&gt;现在有了 AI，我当然想提效。最直接的想法就是：把整个仓库丢给 agent，让它给我一份架构总结不就完了？&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;但这条路我不敢走。&lt;/strong&gt; 因为 AI 给的摘要，读起来是舒服的——分层清楚、术语准确、连配置来源都列全了。&lt;strong&gt;问题是"读过一份好摘要"和"脑子里有那张图"完全是两件事。&lt;/strong&gt; 需要改代码的时候，你要的不是一段描述，是能立刻说出"去打开哪个文件"的定位能力。这个能力从来不是读出来的，是自己一条条追出来的。&lt;/p&gt;
+&lt;p&gt;所以我最后定下来的分工是：&lt;strong&gt;AI 只负责找路，代码还是我自己读。&lt;/strong&gt; 这篇写这套分工怎么落地——五个我固定使用的 prompt、四种防止被 AI 带偏的验证手段，以及读懂之后怎么接上工程流程。&lt;/p&gt;
+&lt;!-- 建议亲自补充：如果你有一次"信了 AI 的摘要结果改错地方"或者"用这套 prompt 两小时读懂了原来要两天的仓库"的真实经历，放在这里当开头会比现在的推理更有力。 --&gt;
+
+&lt;hr&gt;
+&lt;p&gt;先声明一句，免得读者误会：&lt;strong&gt;这不是一篇"AI 帮你读代码"的推荐文，恰恰相反，是一篇"哪一半绝不能交给 AI"的划界文。&lt;/strong&gt;&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_2"&gt;一、老办法为什么不能直接丢掉&lt;/h2&gt;
+&lt;p&gt;要划这条界，得先看清老办法的成本结构——AI 该替掉哪一半，答案就在里面。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;grep 关键词
+   ↓
+Go to Definition
+   ↓
+Find References
+   ↓
+Call Hierarchy
+   ↓
+自己在脑子里建模型
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;前四步是&lt;strong&gt;找&lt;/strong&gt;，最后一步是&lt;strong&gt;懂&lt;/strong&gt;。而时间的分布很不均：绝大部分都耗在前四步——关键词猜错了要重猜，跨了一层抽象就断线，遇到反射和依赖注入干脆断得彻底。真正建立理解的时间，其实很少。&lt;/p&gt;
+&lt;p&gt;画 mindmap 和写 wiki 恰好卡在这个位置上。它们看起来是在产出文档，实际上是&lt;strong&gt;强迫我把找来的碎片压成一个结构&lt;/strong&gt;——你没法给一个自己都说不清的模块起名字，也没法给一条自己没走通的链条画箭头。那张图不是画完才有的，是画的过程中长出来的。&lt;/p&gt;
+&lt;p&gt;所以界就划在这儿：&lt;strong&gt;AI 替掉前四步，我省下大半时间；AI 替掉最后一步，我什么都没剩下。&lt;/strong&gt;&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="ai"&gt;二、新分工：AI 找路，你走路&lt;/h2&gt;
+&lt;p&gt;换成现在的流程，长这样：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;AI 找到入口
+   ↓
+AI 列出关键文件和函数
+   ↓
+你在编辑器里逐个打开
+   ↓
+你自己读
+   ↓
+读不懂的地方，问 AI
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;差别在哪一步？在第三步和第四步之间那个"你"。&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;不要让 AI 替你读整个 codebase，而是让 AI 帮你建 navigation map。&lt;/strong&gt;
+地图是它给的，路还是你自己走一遍。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;这里有个术语我先解释一下，后面会反复用到：&lt;strong&gt;navigation map&lt;/strong&gt;，我说的不是架构图，而是一份"要看懂这件事，你需要打开哪几个文件、按什么顺序"的清单。它的价值不是完整，而是&lt;strong&gt;顺序正确&lt;/strong&gt;——一个陌生仓库里最贵的东西不是信息量，是"从哪儿开始看"。&lt;/p&gt;
+&lt;p&gt;打个不太精确但好懂的比方：你到一座陌生城市，导游告诉你先去哪、怎么坐车、下一站在哪；但路你得自己走，风景你得自己看。你不会因为导游描述得生动，就觉得自己去过了。让 AI 替你读代码，就是听了一路解说，然后以为自己逛完了城。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="code-reading-prompt"&gt;三、五个固定使用的 code reading prompt&lt;/h2&gt;
+&lt;p&gt;这五个是我攒下来的，每个都有明确用途。共同点有三条，值得先说：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;都带 &lt;code&gt;Do not modify code&lt;/code&gt;&lt;/strong&gt;——读代码阶段任何修改都是干扰，而且会污染 git 状态。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;都要求给出文件位置&lt;/strong&gt;——不给位置的解释没有价值，因为你没法验证。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;都要求分步骤给出职责&lt;/strong&gt;——一句"这里处理了鉴权"没用，得说清是哪个函数、负责什么。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id="prompt-1"&gt;Prompt 1：建地图&lt;/h3&gt;
+&lt;p&gt;刚拿到仓库、连目录都不认识的时候用。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;Give me a high-level architecture of this repository.
+
+Identify:
+
+- application entry points
+- major components/modules
+- important interfaces
+- databases
+- external services
+- message queues
+- HTTP/RPC boundaries
+- authentication and authorization boundaries
+- configuration sources
+
+For each important component, point me to the relevant files.
+
+Do not modify any code.
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;它的产出不是给你读的，是给你&lt;strong&gt;打开文件用的&lt;/strong&gt;。我一般把这份输出直接贴到笔记里，当成接下来两三个小时的阅读清单。&lt;/p&gt;
+&lt;h3 id="prompt-2"&gt;Prompt 2：追一条请求&lt;/h3&gt;
+&lt;p&gt;我用得最多的一个。&lt;strong&gt;如果只能留一个 prompt，我留这个。&lt;/strong&gt;&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;Trace one request through the system.
+
+Start from the HTTP entry point and follow it until
+the request reaches the database.
+
+Show:
+
+HTTP endpoint
+→ handler/controller
+→ middleware
+→ service
+→ business logic
+→ repository/DAO
+→ database
+
+For each step, provide:
+
+- file
+- class/function
+- responsibility
+
+Do not modify code.
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;为什么这条最有效？因为&lt;strong&gt;一条完整的请求链会强行穿过所有的抽象层&lt;/strong&gt;。你追完一条，框架的约定、分层的规矩、依赖注入的套路、日志和错误处理的位置，全都顺带见过一遍了。追第二条的时候，速度会快好几倍。&lt;/p&gt;
+&lt;p&gt;这也正是过去写 wiki 最耗时的部分。现在 AI 几十秒给我一条链，我逐个打开验证一遍——省掉的是"找"，保留的是"走"。&lt;/p&gt;
+&lt;h3 id="prompt-3"&gt;Prompt 3：追一份数据的生命周期&lt;/h3&gt;
+&lt;p&gt;做后端的话，这条特别值。以"用户身份"为例：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;Trace the lifecycle of the user identity.
+
+Where is it created?
+Where is it extracted?
+Where is it stored?
+How is it propagated between layers?
+Where is it consumed?
+Where can it be lost or modified?
+
+Show the relevant files and functions.
+
+Do not modify code.
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;你可能会拿到这样一条链：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;JWT
+ ↓
+HTTP Middleware
+ ↓
+Context
+ ↓
+Service
+ ↓
+Authorization
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;然后追问一句：&lt;strong&gt;"Is this identity propagation trustworthy?"&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;这一问就从读代码进到安全分析了。真实项目里我见过的坑基本都在这条链的接缝上：中间某一层为了方便，把身份从 context 里取出来又塞回一个可变的结构体；或者异步任务里身份根本没传过去，用了一个默认账号。这种问题读单个文件永远看不出来，只有把整条链摊平才会露出来。&lt;/p&gt;
+&lt;h3 id="prompt-4"&gt;Prompt 4：追错误怎么传&lt;/h3&gt;
+&lt;p&gt;排查线上问题的时候用这条，比直接问"为什么会有这个 bug"有效得多。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;Trace how errors propagate through the system.
+
+Starting from a database error:
+
+DB
+→ repository
+→ service
+→ handler
+→ middleware
+→ HTTP response
+
+Identify:
+
+- where errors are wrapped
+- where errors are logged
+- where errors are translated
+- where errors lose context
+- HTTP status mapping
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;code&gt;where errors lose context&lt;/code&gt; 是这条里最有价值的一问。绝大多数"日志里什么都看不出来"的故障，根源都是中间某一层把原始错误吞了，换成一个自己编的通用错误往上抛。这个位置读代码时很难注意到，但一问就问出来了。&lt;/p&gt;
+&lt;h3 id="prompt-5"&gt;Prompt 5：找隐藏的复杂度&lt;/h3&gt;
+&lt;p&gt;准备动手改之前用。&lt;strong&gt;这条我建议你专门存下来。&lt;/strong&gt;&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;Before designing this change, identify hidden risks
+in the existing implementation.
+
+Look specifically for:
+
+- concurrency
+- caching
+- consistency
+- transactions
+- retries
+- timeouts
+- race conditions
+- backward compatibility
+- security boundaries
+- failure modes
+- observability
+
+Do not modify code.
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;它问的不是"代码怎么写的"，而是"&lt;strong&gt;这段代码在什么情况下会不按你想的那样运行&lt;/strong&gt;"。缓存、重试、超时、并发这几项，是我见过最多"改完在测试环境好好的，上线就出事"的来源。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="ai_1"&gt;四、四种验证：怎么知道 AI 没在瞎说&lt;/h2&gt;
+&lt;p&gt;这一节最要紧，因为 AI 给的地图&lt;strong&gt;看起来永远是对的&lt;/strong&gt;——格式工整、术语准确、路径像真的。它出错的时候不会告诉你，而是给你一个同样自信的错答案。&lt;/p&gt;
+&lt;p&gt;我现在固定做四件事：&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;1. 抽检路径。&lt;/strong&gt; 从它给的清单里随机挑两三条 &lt;code&gt;file:function&lt;/code&gt;，自己打开，看职责描述对不对。&lt;strong&gt;错一条，整份重新怀疑。&lt;/strong&gt; 这个动作只要两分钟，但它是唯一真正廉价的验证——路径要么存在要么不存在，没有含糊空间。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;2. 逼它标出不确定。&lt;/strong&gt; 追加一句：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;For each step above, mark your confidence (high/medium/low),
+and list the assumptions you did NOT verify by reading code.
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;标成 low 的地方，就是你必须亲自看的地方。这句话很朴素，但效果意外地好——不问的时候它一律说得斩钉截铁，问了之后往往老实交代"这一层我是根据命名推断的"。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;3. 反向再追一遍。&lt;/strong&gt; 第一次从 HTTP 入口往下追到数据库，第二次换个方向：指定一张表，让它往上追是谁写的。&lt;strong&gt;两条链应该在中间对上。&lt;/strong&gt; 对不上的那一段，就是它编的，或者是你还没理解的隐藏路径——两种情况都值得你亲自去看。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;4. 问它哪里没有测试。&lt;/strong&gt;&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;Which parts of this flow have no test coverage?
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这个问题一举两得：没测试的代码本身就是风险点；同时，没测试的地方 AI 的理解也最不可靠——它没有可执行的证据，只能靠命名和上下文猜。&lt;/p&gt;
+&lt;p&gt;四条加起来花不了多少时间。跟"信了一份错地图、改错了地方、上线之后回滚"比，这点成本便宜到不用犹豫。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_3"&gt;五、别每次都从零开始：把地图沉淀下来&lt;/h2&gt;
+&lt;p&gt;上面这套流程有个隐藏的浪费：&lt;strong&gt;每开一个新会话，AI 都要重新找一遍路。&lt;/strong&gt; 你今天花两小时让它把请求链摸清楚，明天换个会话问同一个仓库，它照样从 grep 开始。&lt;/p&gt;
+&lt;p&gt;人类不这样。新同事第一天靠 grep，第三个月靠脑子里那张"谁调谁、改这儿会崩哪儿"的图。区别在于人会把图留下来，而 agent 每次都从零开始。&lt;/p&gt;
+&lt;p&gt;所以除了"当场问"，还得有"沉淀下来"。我用的是两样东西，分工很清楚：&lt;strong&gt;一个存事实，一个存判断。&lt;/strong&gt;&lt;/p&gt;
+&lt;h3 id="_4"&gt;事实那一半：先把结构解析出来&lt;/h3&gt;
+&lt;p&gt;&lt;a href="https://github.com/Graphify-Labs/graphify"&gt;graphify&lt;/a&gt; 的做法是用 tree-sitter 把代码解析成一张知识图谱，存成 &lt;code&gt;graph.json&lt;/code&gt;，之后所有问题都查图，不查文件。它有个挺硬气的选择：&lt;strong&gt;不做向量检索，不用 embedding，纯 AST&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;理由站得住：代码的结构是确定的。&lt;code&gt;import&lt;/code&gt; 就是 &lt;code&gt;import&lt;/code&gt;，&lt;code&gt;class A(B)&lt;/code&gt; 就是继承，用语法树解析出来百分百准确，凭什么先转成一堆浮点数再算余弦相似度？&lt;/p&gt;
+&lt;p&gt;我在本机（0.9.53）拿 httpx 跑过：72 个代码文件、12.8 秒建完图、零 token。更值钱的是它给每条边打的标签——&lt;code&gt;EXTRACTED&lt;/code&gt; 是源码里白纸黑字写着的，置信度恒为 1.0；&lt;code&gt;INFERRED&lt;/code&gt; 是推断出来的，带 0.55~0.95 的分数。httpx 上跑出来九成以上是 &lt;code&gt;EXTRACTED&lt;/code&gt;。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;这个区分正好接上了第四节的问题。&lt;/strong&gt; 前面我们费劲让 AI 自己标 confidence，靠的是追问和自觉；图谱里这个标签是解析器给的，不是模型给的——&lt;strong&gt;"这条是我读出来的"和"这条是我猜的"，第一次有了机器判定的版本。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;它也不是万能：图会过期，得重新跑；中文查询目前查不到；文档那一半（没有语法树，只能靠 LLM 抽）我持怀疑态度。当代码地图用，别指望它长成第二个大脑。这个工具我单独写过一篇&lt;a href="https://www.fanyamin.com/blog/2026-09-02-graphify-code-knowledge-graph.html"&gt;实测&lt;/a&gt;，这里不展开。&lt;/p&gt;
+&lt;h3 id="_5"&gt;判断那一半：把读懂的东西写下来&lt;/h3&gt;
+&lt;p&gt;图谱能告诉你 A 调用了 B，但告诉不了你&lt;strong&gt;为什么当初这么设计、哪条路踩过坑、这个模块为什么不能动&lt;/strong&gt;。这些是读代码读出来的判断，解析器解析不出来。&lt;/p&gt;
+&lt;p&gt;这部分我用自己写的 &lt;a href="https://github.com/walterfan/lazy-rabbit-skills/tree/master/skills/project-knowledge-base"&gt;project-knowledge-base&lt;/a&gt; 这个 skill（简称 PKB）来沉淀：把项目知识写成 AI 可读的 Markdown——项目概览、仓库地图、C4 架构、ADR（架构决策记录）、运行手册，需要的话再用 Sphinx 发成 HTML。&lt;/p&gt;
+&lt;p&gt;它有一条设计原则我认为最关键，也最容易被忽略：&lt;strong&gt;建了知识库，如果消费的时候一次性全塞给 LLM，那等于白建。&lt;/strong&gt; 所以 PKB 把"渐进披露"做成了机制而不是纪律——&lt;code&gt;/PKB-query&lt;/code&gt; 按需检索单页或单节，而不是 &lt;code&gt;read man/**&lt;/code&gt; 把整棵树倒进去。这和第三节那个思路是同一件事：&lt;strong&gt;给 navigation map，不给全文背诵。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;还有个细节值得说：ADR 的分工是&lt;strong&gt;人写 Context 和 Decision，AI 补 Alternatives 和 Consequences&lt;/strong&gt;。为什么当初这么选、当时的约束是什么，只有人知道；调研替代方案、推演后果，AI 干得比人快。这条分工线和整篇文章是一致的——判断归人，检索归 AI。&lt;/p&gt;
+&lt;h3 id="_6"&gt;三样东西怎么配合&lt;/h3&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;层次&lt;/th&gt;
+&lt;th&gt;工具&lt;/th&gt;
+&lt;th&gt;存什么&lt;/th&gt;
+&lt;th&gt;会不会过期&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;结构&lt;/td&gt;
+&lt;td&gt;graphify&lt;/td&gt;
+&lt;td&gt;谁调谁、谁继承谁（解析器给的事实）&lt;/td&gt;
+&lt;td&gt;会，重跑一遍就行&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;判断&lt;/td&gt;
+&lt;td&gt;PKB&lt;/td&gt;
+&lt;td&gt;为什么这么设计、踩过什么坑（人给的判断）&lt;/td&gt;
+&lt;td&gt;会，但要人来更新&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;当场&lt;/td&gt;
+&lt;td&gt;五个 prompt + 验证&lt;/td&gt;
+&lt;td&gt;这次要回答的具体问题&lt;/td&gt;
+&lt;td&gt;不需要，用完即弃&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;顺序上我建议：&lt;strong&gt;先建图（十几秒，便宜），再用 prompt 追具体问题（图能帮 AI 少走弯路），读懂之后把判断写进 PKB（下次不用重来）。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;一句话：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;图谱存"是什么"，知识库存"为什么"，prompt 解决"这次要干什么"。&lt;/strong&gt;
+三样都会过期，但重建成本差得远——图几十秒，知识库要人重新想一遍。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;hr&gt;
+&lt;h2 id="skill"&gt;六、把这套东西装进 skill：让第一条验证自动化&lt;/h2&gt;
+&lt;p&gt;上面这些 prompt 和验证动作，手工用几次就会觉得别扭：每次都要翻笔记、复制粘贴、改措辞，追加"标一下 confidence"还经常忘。&lt;strong&gt;能固化成流程的东西，就不该靠记性。&lt;/strong&gt; 所以我把它们打包成了一个 AI skill——现在各家 agent（Claude Code、Codex、Cursor、OpenCode）都支持这种形式：一个 &lt;code&gt;SKILL.md&lt;/code&gt; 描述"什么时候用、怎么做、什么算做完"，加上几个脚本和模板。&lt;/p&gt;
+&lt;p&gt;这里面最值得说的一个设计决定：&lt;strong&gt;四条验证里，只有第一条能真正自动化，那就必须自动化。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;为什么？看看这四条的性质差别：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;验证&lt;/th&gt;
+&lt;th&gt;判断依据&lt;/th&gt;
+&lt;th&gt;能不能自动化&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;路径/符号是否存在&lt;/td&gt;
+&lt;td&gt;文件在不在磁盘上&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;能&lt;/strong&gt;，二值答案，没有解释空间&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;抽检职责描述&lt;/td&gt;
+&lt;td&gt;这个函数是不是真干这事&lt;/td&gt;
+&lt;td&gt;不能，需要人读&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;标 confidence&lt;/td&gt;
+&lt;td&gt;AI 对自己的把握&lt;/td&gt;
+&lt;td&gt;不能，只能追问&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;反向再追&lt;/td&gt;
+&lt;td&gt;两条链能否对上&lt;/td&gt;
+&lt;td&gt;半自动，得再跑一轮&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;第一条是唯一"不需要判断力"的：路径要么存在要么不存在。于是我写了个脚本，把 AI 报出来的每一行 &lt;code&gt;path&lt;/code&gt; + &lt;code&gt;symbol&lt;/code&gt; 拿去和磁盘对：文件不存在的标 &lt;code&gt;PATH_MISSING&lt;/code&gt;，文件在但符号搜不到的标 &lt;code&gt;SYMBOL_MISSING&lt;/code&gt;，行号偏得太远的标 &lt;code&gt;LINE_DRIFT&lt;/code&gt;。有一条硬失败，整份地图判 &lt;code&gt;FAIL&lt;/code&gt;，skill 里规定这时候不许把地图当可用结果交出去。&lt;/p&gt;
+&lt;p&gt;它还顺手干一件事：路径不对但同名文件在别处存在时，直接把真实位置列出来——这种"目录猜错了"是最常见的失败，也最好修。&lt;/p&gt;
+&lt;p&gt;skill 的形状最后是这样：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;code-reading-map/
+├── SKILL.md                  # 什么时候用、五个阶段、验证门槛
+├── assets/prompts/           # 六个 focus 各一个模板
+│   ├── architecture-map.md   # 建地图
+│   ├── request-trace.md      # 追一条请求
+│   ├── data-lifecycle.md     # 追数据生命周期
+│   ├── error-flow.md         # 追错误传播
+│   ├── hidden-complexity.md  # 找隐藏复杂度
+│   └── reverse-trace.md      # 反向交叉验证
+├── scripts/
+│   ├── render_prompt.py      # 探测仓库结构 + 渲染 prompt
+│   └── verify_map.py         # 硬门槛：校验路径真实存在
+└── references/               # 验证手册、地图格式契约、focus 选择指南
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;用起来就是两条命令。先出地图：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;python3&lt;span class="w"&gt; &lt;/span&gt;scripts/render_prompt.py&lt;span class="w"&gt; &lt;/span&gt;--focus&lt;span class="w"&gt; &lt;/span&gt;request&lt;span class="w"&gt; &lt;/span&gt;--project-root&lt;span class="w"&gt; &lt;/span&gt;/path/to/repo
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;再验证：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;python3&lt;span class="w"&gt; &lt;/span&gt;scripts/verify_map.py&lt;span class="w"&gt; &lt;/span&gt;/tmp/reading/request-map.md&lt;span class="w"&gt; &lt;/span&gt;--project-root&lt;span class="w"&gt; &lt;/span&gt;/path/to/repo
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;失败的时候输出长这样：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;| Status       | path                      | symbol       | Conf   | Detail                                    |
+|--------------|---------------------------|--------------|--------|-------------------------------------------|
+| OK           | internal/api/router.go    | RegisterRoutes | high | found `RegisterRoutes` at line 42         |
+| PATH_MISSING | internal/service/order.go | Service.Create | high | not here; same filename exists at: internal/biz/order.go |
+
+VERDICT: FAIL — do not trust this map.
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;注意那行 &lt;code&gt;PATH_MISSING&lt;/code&gt; 的 confidence 是 &lt;code&gt;high&lt;/code&gt;——&lt;strong&gt;AI 对一个不存在的文件也可以非常自信。&lt;/strong&gt; 这就是为什么这道门槛必须由脚本把守，不能靠"我看着挺像"。&lt;/p&gt;
+&lt;p&gt;做 skill 相比散着放 prompt，真正的好处不是省了复制粘贴，而是三件事被固定住了：&lt;strong&gt;一次只跑一个 focus&lt;/strong&gt;（混着问就会得到一份什么都覆盖、什么都定位不了的文档）、&lt;strong&gt;每行必须标 confidence&lt;/strong&gt;、&lt;strong&gt;交付前必须过验证&lt;/strong&gt;。这三条我自己手工做的时候，忙起来第一个忘的就是最后一条。&lt;/p&gt;
+&lt;p&gt;至于 skill 怎么写，那是另一个话题了，我改天单独写一篇。这里只说结论：&lt;strong&gt;你反复用的 prompt，值得升级成有验证门槛的 skill；能被脚本判定的事，别留给自己的记性。&lt;/strong&gt;&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_7"&gt;七、读懂之后才动手&lt;/h2&gt;
+&lt;p&gt;读懂了，接下来才是改。这一步我只要三件东西，别装十几个 AI 工具：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;一个工作台&lt;/strong&gt;：编辑器。我在试 &lt;a href="https://zed.dev/"&gt;Zed&lt;/a&gt;，因为它把 agent 面板和自己读代码放在同一个窗口里——按第二节那个分工，"AI 给清单"和"我逐个打开"本来就该在一个地方发生，来回切窗口是纯损耗。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;一个 agent&lt;/strong&gt;：Codex（或 Claude Agent、OpenCode 都行）。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;一个流程&lt;/strong&gt;：&lt;a href="https://openspec.dev/"&gt;OpenSpec&lt;/a&gt;。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这三样在 macOS、Linux、Windows 上都能装，下面说的东西也都不依赖某个操作系统。&lt;/p&gt;
+&lt;p&gt;这三样不是互相竞争的，关系是：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;编辑器是工作台，agent 是干活的，OpenSpec 是工程流程。&lt;/strong&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;Zed 通过 &lt;strong&gt;ACP&lt;/strong&gt;（Agent Client Protocol，一个让任意 agent 接入任意编辑器的开放协议）把外部 agent 接进来，官方文档目前列出的包括 Claude Agent、Codex、OpenCode、Gemini CLI、Copilot、Cursor 等，在 Zed 里用 &lt;code&gt;zed: acp registry&lt;/code&gt; 就能装。agent 是独立进程，计费和认证都是你和 agent 提供方之间的事，跟编辑器无关（&lt;a href="https://zed.dev/docs/ai/external-agents"&gt;Zed 文档&lt;/a&gt;）。好处很实在：&lt;strong&gt;流程不绑死在某个 IDE 上&lt;/strong&gt;，换编辑器不用重学一遍。&lt;/p&gt;
+&lt;p&gt;OpenSpec 是干什么的？一句话：&lt;strong&gt;把"改什么、怎么改、分几步"先写成人能审的 markdown，审完了再让 agent 照着写代码。&lt;/strong&gt; 它默认的一圈是六个动作（我装的是 1.10.0）：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;explore  →  propose  →  apply  →  update / sync  →  archive
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;code&gt;explore&lt;/code&gt; 只调查不改代码，正好就是前面几节干的事——官方也把它定位成"有问题但还没方案时的第一步"，不产生任何文件。&lt;code&gt;verify&lt;/code&gt;（检查实现有没有偏离计划）不在默认档里，要另外开，但我建议你开上（&lt;a href="https://openspec.dev/docs/the-workflow"&gt;OpenSpec 文档&lt;/a&gt;）。&lt;/p&gt;
+&lt;p&gt;不同工具里调用方式不一样：Claude Code 里是 &lt;code&gt;/opsx:explore&lt;/code&gt; 这种短命令，别的工具用技能名或者干脆一句白话"propose a change to add rate limiting"也行。&lt;/p&gt;
+&lt;h3 id="_8"&gt;审的顺序，和每一步该看什么&lt;/h3&gt;
+&lt;p&gt;&lt;code&gt;propose&lt;/code&gt; 会给你四份文件。我固定按这个顺序看，而且&lt;strong&gt;每份看的东西不一样&lt;/strong&gt;：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;文件&lt;/th&gt;
+&lt;th&gt;只问一个问题&lt;/th&gt;
+&lt;th&gt;重点看&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;proposal.md&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;为什么要做？&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;问题是不是真问题，范围是不是太大&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;specs/&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;系统到底该干什么？&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;MUST / MUST NOT、错误情况、边界情况、向后兼容&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;design.md&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;为什么是这个设计？&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;考虑过哪些替代方案，取舍是什么&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;tasks.md&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;这些任务真能实现这个设计吗？&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;有没有漏项&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;&lt;code&gt;design.md&lt;/code&gt; 那一栏我会追问一串：依赖挂了怎么办？重启的时候怎么办？网络分区的时候怎么办？密钥轮转的时候怎么办？并发请求的时候怎么办？——这几个问题回答不上来，设计就还没成型。&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;tasks.md&lt;/code&gt; 最容易糊弄过去。举个例子，设计写的是"加一个分布式鉴权缓存"，任务列出来是：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;1. Add cache
+2. Add API
+3. Add tests
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;这我一定打回去。因为至少漏了：缓存失效、TTL、脏鉴权数据、竞态、失败模式、监控指标、配置项、灰度迁移。&lt;strong&gt;任务列表的长度和设计的复杂度不匹配，就是漏了。&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;还有一招我很推荐：批准之前，专门开一轮让 AI 挑刺，并且明确要求它先别改。&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;Critically review this proposed design.
+Act as a Staff/Principal Engineer.
+
+Do not rewrite the design yet. Instead identify:
+
+1. Incorrect assumptions
+2. Missing requirements
+3. Missing edge cases
+4. Security risks
+5. Concurrency issues
+6. Failure modes
+7. Scalability concerns
+8. Backward compatibility issues
+9. Operational concerns
+10. Places where the implementation plan is incomplete
+
+Be skeptical and try to break the design.
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;code&gt;Do not rewrite the design yet&lt;/code&gt; 这句很重要。不加这句，它会直接给你一版改好的设计——问题被顺手抹平了，你反而失去了判断的机会。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_9"&gt;八、档位：为什么写代码那一步反而要降档&lt;/h2&gt;
+&lt;p&gt;各家模型都有推理强度的旋钮。我不写具体型号，因为过几个月就变了；按能力分三档说：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;强推理档&lt;/strong&gt;：最贵最慢，用来想事情&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;主力档&lt;/strong&gt;：日常干活&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;轻量档&lt;/strong&gt;：机械操作&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;我现在的分配是这样：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;阶段&lt;/th&gt;
+&lt;th&gt;默认&lt;/th&gt;
+&lt;th&gt;复杂时&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;读代码 / explore&lt;/td&gt;
+&lt;td&gt;主力档 + 高推理&lt;/td&gt;
+&lt;td&gt;强推理档&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;出方案 / propose&lt;/td&gt;
+&lt;td&gt;主力档 + 高推理&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;强推理档 + 最高推理&lt;/strong&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;挑刺 / review&lt;/td&gt;
+&lt;td&gt;强推理档&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;强推理档 + 最高推理&lt;/strong&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;写代码 / apply&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;主力档 + 中推理&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;主力档 + 高推理&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;机械改动&lt;/td&gt;
+&lt;td&gt;轻量档&lt;/td&gt;
+&lt;td&gt;—&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;排查问题 / debug&lt;/td&gt;
+&lt;td&gt;主力档 + 高推理&lt;/td&gt;
+&lt;td&gt;强推理档&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;撞上设计冲突&lt;/td&gt;
+&lt;td&gt;—&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;强推理档 + 最高推理&lt;/strong&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;碰到 OAuth、OIDC、JWT、Kubernetes、STS、鉴权、密钥、PKI 这类东西，我会毫不犹豫直接上最高档。理由很简单：这些地方的设计错误，代价是安全事故，不是返工。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;最反直觉的是 &lt;code&gt;apply&lt;/code&gt; 那一行——写代码反而降档。&lt;/strong&gt; 因为到这一步，问题已经变了：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;propose 阶段问的是：What should we build?
+apply  阶段问的是：How do I implement this task correctly?
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;第一个问题需要判断力，第二个问题需要的是照着做。任务已经拆成一条条了，用最贵的档去做一件已经想清楚的事，只是烧钱和变慢——顺便还有个副作用：档位越高，它越容易"顺手帮你优化一下"，偏离你审过的那份计划。&lt;/p&gt;
+&lt;h3 id="_10"&gt;写代码时撞上设计问题，一定要停&lt;/h3&gt;
+&lt;p&gt;&lt;code&gt;apply&lt;/code&gt; 到一半，agent 告诉你："我发现现有的鉴权架构和这个设计冲突。"&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;这时候千万别回一句"那你自己改一下"。&lt;/strong&gt; 正确的动作是：&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;停下 apply
+   ↓
+分析冲突（升到强推理档）
+   ↓
+更新 OpenSpec 的设计和任务
+   ↓
+人再审一遍
+   ↓
+继续 apply
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;也就是：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;实现阶段发现设计问题 → 不要悄悄重新设计 → 回去改规格。&lt;/strong&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;这恰恰是 spec-driven 这套东西最值钱的地方。让 agent 在写代码的时候顺手改设计，你会得到一份能跑的代码，和一份已经和代码脱节的文档——三个月后接手的人（很可能是你自己）会为此付账。&lt;/p&gt;
+&lt;hr&gt;
+&lt;h2 id="_11"&gt;总结：从"我能不能写出来"到"我能不能判断它对不对"&lt;/h2&gt;
+&lt;p&gt;回到开头那个诱惑：把仓库丢给 AI，拿一份漂亮的摘要。&lt;/p&gt;
+&lt;p&gt;我那套 mindmap 加 wiki 的老仪式，效率确实低，但它有一条别的办法给不了的好处：&lt;strong&gt;它逼我亲自把每条链走一遍。&lt;/strong&gt; AI 能把"找路"的成本压掉一个数量级，这个便宜必须占；但它没法替我"走过"。&lt;/p&gt;
+&lt;p&gt;所以我的分工是：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;explore&lt;/code&gt; 打头，不要一上来就 &lt;code&gt;propose&lt;/code&gt;。&lt;/strong&gt; 先让 AI 带你走一遍代码库，你自己读。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;五个 prompt 存成模板&lt;/strong&gt;，尤其"追一条请求"和"找隐藏的复杂度"这两条。每条都带 &lt;code&gt;Do not modify code&lt;/code&gt; 和"给我文件位置"。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;地图必须抽检。&lt;/strong&gt; 挑两条路径自己打开，逼它标出不确定的地方，反方向再追一遍。花的是几十分钟，买的是"不会因为信错地图而改错地方"。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;读懂的东西要沉淀。&lt;/strong&gt; 结构交给图谱（几十秒可重建），判断写进知识库（只有人能重建）。否则下个会话还得从零 grep。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;想事情的时候上高档，写代码的时候降档。&lt;/strong&gt; 反直觉，但省钱也更稳。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;实现阶段发现设计问题，停下来改规格，不要让 agent 悄悄重新设计。&lt;/strong&gt;&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;写了这么多年代码，我很清楚自己的瓶颈已经不是"能不能把它写出来"了。在一个 AI 可以吞下百万行代码的年代，瓶颈变成了：&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;我能不能足够快地判断——它对这个代码库的理解是不是正确、这份设计是不是站得住、这次实现有没有偏离规格。&lt;/strong&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;这三个判断，都需要我脑子里真的有那张图。&lt;strong&gt;地图可以让 AI 画，路必须自己走一遍。&lt;/strong&gt;&lt;/p&gt;
+&lt;h2 id="_12"&gt;全文思维导图&lt;/h2&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;@startmindmap
+&amp;lt;style&amp;gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&amp;lt;/style&amp;gt;
+
+* AI 时代怎么读代码
+** 核心分工
+*** AI 找路：建 navigation map
+*** 你走路：自己打开文件读
+*** 替掉&amp;quot;找&amp;quot;，不替掉&amp;quot;懂&amp;quot;
+** 五个 prompt
+*** 建地图：入口/模块/边界
+*** 追一条请求：穿过所有抽象层
+*** 追数据生命周期：身份从哪来到哪去
+*** 追错误传播：哪里丢了上下文
+*** 找隐藏复杂度：并发/缓存/重试/超时
+** 四种验证
+*** 抽检两三条路径
+*** 逼它标 confidence
+*** 反方向再追一遍
+*** 问哪里没有测试
+** 沉淀下来
+*** graphify 存结构：解析器给的事实
+*** PKB 存判断：为什么这么设计
+*** ADR 分工：人写 Context，AI 补 Alternatives
+** 打包成 skill
+*** 一次只跑一个 focus
+*** 每行必须标 confidence
+*** 脚本校验路径存在 = 硬门槛
+** 环境三件套
+*** 工作台：编辑器（Zed / ACP）
+*** 干活的：Codex / Claude Agent
+*** 流程：OpenSpec explore→propose→apply→archive
+** 审计划的顺序
+*** proposal：为什么做
+*** specs：到底该干什么
+*** design：为什么是这个设计
+*** tasks：真能实现设计吗
+** 档位选择
+*** 想事情上高档
+*** 写代码降档
+*** 撞设计冲突：停下改规格
+@endmindmap
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;img alt="AI 时代怎么读代码 - 思维导图" src="./images/tech_20260902_read_code_ai_era_mindmap.svg"&gt;&lt;/p&gt;
+&lt;hr/&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。&lt;/p&gt;</content><category term="AI"/><category term="journal"/><category term="AI"/><category term="code-reading"/><category term="OpenSpec"/><category term="Zed"/><category term="Codex"/><category term="workflow"/></entry><entry><title>AI 时代知识到底怎么存、怎么找：一个后端工程师的知识库工作流</title><link href="https://www.fanyamin.com/blog/2026-08-31-knowledge-base-workflow.html" rel="alternate"/><published>2026-08-31T21:30:00+08:00</published><updated>2026-08-31T21:30:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-08-31:/blog/2026-08-31-knowledge-base-workflow.html</id><summary type="html">&lt;p&gt;我这个博客仓库有 611 篇 Markdown、791 个文档源文件，可我问 AI “我以前是怎么讲鉴权的”，它照样答不上来。存了等于没存。这篇给一套后端工程师能长期跑下去的方案：先按“AI 知道 / AI 不知道”把知识分层，再用“源文件是唯一事实源、索引全部可重建”的四层结构去存，组织上 Tree 做骨架 Graph 做补充，检索上从目录到混合检索到图检索三级递进。附可抄的目录结构、frontmatter 规范、reindex 脚本骨架、工具三档选型，和一份精选论文清单。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
 &lt;thead&gt;
 &lt;tr&gt;
 &lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;
@@ -2593,7 +3213,9 @@ mindmapDiagram {
 &lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 
 &lt;hr/&gt;
-&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。&lt;/p&gt;</content><category term="AI"/><category term="journal"/><category term="AI"/><category term="contact center"/><category term="CCaaS"/><category term="VoIP"/><category term="customer service"/></entry><entry><title>AI 是运维的手，人是运维的脑</title><link href="https://www.fanyamin.com/blog/2026-08-22-ai-operations-hand-and-brain.html" rel="alternate"/><published>2026-08-22T21:30:00+08:00</published><updated>2026-08-22T22:10:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-08-22:/blog/2026-08-22-ai-operations-hand-and-brain.html</id><summary type="html">&lt;p&gt;从大模型的幻觉和不确定性说起，聊聊把产线运维交给 AI 到底放不放心。我的答案是：脚本、监控、告警、扩容、部署都能交给 AI，但判断和决策必须留给人；而且确定性动作让 AI 写完脚本就该退出，用确定性代码去跑，别让概率模型实时掺和。初级运维岗会缩，踩过坑的资深运维反而更值钱。文末给一张"哪些能交、哪些不能交"的清单。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
+&lt;p&gt;本作品采用&lt;a href="http://creativecommons.org/licenses/by-nc-nd/4.0/"&gt;知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议&lt;/a&gt;进行许可。欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。&lt;/p&gt;</content><category term="AI"/><category term="journal"/><category term="AI"/><category term="contact center"/><category term="CCaaS"/><category term="VoIP"/><category term="customer service"/></entry><entry><title>deepseek-harness 有什么不一样：一个"没有核心"的 Agent 框架</title><link href="https://www.fanyamin.com/blog/2026-08-23-deepseek-harness-everything-is-a-plugin.html" rel="alternate"/><published>2026-08-23T20:30:00+08:00</published><updated>2026-08-23T20:30:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-08-23:/blog/2026-08-23-deepseek-harness-everything-is-a-plugin.html</id><summary type="html">&lt;p&gt;DeepSeek 开源了自己的 agent harness（dsh），主打一句话——"一切皆插件"。它跟别家的 agent 框架不一样的地方不在功能多寡，而在架构范式：模型、工具、技能、会话、沙箱、存储、循环、调度、界面全是插件，连"主循环"本身都能被换掉，没有一个特权核心可以打补丁。本文从一个老程序员被"特权核心"坑过的角度，讲清楚这件事为什么值得关注，以及它的代价在哪。&lt;/p&gt;</summary><content type="html">&lt;div class="encrypted-content" data-encrypted="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" data-hint="forget it"&gt;
+  &lt;noscript&gt;此文章已加密,需要开启 JavaScript 并输入密码才能阅读。&lt;/noscript&gt;
+&lt;/div&gt;</content><category term="AI"/><category term="journal"/><category term="AI"/><category term="agent"/><category term="architecture"/><category term="plugin"/></entry><entry><title>AI 是运维的手，人是运维的脑</title><link href="https://www.fanyamin.com/blog/2026-08-22-ai-operations-hand-and-brain.html" rel="alternate"/><published>2026-08-22T21:30:00+08:00</published><updated>2026-08-22T22:10:00+08:00</updated><author><name>Walter Fan</name></author><id>tag:www.fanyamin.com,2026-08-22:/blog/2026-08-22-ai-operations-hand-and-brain.html</id><summary type="html">&lt;p&gt;从大模型的幻觉和不确定性说起，聊聊把产线运维交给 AI 到底放不放心。我的答案是：脚本、监控、告警、扩容、部署都能交给 AI，但判断和决策必须留给人；而且确定性动作让 AI 写完脚本就该退出，用确定性代码去跑，别让概率模型实时掺和。初级运维岗会缩，踩过坑的资深运维反而更值钱。文末给一张"哪些能交、哪些不能交"的清单。&lt;/p&gt;</summary><content type="html">&lt;table&gt;
 &lt;thead&gt;
 &lt;tr&gt;
 &lt;th&gt;&lt;strong&gt;Abstract&lt;/strong&gt;&lt;/th&gt;

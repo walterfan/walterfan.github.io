@@ -1,0 +1,1239 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="APR（Apache Portable Runtime）是 C 语言事实上的&#34;缺失标准库&#34;，它的核心是内存池——不追踪每个对象的释放，而是按生命周期批量丢弃。这篇讲清 APR 的设计理念、常用模块、快速上手路径、以及 FreeSWITCH 为什么要把它 fork 出来改名。所有代码在 APR 1.7.6 上实测。" />
+<meta name="keywords" content="tech, C, APR, apache, freeswitch, memory-pool, portability">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "APR 入门：一个 30 年前的答案，为什么还在你的代码库里",
+  "description": "APR（Apache Portable Runtime）是 C 语言事实上的&#34;缺失标准库&#34;，它的核心是内存池——不追踪每个对象的释放，而是按生命周期批量丢弃。这篇讲清 APR 的设计理念、常用模块、快速上手路径、以及 FreeSWITCH 为什么要把它 fork 出来改名。所有代码在 APR 1.7.6 上实测。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-09-06T10:30:00+08:00",
+  "dateModified": "2026-09-06T10:30:00+08:00",
+  "url": "https://www.fanyamin.com/blog/apache-portable-runtime.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/apache-portable-runtime.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "tech, C, APR, apache, freeswitch, memory-pool, portability"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="APR 入门：一个 30 年前的答案，为什么还在你的代码库里"/>
+  <meta property="og:description" content="APR（Apache Portable Runtime）是 C 语言事实上的&#34;缺失标准库&#34;，它的核心是内存池——不追踪每个对象的释放，而是按生命周期批量丢弃。这篇讲清 APR 的设计理念、常用模块、快速上手路径、以及 FreeSWITCH 为什么要把它 fork 出来改名。所有代码在 APR 1.7.6 上实测。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/apache-portable-runtime.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-09-06 10:30:00+08:00"/>
+  <meta property="article:modified_time" content="2026-09-06 10:30:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="tech"/>
+  <meta property="article:tag" content="C"/>
+  <meta property="article:tag" content="APR"/>
+  <meta property="article:tag" content="apache"/>
+  <meta property="article:tag" content="freeswitch"/>
+  <meta property="article:tag" content="memory-pool"/>
+  <meta property="article:tag" content="portability"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; APR 入门：一个 30 年前的答案，为什么还在你的代码库里</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="apache-portable-runtime">APR 入门：一个 30 年前的答案，为什么还在你的代码库里</h1>
+    <p>
+      Posted on 日 06 9月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>APR（Apache Portable Runtime）入门</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-09-06</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">大纲</h2>
+<details>
+<summary>展开看看</summary>
+<ul>
+<li><strong>核心结论</strong>：APR 值得学，不是因为它现代，而是因为你绕不开它——而且它的内存池思路把"谁负责 free"这个问题从<strong>每个对象</strong>降维成了<strong>每个生命周期</strong>。</li>
+<li><strong>What</strong>：Apache 为了写跨平台的 httpd 2.0 攒出来的 C 运行库，41 个头文件覆盖内存、文件、网络、进程、线程、哈希表、字符串。最新稳定版 1.7.6（2025-05），2.0 从 2009 年至今没发布。</li>
+<li><strong>Why 内存池</strong>：Robert Thau 1995 年在 <code>alloc.c</code> 里的原始注释说得最狠——逐个追踪释放是"a fundamentally unsound strategy"。实测：20 万次分配，用错模式 RSS 涨 9.5 MB，用对了涨 16 KB。</li>
+<li><strong>三条设计理念</strong>：① 生命周期是一等公民（pool 传参、没有 <code>apr_pfree</code>）；② 一切资源挂 pool（cleanup 回调，LIFO，子先父后）；③ 错误码统一折叠（<code>APR_TIMEUP</code> = 70007，<code>apr_strerror</code> 到处能用）。</li>
+<li><strong>常用模块</strong>：一张表列 10 个真正天天用的 API 组，以及各自解决了什么平台差异。</li>
+<li><strong>两个致命陷阱</strong>：pool 释放后的悬垂指针，<strong>ASan 抓不到</strong>（实测：ASan 全开，程序照样打印出旧字符串，exit 0）。解法是编译期开 <code>--enable-pool-debug=all</code>，实测能 SIGABRT 并打出 <code>LIFE</code> 标记。</li>
+<li><strong>快速上手</strong>：4 步 + 一段 40 行可编译的样板，跑一遍比读十篇文档快。</li>
+<li><strong>FreeSWITCH 怎么用它</strong>：vendor 了一份 <strong>APR 1.2.8（2007 年）</strong> 的 fork，2022 年把全部符号从 <code>apr_*</code> 改名成 <code>fspr_*</code>；<code>switch_apr.c</code> 里那句注释很实在——"thank APR for all the awesome stuff it does"。另外解释了源码里 <code>status == 730035</code> 这个魔数是怎么来的。</li>
+<li><strong>老代码的税</strong>：CVE-2021-35940 是最好的教材——1.6.3 修过的漏洞，1.7.0 分支时忘了带过去，静默回归三年。</li>
+</ul>
+</details>
+<hr>
+<p>去读一份 C 写的服务端老代码，你迟早会撞见这样一行函数签名：</p>
+<div class="highlight"><pre><span></span><code><span class="n">switch_status_t</span><span class="w"> </span><span class="nf">switch_core_session_create</span><span class="p">(</span><span class="n">switch_core_session_t</span><span class="w"> </span><span class="o">**</span><span class="n">session</span><span class="p">,</span>
+<span class="w">                                           </span><span class="n">switch_memory_pool_t</span><span class="w"> </span><span class="o">*</span><span class="n">pool</span><span class="p">);</span>
+</code></pre></div>
+
+<p>第二个参数是干什么的？为什么建一个会话对象要外面传一块"内存池"进来？为什么整个代码库里几百个函数，最后一个参数都是这个 <code>pool</code>？</p>
+<p>答案是 APR——<strong>Apache Portable Runtime</strong>。这套东西 1995 年在 Apache 的 <code>alloc.c</code> 里成型，比 Java 还老。它不时髦，API 风格像上个世纪，官方的 2.0 版本从 2009 年"开发中"到现在还没发布。</p>
+<p>但 Apache httpd、Subversion、FreeSWITCH、Tomcat 的 native 层，这些还在跑生产流量的东西，都建在它上面。<strong>你不需要在新项目里选它，但你很可能需要读懂用它写的代码。</strong> 而它最值得偷走的那个想法——把内存管理的粒度从"每个对象"提到"每个生命周期"——今天在 Rust 的 arena crate、Go 的 <code>sync.Pool</code>、游戏引擎的 frame allocator 里到处都是。</p>
+<p>下面的代码都在 macOS + Apple clang + <strong>APR 1.7.6</strong> 上真跑过，贴的是实测输出。</p>
+<hr>
+<h2 id="whatc">What：C 语言那个迟到了三十年的标准库</h2>
+<p>C 的标准库停在 1989 年的世界观里：文件 IO 有，socket 没有；<code>malloc</code> 有，线程没有；进程、目录遍历、内存映射、共享内存、动态加载、原子操作，一个都没有。想写跨平台的 C 服务端，你得自己填这些坑，而且每个平台填法不一样。</p>
+<p>Apache 在 httpd 1.x 时代把这些坑填在了服务器代码里。写 2.0 的时候，他们把这部分抽出来做成独立库，这就是 APR。<a href="https://svn.apache.org/repos/asf/apr/apr/trunk/docs/APRDesign.html">APRDesign.html</a> 里的原话：</p>
+<blockquote>
+<p>The original goal of APR was to combine all code in Apache to one common code base.</p>
+</blockquote>
+<p>httpd 2.0 GA 是 2002 年 4 月（2.0.35），当时捆绑的是 <strong>APR 0.9.x</strong>；APR 自己的 1.0.0 要等到 <strong>2004 年 9 月</strong>才发布。</p>
+<p>官网那段 mission statement 讲得很准：</p>
+<blockquote>
+<p>...provide an API to which software developers may code and be assured of predictable if not identical behaviour regardless of the platform on which their software is built.</p>
+</blockquote>
+<p>注意 <strong>"predictable if not identical"</strong>（可预期，未必完全一致）——这是句诚实话。APR 不承诺 Windows 和 Linux 上行为完全一样，只承诺<strong>差异有明确定义</strong>，你不用为每个平台写 <code>#ifdef</code>。</p>
+<p>规模：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>ls<span class="w"> </span>/opt/homebrew/opt/apr/include/apr-1/*.h<span class="w"> </span><span class="p">|</span><span class="w"> </span>wc<span class="w"> </span>-l
+<span class="go">      41</span>
+<span class="gp">$ </span>apr-1-config<span class="w"> </span>--version
+<span class="go">1.7.6</span>
+</code></pre></div>
+
+<p>41 个头文件，从 <code>apr_pools.h</code>（内存）到 <code>apr_network_io.h</code>（socket）到 <code>apr_thread_proc.h</code>（线程和进程）到 <code>apr_skiplist.h</code>（跳表）。另有一个 apr-util 提供更上层的东西（DBD 数据库抽象、LDAP、XML、加密、base64、MD5）。</p>
+<p><strong>两条你该知道的项目现状：</strong></p>
+<ul>
+<li>稳定版是 <strong>APR 1.7.6</strong>（2025-05-16），apr-util <strong>1.6.5</strong>（2026-08-10）。</li>
+<li><strong>APR 2.0 从来没发布过。</strong> trunk 在 2009 年 1 月就被改成了 <code>2.0.0-dev</code>，至今约 17 年。2.0 的主要变化之一是把 apr-util 合并回 apr——<a href="https://raw.githubusercontent.com/apache/apr/trunk/STATUS">trunk 的 STATUS</a> 一句话："Effective with version 2.0, apr-util ceases to exist."</li>
+</ul>
+<p>一个库能十七年不发大版本还活着，说明两件事：它足够稳，以及它已经不再是任何人的战略方向。用它可以，别指望它进化。</p>
+<hr>
+<h2 id="why">Why：为什么核心是"内存池"而不是"跨平台"</h2>
+<p>跨平台只是 APR 的门面。真正让它有性格的是内存池（memory pool），而这个设计的动机，Robert Thau 1995 年写在 <code>alloc.c</code> 的注释里，三十年后还原封不动留在 <code>apr_pools.h</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="cm">/*</span>
+<span class="cm"> * Resource allocation routines...</span>
+<span class="cm"> *</span>
+<span class="cm"> * designed so that we don&#39;t have to keep track of EVERYTHING so that</span>
+<span class="cm"> * it can be explicitly freed later (a fundamentally unsound strategy ---</span>
+<span class="cm"> * particularly in the presence of die()).</span>
+<span class="cm"> */</span>
+</code></pre></div>
+
+<p><strong>"逐个追踪、稍后显式释放，是一种根本上不成立的策略"</strong>——尤其是在有 <code>die()</code>（异常退出）的情况下。</p>
+<p>这话说的是 C 服务端最经典的溃败方式。你写一个请求处理函数，中间十个步骤，每步都可能失败。每次失败都要把前面分配的东西按相反顺序释放干净：</p>
+<div class="highlight"><pre><span></span><code><span class="cm">/* 这种代码谁都写过，也谁都写错过 */</span>
+<span class="kt">int</span><span class="w"> </span><span class="nf">handle</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">input</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">a</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">malloc</span><span class="p">(...);</span><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">a</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="mi">-1</span><span class="p">;</span>
+<span class="w">    </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">b</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">malloc</span><span class="p">(...);</span><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">b</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">free</span><span class="p">(</span><span class="n">a</span><span class="p">);</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="mi">-1</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+<span class="w">    </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">c</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">malloc</span><span class="p">(...);</span><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">c</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">free</span><span class="p">(</span><span class="n">b</span><span class="p">);</span><span class="w"> </span><span class="n">free</span><span class="p">(</span><span class="n">a</span><span class="p">);</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="mi">-1</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+<span class="w">    </span><span class="kt">FILE</span><span class="w"> </span><span class="o">*</span><span class="n">f</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fopen</span><span class="p">(...);</span><span class="w">   </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">f</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">free</span><span class="p">(</span><span class="n">c</span><span class="p">);</span><span class="w"> </span><span class="n">free</span><span class="p">(</span><span class="n">b</span><span class="p">);</span><span class="w"> </span><span class="n">free</span><span class="p">(</span><span class="n">a</span><span class="p">);</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="mi">-1</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+<span class="w">    </span><span class="cm">/* ... 又加了三个步骤之后，上面每一行的 cleanup 都要跟着改 ... */</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>错误路径是测试覆盖率最低的地方，也是内存泄漏最爱藏的地方。C++ 用 RAII 解决了这个问题（把释放绑到析构函数），但 C 没有析构函数。</p>
+<p>APR 的答案换了个方向：<strong>不追踪每个对象，只追踪生命周期。</strong></p>
+<p>一个请求进来，建一个 pool；这次请求需要的所有内存都从这个 pool 里拿；请求结束，整块销毁。中间任何一步失败，直接 <code>goto done</code> 销毁 pool 就完事，不需要记得释放什么。</p>
+<div class="highlight"><pre><span></span><code><span class="n">apr_pool_t</span><span class="w"> </span><span class="o">*</span><span class="n">req</span><span class="p">;</span>
+<span class="n">apr_pool_create</span><span class="p">(</span><span class="o">&amp;</span><span class="n">req</span><span class="p">,</span><span class="w"> </span><span class="n">root</span><span class="p">);</span><span class="w">              </span><span class="cm">/* 请求开始 */</span>
+
+<span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">a</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">apr_palloc</span><span class="p">(</span><span class="n">req</span><span class="p">,</span><span class="w"> </span><span class="mi">64</span><span class="p">);</span><span class="w">            </span><span class="cm">/* 不检查、不记录、不配对 */</span>
+<span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">b</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">apr_pstrdup</span><span class="p">(</span><span class="n">req</span><span class="p">,</span><span class="w"> </span><span class="n">input</span><span class="p">);</span>
+<span class="n">apr_table_t</span><span class="w"> </span><span class="o">*</span><span class="n">hdr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">apr_table_make</span><span class="p">(</span><span class="n">req</span><span class="p">,</span><span class="w"> </span><span class="mi">8</span><span class="p">);</span>
+
+<span class="n">apr_pool_destroy</span><span class="p">(</span><span class="n">req</span><span class="p">);</span><span class="w">                    </span><span class="cm">/* 请求结束，a/b/hdr 一起消失 */</span>
+</code></pre></div>
+
+<p><strong>注意 APR 里没有 <code>apr_pfree()</code>。</strong> 这不是遗漏，是设计决定：你无法释放单个分配，只能 clear 或 destroy 整个 pool。（<code>apr_allocator_free()</code> 确实存在，但它作用在底层的 <code>apr_memnode_t</code> 内存块上，不是 <code>apr_palloc</code> 的返回值。）</p>
+<p>代价也很明确：<strong>pool 只会长大，不会缩小。</strong> 这是 APR 最容易踩的坑，也是它唯一必须记住的纪律。</p>
+<p>我写了段程序实测：20 万次字符串分配，一次全从长生命周期的 pool 里拿，一次用子 pool 每轮 clear。</p>
+<div class="highlight"><pre><span></span><code><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">200000</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">apr_pool_t</span><span class="w"> </span><span class="o">*</span><span class="n">p</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">root</span><span class="p">;</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">use_subpool</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">apr_pool_clear</span><span class="p">(</span><span class="n">sub</span><span class="p">);</span><span class="w"> </span><span class="n">p</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">sub</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+<span class="w">    </span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="n">apr_psprintf</span><span class="p">(</span><span class="n">p</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;%s-%08d-%s&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;session&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">i</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;padpad...&quot;</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>./grow
+<span class="go">root pool only:    RSS 1520 KB -&gt; 11040 KB (delta 9520 KB)</span>
+<span class="gp">$ </span>./grow<span class="w"> </span>s
+<span class="go">subpool+clear:     RSS 1552 KB -&gt; 1568 KB (delta 16 KB)</span>
+</code></pre></div>
+
+<p><strong>9.5 MB 对 16 KB，差了 600 倍。</strong> 一个长期运行的服务里，把这个循环放在连接处理路径上，就是一条缓慢但确定的内存泄漏——而且 valgrind 不会报，因为技术上它没泄漏，只是"还没释放"。</p>
+<p>APR 官方的 <a href="https://svn.apache.org/repos/asf/apr/apr/trunk/docs/pool-design.html">Using APR Pools</a> 就是为这个坑写的，作者 Greg Stein 是 Subversion 的核心开发者、后来做过 ASF 主席。他给的模式是：</p>
+<div class="highlight"><pre><span></span><code><span class="n">subpool</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">apr_pool_create</span><span class="p">(...);</span>
+<span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">n</span><span class="p">;</span><span class="w"> </span><span class="o">++</span><span class="n">i</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">apr_pool_clear</span><span class="p">(</span><span class="n">subpool</span><span class="p">);</span><span class="w">      </span><span class="cm">/* 在循环入口 clear，不是出口 */</span>
+<span class="w">    </span><span class="n">do_operation</span><span class="p">(...,</span><span class="w"> </span><span class="n">subpool</span><span class="p">);</span>
+<span class="p">}</span>
+<span class="n">apr_pool_destroy</span><span class="p">(</span><span class="n">subpool</span><span class="p">);</span>
+</code></pre></div>
+
+<p><strong>clear 放在入口而不是出口</strong>，是个很妙的细节——这样循环里写 <code>continue</code> 也不会漏掉清理。这种"把正确性做成默认行为"的小设计，比记住一条规则可靠得多。</p>
+<hr>
+<h2 id="_2">三条设计理念</h2>
+<h3 id="1-pool">1. 生命周期是一等公民，所以 pool 必须显式传参</h3>
+<p>Greg Stein 那份文档里最反直觉的一条：</p>
+<blockquote>
+<p><strong>Objects should not have their own pools.</strong> An object is allocated into a pool defined by the constructor's caller. The caller knows the lifetime of the object.</p>
+<p><strong>Functions should not create/destroy pools for their operation</strong>; they should use a pool provided by the caller.</p>
+</blockquote>
+<p>翻译成人话：<strong>对象不该自己管内存，因为它不知道自己该活多久——调用者才知道。</strong></p>
+<p>这就是为什么 APR 代码里几乎每个函数的最后一个参数都是 <code>apr_pool_t *pool</code>。看起来啰嗦，但它把"这个东西活多久"这件事写进了函数签名，跟现代 C++ 用 <code>unique_ptr</code> / <code>span</code> 把所有权写进签名是同一个思路——只不过 APR 靠人自觉，C++ 靠编译器检查。</p>
+<p>同一份文档还有一句常被忽略的对比：</p>
+<blockquote>
+<p>Apache httpd is a completely different beast: "allocate a request pool. use it. destroy it."</p>
+</blockquote>
+<p>也就是说，这套严格纪律是给<strong>库和结构化程序</strong>用的。httpd 自己的用法糙得多，因为它的生命周期模型简单到只有一种。所以别把这份文档当成 APR 的唯一正解，它是"复杂场景下的正解"。</p>
+<h3 id="2-pool">2. 一切资源都能挂在 pool 上，不只是内存</h3>
+<p>pool 不只管内存。你可以注册 cleanup 回调，pool 销毁时自动执行——socket、文件句柄、锁、第三方资源都能挂上去：</p>
+<div class="highlight"><pre><span></span><code><span class="n">apr_pool_cleanup_register</span><span class="p">(</span><span class="n">pool</span><span class="p">,</span><span class="w"> </span><span class="n">conn</span><span class="p">,</span><span class="w"> </span><span class="n">close_my_conn</span><span class="p">,</span><span class="w"> </span><span class="n">apr_pool_cleanup_null</span><span class="p">);</span>
+</code></pre></div>
+
+<p>顺序有讲究，实测一下：</p>
+<div class="highlight"><pre><span></span><code><span class="n">apr_pool_create</span><span class="p">(</span><span class="o">&amp;</span><span class="n">a</span><span class="p">,</span><span class="w"> </span><span class="n">root</span><span class="p">);</span><span class="w"> </span><span class="n">apr_pool_create</span><span class="p">(</span><span class="o">&amp;</span><span class="n">b</span><span class="p">,</span><span class="w"> </span><span class="n">a</span><span class="p">);</span><span class="w">   </span><span class="cm">/* b 是 a 的子 pool */</span>
+<span class="n">apr_pool_cleanup_register</span><span class="p">(</span><span class="n">a</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;A-first&quot;</span><span class="p">,</span><span class="w">  </span><span class="n">mark</span><span class="p">,</span><span class="w"> </span><span class="n">apr_pool_cleanup_null</span><span class="p">);</span>
+<span class="n">apr_pool_cleanup_register</span><span class="p">(</span><span class="n">a</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;A-second&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">mark</span><span class="p">,</span><span class="w"> </span><span class="n">apr_pool_cleanup_null</span><span class="p">);</span>
+<span class="n">apr_pool_cleanup_register</span><span class="p">(</span><span class="n">b</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;B-child&quot;</span><span class="p">,</span><span class="w">  </span><span class="n">mark</span><span class="p">,</span><span class="w"> </span><span class="n">apr_pool_cleanup_null</span><span class="p">);</span>
+<span class="n">apr_pool_destroy</span><span class="p">(</span><span class="n">a</span><span class="p">);</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="go">destroy parent a (b is its child):</span>
+<span class="go">  cleanup B-child</span>
+<span class="go">  cleanup A-second</span>
+<span class="go">  cleanup A-first</span>
+</code></pre></div>
+
+<p>两条规则：<strong>子 pool 先于父 pool</strong>，同一 pool 内 <strong>LIFO（后注册先执行）</strong>。跟 C++ 析构顺序一致，这不是巧合——它就是在没有析构函数的语言里手搓了一套析构机制。</p>
+<p><code>apr_file_open</code> 之类的 API 默认就帮你注册了 cleanup，所以 pool 一销毁文件自动关。如果不想要这个行为，得显式传 <code>APR_FOPEN_NOCLEANUP</code>。</p>
+<h3 id="3-apr_status_t">3. 错误码统一折叠成一个 <code>apr_status_t</code></h3>
+<p>跨平台最烦的不是 API 名字不一样，是<strong>错误码不一样</strong>。Windows 的 <code>WSAEWOULDBLOCK</code> 是 10035，POSIX 的 <code>EAGAIN</code> 在 Linux 是 11、在 macOS 是 35。你想判断"socket 暂时没数据"，得写三套。</p>
+<p>APR 把所有错误码折叠进一个 <code>apr_status_t</code> 的分段空间：</p>
+<div class="highlight"><pre><span></span><code><span class="go">APR_OS_START_ERROR   = 20000    &lt;- APR 自己的错误</span>
+<span class="go">APR_OS_START_STATUS  = 70000    &lt;- APR 自己的状态（APR_TIMEUP = 70007）</span>
+<span class="go">APR_OS_START_USERERR = 120000   &lt;- 留给你的应用</span>
+<span class="go">APR_OS_START_SYSERR  = 720000   &lt;- 系统 errno 折叠到这里</span>
+</code></pre></div>
+
+<p>系统 errno 加上 720000 的偏移放进来，然后提供 <code>APR_STATUS_IS_EAGAIN()</code> 这类宏帮你跨平台判断。好处是 <code>apr_strerror()</code> 能处理任何来源的错误码：</p>
+<div class="highlight"><pre><span></span><code><span class="go">APR_TIMEUP  -&gt; The timeout specified has expired</span>
+<span class="go">APR_ENOENT  -&gt; No such file or directory</span>
+<span class="go">APR_EAGAIN  -&gt; Resource temporarily unavailable</span>
+</code></pre></div>
+
+<p><strong>这个 720000 偏移能帮你读懂一段"魔数代码"。</strong> FreeSWITCH 的 <code>switch_apr.c</code> 里有这么一行，看着像是谁调试完忘了删：</p>
+<div class="highlight"><pre><span></span><code><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">r</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">35</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">730035</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">r</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">SWITCH_STATUS_BREAK</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>730035 是什么？<code>720000 + 10035</code>，而 10035 正是 Windows 的 <code>WSAEWOULDBLOCK</code>。所以这行是在说"POSIX 的 EAGAIN(35) 或者 Windows 折叠过来的 WOULDBLOCK，都当成没数据"。知道分段规则，这个魔数就不神秘了；不知道的话，你会以为它是玄学。</p>
+<hr>
+<h2 id="api">常用功能：真正天天用的十组 API</h2>
+<p>APR 41 个头文件，实际高频使用的就这些：</p>
+<table>
+<thead>
+<tr>
+<th>模块</th>
+<th>关键 API</th>
+<th>它替你解决了什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>内存池</strong></td>
+<td><code>apr_pool_create</code> / <code>apr_palloc</code> / <code>apr_pcalloc</code> / <code>apr_pool_clear</code> / <code>apr_pool_destroy</code></td>
+<td>生命周期批量管理，错误路径不用手写 cleanup 链</td>
+</tr>
+<tr>
+<td><strong>Pool cleanup</strong></td>
+<td><code>apr_pool_cleanup_register</code></td>
+<td>C 语言里的"析构函数"</td>
+</tr>
+<tr>
+<td><strong>字符串</strong></td>
+<td><code>apr_pstrdup</code> / <code>apr_pstrcat</code> / <code>apr_psprintf</code> / <code>apr_snprintf</code></td>
+<td>分配从 pool 走，不用配对 free；<code>apr_snprintf</code> 统一了各平台返回值语义</td>
+</tr>
+<tr>
+<td><strong>哈希表</strong></td>
+<td><code>apr_hash_make</code> / <code>apr_hash_set</code> / <code>apr_hash_get</code> / <code>apr_hash_first</code></td>
+<td>C 终于有 map 了</td>
+</tr>
+<tr>
+<td><strong>表（有序 kv）</strong></td>
+<td><code>apr_table_make</code> / <code>apr_table_set</code> / <code>apr_table_add</code> / <code>apr_table_get</code></td>
+<td>HTTP header 场景：<strong>大小写不敏感</strong>、保序、支持重复 key</td>
+</tr>
+<tr>
+<td><strong>数组</strong></td>
+<td><code>apr_array_make</code> / <code>apr_array_push</code></td>
+<td>动态数组</td>
+</tr>
+<tr>
+<td><strong>文件 IO</strong></td>
+<td><code>apr_file_open</code> / <code>apr_file_read</code> / <code>apr_stat</code> / <code>apr_dir_read</code></td>
+<td>目录遍历、文件属性、路径分隔符差异</td>
+</tr>
+<tr>
+<td><strong>网络</strong></td>
+<td><code>apr_socket_create</code> / <code>apr_sockaddr_info_get</code> / <code>apr_socket_timeout_set</code> / <code>apr_pollset_*</code></td>
+<td>IPv4/IPv6 统一、<code>pollset</code> 在 Linux 上是 epoll、BSD 上是 kqueue、Windows 上是 select</td>
+</tr>
+<tr>
+<td><strong>线程/进程</strong></td>
+<td><code>apr_thread_create</code> / <code>apr_thread_mutex_*</code> / <code>apr_thread_cond_*</code> / <code>apr_proc_create</code></td>
+<td>pthread 和 Windows 线程 API 的统一门面</td>
+</tr>
+<tr>
+<td><strong>时间</strong></td>
+<td><code>apr_time_now</code> / <code>apr_time_exp_lt</code> / <code>apr_rfc822_date</code></td>
+<td>微秒精度的 <code>apr_time_t</code>，时区展开、HTTP 日期格式</td>
+</tr>
+</tbody>
+</table>
+<p><strong><code>apr_table_t</code> 是为 HTTP header 量身定做的。</strong> 它跟 <code>apr_hash_t</code> 的区别不是性能，是语义——大小写不敏感、有序、允许重复 key：</p>
+<div class="highlight"><pre><span></span><code><span class="n">apr_table_set</span><span class="p">(</span><span class="n">hdr</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;Content-Type&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;text/plain&quot;</span><span class="p">);</span>
+<span class="n">apr_table_set</span><span class="p">(</span><span class="n">hdr</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;content-type&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;application/json&quot;</span><span class="p">);</span><span class="w">  </span><span class="cm">/* 覆盖了上一行 */</span>
+<span class="n">printf</span><span class="p">(</span><span class="s">&quot;%s</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">apr_table_get</span><span class="p">(</span><span class="n">hdr</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;CONTENT-TYPE&quot;</span><span class="p">));</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="go">application/json</span>
+</code></pre></div>
+
+<p><code>set</code> 覆盖，<code>add</code> 追加（<code>Set-Cookie</code> 那种需要多条的场景）：</p>
+<div class="highlight"><pre><span></span><code><span class="go">table get returns first: x=1</span>
+<span class="go">  elt[0] Set-Cookie=x=1</span>
+<span class="go">  elt[1] Set-Cookie=y=2</span>
+</code></pre></div>
+
+<p><strong><code>apr_socket_timeout_set</code> 省掉了非阻塞 + poll 的手工舞蹈。</strong> 想要"读，最多等 2 秒"，POSIX 下你得设 <code>O_NONBLOCK</code>、调 <code>poll</code>、处理 <code>EINTR</code>、算剩余时间。APR 一行：</p>
+<div class="highlight"><pre><span></span><code><span class="n">apr_socket_timeout_set</span><span class="p">(</span><span class="n">sock</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">APR_USEC_PER_SEC</span><span class="p">);</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="go">socket timeout = 2000000 us</span>
+</code></pre></div>
+
+<p>超时返回 <code>APR_TIMEUP</code>。传 0 是纯非阻塞，传负数是永久阻塞。</p>
+<p><strong><code>apr_pollset_t</code> 是可移植的事件循环底座。</strong> 同一份代码在 Linux 上走 epoll，在 FreeBSD/macOS 上走 kqueue，Windows 上退化成 select。这是 APR 里技术含量最高、也最难自己重写的部分。</p>
+<hr>
+<h2 id="_3">两个能让你调试到半夜的陷阱</h2>
+<h3 id="pool-asan">陷阱一：pool 销毁后的悬垂指针，ASan 抓不到</h3>
+<p>这是 APR 最危险的地方，因为它绕过了你最信赖的工具。</p>
+<div class="highlight"><pre><span></span><code><span class="n">apr_pool_create</span><span class="p">(</span><span class="o">&amp;</span><span class="n">sub</span><span class="p">,</span><span class="w"> </span><span class="n">root</span><span class="p">);</span>
+<span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">borrowed</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">apr_pstrdup</span><span class="p">(</span><span class="n">sub</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;I live in the subpool&quot;</span><span class="p">);</span>
+<span class="n">apr_pool_destroy</span><span class="p">(</span><span class="n">sub</span><span class="p">);</span>
+<span class="n">printf</span><span class="p">(</span><span class="s">&quot;after destroy: [%s]</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">borrowed</span><span class="p">);</span><span class="w">   </span><span class="cm">/* 悬垂 */</span>
+</code></pre></div>
+
+<p>拿 ASan 全开来跑：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>cc<span class="w"> </span>-g<span class="w"> </span>-fsanitize<span class="o">=</span>address<span class="w"> </span>trap.c<span class="w"> </span>-o<span class="w"> </span>trap_asan<span class="w"> </span>...
+<span class="gp">$ </span>./trap_asan
+<span class="go">after destroy: [I live in the subpool]</span>
+<span class="go">exit=0</span>
+</code></pre></div>
+
+<p><strong>ASan 一声不响，字符串还完整打印出来。</strong></p>
+<p>原因不难理解：APR 从系统一次拿一大块，自己在里面切。<code>apr_pool_destroy</code> 归还的是 APR 内部的记账，那块内存对 ASan 来说依然是"程序合法持有的堆"。ASan 看不见 APR 的内部账本，自然管不了。</p>
+<p>所以在 APR 项目里，你不能靠 ASan 兜底 use-after-free。<strong>你得用 APR 自己的检查。</strong> 重新编译一份带 pool debug 的 APR：</p>
+<div class="highlight"><pre><span></span><code>./configure<span class="w"> </span>--prefix<span class="o">=</span>/tmp/apr-dbg<span class="w"> </span>--enable-pool-debug<span class="o">=</span>all
+make<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>make<span class="w"> </span>install
+</code></pre></div>
+
+<p>再跑同一段代码，字符串就变成垃圾了（内存被主动污染）：</p>
+<div class="highlight"><pre><span></span><code><span class="go">after destroy: [:?2ZK?p]</span>
+</code></pre></div>
+
+<p>更有用的是生命周期检查。这段代码是从一个已销毁的 pool 里分配：</p>
+<div class="highlight"><pre><span></span><code><span class="n">apr_pool_destroy</span><span class="p">(</span><span class="n">root</span><span class="p">);</span><span class="w">              </span><span class="cm">/* 连带销毁了 sub */</span>
+<span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="n">apr_pstrdup</span><span class="p">(</span><span class="n">sub</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;boom&quot;</span><span class="p">);</span><span class="w">      </span><span class="cm">/* 从死 pool 分配 */</span>
+</code></pre></div>
+
+<p>stock APR：</p>
+<div class="highlight"><pre><span></span><code><span class="go">about to allocate from a dead pool...</span>
+<span class="go">no complaint</span>
+<span class="go">exit=0</span>
+</code></pre></div>
+
+<p>pool-debug 版：</p>
+<div class="highlight"><pre><span></span><code><span class="go">about to allocate from a dead pool...</span>
+<span class="go">POOL DEBUG: [...] LIFE  0x1052ce6d0 &lt;apr_pool_integrity check [lifetime]&gt;</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="go">real exit=134       # 134 = 128 + SIGABRT，当场 abort</span>
+</code></pre></div>
+
+<p><strong>从"静默成功"变成"当场崩且告诉你哪个 pool"。</strong> <code>--enable-pool-debug=all</code> 还带 owner 检查（pool 被非拥有线程碰到就 abort，这条对多线程服务尤其值钱）和全量分配日志，包含调用点的文件行号：</p>
+<div class="highlight"><pre><span></span><code><span class="go">POOL DEBUG: [...] CREATE (0/0/272) 0x1050fe640 &quot;trap.c:9&quot; &lt;trap.c:9&gt; ...</span>
+<span class="go">POOL DEBUG: [...] PALLOC (22/22/294) 0x1050fe6e0 &quot;trap.c:10&quot; &lt;apr_strings.c:118&gt; ...</span>
+</code></pre></div>
+
+<p>这也解释了 <code>apr_pool_tag(pool, "request")</code> 的用处——给 pool 起名字，日志里就能一眼看出是谁。生产环境别开（日志量和 abort 都受不了），但排查诡异内存问题时，它比 gdb 直接。</p>
+<h3 id="pool-pool">陷阱二：子 pool 的对象被父 pool 引用</h3>
+<div class="highlight"><pre><span></span><code><span class="cm">/* 一个真实场景的骨架 */</span>
+<span class="n">apr_pool_create</span><span class="p">(</span><span class="o">&amp;</span><span class="n">conn_pool</span><span class="p">,</span><span class="w"> </span><span class="n">root</span><span class="p">);</span>
+<span class="n">apr_pool_create</span><span class="p">(</span><span class="o">&amp;</span><span class="n">req_pool</span><span class="p">,</span><span class="w"> </span><span class="n">conn_pool</span><span class="p">);</span>
+
+<span class="n">conn</span><span class="o">-&gt;</span><span class="n">last_uri</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">apr_pstrdup</span><span class="p">(</span><span class="n">req_pool</span><span class="p">,</span><span class="w"> </span><span class="n">uri</span><span class="p">);</span><span class="w">   </span><span class="cm">/* 长命对象指向短命内存 */</span>
+<span class="n">apr_pool_destroy</span><span class="p">(</span><span class="n">req_pool</span><span class="p">);</span><span class="w">                     </span><span class="cm">/* conn-&gt;last_uri 悬垂 */</span>
+</code></pre></div>
+
+<p>规则一句话：<strong>指针只能从长命 pool 指向短命 pool，反过来不行。</strong> 想让数据活得比子 pool 长，就在父 pool 里再 <code>apr_pstrdup</code> 一次。</p>
+<p>APR 提供了 <code>apr_pool_is_ancestor(a, b)</code> 帮你在断言里检查这个关系。上面那份 pool-design 文档里"对象不该自己持有 pool"这条纪律，防的就是这类事故——一旦对象自己藏了个 pool，外面就没人知道它引用的东西能活多久了。</p>
+<hr>
+<h2 id="apr">怎么快速掌握 APR</h2>
+<p>我的建议是：<strong>别从文档开始，从跑通一段代码开始。</strong> APR 的 doxygen 文档是参考手册不是教程，直接读会淹死在 API 里。</p>
+<h3 id="_4">第一步：装上，跑通编译</h3>
+<div class="highlight"><pre><span></span><code>brew<span class="w"> </span>install<span class="w"> </span>apr<span class="w">                        </span><span class="c1"># macOS</span>
+<span class="c1"># apt install libapr1-dev libaprutil1-dev   # Debian/Ubuntu</span>
+</code></pre></div>
+
+<p>关键是 <code>apr-1-config</code>，它替你搞定所有编译参数：</p>
+<div class="highlight"><pre><span></span><code><span class="nv">APR</span><span class="o">=</span><span class="k">$(</span>brew<span class="w"> </span>--prefix<span class="w"> </span>apr<span class="k">)</span>
+cc<span class="w"> </span>demo.c<span class="w"> </span>-o<span class="w"> </span>demo<span class="w"> </span><span class="k">$(</span><span class="nv">$APR</span>/bin/apr-1-config<span class="w"> </span>--cppflags<span class="w"> </span>--includes<span class="w"> </span>--link-ld<span class="w"> </span>--libs<span class="k">)</span>
+</code></pre></div>
+
+<p>macOS 上注意 Homebrew 的 apr 是 keg-only（系统自带一份旧的），所以要显式指路径。</p>
+<h3 id="_5">第二步：把这段样板跑一遍</h3>
+<p>这 40 行覆盖了 APR 八成的日常用法，跑通它比读三篇教程管用：</p>
+<div class="highlight"><pre><span></span><code><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;apr_general.h&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;apr_pools.h&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;apr_strings.h&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;apr_tables.h&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;apr_hash.h&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;stdio.h&gt;</span>
+
+<span class="k">static</span><span class="w"> </span><span class="n">apr_status_t</span><span class="w"> </span><span class="nf">say_bye</span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">data</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;cleanup: %s</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="p">)</span><span class="n">data</span><span class="p">);</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">APR_SUCCESS</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">int</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">apr_pool_t</span><span class="w"> </span><span class="o">*</span><span class="n">root</span><span class="p">,</span><span class="w"> </span><span class="o">*</span><span class="n">req</span><span class="p">;</span>
+<span class="w">    </span><span class="n">apr_initialize</span><span class="p">();</span><span class="w">                       </span><span class="cm">/* 必须：初始化全局状态 */</span>
+<span class="w">    </span><span class="n">apr_pool_create</span><span class="p">(</span><span class="o">&amp;</span><span class="n">root</span><span class="p">,</span><span class="w"> </span><span class="nb">NULL</span><span class="p">);</span><span class="w">           </span><span class="cm">/* parent = NULL 即 root pool */</span>
+
+<span class="w">    </span><span class="n">apr_pool_create</span><span class="p">(</span><span class="o">&amp;</span><span class="n">req</span><span class="p">,</span><span class="w"> </span><span class="n">root</span><span class="p">);</span>
+<span class="w">    </span><span class="n">apr_pool_tag</span><span class="p">(</span><span class="n">req</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;request&quot;</span><span class="p">);</span><span class="w">           </span><span class="cm">/* 起名字，debug 日志里能认出来 */</span>
+
+<span class="w">    </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">s</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">apr_psprintf</span><span class="p">(</span><span class="n">req</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;hello %s, %d&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;apr&quot;</span><span class="p">,</span><span class="w"> </span><span class="mi">42</span><span class="p">);</span>
+<span class="w">    </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;psprintf: %s</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="p">);</span>
+
+<span class="w">    </span><span class="n">apr_table_t</span><span class="w"> </span><span class="o">*</span><span class="n">hdr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">apr_table_make</span><span class="p">(</span><span class="n">req</span><span class="p">,</span><span class="w"> </span><span class="mi">4</span><span class="p">);</span>
+<span class="w">    </span><span class="n">apr_table_set</span><span class="p">(</span><span class="n">hdr</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;Content-Type&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;text/plain&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="n">apr_table_set</span><span class="p">(</span><span class="n">hdr</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;content-type&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;application/json&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;table: %s</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">apr_table_get</span><span class="p">(</span><span class="n">hdr</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;CONTENT-TYPE&quot;</span><span class="p">));</span>
+
+<span class="w">    </span><span class="n">apr_hash_t</span><span class="w"> </span><span class="o">*</span><span class="n">h</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">apr_hash_make</span><span class="p">(</span><span class="n">req</span><span class="p">);</span>
+<span class="w">    </span><span class="n">apr_hash_set</span><span class="p">(</span><span class="n">h</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;k&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">APR_HASH_KEY_STRING</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;v&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;hash: %s size=%u</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span>
+<span class="w">           </span><span class="p">(</span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="p">)</span><span class="n">apr_hash_get</span><span class="p">(</span><span class="n">h</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;k&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">APR_HASH_KEY_STRING</span><span class="p">),</span>
+<span class="w">           </span><span class="n">apr_hash_count</span><span class="p">(</span><span class="n">h</span><span class="p">));</span>
+
+<span class="w">    </span><span class="n">apr_pool_cleanup_register</span><span class="p">(</span><span class="n">req</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;socket-closed-here&quot;</span><span class="p">,</span>
+<span class="w">                              </span><span class="n">say_bye</span><span class="p">,</span><span class="w"> </span><span class="n">apr_pool_cleanup_null</span><span class="p">);</span>
+
+<span class="w">    </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;-- destroying request pool --</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="n">apr_pool_destroy</span><span class="p">(</span><span class="n">req</span><span class="p">);</span><span class="w">                  </span><span class="cm">/* s / hdr / h 一起消失，cleanup 触发 */</span>
+
+<span class="w">    </span><span class="n">apr_pool_destroy</span><span class="p">(</span><span class="n">root</span><span class="p">);</span>
+<span class="w">    </span><span class="n">apr_terminate</span><span class="p">();</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>实测输出：</p>
+<div class="highlight"><pre><span></span><code><span class="go">psprintf: hello apr, 42</span>
+<span class="go">table: application/json</span>
+<span class="go">hash: v size=1</span>
+<span class="go">-- destroying request pool --</span>
+<span class="go">cleanup: socket-closed-here</span>
+</code></pre></div>
+
+<p>留意最后两行的顺序：<code>destroy</code> 一调用，注册的 cleanup 就跑了，你不用管顺序。</p>
+<h3 id="pool-design">第三步：读那份 pool-design 文档</h3>
+<p><a href="https://svn.apache.org/repos/asf/apr/apr/trunk/docs/pool-design.html">Using APR Pools</a>，2003 年写的，四条规则，五分钟读完。<strong>这是整个 APR 生态里信息密度最高的一页纸</strong>，也是唯一必读的文档。</p>
+<h3 id="pool">第四步：把 pool 纪律做成检查清单</h3>
+<p>APR 靠自觉，那就别靠记性，靠清单。这张表可以直接抄进 code review 模板：</p>
+<table>
+<thead>
+<tr>
+<th>检查项</th>
+<th>为什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>每个函数是否接受调用者传入的 pool，而不是自己 create</td>
+<td>调用者才知道生命周期</td>
+</tr>
+<tr>
+<td>循环里是否用了子 pool + 入口 <code>apr_pool_clear</code></td>
+<td>否则 pool 单调增长（实测差 600 倍）</td>
+</tr>
+<tr>
+<td>有没有指针从长命 pool 指向短命 pool</td>
+<td>悬垂，且 ASan 抓不到</td>
+</tr>
+<tr>
+<td>对象是否自己藏了 pool 成员</td>
+<td>违反 pool-design，会导致生命周期不可推理</td>
+</tr>
+<tr>
+<td>socket / 文件 / 锁是否挂了 cleanup 或走了带 cleanup 的 API</td>
+<td>否则 pool 销毁时资源泄漏</td>
+</tr>
+<tr>
+<td>是否用 <code>APR_STATUS_IS_*()</code> 宏判断错误，而不是硬比数字</td>
+<td>硬比数字就成了 <code>730035</code> 那种魔数</td>
+</tr>
+<tr>
+<td>长生命周期 pool 是否 <code>apr_pool_tag</code> 了</td>
+<td>出问题时能定位</td>
+</tr>
+<tr>
+<td>CI 里是否有一份 <code>--enable-pool-debug</code> 的构建</td>
+<td>生命周期错误只有它能抓</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="freeswitch-apr">FreeSWITCH 是怎么用 APR 的</h2>
+<p>FreeSWITCH 是个开源软交换（软件电话交换机，处理呼叫、媒体流、SIP 信令），C 写的，几十万行。它跟 APR 的关系很有代表性——<strong>用得深，但也用得别扭。</strong></p>
+<h3 id="api-apr">它整个核心 API 都是 APR 的马甲</h3>
+<p><code>src/include/switch_apr.h</code> 开头那段注释很坦白：</p>
+<blockquote>
+<p>The things powered by APR are renamed into the <code>switch_</code> namespace to provide a cleaner look to things and helps me to document what parts of APR I am using. I'd like to take this opportunity to <strong>thank APR for all the awesome stuff it does and for making my life much easier.</strong></p>
+</blockquote>
+<p>所以 <code>src/switch_apr.c</code> 基本是一层一比一的转发：</p>
+<div class="highlight"><pre><span></span><code><span class="n">SWITCH_DECLARE</span><span class="p">(</span><span class="n">switch_status_t</span><span class="p">)</span><span class="w"> </span><span class="n">switch_mutex_lock</span><span class="p">(</span><span class="n">switch_mutex_t</span><span class="w"> </span><span class="o">*</span><span class="n">lock</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">fspr_thread_mutex_lock</span><span class="p">(</span><span class="n">lock</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="n">SWITCH_DECLARE</span><span class="p">(</span><span class="n">switch_status_t</span><span class="p">)</span><span class="w"> </span><span class="n">switch_socket_bind</span><span class="p">(</span><span class="n">switch_socket_t</span><span class="w"> </span><span class="o">*</span><span class="n">sock</span><span class="p">,</span>
+<span class="w">                                                   </span><span class="n">switch_sockaddr_t</span><span class="w"> </span><span class="o">*</span><span class="n">sa</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">fspr_socket_bind</span><span class="p">(</span><span class="n">sock</span><span class="p">,</span><span class="w"> </span><span class="n">sa</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>内存池、互斥锁、读写锁、条件变量、文件 IO、目录遍历、socket、pollset、线程、原子操作、时间、glob、队列——全是 APR。<strong>FreeSWITCH 的可移植性基本是 APR 给的。</strong></p>
+<p>它的 pool 用法完全是"httpd 风格"：一通呼叫（session）对应一个 pool，呼叫结束整块销毁。<code>switch_core_session_perform_destroy()</code> 的结尾：</p>
+<div class="highlight"><pre><span></span><code><span class="n">pool</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="o">*</span><span class="n">session</span><span class="p">)</span><span class="o">-&gt;</span><span class="n">pool</span><span class="p">;</span>
+<span class="o">*</span><span class="n">session</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">NULL</span><span class="p">;</span>
+<span class="n">switch_core_destroy_memory_pool</span><span class="p">(</span><span class="o">&amp;</span><span class="n">pool</span><span class="p">);</span>
+</code></pre></div>
+
+<p>会话对象自己就住在那个 pool 里，所以先把 pool 指针存下来，再销毁。一通电话可能跑几小时、分配几万次内存，结束时一次性归还——这正是 pool 模型最擅长的场景。你不用去追踪一通呼叫里那些 SDP 字符串、媒体缓冲、事件对象分别该在哪儿释放。</p>
+<h3 id="fork-apr">但它 fork 了 APR，还把所有符号改了名</h3>
+<p>FreeSWITCH 没用系统的 APR，而是在 <code>libs/apr</code> 里 vendor 了一份自己的。而且——</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>curl<span class="w"> </span>-s<span class="w"> </span>.../libs/apr/CHANGES<span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-1
+<span class="go">Changes for APR 1.2.8</span>
+</code></pre></div>
+
+<p><strong>APR 1.2.8 是 2007 年的版本。</strong> 一个 2026 年还在维护、还在处理生产电话流量的项目，内存管理和网络层建在一份十九年前的 fork 上。</p>
+<p>2022 年 8 月 18 日，commit <code>5c2726f413</code> “[core] rename lib apr symbols to fspr”，354 个文件，一万一千多行改动，把 <code>apr_*</code> 全部改成了 <code>fspr_*</code>。所以现在源码里满眼 <code>fspr_pool_create</code>、<code>fspr_socket_bind</code>。</p>
+<p>为什么？commit message 只有一行，没写理由。但从提交序列能看出脉络：这次改名紧跟在 “remove unimrcp from tree” 之后，随后又有 “Fix Windows build after apr-util removal”。<code>mod_unimrcp</code>（语音识别/合成的 MRCP 协议模块）自己也用 APR，而且要用现代版本；FreeSWITCH 内部这份 1.2.8 的 fork 打了一堆没有上游化的补丁，升不动。改名之后，<code>mod_unimrcp</code> 就能移出主仓库、链接系统的新 APR，两份 APR 在同一个进程里也不会符号冲突。这些改动在 1.10.8（2022 年 10 月）发布。</p>
+<!-- 建议亲自补充：如果你在 WebEx/Cisco 时代碰过 APR 或类似的 vendored fork，这里可以插一段真实经历 -->
+
+<p><strong>这是我觉得整件事最有教育意义的地方。</strong> FreeSWITCH 当年为了跨平台选了 APR，这个决定没错；但它改了 APR 的源码而没有把补丁推回上游，于是逐渐升不了级；升不了级又导致别的依赖 APR 的组件跟它冲突；最后只能靠"把一万多行代码改个前缀"来解耦。</p>
+<p><strong>依赖一个库的成本，从来不是它的 API 学习曲线，而是你打在它身上的每一个私有补丁。</strong> 你每改一行不上游的代码，都在给未来的自己记一笔账。</p>
+<hr>
+<h2 id="_6">老代码要交的税</h2>
+<p>用 APR 就得接受它是老代码这个事实，其中包括安全维护的成本。近几年的记录：</p>
+<table>
+<thead>
+<tr>
+<th>CVE</th>
+<th>位置</th>
+<th>问题</th>
+<th>修在</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CVE-2022-24963</td>
+<td>apr</td>
+<td><code>apr_encode</code> 整数溢出，越界写（<strong>9.8 CRITICAL</strong>）</td>
+<td>1.7.2</td>
+</tr>
+<tr>
+<td>CVE-2022-28331</td>
+<td>apr (Windows)</td>
+<td><code>apr_socket_sendv()</code> 栈缓冲越界写（<strong>9.8 CRITICAL</strong>）</td>
+<td>1.7.2</td>
+</tr>
+<tr>
+<td>CVE-2021-35940</td>
+<td>apr</td>
+<td><code>apr_time_exp*()</code> 数组越界读</td>
+<td>1.7.2</td>
+</tr>
+<tr>
+<td>CVE-2023-49582</td>
+<td>apr</td>
+<td>Unix 共享内存权限过松，本地可读</td>
+<td>1.7.5</td>
+</tr>
+<tr>
+<td>CVE-2026-34501/34502</td>
+<td>apr-util</td>
+<td>redis / memcached 客户端堆溢出</td>
+<td>1.6.4</td>
+</tr>
+</tbody>
+</table>
+<p><strong>其中 CVE-2021-35940 是最好的教材。</strong> 这个越界读原本就是 CVE-2017-12613，2017 年在 1.6.3 上修好了。但 1.7.x 开分支的时候，这个修复没有被带过去，于是 1.7.0 悄悄把一个已修的漏洞又放回来了，直到 2021 年才被重新发现。</p>
+<p><strong>一个漏洞修了、又因为分支管理疏漏静默回归、三年后被重新发现。</strong> 这不是 APR 特有的问题，是所有"多分支长期维护 + 人力有限"的老项目都会得的病。用这类库的时候，"跟着最新 patch 版本"不是洁癖，是必要开销。</p>
+<p>另外，apr-util 的两个 2026 年 8 月修复值得单独提：修在 1.6.4，而 1.6.3 从 2023 年 2 月起当了三年半的推荐版本。<strong>如果你的构建脚本里钉着 apr-util 1.6.3，现在就该去改。</strong></p>
+<p>顺便更正一个常见的误解：Tomcat 的情况要分两层看。<strong>APR/Native 连接器</strong>（<code>Http11AprProtocol</code>）在 Tomcat 10.0 标记废弃、10.1.0-M5 移除了；但 <strong>APR 库本身</strong>还在，tcnative 2.x 依然需要它来提供 OpenSSL 支持，Tomcat 11 启动时还会打印 <code>using APR version [1.7.3]</code>。说"Tomcat 不用 APR 了"是不准确的。</p>
+<hr>
+<h2 id="pool-pool_1">总结：pool 的思路值得偷，pool 的纪律必须靠人</h2>
+<p>APR 今天的定位很清楚：<strong>新项目基本不会选它，但已有项目一大片建在它上面。</strong> 学它的理由不是"学一门新技术"，是三件更实在的事——</p>
+<p><strong>第一，读懂代码。</strong> 你接手 httpd 模块、Subversion 相关工具、FreeSWITCH 模块，第一天就会撞见 pool。理解"pool 是生命周期而不是内存分配器"，能省掉一周的困惑。</p>
+<p><strong>第二，偷走那个想法。</strong> Robert Thau 那句 "a fundamentally unsound strategy" 到今天依然成立：<strong>逐个对象追踪释放，本来就是个脆弱的策略。</strong> 把释放粒度从"每个对象"提到"每个生命周期"，这个思路今天到处都在——Rust 的 <code>bumpalo</code>、Go 的 <code>sync.Pool</code>、游戏引擎的 frame allocator、C++17 的 <code>pmr</code>。区别只在于现代语言让编译器帮你查，APR 让你自己记。</p>
+<p><strong>第三，看清依赖的真实成本。</strong> FreeSWITCH 抱着一份 2007 年的 APR fork 走到 2026 年，最后靠改一万多行的符号前缀来解耦——这不是技术选型失误，是"改了不上游"的复利。</p>
+<p>明天就能做的三件事：</p>
+<ol>
+<li><code>brew install apr</code>，把上面那段 40 行的样板跑一遍，看着 cleanup 自己触发。</li>
+<li>花五分钟读 <a href="https://svn.apache.org/repos/asf/apr/apr/trunk/docs/pool-design.html">Using APR Pools</a>。全生态最值钱的一页纸。</li>
+<li>如果手上就有 APR 项目：搜一遍所有循环，看有没有在长生命周期 pool 里反复分配；再往 CI 里加一份 <code>--enable-pool-debug</code> 的构建。ASan 帮不了你，只有它能。</li>
+</ol>
+<p>至于那个更大的问题——<strong>你现在写的代码，二十年后会是别人要 fork 的那份"1.2.8"吗？</strong> 决定这件事的，往往不是你今天用了多先进的语言，而是你有没有把补丁推回上游。</p>
+<hr>
+<h2 id="_7">参考链接</h2>
+<ul>
+<li><a href="https://apr.apache.org/">APR 官网</a></li>
+<li><a href="https://apr.apache.org/docs/apr/1.7/">APR 1.7 API 文档</a></li>
+<li><a href="https://svn.apache.org/repos/asf/apr/apr/trunk/docs/pool-design.html">Using APR Pools（Greg Stein, 2003）</a></li>
+<li><a href="https://svn.apache.org/repos/asf/apr/apr/trunk/docs/APRDesign.html">APR Design 文档</a></li>
+<li><a href="https://apr.apache.org/apr2_0intro/apr2_0intro.htm">An Introduction to APR</a></li>
+<li><a href="https://apr.apache.org/projects.html">使用 APR 的项目列表</a></li>
+<li><a href="https://github.com/signalwire/freeswitch/blob/master/src/switch_apr.c">FreeSWITCH switch_apr.c</a></li>
+<li><a href="https://downloads.apache.org/apr/CHANGES-APR-1.7">CHANGES-APR-1.7（含 CVE 记录）</a></li>
+</ul>
+<h2 id="_8">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* APR\nApache Portable Runtime
+** What
+*** C 的&quot;缺失标准库&quot;\n41 个头文件
+*** 从 httpd 2.0 抽出\nAPR 1.0 = 2004
+*** 稳定版 1.7.6\n2.0 从 2009 年至今未发布
+** Why 内存池
+*** Thau 1995:\n逐个追踪释放\n&quot;fundamentally unsound&quot;
+*** 粒度从&quot;对象&quot;\n提到&quot;生命周期&quot;
+*** 实测:\n9.5MB vs 16KB
+*** 没有 apr_pfree\npool 只增不减
+** 设计理念
+*** pool 显式传参\n调用者才知道生命周期
+*** 一切资源挂 cleanup\nLIFO + 子先父后
+*** 错误码折叠\nSYSERR 偏移 720000
+** 常用模块
+*** pool / 字符串
+*** hash / table / array
+*** 文件 / 目录 / stat
+*** socket / pollset\nepoll·kqueue·select
+*** 线程 / 进程 / 锁
+** 两个陷阱
+*** pool 悬垂指针\nASan 抓不到
+*** 解法: pool-debug\nSIGABRT + LIFE 标记
+*** 子 pool 对象\n被父 pool 引用
+** 快速上手
+*** brew install apr\napr-1-config
+*** 跑通 40 行样板
+*** 读 pool-design.html\n五分钟
+*** pool 纪律检查清单
+** FreeSWITCH
+*** switch_* 全是 APR 马甲
+*** vendor 了 1.2.8 (2007)
+*** 2022 改名 fspr_*\n354 文件 / 11k 行
+*** 魔数 730035\n= 720000 + WSAEWOULDBLOCK
+*** 教训: 改了不上游\n= 升不动
+** 老代码的税
+*** 两个 9.8 CRITICAL\n修在 1.7.2
+*** CVE-2021-35940\n静默回归三年
+*** apr-util 1.6.3\n现在该升 1.6.4+
+@endmindmap
+</code></pre></div>
+
+<p><img alt="APR 入门 - 思维导图" src="./images/tech_20260906_apr_mindmap.png"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/apache-portable-runtime.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/tech.html">tech</a>
+      <a href="https://www.fanyamin.com/blog/tag/c.html">C</a>
+      <a href="https://www.fanyamin.com/blog/tag/apr.html">APR</a>
+      <a href="https://www.fanyamin.com/blog/tag/apache.html">apache</a>
+      <a href="https://www.fanyamin.com/blog/tag/freeswitch.html">freeswitch</a>
+      <a href="https://www.fanyamin.com/blog/tag/memory-pool.html">memory-pool</a>
+      <a href="https://www.fanyamin.com/blog/tag/portability.html">portability</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-09-05-power-of-character.html" title="人格的力量：知识不再稀缺之后，靠什么立得住">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/llm-api-evolution-and-compatibility.html" title="LLM API 的变迁：OpenAI-compatible 为什么不等于兼容">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-testing-unit-and-integration.html">给 FreeSWITCH 写测试：从单元测试到集成测试，用一个真 bug 串起来</a></li>
+      <li><a href="https://www.fanyamin.com/blog/c-dynamic-load-di-service-registry.html">C 语言的动态加载、依赖注入与服务注册：把 FreeSWITCH 的模块机制拆到底</a></li>
+      <li><a href="https://www.fanyamin.com/blog/cpp-memory-management-evolution.html">C/C++ 内存管理方法的变迁：把纪律写进类型系统</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-09-14-webrtc-to-freeswitch.html">webrtc-to-freeswitch:一个浏览器软电话的架构、流程与协议全解</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-09-11-sipjs-call-freeswitch.html">用 SIP.js 从浏览器打电话到 FreeSWITCH</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

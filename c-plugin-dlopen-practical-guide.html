@@ -1,0 +1,1926 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="dlopen 只有四个函数，半小时能学完。难的是它没管的四件事——入口点怎么找、插件怎么回调宿主、ABI 怎么不崩、卸载怎么办。这篇把这四个问题的传统答案讲清楚，给一份可编译运行的完整参考实现（357 行），再用 10 个实测的崩溃现场说明常见错误。含 Linux/macOS 差异对照和一份可勾选的 checklist。" />
+<meta name="keywords" content="tech, C, dlopen, plugin, so, abi, dynamic-linking, best-practice">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "C 插件系统实战指南：dlopen 没告诉你的四件事",
+  "description": "dlopen 只有四个函数，半小时能学完。难的是它没管的四件事——入口点怎么找、插件怎么回调宿主、ABI 怎么不崩、卸载怎么办。这篇把这四个问题的传统答案讲清楚，给一份可编译运行的完整参考实现（357 行），再用 10 个实测的崩溃现场说明常见错误。含 Linux/macOS 差异对照和一份可勾选的 checklist。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-09-07T23:30:00+08:00",
+  "dateModified": "2026-09-07T23:30:00+08:00",
+  "url": "https://www.fanyamin.com/blog/c-plugin-dlopen-practical-guide.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/c-plugin-dlopen-practical-guide.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "tech, C, dlopen, plugin, so, abi, dynamic-linking, best-practice"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="C 插件系统实战指南：dlopen 没告诉你的四件事"/>
+  <meta property="og:description" content="dlopen 只有四个函数，半小时能学完。难的是它没管的四件事——入口点怎么找、插件怎么回调宿主、ABI 怎么不崩、卸载怎么办。这篇把这四个问题的传统答案讲清楚，给一份可编译运行的完整参考实现（357 行），再用 10 个实测的崩溃现场说明常见错误。含 Linux/macOS 差异对照和一份可勾选的 checklist。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/c-plugin-dlopen-practical-guide.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-09-07 23:30:00+08:00"/>
+  <meta property="article:modified_time" content="2026-09-07 23:30:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="tech"/>
+  <meta property="article:tag" content="C"/>
+  <meta property="article:tag" content="dlopen"/>
+  <meta property="article:tag" content="plugin"/>
+  <meta property="article:tag" content="so"/>
+  <meta property="article:tag" content="abi"/>
+  <meta property="article:tag" content="dynamic-linking"/>
+  <meta property="article:tag" content="best-practice"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; C 插件系统实战指南：dlopen 没告诉你的四件事</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="c-plugin-dlopen-practical-guide">C 插件系统实战指南：dlopen 没告诉你的四件事</h1>
+    <p>
+      Posted on 一 07 9月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>C 插件系统实战指南</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-09-07</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">大纲</h2>
+<details>
+<summary>展开看看</summary>
+<ul>
+<li><strong>一句话</strong>：<code>dlopen</code> 有四个函数，半小时学完。难的是它<strong>没管</strong>的四件事：① 入口点怎么找；② 插件怎么回调宿主；③ ABI 怎么不崩；④ 卸载怎么办。传统方法的全部工程量都在这四个问题上。</li>
+<li><strong>What</strong>：<code>dlopen/dlsym/dlclose/dlerror</code> 加两个扩展，以及一张"它管什么、不管什么"的对照表。</li>
+<li><strong>Why</strong>：先给一份<strong>该不该用插件化</strong>的决策清单，以及五种替代方案（静态注册 / dlopen / 子进程+IPC / 嵌入脚本 / WASM）的对比。<strong>我的立场是：大多数团队想要的其实是静态注册，不是 dlopen。</strong></li>
+<li><strong>How</strong>：四个问题的传统答案。入口点五种 pattern（含各自的真实使用者：CPython、PAM、httpd、nginx、Redis、OpenSSL 3、QEMU）；回调宿主两派做法；ABI 三层守卫；卸载的三个最低配。</li>
+<li><strong>Example</strong>：一份 <strong>357 行、可编译可运行</strong>的完整参考实现（<code>plugin_api.h</code> 51 行 + <code>loader.c</code> 225 行 + 3 个插件 + Makefile），实现了两阶段注册、ABI 门禁、名字冲突拒绝、allowlist 门禁、引用计数。</li>
+<li><strong>10 个常见错误，每个都有崩溃现场</strong>：<code>RTLD_LAZY</code> 的延迟 SIGSEGV、<code>-fvisibility=hidden</code> 把入口藏了、Linux 忘 <code>-rdynamic</code>、C++ 忘 <code>extern "C"</code>（<strong>函数会 mangle、全局变量不会、namespace 里的变量会</strong>）、存 <code>.so</code> 里的指针、detached 线程遇上 <code>dlclose</code>、静态库被链两份导致两套全局状态、<code>RTLD_GLOBAL</code> 符号劫持（我用 <code>-flat_namespace</code> 在 macOS 上复现了 ELF 的行为）。</li>
+<li><strong>反 folklore 一条</strong>：<code>atexit</code> + <code>dlclose</code> 崩溃是个<strong>历史传说</strong>，现代 glibc 和 dyld 都通过 <code>__cxa_atexit</code> 的 DSO handle 修好了。我实测没崩。</li>
+<li><strong>收尾</strong>：12 条 best practice + 一份分组 checklist + 排障命令速查。</li>
+</ul>
+</details>
+<hr>
+<p><a href="https://www.fanyamin.com/blog/c-dynamic-load-di-service-registry.html">上一篇</a>拆的是 FreeSWITCH 一家的实现。但那套机制里大概 80% 的东西不是 FreeSWITCH 特有的 —— Apache httpd、nginx、CPython、PAM、Redis、OpenSSL、QEMU 全都在解同一批问题，答案也高度雷同。</p>
+<p>这篇把通用部分单独拎出来，写成一份能直接抄的指南。</p>
+<p>先说个观察。<code>dlopen</code> 的 man page 很短，四个函数，半小时能看完。所以大部分人的第一版插件系统长这样：</p>
+<div class="highlight"><pre><span></span><code><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">h</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dlopen</span><span class="p">(</span><span class="n">path</span><span class="p">,</span><span class="w"> </span><span class="n">RTLD_LAZY</span><span class="p">);</span>
+<span class="kt">void</span><span class="w"> </span><span class="p">(</span><span class="o">*</span><span class="n">init</span><span class="p">)()</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dlsym</span><span class="p">(</span><span class="n">h</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;plugin_init&quot;</span><span class="p">);</span>
+<span class="n">init</span><span class="p">();</span>
+</code></pre></div>
+
+<p><strong>这四行代码里有三个 bug</strong>，而且都不会立刻暴露。它们会在半年后的生产环境里，以"随机崩溃""插件加载后某个功能失灵""升级宿主后所有插件挂掉"的形式出现。</p>
+<p>下面的代码和输出均在 macOS + Apple clang 上实测。凡是本机无法验证的（主要是 ELF/Linux 特有行为），文中都会明确标出。</p>
+<hr>
+<h2 id="whatdlopen">What：<code>dlopen</code> 管什么，不管什么</h2>
+<h3 id="api">全部 API</h3>
+<div class="highlight"><pre><span></span><code><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;dlfcn.h&gt;</span>
+
+<span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="nf">dlopen</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">file</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">mode</span><span class="p">);</span>
+<span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="nf">dlsym</span><span class="w">  </span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">handle</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">name</span><span class="p">);</span>
+<span class="kt">int</span><span class="w">   </span><span class="nf">dlclose</span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">handle</span><span class="p">);</span>
+<span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="nf">dlerror</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span><span class="w">                       </span><span class="cm">/* 唯一错误通道，读一次就清空 */</span>
+</code></pre></div>
+
+<p>外加两个常用扩展（POSIX 之外，glibc 和 macOS 都有）：</p>
+<div class="highlight"><pre><span></span><code><span class="kt">int</span><span class="w">   </span><span class="nf">dladdr</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">addr</span><span class="p">,</span><span class="w"> </span><span class="n">Dl_info</span><span class="w"> </span><span class="o">*</span><span class="n">info</span><span class="p">);</span><span class="w">      </span><span class="cm">/* 地址 → 哪个 .so、哪个符号 */</span>
+<span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="nf">dlvsym</span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">h</span><span class="p">,</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">sym</span><span class="p">,</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">ver</span><span class="p">);</span><span class="w">        </span><span class="cm">/* 按符号版本查，glibc only */</span>
+</code></pre></div>
+
+<p>三个特殊 handle：</p>
+<table>
+<thead>
+<tr>
+<th>handle</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>NULL</code>（传给 <code>dlopen</code>）</td>
+<td>主程序的全局作用域，不加载任何新东西</td>
+</tr>
+<tr>
+<td><code>RTLD_DEFAULT</code></td>
+<td>按默认顺序全局搜索</td>
+</tr>
+<tr>
+<td><code>RTLD_NEXT</code></td>
+<td>从当前库<strong>之后</strong>开始搜（写 wrapper/hook 时用）</td>
+</tr>
+</tbody>
+</table>
+<p><code>dlopen(NULL, ...)</code> 这个用法很关键 —— 它让你能在<strong>宿主自己身上</strong>查符号，从而实现"静态编入和动态加载走同一套协议"。上一篇里 FreeSWITCH 的 <code>CORE_PCM_MODULE</code> 就是靠这个。</p>
+<h3 id="_2">它管什么、不管什么</h3>
+<table>
+<thead>
+<tr>
+<th></th>
+<th><code>dlopen</code> 管吗</th>
+<th>谁来管</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>把 <code>.so</code> 映射进地址空间</td>
+<td>✅</td>
+<td>—</td>
+</tr>
+<tr>
+<td>解析未定义符号</td>
+<td>✅</td>
+<td>但<strong>能不能解析成功</strong>取决于你的构建参数</td>
+</tr>
+<tr>
+<td>跑 <code>constructor</code> / <code>.init_array</code></td>
+<td>✅</td>
+<td>—</td>
+</tr>
+<tr>
+<td>引用计数（同一个 <code>.so</code> 多次 <code>dlopen</code>）</td>
+<td>✅</td>
+<td>—</td>
+</tr>
+<tr>
+<td><strong>入口点叫什么名字</strong></td>
+<td>❌</td>
+<td><strong>你自己定协议</strong></td>
+</tr>
+<tr>
+<td><strong>插件怎么调用宿主的函数</strong></td>
+<td>❌</td>
+<td><strong>你自己设计</strong></td>
+</tr>
+<tr>
+<td><strong>版本/ABI 是否兼容</strong></td>
+<td>❌</td>
+<td><strong>你自己检查</strong></td>
+</tr>
+<tr>
+<td><strong>卸载时的安全性</strong></td>
+<td>❌</td>
+<td><strong>你自己保证</strong></td>
+</tr>
+<tr>
+<td>插件之间的符号隔离</td>
+<td>半</td>
+<td>你选 <code>RTLD_LOCAL</code>/<code>GLOBAL</code>，剩下的自己扛</td>
+</tr>
+</tbody>
+</table>
+<p><strong>下面四个 How 章节，就是这四个 ❌。</strong></p>
+<hr>
+<h2 id="why">Why：先想清楚要不要用</h2>
+<p>这一节比技术细节重要。我见过太多"为了解耦而插件化"，最后既没得到灵活性，又背上了一身 ABI 债。</p>
+<h3 id="dlopen">什么时候该用 <code>dlopen</code></h3>
+<p>全部满足才划算：</p>
+<ol>
+<li><strong>第三方要在不改你代码、不重编你的宿主的前提下扩展功能</strong>。这是唯一的硬需求。</li>
+<li><strong>扩展点数量多、变化频繁</strong>，编进主程序会让构建时间和二进制体积失控（FreeSWITCH 有 90+ 模块）。</li>
+<li><strong>需要按部署裁剪</strong>：同一份宿主，客户 A 装 3 个模块，客户 B 装 30 个。</li>
+<li><strong>需要热加载</strong>（不重启加载新功能）。注意：热<strong>卸载</strong>比热<strong>加载</strong>难一个数量级，别混为一谈。</li>
+<li><strong>性能上必须同进程</strong>：音视频、数据平面这类每秒几万次调用的场景，IPC 的开销不可接受。</li>
+</ol>
+<h3 id="_3">什么时候别用</h3>
+<ul>
+<li><strong>只是想让代码分层解耦</strong> → 用<strong>静态注册表</strong>就够了。同样是"名字 → 函数指针"，但编译期链在一起，没有任何 ABI 问题、没有符号可见性问题、没有卸载问题。这是最被低估的方案。</li>
+<li><strong>扩展逻辑是业务规则、配置、模板</strong> → 嵌入 Lua / JS 引擎，或者干脆读配置。别为了跑一段 if-else 引入 <code>.so</code>。</li>
+<li><strong>插件不可信</strong> → 同进程 = 同一份地址空间，插件一个野指针就带走整个进程。<strong>必须用子进程 + IPC，或者 WASM 沙箱。</strong></li>
+<li><strong>只有 3 个扩展点，且都是自己团队写的</strong> → 静态注册。</li>
+<li><strong>团队里没人愿意长期维护 ABI 契约</strong> → 这条最现实。ABI 是需要人守的，没人守它就会烂。</li>
+</ul>
+<h3 id="_4">五种方案对比</h3>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>隔离性</th>
+<th>调用开销</th>
+<th>ABI 负担</th>
+<th>热加载</th>
+<th>跨语言</th>
+<th>适合</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>静态注册表</strong></td>
+<td>无</td>
+<td>零</td>
+<td><strong>无</strong></td>
+<td>❌</td>
+<td>❌</td>
+<td>内部分层解耦（大多数人真正需要的）</td>
+</tr>
+<tr>
+<td><strong><code>dlopen</code> 插件</strong></td>
+<td>无</td>
+<td>零</td>
+<td><strong>重</strong></td>
+<td>✅</td>
+<td>难</td>
+<td>第三方扩展 + 同进程性能要求</td>
+</tr>
+<tr>
+<td><strong>子进程 + IPC</strong></td>
+<td>强</td>
+<td>高</td>
+<td>轻（协议即契约）</td>
+<td>✅</td>
+<td>✅</td>
+<td>不可信插件、语言无关</td>
+</tr>
+<tr>
+<td><strong>嵌入脚本引擎</strong></td>
+<td>中</td>
+<td>中</td>
+<td>轻</td>
+<td>✅</td>
+<td>✅</td>
+<td>业务规则、配置化逻辑</td>
+</tr>
+<tr>
+<td><strong>WASM</strong></td>
+<td>强</td>
+<td>中</td>
+<td>轻</td>
+<td>✅</td>
+<td>✅</td>
+<td>不可信 + 需要性能，但生态还年轻</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>我的立场</strong>：如果你说不出"为什么必须是 <code>.so</code>，静态注册为什么不行"，那答案大概是静态注册。<code>dlopen</code> 的收益只有一个 —— 让别人在不重编你的程序的前提下扩展你；代价是下面整整四章。</p>
+</blockquote>
+<hr>
+<h2 id="how">How 之一：入口点怎么找</h2>
+<p><code>.so</code> 装进来了，你得 <code>dlsym</code> 一个名字。传统上有五种做法，全都在生产项目里活着。</p>
+<h3 id="pattern-a">Pattern A：固定函数名</h3>
+<div class="highlight"><pre><span></span><code><span class="cm">/* 插件 */</span>
+<span class="n">__attribute__</span><span class="p">((</span><span class="n">visibility</span><span class="p">(</span><span class="s">&quot;default&quot;</span><span class="p">)))</span>
+<span class="kt">int</span><span class="w"> </span><span class="n">plugin_init</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">host_api_t</span><span class="w"> </span><span class="o">*</span><span class="n">host</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">...</span><span class="w"> </span><span class="p">}</span>
+
+<span class="cm">/* 宿主 */</span>
+<span class="kt">int</span><span class="w"> </span><span class="p">(</span><span class="o">*</span><span class="n">init</span><span class="p">)(</span><span class="k">const</span><span class="w"> </span><span class="n">host_api_t</span><span class="w"> </span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="o">=</span>
+<span class="w">    </span><span class="p">(</span><span class="kt">int</span><span class="p">(</span><span class="o">*</span><span class="p">)(</span><span class="k">const</span><span class="w"> </span><span class="n">host_api_t</span><span class="o">*</span><span class="p">))(</span><span class="kt">intptr_t</span><span class="p">)</span><span class="n">dlsym</span><span class="p">(</span><span class="n">h</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;plugin_init&quot;</span><span class="p">);</span>
+</code></pre></div>
+
+<p><strong>真实用户</strong>：OpenSSL 3 provider、Redis module、PostgreSQL extension。</p>
+<p>本机验证 OpenSSL：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>nm<span class="w"> </span>-gU<span class="w"> </span>/opt/homebrew/opt/openssl@3/lib/ossl-modules/legacy.dylib<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>provider_init
+<span class="go">0000000000001564 T _OSSL_provider_init</span>
+</code></pre></div>
+
+<p><strong>缺点</strong>：一个名字只带一个入口。想加版本号、卸载回调、能力标志，就得再约定更多名字，协议越来越散。而且<strong>你拿到函数指针的那一刻，已经错过了"调用之前检查"的机会</strong>。</p>
+<h3 id="pattern-a-vtable">Pattern A'：固定函数名<strong>集合</strong>（约定式 VTable）</h3>
+<p>把一组固定名字当虚函数表。PAM 是教科书例子，本机验证：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>nm<span class="w"> </span>-gU<span class="w"> </span>/usr/lib/pam/pam_permit.so.2
+<span class="go">0000000000000300 T _pam_sm_acct_mgmt</span>
+<span class="go">00000000000002f0 T _pam_sm_authenticate</span>
+<span class="go">0000000000000318 T _pam_sm_chauthtok</span>
+<span class="go">0000000000000310 T _pam_sm_close_session</span>
+<span class="go">0000000000000308 T _pam_sm_open_session</span>
+<span class="go">00000000000002f8 T _pam_sm_setcred</span>
+</code></pre></div>
+
+<p><strong>六个符号，一个不多。</strong> "缺失即不支持"是它的语义 —— 你实现哪几个，PAM 就认为你支持哪几个操作。</p>
+<p>优点是极简。缺点是<strong>没地方放版本号</strong>，PAM 只能靠"<code>pam_sm_*</code> 签名二十年没变过"来维持兼容。</p>
+<h3 id="pattern-b">Pattern B：导出一个描述符<strong>数据符号</strong> ← 推荐</h3>
+<div class="highlight"><pre><span></span><code><span class="k">typedef</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">plugin_desc</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kt">int</span><span class="w">         </span><span class="n">abi_version</span><span class="p">;</span><span class="w">      </span><span class="cm">/* ← 必须是第一个字段 */</span>
+<span class="w">    </span><span class="kt">size_t</span><span class="w">      </span><span class="n">size</span><span class="p">;</span><span class="w">             </span><span class="cm">/* ← 细粒度兼容 */</span>
+<span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">name</span><span class="p">;</span>
+<span class="w">    </span><span class="kt">int</span><span class="w">       </span><span class="p">(</span><span class="o">*</span><span class="n">init</span><span class="p">)(</span><span class="k">const</span><span class="w"> </span><span class="n">host_api_t</span><span class="w"> </span><span class="o">*</span><span class="n">host</span><span class="p">,</span><span class="w"> </span><span class="n">pool_t</span><span class="w"> </span><span class="o">*</span><span class="n">pool</span><span class="p">,</span><span class="w"> </span><span class="n">registry_t</span><span class="w"> </span><span class="o">*</span><span class="n">reg</span><span class="p">);</span>
+<span class="w">    </span><span class="kt">void</span><span class="w">      </span><span class="p">(</span><span class="o">*</span><span class="n">fini</span><span class="p">)(</span><span class="kt">void</span><span class="p">);</span>
+<span class="w">    </span><span class="kt">unsigned</span><span class="w">    </span><span class="n">flags</span><span class="p">;</span>
+<span class="w">    </span><span class="kt">void</span><span class="w">       </span><span class="o">*</span><span class="n">reserved</span><span class="p">[</span><span class="mi">8</span><span class="p">];</span><span class="w">      </span><span class="cm">/* ← 留白 */</span>
+<span class="p">}</span><span class="w"> </span><span class="n">plugin_desc_t</span><span class="p">;</span>
+
+<span class="n">__attribute__</span><span class="p">((</span><span class="n">visibility</span><span class="p">(</span><span class="s">&quot;default&quot;</span><span class="p">)))</span>
+<span class="n">plugin_desc_t</span><span class="w"> </span><span class="n">plugin_descriptor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">PLUGIN_ABI</span><span class="p">,</span><span class="w"> </span><span class="k">sizeof</span><span class="p">(</span><span class="n">plugin_desc_t</span><span class="p">),</span><span class="w"> </span><span class="p">...</span><span class="w"> </span><span class="p">};</span>
+</code></pre></div>
+
+<p><strong>真实用户</strong>：Apache httpd（<code>&lt;name&gt;_module</code>）、nginx（<code>ngx_&lt;name&gt;_module</code>）、GStreamer（<code>gst_plugin_desc</code>）、PHP（<code>get_module()</code> 返回 <code>zend_module_entry*</code>）、sudo plugin（<code>sudoers_policy</code>）、FreeSWITCH（<code>&lt;name&gt;_module_interface</code>）。</p>
+<p>这些项目独立收敛到同一个方案，不是巧合。<strong>三个额外好处，通常没人讲：</strong></p>
+<p><strong>① 版本号有地方放，而且能在调用任何插件代码之前检查。</strong> 见后面的 Example。</p>
+<p><strong>② 顺手绕掉一个 ISO C 的坑。</strong> 标准 C 不允许 <code>void*</code> ↔ 函数指针互转（<code>dlsym</code> 返回 <code>void*</code> 是 POSIX 对 ISO C 的一次公开开洞，POSIX 后来在 rationale 里专门讨论过这个不一致）。数据符号是 <code>void*</code> → <code>struct*</code>，完全合法；函数指针都藏在结构体字段里，由编译器保证类型。所以严谨项目的加载器取的是<strong>数据符号</strong>，不是函数符号。</p>
+<p><strong>③ 对 C++ 更友好。</strong> 这条很意外，见"常见错误 #4"。</p>
+<h3 id="pattern-c__attribute__constructor">Pattern C：<code>__attribute__((constructor))</code> 自注册</h3>
+<p>插件不暴露任何入口，在加载时自己跑起来去调宿主的注册函数：</p>
+<div class="highlight"><pre><span></span><code><span class="k">static</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">hello</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">...</span><span class="w"> </span><span class="p">}</span>
+<span class="n">__attribute__</span><span class="p">((</span><span class="n">constructor</span><span class="p">))</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="n">selfreg</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">host_register</span><span class="p">(</span><span class="s">&quot;hello&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">hello</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>实测，注意输出顺序：</p>
+<div class="highlight"><pre><span></span><code><span class="go">=== dlopen(&quot;./p_ctor.so&quot;) ===</span>
+<span class="go">    [host_register] &#39;p_ctor:hello&#39; 注册进来了（此刻还在 dlopen 里）</span>
+<span class="go">  dlopen 返回 0x74d9f2d0（注意上面 host_register 的输出出现在这一行之前）</span>
+</code></pre></div>
+
+<p><strong>constructor 在 <code>dlopen</code> 返回之前就执行完了。</strong> 宿主一行 <code>dlsym</code> 都没写，服务已经注册好了。</p>
+<p><strong>真实用户</strong>：QEMU 的 <code>module_init()</code> 宏。</p>
+<p><strong>代价很大，我一般不推荐</strong>：</p>
+<ul>
+<li>注册发生在你无法控制的时刻。宿主的全局变量还没初始化、日志还没起来，你也拦不住。</li>
+<li>出错没法返回错误码，只能 <code>abort()</code> 或者悄悄失败。</li>
+<li>多个 constructor 之间顺序不可控。</li>
+<li><strong>ABI 检查没地方放</strong> —— 等你想检查的时候，插件代码已经跑过了。</li>
+</ul>
+<h3 id="pattern-d">Pattern D：符号名由文件名推导</h3>
+<div class="highlight"><pre><span></span><code><span class="n">snprintf</span><span class="p">(</span><span class="n">sym</span><span class="p">,</span><span class="w"> </span><span class="k">sizeof</span><span class="w"> </span><span class="n">sym</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;%s_plugin&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">basename_without_ext</span><span class="p">);</span>
+</code></pre></div>
+
+<p><strong>真实用户</strong>：CPython、glibc NSS、FreeSWITCH。</p>
+<p>CPython 是最干净的例子，本机验证：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>nm<span class="w"> </span>-gU<span class="w"> </span>.../lib-dynload/_socket.cpython-313-darwin.so
+<span class="go">0000000000000a28 T _PyInit__socket</span>
+</code></pre></div>
+
+<p><strong>整个 <code>.so</code> 只导出一个符号</strong>，名字 = <code>PyInit_</code> + 模块名。glibc 的 NSS 更极端，<code>_nss_files_getpwnam_r</code> 这种 <code>_nss_&lt;service&gt;_&lt;function&gt;</code> 全靠拼字符串。</p>
+<ul>
+<li>好处：一个进程里能同时加载 N 个插件而不撞名。Pattern A/B 那个固定的 <code>plugin_init</code> 在 <code>RTLD_GLOBAL</code> 下是会互相干扰的。</li>
+<li>坏处：<strong>文件名成了协议的一部分</strong>。改名即加载失败，而且报错信息很不直观。</li>
+</ul>
+<h3 id="pattern-e-section">Pattern E：链接器 section 收集</h3>
+<p>不用 <code>dlsym</code>，把注册项塞进自定义 section，加载后整段遍历：</p>
+<div class="highlight"><pre><span></span><code><span class="cp">#define REGISTER(x) static void *__reg_##x \</span>
+<span class="cp">    __attribute__((used, section(&quot;myregs&quot;))) = &amp;x;</span>
+</code></pre></div>
+
+<p><strong>真实用户</strong>：Linux 内核（<code>initcall</code>、<code>__param</code>）、U-Boot、Zephyr。</p>
+<p><strong>慎用</strong>：ELF 上要靠 <code>__start_myregs</code>/<code>__stop_myregs</code> 或链接脚本；Mach-O 上得用 <code>getsectiondata()</code>；PE 上又是另一套。<strong>移植成本极高</strong>，除非你只跑一个平台。</p>
+<h3 id="_5">五种对比</h3>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>版本号放哪</th>
+<th>入口数</th>
+<th>移植性</th>
+<th>谁在用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A 固定函数名</td>
+<td>没地方</td>
+<td>1</td>
+<td>好</td>
+<td>OpenSSL provider, Redis, PostgreSQL</td>
+</tr>
+<tr>
+<td>A' 固定名集合</td>
+<td>没地方</td>
+<td>N（固定）</td>
+<td>好</td>
+<td>PAM, ODBC</td>
+</tr>
+<tr>
+<td><strong>B 描述符结构体</strong></td>
+<td><strong>第一个字段</strong></td>
+<td><strong>N（可扩展）</strong></td>
+<td><strong>好</strong></td>
+<td>httpd, nginx, GStreamer, PHP, FreeSWITCH</td>
+</tr>
+<tr>
+<td>C constructor</td>
+<td>放不了</td>
+<td>任意</td>
+<td>好</td>
+<td>QEMU</td>
+</tr>
+<tr>
+<td>D 文件名推导</td>
+<td>同 A/B</td>
+<td>同 A/B</td>
+<td>好</td>
+<td>CPython, NSS, FreeSWITCH</td>
+</tr>
+<tr>
+<td>E section 收集</td>
+<td>结构体里</td>
+<td>任意</td>
+<td><strong>差</strong></td>
+<td>Linux kernel, U-Boot</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>默认选 B，需要多插件共存时叠加 D。</strong> 这也是 FreeSWITCH 的选择。</p>
+</blockquote>
+<hr>
+<h2 id="how_1">How 之二：插件怎么回调宿主</h2>
+<p>这个方向经常被忽略，但坑更多。两派做法。</p>
+<h3 id="_6">路线一：靠未定义符号（隐式）</h3>
+<p>插件直接写 <code>host_report(...)</code>，编译时不链接宿主，留个未定义符号，<code>dlopen</code> 时由动态链接器绑定。</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>nm<span class="w"> </span>-u<span class="w"> </span>p_a.so<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>host
+<span class="go">_host_report</span>
+</code></pre></div>
+
+<p>FreeSWITCH 走的这条路，<code>mod_dptools.so</code> 有 288 个未定义的 <code>switch_*</code> 符号。</p>
+<p><strong>平台大坑，必须讲清楚：</strong></p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>宿主符号默认可见吗</th>
+<th>怎么办</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Linux / ELF</strong></td>
+<td><strong>不可见</strong>（可执行文件默认不进 <code>.dynsym</code>）</td>
+<td>宿主必须加 <code>-rdynamic</code>（= <code>-Wl,--export-dynamic</code>）</td>
+</tr>
+<tr>
+<td><strong>macOS / Mach-O</strong></td>
+<td>可见（可执行文件符号默认可被 dlopen 的库解析）</td>
+<td>插件侧需 <code>-undefined dynamic_lookup</code></td>
+</tr>
+</tbody>
+</table>
+<p>本机验证 macOS 默认导出：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>nm<span class="w"> </span>-gU<span class="w"> </span>host<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-E<span class="w"> </span><span class="s2">&quot;host_report|host_register&quot;</span>
+<span class="go">0000000100000588 T _host_register</span>
+<span class="go">0000000100000548 T _host_report</span>
+</code></pre></div>
+
+<blockquote>
+<p><strong>"我在 macOS 上跑通了，搬到 Linux 插件加载就报 undefined symbol"</strong> —— 十有八九是宿主忘了 <code>-rdynamic</code>。这是这条路线最常见的事故。</p>
+</blockquote>
+<p>另一个隐性代价：<strong>你的宿主整个符号表都成了 ABI 契约</strong>。哪天你把一个内部函数改了签名，所有第三方插件都得重编，而且编译期看不出来。</p>
+<h3 id="vtable">路线二：显式传 vtable（推荐）</h3>
+<p>宿主定义一个结构体，<code>init</code> 时传进去：</p>
+<div class="highlight"><pre><span></span><code><span class="k">typedef</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">host_api</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kt">int</span><span class="w">    </span><span class="n">abi</span><span class="p">;</span>
+<span class="w">    </span><span class="kt">size_t</span><span class="w"> </span><span class="n">size</span><span class="p">;</span><span class="w">                                  </span><span class="cm">/* 让插件能判断字段有没有 */</span>
+<span class="w">    </span><span class="kt">void</span><span class="w"> </span><span class="p">(</span><span class="o">*</span><span class="n">log</span><span class="p">)(</span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">lvl</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">fmt</span><span class="p">,</span><span class="w"> </span><span class="p">...);</span>
+<span class="w">    </span><span class="kt">void</span><span class="o">*</span><span class="p">(</span><span class="o">*</span><span class="n">palloc</span><span class="p">)(</span><span class="n">pool_t</span><span class="w"> </span><span class="o">*</span><span class="n">pool</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">n</span><span class="p">);</span>
+<span class="w">    </span><span class="kt">int</span><span class="w">  </span><span class="p">(</span><span class="o">*</span><span class="n">declare_cmd</span><span class="p">)(</span><span class="n">registry_t</span><span class="w"> </span><span class="o">*</span><span class="n">reg</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="p">...);</span>
+<span class="w">    </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">reserved</span><span class="p">[</span><span class="mi">8</span><span class="p">];</span>
+<span class="p">}</span><span class="w"> </span><span class="n">host_api_t</span><span class="p">;</span>
+</code></pre></div>
+
+<p><strong>Redis module 是这一派的极致</strong>：<code>RedisModule_Init(ctx, name, ver, APIVER)</code> 会把上百个函数指针填进插件自己的静态变量里。结果是 <strong>Redis 模块的 <code>.so</code> 一个宿主符号都不依赖</strong>，<code>nm -u</code> 干净得像个纯计算库。OpenSSL 3 的 provider 用 <code>OSSL_DISPATCH</code> 表做双向协商，也是这一派。</p>
+<h3 id="_7">我的建议：两条都用，但分工明确</h3>
+<table>
+<thead>
+<tr>
+<th>走 vtable</th>
+<th>走未定义符号</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>核心能力（log / alloc / 注册 / 事件）</td>
+<td>几百个工具函数（字符串、时间、容器）</td>
+</tr>
+<tr>
+<td>需要按插件差异化的（测试替身、多租户）</td>
+<td>宏和 <code>inline</code> 函数（vtable 传不了）</td>
+</tr>
+<tr>
+<td>需要带版本协商的</td>
+<td>编译期常量</td>
+</tr>
+</tbody>
+</table>
+<p>vtable 的好处是<strong>"插件需要什么"变成了显式声明</strong>，而未定义符号是隐式的、编译期看不出来的。而且 vtable 能带 <code>size</code> 字段做前向兼容，未定义符号不能。</p>
+<hr>
+<h2 id="how-abi">How 之三：ABI 怎么不崩</h2>
+<p>In-process 插件最阴的地方：<strong>header 改了而插件没重编，你得到的不是编译错误，是随机内存踩踏。</strong> 那种 bug 找一周都正常。</p>
+<p>三层守卫，建议全上。</p>
+<h3 id="_8">第一层：描述符里的版本号（粗粒度守门）</h3>
+<div class="highlight"><pre><span></span><code><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">d</span><span class="o">-&gt;</span><span class="n">abi</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">MP_ABI</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">log</span><span class="p">(</span><span class="s">&quot;插件 abi=%d，宿主要求 %d，请重新编译插件&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">d</span><span class="o">-&gt;</span><span class="n">abi</span><span class="p">,</span><span class="w"> </span><span class="n">MP_ABI</span><span class="p">);</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="mi">-1</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>放在结构体<strong>第一个字段</strong>，这样即使后面全变了你也能安全读出它。</p>
+<p><strong>真实例子</strong>：FreeSWITCH <code>SWITCH_API_VERSION</code>（目前是 5）、Apache <code>MODULE_MAGIC_NUMBER</code>、Python <code>PYTHON_API_VERSION</code>。</p>
+<p>PostgreSQL 的 <code>PG_MODULE_MAGIC</code> 是我见过最讲究的：它不只有版本号，还带 <code>funcmaxargs</code>、<code>namedatalen</code>、<code>float8byval</code> 这些<strong>编译期配置项</strong> —— 因为配置不一致会导致结构体布局不同，光版本号对上也没用。</p>
+<p>代价：粒度太粗，加一个字段就全生态重编。所以要有第二层。</p>
+<h3 id="_9">第二层：结构体尾部留白</h3>
+<div class="highlight"><pre><span></span><code><span class="k">typedef</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">switch_io_routines</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">switch_io_outgoing_channel_t</span><span class="w"> </span><span class="n">outgoing_channel</span><span class="p">;</span>
+<span class="w">    </span><span class="cm">/* ...14 个方法... */</span>
+<span class="w">    </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">padding</span><span class="p">[</span><span class="mi">10</span><span class="p">];</span><span class="w">        </span><span class="cm">/* ← FreeSWITCH 真这么写的 */</span>
+<span class="p">}</span><span class="w"> </span><span class="n">switch_io_routines_t</span><span class="p">;</span>
+</code></pre></div>
+
+<p>以后加新方法时占用 <code>padding</code>，结构体大小不变，已编译的插件不用重编。</p>
+<ul>
+<li>优点：加方法不破 ABI</li>
+<li>缺点：有上限，用完就没了</li>
+</ul>
+<h3 id="size">第三层：结构体自带 <code>size</code></h3>
+<div class="highlight"><pre><span></span><code><span class="k">typedef</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">host_api</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">abi</span><span class="p">;</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">size</span><span class="p">;</span><span class="w"> </span><span class="cm">/* ... */</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="n">host_api_t</span><span class="p">;</span>
+
+<span class="cm">/* 插件侧：判断这个字段存不存在 */</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">host</span><span class="o">-&gt;</span><span class="n">size</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="n">offsetof</span><span class="p">(</span><span class="n">host_api_t</span><span class="p">,</span><span class="w"> </span><span class="n">new_fn</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="k">sizeof</span><span class="p">(</span><span class="kt">void</span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">host</span><span class="o">-&gt;</span><span class="n">new_fn</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">host</span><span class="o">-&gt;</span><span class="n">new_fn</span><span class="p">(...);</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>Windows API 大量用的 <code>cbSize</code> 就是这个思路。优点是<strong>双向兼容、无上限</strong>（新宿主 + 旧插件、旧宿主 + 新插件都能工作）；缺点是每处都要判，啰嗦。</p>
+<h3 id="_10">三层对比</h3>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>粒度</th>
+<th>上限</th>
+<th>双向兼容</th>
+<th>代码负担</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>版本号</td>
+<td>粗（全量重编）</td>
+<td>无</td>
+<td>❌</td>
+<td>极低</td>
+</tr>
+<tr>
+<td><code>padding</code></td>
+<td>细（加方法）</td>
+<td>有</td>
+<td>单向</td>
+<td>低</td>
+</tr>
+<tr>
+<td><code>size</code></td>
+<td>细（加字段）</td>
+<td>无</td>
+<td>✅</td>
+<td>中</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>建议：版本号做粗粒度守门 + 关键结构体带 <code>size</code> + VTable 留 <code>padding</code>。</strong> 三个都要。这不是过度设计 —— 你的 ABI 契约会活很多年，而它出错的代价是无法调试的随机崩溃。</p>
+</blockquote>
+<hr>
+<h2 id="how_2">How 之四：卸载怎么办</h2>
+<p><code>dlclose</code> 是这套机制里最危险的部分。先看崩溃现场。</p>
+<h3 id="so">现场一：存了 <code>.so</code> 里的指针</h3>
+<p>我只是把 <code>.so</code> 里一个字符串常量的指针存下来，<code>dlclose</code> 之后读它：</p>
+<div class="highlight"><pre><span></span><code><span class="go">=== 普通 dlclose ===</span>
+<span class="go">卸载前 name = &#39;p_b&#39;</span>
+<span class="go">dlclose ... done</span>
+<span class="go">dladdr: 地址已经不属于任何映像了 —— 读它就是 use-after-unmap</span>
+<span class="go">尝试读取 saved_name ... (exit=139)          ← SIGSEGV</span>
+
+<span class="go">=== RTLD_NODELETE ===</span>
+<span class="go">卸载前 name = &#39;p_b&#39;</span>
+<span class="go">dlclose ... done</span>
+<span class="go">尝试读取 saved_name ... &#39;p_b&#39;</span>
+<span class="gp gp-VirtualEnv">(exit=0)</span>
+</code></pre></div>
+
+<p><code>RTLD_NODELETE</code> 让 <code>dlclose</code> 不真正 unmap，所以读得到。这是一个诚实的中间态：<strong>逻辑上卸载，物理上不还内存。</strong></p>
+<h3 id="detached">现场二：detached 线程</h3>
+<p>插件起了个线程，<code>pthread_detach</code> 之后宿主没法 join：</p>
+<div class="highlight"><pre><span></span><code><span class="go">    [plugin] 起了一个 detached 线程，代码位于本 .so</span>
+<span class="go">  dlclose（线程还在跑）...</span>
+<span class="go">  dlclose 返回了，睡 300ms 看线程还能不能活</span>
+<span class="gp gp-VirtualEnv">(exit=139  139=SIGSEGV)</span>
+</code></pre></div>
+
+<p>线程的代码页被 unmap，下一次时钟中断回来就死。<strong>这是 <code>dlclose</code> 的头号杀手。</strong></p>
+<h3 id="so_1">残留指向 <code>.so</code> 的东西，完整清单</h3>
+<ol>
+<li><strong>函数指针</strong>（注册表里没清干净的）</li>
+<li><strong>字符串/常量指针</strong>（现场一，最阴，因为看起来只是个 <code>const char *</code>）</li>
+<li><strong>还在跑的线程</strong>（现场二，<code>dlclose</code> 不会等它）</li>
+<li><strong><code>atexit</code> 注册的回调</strong> —— 见下面的辟谣</li>
+<li><strong>TLS destructor</strong></li>
+<li><strong>C++ 的 vtable 指针 / typeinfo / 异常表</strong></li>
+<li><strong>别的库持有的回调</strong>（你给 libcurl 设过 write callback 吗？给 OpenSSL 设过 BIO 吗？）</li>
+</ol>
+<h3 id="atexit-dlclose">辟谣：<code>atexit</code> + <code>dlclose</code> 已经不崩了</h3>
+<p>这条 folklore 传了很多年。我实测：</p>
+<div class="highlight"><pre><span></span><code><span class="go">=== dlclose 之后退出 ===</span>
+<span class="go">    [plugin] init: 注册 atexit(my_cleanup)</span>
+<span class="go">  dlclose ...</span>
+<span class="go">    [plugin] atexit 回调跑了（代码可能已被 unmap）      ← 在 dlclose 期间就跑了</span>
+<span class="go">  main return，接下来 libc 会跑 atexit 链</span>
+<span class="gp gp-VirtualEnv">(exit=0)</span>
+</code></pre></div>
+
+<p><strong>现代 runtime 会在 <code>dlclose</code> 时就把该镜像注册的 handler 跑掉并摘链。</strong> glibc 靠 <code>__cxa_atexit</code> 记录 DSO handle 做到这一点，macOS 的 dyld 同理。</p>
+<p>所以这条<strong>不再是坑</strong>（除非你在很老的 libc 上）。我把它写出来是因为：<strong>照抄十年前的博客会让你防错方向。</strong></p>
+<h3 id="_11">三个最低配</h3>
+<p>如果你确实要支持热卸载：</p>
+<p><strong>① 引用计数 + 读写锁。</strong> 每次从注册表拿到接口就加读锁 + 计数，调完释放；卸载时拿写锁等读者排空。FreeSWITCH 的做法（<code>switch_module_interfaces.h:864</code>）：</p>
+<div class="highlight"><pre><span></span><code><span class="cp">#define PROTECT_INTERFACE(_it) if (_it) { \</span>
+<span class="cp">    switch_thread_rwlock_rdlock(_it-&gt;parent-&gt;rwlock);   </span><span class="cm">/* 模块级 */</span><span class="cp"> \</span>
+<span class="cp">    switch_thread_rwlock_rdlock(_it-&gt;rwlock);           </span><span class="cm">/* 接口级 */</span><span class="cp"> \</span>
+<span class="cp">    switch_mutex_lock(_it-&gt;reflock); \</span>
+<span class="cp">    _it-&gt;refs++; _it-&gt;parent-&gt;refs++; \</span>
+<span class="cp">    switch_mutex_unlock(_it-&gt;reflock); }</span>
+</code></pre></div>
+
+<p>卸载时 <code>switch_thread_rwlock_trywrlock_timeout(ptr-&gt;rwlock, 10)</code> 等 10 秒，等不到就打 ERROR 硬拆。诚实的工程妥协。</p>
+<p><strong>② 注册表里的字符串必须复制到宿主内存。</strong> 不能直接存 <code>.so</code> 里的 <code>const char *</code>。现场一那个崩溃就是这条没做。</p>
+<p><strong>③ 接受"最终会有一次泄漏或崩溃"，并写进文档。</strong> 保守派的做法：</p>
+<ul>
+<li>FreeSWITCH 有 <code>HAVE_FAKE_DLCLOSE</code> 编译选项，某些平台上根本不调 <code>dlclose</code></li>
+<li>CPython 对多数扩展不再 unmap</li>
+<li>我在下面的参考实现里也<strong>故意不 <code>dlclose</code></strong></li>
+</ul>
+<blockquote>
+<p><strong>热加载和热卸载是两件事，难度差一个数量级。</strong> 大多数场景只需要热加载（加新功能不重启），不需要热卸载。别把不需要的复杂度背上。</p>
+</blockquote>
+<hr>
+<h2 id="flags">flags 怎么选：只有两个真需要思考</h2>
+<div class="highlight"><pre><span></span><code><span class="n">dlopen</span><span class="p">(</span><span class="n">path</span><span class="p">,</span><span class="w"> </span><span class="n">RTLD_NOW</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">RTLD_LOCAL</span><span class="p">);</span><span class="w">     </span><span class="cm">/* 插件系统的默认答案 */</span>
+</code></pre></div>
+
+<h3 id="rtld_now-vs-rtld_lazy-rtld_now"><code>RTLD_NOW</code> vs <code>RTLD_LAZY</code>：<strong>插件系统请务必 <code>RTLD_NOW</code></strong></h3>
+<p>我造了个引用不存在符号的插件：</p>
+<div class="highlight"><pre><span></span><code><span class="go">--- RTLD_NOW ---</span>
+<span class="go">dlopen(&quot;./p_bad.so&quot;, RTLD_NOW) ... 失败</span>
+<span class="go">  dlopen(./p_bad.so, 0x0006): symbol not found in flat namespace</span>
+<span class="go">                              &#39;_this_symbol_does_not_exist_anywhere&#39;</span>
+
+<span class="go">--- RTLD_LAZY ---</span>
+<span class="go">dlopen(&quot;./p_bad.so&quot;, RTLD_LAZY) ... 成功 (0x74d9ca40)</span>
+<span class="go">  dlsym 成功 = 0x104994008，此时还没崩</span>
+<span class="go">  现在调用那个引用了不存在符号的 init() ...</span>
+<span class="gp gp-VirtualEnv">(exit=139)</span>                                       <span class="go">← SIGSEGV</span>
+</code></pre></div>
+
+<p><code>RTLD_LAZY</code> 让你<strong>加载成功、<code>dlsym</code> 成功、然后在半夜某个 code path 上 SIGSEGV</strong>。<code>RTLD_NOW</code> 在 <code>dlopen</code> 那一刻就给你一句人话。</p>
+<p><code>RTLD_LAZY</code> 唯一的价值是启动快一点点，和"插件版本对不上时死在你看不见的地方"这个代价完全不成比例。<strong>Apache、FreeSWITCH、Python 全都用 <code>RTLD_NOW</code>。</strong></p>
+<h3 id="rtld_local-vs-rtld_global-local"><code>RTLD_LOCAL</code> vs <code>RTLD_GLOBAL</code>：默认 <code>LOCAL</code></h3>
+<p><code>RTLD_GLOBAL</code> 把插件符号放进全局作用域，后续加载的库能看见它。</p>
+<p>需要它的场景很具体：<strong>脚本语言插件</strong>。<code>mod_python</code> 得让 Python 解释器再 <code>dlopen</code> 的扩展能找到 <code>libpython</code> 符号，不 GLOBAL 就炸。FreeSWITCH 的做法是让插件在 flags 里声明 <code>SMODF_GLOBAL_SYMBOLS</code>，加载器读到之后 <code>dlclose</code> 重开一次 —— 因为 flags 存在插件身上，不读进来就不知道该怎么打开它，一个鸡生蛋问题用"开两次"暴力解决。</p>
+<p>不需要却用了它，后果是<strong>符号互相污染</strong>。我在 macOS 上用 <code>-flat_namespace</code>（模拟 ELF 的扁平作用域）复现出来了：</p>
+<div class="highlight"><pre><span></span><code><span class="go">=== flat namespace + RTLD_LOCAL ===</span>
+<span class="go">    g1_entry 调用 shared_helper:</span>
+<span class="go">      -&gt; g1 的 shared_helper</span>
+<span class="go">    g2_entry 调用 shared_helper:</span>
+<span class="go">      -&gt; g2 的 shared_helper          ← 各调自己的，正常</span>
+
+<span class="go">=== flat namespace + RTLD_GLOBAL ===</span>
+<span class="go">    g1_entry 调用 shared_helper:</span>
+<span class="go">      -&gt; g1 的 shared_helper</span>
+<span class="go">    g2_entry 调用 shared_helper:</span>
+<span class="go">      -&gt; g1 的 shared_helper          ← 劫持！g2 调到了 g1 的实现</span>
+</code></pre></div>
+
+<p><code>g1.so</code> 和 <code>g2.so</code> 各自定义了 <code>shared_helper</code>，<code>RTLD_GLOBAL</code> 下<strong>先加载的赢</strong>，后加载的悄悄用了别人的实现。</p>
+<p>想象一下这是两个插件各自静态链了不同版本的 zlib —— 版本不匹配、结构体布局不一样、随机崩溃，而且日志里什么都看不出来。</p>
+<p>⚠️ <strong>平台差异</strong>：macOS 默认 <strong>two-level namespace</strong>，<code>.so</code> 内部调用在链接期就绑定，所以不加 <code>-flat_namespace</code> 复现不出来：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>otool<span class="w"> </span>-hv<span class="w"> </span>c2.so<span class="w"> </span><span class="p">|</span><span class="w"> </span>tail<span class="w"> </span>-1
+<span class="go">... NOUNDEFS DYLDLINK TWOLEVEL NO_REEXPORTED_DYLIBS</span>
+<span class="gp">$ </span>nm<span class="w"> </span>-u<span class="w"> </span>c2.so
+<span class="go">_printf</span>
+<span class="go">dyld_stub_binder          ← shared_helper 根本不在未定义符号表里</span>
+</code></pre></div>
+
+<p><strong>ELF/Linux 默认就是扁平的</strong>，所以上面那个劫持是 Linux 上的默认行为。这一条我是用 <code>-flat_namespace</code> 模拟验证的，没有真的 Linux 环境跑过。</p>
+<h3 id="flags_1">其他 flags（用到才管）</h3>
+<table>
+<thead>
+<tr>
+<th>flag</th>
+<th>作用</th>
+<th>平台</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>RTLD_NODELETE</code></td>
+<td><code>dlclose</code> 不真正 unmap</td>
+<td>POSIX 2008</td>
+</tr>
+<tr>
+<td><code>RTLD_NOLOAD</code></td>
+<td>只查"是否已加载"，不加载</td>
+<td>POSIX 2008</td>
+</tr>
+<tr>
+<td><code>RTLD_DEEPBIND</code></td>
+<td>插件优先用自己的符号（缓解上面的污染）</td>
+<td><strong>glibc only，和 ASan 冲突，慎用</strong></td>
+</tr>
+<tr>
+<td><code>RTLD_FIRST</code></td>
+<td><code>dlsym</code> 只在该库找，不搜依赖链</td>
+<td>macOS only</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="_12">编译链接必修项</h2>
+<div class="highlight"><pre><span></span><code><span class="c1"># 插件</span>
+cc<span class="w"> </span>-shared<span class="w"> </span>-fPIC<span class="w"> </span>-fvisibility<span class="o">=</span>hidden<span class="w"> </span>-o<span class="w"> </span>p.so<span class="w"> </span>p.c<span class="w">                             </span><span class="c1"># Linux</span>
+cc<span class="w"> </span>-shared<span class="w"> </span>-fPIC<span class="w"> </span>-fvisibility<span class="o">=</span>hidden<span class="w"> </span>-undefined<span class="w"> </span>dynamic_lookup<span class="w"> </span>-o<span class="w"> </span>p.so<span class="w"> </span>p.c<span class="w">   </span><span class="c1"># macOS</span>
+
+<span class="c1"># 宿主</span>
+cc<span class="w"> </span>-rdynamic<span class="w"> </span>-o<span class="w"> </span>host<span class="w"> </span>host.c<span class="w"> </span>-ldl<span class="w">                                             </span><span class="c1"># Linux</span>
+cc<span class="w"> </span>-o<span class="w"> </span>host<span class="w"> </span>host.c<span class="w">                                                            </span><span class="c1"># macOS</span>
+</code></pre></div>
+
+<h3 id="_13">平台差异速查</h3>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Linux</th>
+<th>macOS</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>插件扩展名</td>
+<td><code>.so</code></td>
+<td><code>.dylib</code> 或 <code>.so</code>（插件习惯用 <code>.so</code>）</td>
+</tr>
+<tr>
+<td>编译</td>
+<td><code>-shared -fPIC</code></td>
+<td><code>-shared -fPIC</code> 或 <code>-bundle</code></td>
+</tr>
+<tr>
+<td>未定义符号</td>
+<td>默认允许</td>
+<td>需 <code>-undefined dynamic_lookup</code></td>
+</tr>
+<tr>
+<td>宿主导出符号</td>
+<td><strong>需 <code>-rdynamic</code></strong></td>
+<td>默认导出</td>
+</tr>
+<tr>
+<td>符号命名空间</td>
+<td>扁平</td>
+<td>two-level（默认）</td>
+</tr>
+<tr>
+<td>需要 <code>-ldl</code></td>
+<td>老 glibc 需要；2.34+ 已并入 libc</td>
+<td>不需要</td>
+</tr>
+<tr>
+<td>找同目录依赖</td>
+<td><code>-Wl,-rpath,'$ORIGIN'</code></td>
+<td><code>-Wl,-rpath,@loader_path</code></td>
+</tr>
+<tr>
+<td>搜索路径变量</td>
+<td><code>LD_LIBRARY_PATH</code></td>
+<td><code>DYLD_LIBRARY_PATH</code>（SIP 下常失效）</td>
+</tr>
+<tr>
+<td>加载调试</td>
+<td><code>LD_DEBUG=libs,bindings</code></td>
+<td><code>DYLD_PRINT_LIBRARIES=1</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>$ORIGIN</code> / <code>@loader_path</code> 值得单独强调：<strong>插件要找同目录的依赖库，靠的是这个，不是环境变量。</strong> 用 <code>LD_LIBRARY_PATH</code> 的方案在容器和 macOS SIP 下都会翻车。</p>
+<hr>
+<h2 id="example">Example：一份可编译运行的完整参考实现</h2>
+<p>举一个实际可运行的例子，一共 357 行：<code>plugin_api.h</code> 51 行、<code>loader.c</code> 225 行、3 个插件 39 行、<code>main.c</code> 27 行、<code>Makefile</code> 15 行。它实现了本文所有推荐做法：Pattern B + D 的入口、vtable 注入、pool 生命周期注入、三层 ABI 守卫、<strong>两阶段注册</strong>、名字冲突拒绝、allowlist 门禁、引用计数、不 <code>dlclose</code>。</p>
+<h3 id="plugin_apih-headeridl"><code>plugin_api.h</code> —— 宿主与插件共享的唯一 header，这就是那份"IDL"</h3>
+<div class="highlight"><pre><span></span><code><span class="cp">#ifndef PLUGIN_API_H</span>
+<span class="cp">#define PLUGIN_API_H</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;stddef.h&gt;</span>
+
+<span class="cp">#define MP_ABI 1                 </span><span class="cm">/* 粗粒度守门：结构体不兼容变更时 +1 */</span>
+
+<span class="cm">/* ---------- 宿主提供给插件的能力（vtable 注入） ---------- */</span>
+<span class="k">typedef</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">mp_pool</span><span class="w">     </span><span class="n">mp_pool_t</span><span class="p">;</span><span class="w">      </span><span class="cm">/* 不透明：生命周期容器 */</span>
+<span class="k">typedef</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">mp_registry</span><span class="w"> </span><span class="n">mp_registry_t</span><span class="p">;</span><span class="w">  </span><span class="cm">/* 不透明：注册暂存区 */</span>
+
+<span class="k">typedef</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="p">(</span><span class="o">*</span><span class="n">mp_cmd_fn</span><span class="p">)(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">arg</span><span class="p">,</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">out</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">outlen</span><span class="p">);</span>
+
+<span class="k">typedef</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">mp_host</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kt">int</span><span class="w">    </span><span class="n">abi</span><span class="p">;</span>
+<span class="w">    </span><span class="kt">size_t</span><span class="w"> </span><span class="n">size</span><span class="p">;</span><span class="w">                                     </span><span class="cm">/* 细粒度兼容：调用方判 size */</span>
+<span class="w">    </span><span class="kt">void</span><span class="w"> </span><span class="p">(</span><span class="o">*</span><span class="n">log</span><span class="p">)(</span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">lvl</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">fmt</span><span class="p">,</span><span class="w"> </span><span class="p">...);</span>
+<span class="w">    </span><span class="kt">void</span><span class="o">*</span><span class="p">(</span><span class="o">*</span><span class="n">palloc</span><span class="p">)(</span><span class="n">mp_pool_t</span><span class="w"> </span><span class="o">*</span><span class="n">pool</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">n</span><span class="p">);</span><span class="w">       </span><span class="cm">/* 只从注入的 pool 分配 */</span>
+<span class="w">    </span><span class="kt">char</span><span class="o">*</span><span class="p">(</span><span class="o">*</span><span class="n">pstrdup</span><span class="p">)(</span><span class="n">mp_pool_t</span><span class="w"> </span><span class="o">*</span><span class="n">pool</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">s</span><span class="p">);</span>
+<span class="w">    </span><span class="cm">/* 申报能力：只写暂存区，不进全局表 */</span>
+<span class="w">    </span><span class="kt">int</span><span class="w">  </span><span class="p">(</span><span class="o">*</span><span class="n">declare_cmd</span><span class="p">)(</span><span class="n">mp_registry_t</span><span class="w"> </span><span class="o">*</span><span class="n">reg</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">name</span><span class="p">,</span>
+<span class="w">                        </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">desc</span><span class="p">,</span><span class="w"> </span><span class="n">mp_cmd_fn</span><span class="w"> </span><span class="n">fn</span><span class="p">,</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">ctx</span><span class="p">);</span>
+<span class="w">    </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">reserved</span><span class="p">[</span><span class="mi">8</span><span class="p">];</span>
+<span class="p">}</span><span class="w"> </span><span class="n">mp_host_t</span><span class="p">;</span>
+
+<span class="cm">/* ---------- 插件暴露给宿主的描述符（Pattern B 的数据符号） ---------- */</span>
+<span class="k">typedef</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">mp_plugin</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kt">int</span><span class="w">         </span><span class="n">abi</span><span class="p">;</span><span class="w">             </span><span class="cm">/* ← 必须是第一个字段 */</span>
+<span class="w">    </span><span class="kt">size_t</span><span class="w">      </span><span class="n">size</span><span class="p">;</span>
+<span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">name</span><span class="p">;</span>
+<span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">version</span><span class="p">;</span>
+<span class="w">    </span><span class="kt">int</span><span class="w">       </span><span class="p">(</span><span class="o">*</span><span class="n">init</span><span class="p">)(</span><span class="k">const</span><span class="w"> </span><span class="n">mp_host_t</span><span class="w"> </span><span class="o">*</span><span class="n">host</span><span class="p">,</span><span class="w"> </span><span class="n">mp_pool_t</span><span class="w"> </span><span class="o">*</span><span class="n">pool</span><span class="p">,</span><span class="w"> </span><span class="n">mp_registry_t</span><span class="w"> </span><span class="o">*</span><span class="n">reg</span><span class="p">);</span>
+<span class="w">    </span><span class="kt">void</span><span class="w">      </span><span class="p">(</span><span class="o">*</span><span class="n">fini</span><span class="p">)(</span><span class="kt">void</span><span class="p">);</span>
+<span class="w">    </span><span class="kt">unsigned</span><span class="w">    </span><span class="n">flags</span><span class="p">;</span>
+<span class="w">    </span><span class="kt">void</span><span class="w">       </span><span class="o">*</span><span class="n">reserved</span><span class="p">[</span><span class="mi">8</span><span class="p">];</span><span class="w">     </span><span class="cm">/* ← 给未来留白，加字段不破 ABI */</span>
+<span class="p">}</span><span class="w"> </span><span class="n">mp_plugin_t</span><span class="p">;</span>
+
+<span class="cp">#define MP_FLAG_NONE           0u</span>
+<span class="cp">#define MP_FLAG_GLOBAL_SYMBOLS 1u   </span><span class="cm">/* 需要 RTLD_GLOBAL（脚本语言插件） */</span>
+<span class="cp">#define MP_FLAG_NO_UNLOAD      2u   </span><span class="cm">/* 声明自己不可卸载 */</span>
+
+<span class="cm">/* Pattern B + D：符号名 = &lt;文件名&gt;_plugin，宿主按文件名推导 */</span>
+<span class="cp">#define MP_PLUGIN_DEFINE(modname, ver, initfn, finifn, fl)          \</span>
+<span class="cp">    __attribute__((visibility(&quot;default&quot;)))                          \</span>
+<span class="cp">    mp_plugin_t modname##_plugin = {                                \</span>
+<span class="cp">        MP_ABI, sizeof(mp_plugin_t), #modname, ver,                 \</span>
+<span class="cp">        initfn, finifn, fl, {0}                                     \</span>
+<span class="cp">    }</span>
+<span class="cp">#endif</span>
+</code></pre></div>
+
+<h3 id="loaderc"><code>loader.c</code> 的关键部分 —— 加载与门禁</h3>
+<div class="highlight"><pre><span></span><code><span class="kt">int</span><span class="w"> </span><span class="nf">mp_load</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">path</span><span class="p">){</span>
+<span class="w">    </span><span class="kt">char</span><span class="w"> </span><span class="n">key</span><span class="p">[</span><span class="mi">128</span><span class="p">],</span><span class="w"> </span><span class="n">sym</span><span class="p">[</span><span class="mi">160</span><span class="p">];</span>
+<span class="w">    </span><span class="n">basename_noext</span><span class="p">(</span><span class="n">path</span><span class="p">,</span><span class="w"> </span><span class="n">key</span><span class="p">,</span><span class="w"> </span><span class="k">sizeof</span><span class="w"> </span><span class="n">key</span><span class="p">);</span>
+<span class="w">    </span><span class="n">snprintf</span><span class="p">(</span><span class="n">sym</span><span class="p">,</span><span class="w"> </span><span class="k">sizeof</span><span class="w"> </span><span class="n">sym</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;%s_plugin&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">key</span><span class="p">);</span><span class="w">        </span><span class="cm">/* Pattern D */</span>
+
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">module_t</span><span class="w"> </span><span class="o">*</span><span class="n">m</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">R</span><span class="p">.</span><span class="n">modules</span><span class="p">;</span><span class="w"> </span><span class="n">m</span><span class="p">;</span><span class="w"> </span><span class="n">m</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">m</span><span class="o">-&gt;</span><span class="n">next</span><span class="p">)</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">strcmp</span><span class="p">(</span><span class="n">m</span><span class="o">-&gt;</span><span class="n">key</span><span class="p">,</span><span class="w"> </span><span class="n">key</span><span class="p">))</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">log</span><span class="p">(</span><span class="s">&quot;模块已加载&quot;</span><span class="p">);</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="mi">-1</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+
+<span class="w">    </span><span class="cm">/* ① 先在宿主自身找（支持静态编入），找不到再 dlopen */</span>
+<span class="w">    </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">dso</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dlopen</span><span class="p">(</span><span class="nb">NULL</span><span class="p">,</span><span class="w"> </span><span class="n">RTLD_NOW</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">RTLD_LOCAL</span><span class="p">);</span>
+<span class="w">    </span><span class="n">dlerror</span><span class="p">();</span><span class="w">                                          </span><span class="cm">/* 先清空错误 */</span>
+<span class="w">    </span><span class="n">mp_plugin_t</span><span class="w"> </span><span class="o">*</span><span class="n">d</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">mp_plugin_t</span><span class="w"> </span><span class="o">*</span><span class="p">)</span><span class="n">dlsym</span><span class="p">(</span><span class="n">dso</span><span class="p">,</span><span class="w"> </span><span class="n">sym</span><span class="p">);</span>
+<span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">from_self</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">d</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="nb">NULL</span><span class="p">);</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">d</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">dso</span><span class="p">)</span><span class="w"> </span><span class="n">dlclose</span><span class="p">(</span><span class="n">dso</span><span class="p">);</span>
+<span class="w">        </span><span class="n">dso</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dlopen</span><span class="p">(</span><span class="n">path</span><span class="p">,</span><span class="w"> </span><span class="n">RTLD_NOW</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">RTLD_LOCAL</span><span class="p">);</span><span class="w">      </span><span class="cm">/* ② NOW + LOCAL */</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">dso</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">log</span><span class="p">(</span><span class="s">&quot;dlopen: %s&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">dlerror</span><span class="p">());</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="mi">-1</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+<span class="w">        </span><span class="n">dlerror</span><span class="p">();</span>
+<span class="w">        </span><span class="n">d</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">mp_plugin_t</span><span class="w"> </span><span class="o">*</span><span class="p">)</span><span class="n">dlsym</span><span class="p">(</span><span class="n">dso</span><span class="p">,</span><span class="w"> </span><span class="n">sym</span><span class="p">);</span>
+<span class="w">        </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">e</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dlerror</span><span class="p">();</span><span class="w">                            </span><span class="cm">/* ③ 用 dlerror 判错，不看返回值 */</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">d</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">log</span><span class="p">(</span><span class="s">&quot;dlsym: %s&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">e</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">e</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s">&quot;not found&quot;</span><span class="p">);</span><span class="w"> </span><span class="n">dlclose</span><span class="p">(</span><span class="n">dso</span><span class="p">);</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="mi">-1</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="cm">/* ④ 门禁：abi → size → 必填字段，全部在调用任何插件代码之前 */</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">d</span><span class="o">-&gt;</span><span class="n">abi</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">MP_ABI</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">log</span><span class="p">(</span><span class="s">&quot;ABI 不匹配: 插件 %d, 宿主 %d —— 请重新编译插件&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">d</span><span class="o">-&gt;</span><span class="n">abi</span><span class="p">,</span><span class="w"> </span><span class="n">MP_ABI</span><span class="p">);</span>
+<span class="w">        </span><span class="n">dlclose</span><span class="p">(</span><span class="n">dso</span><span class="p">);</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="mi">-1</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">d</span><span class="o">-&gt;</span><span class="n">size</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">offsetof</span><span class="p">(</span><span class="n">mp_plugin_t</span><span class="p">,</span><span class="w"> </span><span class="n">flags</span><span class="p">))</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">log</span><span class="p">(</span><span class="s">&quot;描述符被截断&quot;</span><span class="p">);</span><span class="w"> </span><span class="p">...</span><span class="w"> </span><span class="p">}</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">d</span><span class="o">-&gt;</span><span class="n">init</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">log</span><span class="p">(</span><span class="s">&quot;缺 init&quot;</span><span class="p">);</span><span class="w"> </span><span class="p">...</span><span class="w"> </span><span class="p">}</span>
+
+<span class="w">    </span><span class="cm">/* ⑤ 需要 RTLD_GLOBAL？重开一次（flags 在 .so 里，不读进来不知道） */</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">((</span><span class="n">d</span><span class="o">-&gt;</span><span class="n">flags</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="n">MP_FLAG_GLOBAL_SYMBOLS</span><span class="p">)</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="o">!</span><span class="n">from_self</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">dlclose</span><span class="p">(</span><span class="n">dso</span><span class="p">);</span>
+<span class="w">        </span><span class="n">dso</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dlopen</span><span class="p">(</span><span class="n">path</span><span class="p">,</span><span class="w"> </span><span class="n">RTLD_NOW</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">RTLD_GLOBAL</span><span class="p">);</span>
+<span class="w">        </span><span class="n">d</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">mp_plugin_t</span><span class="w"> </span><span class="o">*</span><span class="p">)</span><span class="n">dlsym</span><span class="p">(</span><span class="n">dso</span><span class="p">,</span><span class="w"> </span><span class="n">sym</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="n">module_t</span><span class="w"> </span><span class="o">*</span><span class="n">m</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">calloc</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="k">sizeof</span><span class="p">(</span><span class="o">*</span><span class="n">m</span><span class="p">));</span>
+<span class="w">    </span><span class="n">m</span><span class="o">-&gt;</span><span class="n">key</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">strdup</span><span class="p">(</span><span class="n">key</span><span class="p">);</span><span class="w"> </span><span class="n">m</span><span class="o">-&gt;</span><span class="n">dso</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dso</span><span class="p">;</span><span class="w"> </span><span class="n">m</span><span class="o">-&gt;</span><span class="n">desc</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">d</span><span class="p">;</span>
+<span class="w">    </span><span class="n">m</span><span class="o">-&gt;</span><span class="n">pool</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">pool_create</span><span class="p">();</span><span class="w">                    </span><span class="cm">/* ⑥ pool 生命周期 = 模块生命周期 */</span>
+<span class="w">    </span><span class="n">m</span><span class="o">-&gt;</span><span class="n">staging</span><span class="p">.</span><span class="n">owner</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">m</span><span class="p">;</span>
+
+<span class="w">    </span><span class="cm">/* ⑦ 阶段 1：插件申报（只写暂存区，不进全局表） */</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">d</span><span class="o">-&gt;</span><span class="n">init</span><span class="p">(</span><span class="o">&amp;</span><span class="n">HOST</span><span class="p">,</span><span class="w"> </span><span class="n">m</span><span class="o">-&gt;</span><span class="n">pool</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">m</span><span class="o">-&gt;</span><span class="n">staging</span><span class="p">)</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* 清理并返回 */</span><span class="w"> </span><span class="p">}</span>
+
+<span class="w">    </span><span class="cm">/* ⑧ 阶段 2：宿主发布（门禁、冲突检查、审计都在这一步） */</span>
+<span class="w">    </span><span class="n">publish</span><span class="p">(</span><span class="n">m</span><span class="p">);</span>
+<span class="w">    </span><span class="n">m</span><span class="o">-&gt;</span><span class="n">next</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">R</span><span class="p">.</span><span class="n">modules</span><span class="p">;</span><span class="w"> </span><span class="n">R</span><span class="p">.</span><span class="n">modules</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">m</span><span class="p">;</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>发布阶段是整个设计最值钱的地方 —— <strong>模块只申报，宿主决定发布</strong>：</p>
+<div class="highlight"><pre><span></span><code><span class="k">static</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="nf">publish</span><span class="p">(</span><span class="n">module_t</span><span class="w"> </span><span class="o">*</span><span class="n">m</span><span class="p">){</span>
+<span class="w">    </span><span class="n">pthread_mutex_lock</span><span class="p">(</span><span class="o">&amp;</span><span class="n">R</span><span class="p">.</span><span class="n">lock</span><span class="p">);</span>
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">cmd_entry_t</span><span class="w"> </span><span class="o">*</span><span class="n">e</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">m</span><span class="o">-&gt;</span><span class="n">staging</span><span class="p">.</span><span class="n">head</span><span class="p">;</span><span class="w"> </span><span class="n">e</span><span class="p">;</span><span class="w"> </span><span class="n">e</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">e</span><span class="o">-&gt;</span><span class="n">next_in_module</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="cm">/* 门禁：allowlist */</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">permitted</span><span class="p">(</span><span class="n">m</span><span class="o">-&gt;</span><span class="n">key</span><span class="p">,</span><span class="w"> </span><span class="n">e</span><span class="o">-&gt;</span><span class="n">name</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;    [SKIP ] &#39;%s&#39; 被 allowlist 拒绝</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">e</span><span class="o">-&gt;</span><span class="n">name</span><span class="p">);</span><span class="w"> </span><span class="k">continue</span><span class="p">;</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="cm">/* 冲突要报错，不静默覆盖 */</span>
+<span class="w">        </span><span class="kt">int</span><span class="w"> </span><span class="n">dup</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">-1</span><span class="p">;</span>
+<span class="w">        </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span><span class="n">i</span><span class="o">&lt;</span><span class="n">R</span><span class="p">.</span><span class="n">n</span><span class="p">;</span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">strcmp</span><span class="p">(</span><span class="n">R</span><span class="p">.</span><span class="n">tab</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="n">e</span><span class="o">-&gt;</span><span class="n">name</span><span class="p">))</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">dup</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">i</span><span class="p">;</span><span class="w"> </span><span class="k">break</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">dup</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;    [ERROR] 命令 &#39;%s&#39; 已被 %s 注册，%s 的注册被拒绝</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span>
+<span class="w">                   </span><span class="n">e</span><span class="o">-&gt;</span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="n">R</span><span class="p">.</span><span class="n">tab</span><span class="p">[</span><span class="n">dup</span><span class="p">].</span><span class="n">e</span><span class="o">-&gt;</span><span class="n">owner</span><span class="o">-&gt;</span><span class="n">key</span><span class="p">,</span><span class="w"> </span><span class="n">m</span><span class="o">-&gt;</span><span class="n">key</span><span class="p">);</span>
+<span class="w">            </span><span class="k">continue</span><span class="p">;</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="n">R</span><span class="p">.</span><span class="n">tab</span><span class="p">[</span><span class="n">R</span><span class="p">.</span><span class="n">n</span><span class="p">].</span><span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">e</span><span class="o">-&gt;</span><span class="n">name</span><span class="p">;</span><span class="w"> </span><span class="n">R</span><span class="p">.</span><span class="n">tab</span><span class="p">[</span><span class="n">R</span><span class="p">.</span><span class="n">n</span><span class="p">].</span><span class="n">e</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">e</span><span class="p">;</span><span class="w"> </span><span class="n">R</span><span class="p">.</span><span class="n">n</span><span class="o">++</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="n">pthread_mutex_unlock</span><span class="p">(</span><span class="o">&amp;</span><span class="n">R</span><span class="p">.</span><span class="n">lock</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>注意 <code>declare_cmd</code> 里这一句 —— <strong>字符串必须复制到宿主的 pool</strong>，否则卸载后注册表里全是野指针：</p>
+<div class="highlight"><pre><span></span><code><span class="k">static</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="nf">h_declare_cmd</span><span class="p">(</span><span class="n">mp_registry_t</span><span class="w"> </span><span class="o">*</span><span class="n">reg</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">desc</span><span class="p">,</span>
+<span class="w">                         </span><span class="n">mp_cmd_fn</span><span class="w"> </span><span class="n">fn</span><span class="p">,</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">ctx</span><span class="p">){</span>
+<span class="w">    </span><span class="n">mp_pool_t</span><span class="w"> </span><span class="o">*</span><span class="n">pool</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">reg</span><span class="o">-&gt;</span><span class="n">owner</span><span class="o">-&gt;</span><span class="n">pool</span><span class="p">;</span>
+<span class="w">    </span><span class="n">cmd_entry_t</span><span class="w"> </span><span class="o">*</span><span class="n">e</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">pool_alloc</span><span class="p">(</span><span class="n">pool</span><span class="p">,</span><span class="w"> </span><span class="k">sizeof</span><span class="p">(</span><span class="o">*</span><span class="n">e</span><span class="p">));</span>
+<span class="w">    </span><span class="n">e</span><span class="o">-&gt;</span><span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">pool_strdup</span><span class="p">(</span><span class="n">pool</span><span class="p">,</span><span class="w"> </span><span class="n">name</span><span class="p">);</span><span class="w">        </span><span class="cm">/* ← 不存 .so 里的指针 */</span>
+<span class="w">    </span><span class="n">e</span><span class="o">-&gt;</span><span class="n">desc</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">pool_strdup</span><span class="p">(</span><span class="n">pool</span><span class="p">,</span><span class="w"> </span><span class="n">desc</span><span class="p">);</span>
+<span class="w">    </span><span class="n">e</span><span class="o">-&gt;</span><span class="n">fn</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fn</span><span class="p">;</span><span class="w"> </span><span class="n">e</span><span class="o">-&gt;</span><span class="n">ctx</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">;</span><span class="w"> </span><span class="n">e</span><span class="o">-&gt;</span><span class="n">owner</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">reg</span><span class="o">-&gt;</span><span class="n">owner</span><span class="p">;</span>
+<span class="w">    </span><span class="n">e</span><span class="o">-&gt;</span><span class="n">next_in_module</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">reg</span><span class="o">-&gt;</span><span class="n">head</span><span class="p">;</span><span class="w"> </span><span class="n">reg</span><span class="o">-&gt;</span><span class="n">head</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">e</span><span class="p">;</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>派发<strong>不把裸指针交给调用方</strong>，并且加引用计数：</p>
+<div class="highlight"><pre><span></span><code><span class="kt">int</span><span class="w"> </span><span class="nf">mp_exec</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">arg</span><span class="p">,</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">out</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">outlen</span><span class="p">){</span>
+<span class="w">    </span><span class="n">cmd_entry_t</span><span class="w"> </span><span class="o">*</span><span class="n">e</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">NULL</span><span class="p">;</span>
+<span class="w">    </span><span class="n">pthread_mutex_lock</span><span class="p">(</span><span class="o">&amp;</span><span class="n">R</span><span class="p">.</span><span class="n">lock</span><span class="p">);</span>
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span><span class="n">i</span><span class="o">&lt;</span><span class="n">R</span><span class="p">.</span><span class="n">n</span><span class="p">;</span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">strcmp</span><span class="p">(</span><span class="n">R</span><span class="p">.</span><span class="n">tab</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="n">name</span><span class="p">))</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">e</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">R</span><span class="p">.</span><span class="n">tab</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">e</span><span class="p">;</span><span class="w"> </span><span class="k">break</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="w"> </span><span class="n">e</span><span class="o">-&gt;</span><span class="n">refs</span><span class="o">++</span><span class="p">;</span><span class="w">                                  </span><span class="cm">/* 防止调用期间被卸载 */</span>
+<span class="w">    </span><span class="n">pthread_mutex_unlock</span><span class="p">(</span><span class="o">&amp;</span><span class="n">R</span><span class="p">.</span><span class="n">lock</span><span class="p">);</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">e</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">snprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="w"> </span><span class="n">outlen</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;-ERR 未知命令 &#39;%s&#39;&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">name</span><span class="p">);</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="mi">-1</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+<span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">rc</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">e</span><span class="o">-&gt;</span><span class="n">fn</span><span class="p">(</span><span class="n">e</span><span class="o">-&gt;</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="n">arg</span><span class="p">,</span><span class="w"> </span><span class="n">out</span><span class="p">,</span><span class="w"> </span><span class="n">outlen</span><span class="p">);</span>
+<span class="w">    </span><span class="n">pthread_mutex_lock</span><span class="p">(</span><span class="o">&amp;</span><span class="n">R</span><span class="p">.</span><span class="n">lock</span><span class="p">);</span><span class="w"> </span><span class="n">e</span><span class="o">-&gt;</span><span class="n">refs</span><span class="o">--</span><span class="p">;</span><span class="w"> </span><span class="n">pthread_mutex_unlock</span><span class="p">(</span><span class="o">&amp;</span><span class="n">R</span><span class="p">.</span><span class="n">lock</span><span class="p">);</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">rc</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>卸载时<strong>只删"确实指向我"的项</strong> —— 这一句是上一篇里 FreeSWITCH 那个"卸载后核心命令永久消失"的 bug 的修法：</p>
+<div class="highlight"><pre><span></span><code><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span><span class="n">i</span><span class="o">&lt;</span><span class="n">R</span><span class="p">.</span><span class="n">n</span><span class="p">;</span><span class="n">i</span><span class="o">++</span><span class="p">)</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">R</span><span class="p">.</span><span class="n">tab</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">e</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">e</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">                     </span><span class="cm">/* 比指针，不比名字 */</span>
+<span class="w">        </span><span class="n">R</span><span class="p">.</span><span class="n">tab</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">R</span><span class="p">.</span><span class="n">tab</span><span class="p">[</span><span class="o">--</span><span class="n">R</span><span class="p">.</span><span class="n">n</span><span class="p">];</span><span class="w"> </span><span class="k">break</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+</code></pre></div>
+
+<h3 id="_14">一个插件长什么样</h3>
+<div class="highlight"><pre><span></span><code><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;plugin_api.h&quot;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;stdio.h&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;string.h&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;ctype.h&gt;</span>
+
+<span class="k">static</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">mp_host_t</span><span class="w"> </span><span class="o">*</span><span class="n">H</span><span class="p">;</span><span class="w">                  </span><span class="cm">/* 保存注入的 host vtable */</span>
+
+<span class="k">static</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="nf">cmd_hello</span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">arg</span><span class="p">,</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">out</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">n</span><span class="p">){</span>
+<span class="w">    </span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="n">ctx</span><span class="p">;</span><span class="w"> </span><span class="n">snprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="w"> </span><span class="n">n</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;+OK hello, %s!&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">arg</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="o">*</span><span class="n">arg</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">arg</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s">&quot;world&quot;</span><span class="p">);</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+<span class="k">static</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="nf">cmd_upper</span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">arg</span><span class="p">,</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">out</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">n</span><span class="p">){</span>
+<span class="w">    </span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="n">ctx</span><span class="p">;</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">i</span><span class="p">;</span><span class="w"> </span><span class="n">snprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="w"> </span><span class="n">n</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;+OK &quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">arg</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">arg</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">5</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">n</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span>
+<span class="w">        </span><span class="n">out</span><span class="p">[</span><span class="mi">4</span><span class="o">+</span><span class="n">i</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="kt">char</span><span class="p">)</span><span class="n">toupper</span><span class="p">((</span><span class="kt">unsigned</span><span class="w"> </span><span class="kt">char</span><span class="p">)</span><span class="n">arg</span><span class="p">[</span><span class="n">i</span><span class="p">]);</span>
+<span class="w">    </span><span class="n">out</span><span class="p">[</span><span class="mi">4</span><span class="o">+</span><span class="n">i</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+<span class="k">static</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="nf">init</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">mp_host_t</span><span class="w"> </span><span class="o">*</span><span class="n">host</span><span class="p">,</span><span class="w"> </span><span class="n">mp_pool_t</span><span class="w"> </span><span class="o">*</span><span class="n">pool</span><span class="p">,</span><span class="w"> </span><span class="n">mp_registry_t</span><span class="w"> </span><span class="o">*</span><span class="n">reg</span><span class="p">){</span>
+<span class="w">    </span><span class="n">H</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">host</span><span class="p">;</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">host</span><span class="o">-&gt;</span><span class="n">abi</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">MP_ABI</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="mi">-1</span><span class="p">;</span><span class="w">      </span><span class="cm">/* 双向检查：插件也验宿主 */</span>
+<span class="w">    </span><span class="n">host</span><span class="o">-&gt;</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;INFO&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;mod_hello: host abi=%d size=%zu&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">host</span><span class="o">-&gt;</span><span class="n">abi</span><span class="p">,</span><span class="w"> </span><span class="n">host</span><span class="o">-&gt;</span><span class="n">size</span><span class="p">);</span>
+<span class="w">    </span><span class="n">host</span><span class="o">-&gt;</span><span class="n">declare_cmd</span><span class="p">(</span><span class="n">reg</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;hello&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;打个招呼&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">cmd_hello</span><span class="p">,</span><span class="w"> </span><span class="nb">NULL</span><span class="p">);</span>
+<span class="w">    </span><span class="n">host</span><span class="o">-&gt;</span><span class="n">declare_cmd</span><span class="p">(</span><span class="n">reg</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;upper&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;转大写&quot;</span><span class="p">,</span><span class="w">   </span><span class="n">cmd_upper</span><span class="p">,</span><span class="w"> </span><span class="nb">NULL</span><span class="p">);</span>
+<span class="w">    </span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="n">pool</span><span class="p">;</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+<span class="k">static</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">fini</span><span class="p">(</span><span class="kt">void</span><span class="p">){</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">H</span><span class="p">)</span><span class="w"> </span><span class="n">H</span><span class="o">-&gt;</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;INFO&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;mod_hello: fini&quot;</span><span class="p">);</span><span class="w"> </span><span class="p">}</span>
+
+<span class="n">MP_PLUGIN_DEFINE</span><span class="p">(</span><span class="n">mod_hello</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;1.0.0&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">init</span><span class="p">,</span><span class="w"> </span><span class="n">fini</span><span class="p">,</span><span class="w"> </span><span class="n">MP_FLAG_NONE</span><span class="p">);</span>
+</code></pre></div>
+
+<h3 id="makefile">Makefile</h3>
+<div class="highlight"><pre><span></span><code><span class="nv">CFLAGS</span><span class="w">        </span><span class="o">=</span><span class="w"> </span>-std<span class="o">=</span>c11<span class="w"> </span>-Wall<span class="w"> </span>-Wextra<span class="w"> </span>-O2<span class="w"> </span>-I.
+<span class="nv">PLUGIN_CFLAGS</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">$(</span>CFLAGS<span class="k">)</span><span class="w"> </span>-fPIC<span class="w"> </span>-fvisibility<span class="o">=</span>hidden
+
+<span class="nv">UNAME</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="k">$(</span>shell<span class="w"> </span>uname<span class="w"> </span>-s<span class="k">)</span>
+<span class="cp">ifeq ($(UNAME),Darwin)</span>
+<span class="w">  </span><span class="nv">PLUGIN_LDFLAGS</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>-shared<span class="w"> </span>-undefined<span class="w"> </span>dynamic_lookup
+<span class="w">  </span><span class="nv">HOST_LDFLAGS</span><span class="w">   </span><span class="o">=</span>
+<span class="cp">else</span>
+<span class="w">  </span><span class="nv">PLUGIN_LDFLAGS</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>-shared
+<span class="w">  </span><span class="nv">HOST_LDFLAGS</span><span class="w">   </span><span class="o">=</span><span class="w"> </span>-rdynamic<span class="w"> </span>-ldl<span class="w">        </span><span class="c1"># ← Linux 必须 -rdynamic</span>
+<span class="cp">endif</span>
+
+<span class="nv">PLUGINS</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>mod_hello.so<span class="w"> </span>mod_dup.so<span class="w"> </span>mod_old.so
+<span class="nf">all</span><span class="o">:</span><span class="w"> </span><span class="n">host</span> <span class="k">$(</span><span class="nv">PLUGINS</span><span class="k">)</span>
+<span class="nf">host</span><span class="o">:</span><span class="w"> </span><span class="n">main</span>.<span class="n">c</span> <span class="n">loader</span>.<span class="n">c</span> ; <span class="k">$(</span><span class="nv">CC</span><span class="k">)</span> <span class="k">$(</span><span class="nv">CFLAGS</span><span class="k">)</span> -<span class="n">o</span> $@ $^ <span class="k">$(</span><span class="nv">HOST_LDFLAGS</span><span class="k">)</span> -<span class="n">lpthread</span>
+<span class="nf">%.so</span><span class="o">:</span><span class="w"> </span>%.<span class="n">c</span>              ; <span class="k">$(</span><span class="nv">CC</span><span class="k">)</span> <span class="k">$(</span><span class="nv">PLUGIN_CFLAGS</span><span class="k">)</span> <span class="k">$(</span><span class="nv">PLUGIN_LDFLAGS</span><span class="k">)</span> -<span class="n">o</span> $@ $&lt;
+<span class="nf">clean</span><span class="o">:</span><span class="w">                 </span>; <span class="n">rm</span> -<span class="n">f</span> <span class="n">host</span> <span class="k">$(</span><span class="nv">PLUGINS</span><span class="k">)</span>
+</code></pre></div>
+
+<h3 id="_15">实际运行输出</h3>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>make<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>./host
+
+<span class="go">&gt;&gt;&gt; load ./mod_hello.so  (查符号 &#39;mod_hello_plugin&#39;)</span>
+<span class="go">    符号来自 该 .so</span>
+<span class="go">    [INFO ] mod_hello: host abi=1 size=112</span>
+<span class="go">    plugin &#39;mod_hello&#39; v1.0.0 申报完成</span>
+<span class="go">    [ADD  ] 命令 &#39;upper&#39;  (转大写)</span>
+<span class="go">    [ADD  ] 命令 &#39;hello&#39;  (打个招呼)</span>
+
+<span class="go">&gt;&gt;&gt; load ./mod_old.so  (查符号 &#39;mod_old_plugin&#39;)</span>
+<span class="go">    符号来自 该 .so</span>
+<span class="go">    [ERROR] ABI 不匹配: 插件 0, 宿主 1 —— 请重新编译插件</span>
+
+<span class="go">&gt;&gt;&gt; load ./mod_dup.so  (查符号 &#39;mod_dup_plugin&#39;)</span>
+<span class="go">    plugin &#39;mod_dup&#39; v0.1 申报完成</span>
+<span class="go">    [ADD  ] 命令 &#39;dup&#39;  (我自己的命令)</span>
+<span class="go">    [ERROR] 命令 &#39;hello&#39; 已被 mod_hello 注册，mod_dup 的注册被拒绝</span>
+
+<span class="go">&gt;&gt;&gt; load ./mod_hello.so  (查符号 &#39;mod_hello_plugin&#39;)</span>
+<span class="go">    [ERROR] 模块已加载</span>
+
+<span class="go">=== 注册表（3 条） ===</span>
+<span class="go">  upper        转大写                    [mod_hello]</span>
+<span class="go">  hello        打个招呼                  [mod_hello]</span>
+<span class="go">  dup          我自己的命令              [mod_dup]</span>
+
+<span class="go">=== 派发 ===</span>
+<span class="go">  hello    walter    -&gt; +OK hello, walter!</span>
+<span class="go">  upper    abi guard -&gt; +OK ABI GUARD</span>
+<span class="go">  dup                -&gt; +OK from mod_dup</span>
+<span class="go">  nope               -&gt; -ERR 未知命令 &#39;nope&#39;</span>
+
+<span class="go">&gt;&gt;&gt; unload mod_hello</span>
+<span class="go">    [DEL  ] 命令 &#39;upper&#39;</span>
+<span class="go">    [DEL  ] 命令 &#39;hello&#39;</span>
+<span class="go">    [INFO ] mod_hello: fini</span>
+<span class="go">    模块 mod_hello 已卸载（dso 保留映射，不 dlclose）</span>
+
+<span class="go">=== 注册表（1 条） ===</span>
+<span class="go">  dup          我自己的命令              [mod_dup]</span>
+
+<span class="go">=== 派发（mod_hello 已卸载）===</span>
+<span class="go">  hello    walter    -&gt; -ERR 未知命令 &#39;hello&#39;</span>
+<span class="go">  dup                -&gt; +OK from mod_dup      ← 别人的命令没被连带删掉</span>
+</code></pre></div>
+
+<p>对照上一篇里 FreeSWITCH 的行为：</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>FreeSWITCH</th>
+<th>这份参考实现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>名字冲突</td>
+<td>静默覆盖</td>
+<td><strong>报错拒绝</strong></td>
+</tr>
+<tr>
+<td>卸载后</td>
+<td>可能连带删掉别人的注册</td>
+<td>只删指针相符的项</td>
+</tr>
+<tr>
+<td>重复加载</td>
+<td>拒绝</td>
+<td>拒绝</td>
+</tr>
+<tr>
+<td>ABI 不匹配</td>
+<td>拒绝</td>
+<td>拒绝</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_16">每个插件的导出面积</h3>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span><span class="k">for</span><span class="w"> </span>f<span class="w"> </span><span class="k">in</span><span class="w"> </span>mod_hello.so<span class="w"> </span>mod_dup.so<span class="w"> </span>mod_old.so<span class="p">;</span><span class="w"> </span><span class="k">do</span><span class="w"> </span><span class="nb">printf</span><span class="w"> </span><span class="s2">&quot;%-14s &quot;</span><span class="w"> </span><span class="nv">$f</span><span class="p">;</span><span class="w"> </span>nm<span class="w"> </span>-gU<span class="w"> </span><span class="nv">$f</span><span class="p">;</span><span class="w"> </span><span class="k">done</span>
+<span class="go">mod_hello.so   0000000000008010 D _mod_hello_plugin</span>
+<span class="go">mod_dup.so     0000000000008008 D _mod_dup_plugin</span>
+<span class="go">mod_old.so     0000000000004000 D _mod_old_plugin</span>
+</code></pre></div>
+
+<p><strong>一个符号。</strong> <code>-fvisibility=hidden</code> + 入口点显式 <code>default</code> 的效果。对照 OpenSSL 的 legacy provider —— 209 个导出符号，<code>DES_encrypt1</code>、<code>MD5_Init</code>、<code>RC4</code> 全在外面，那些本该是内部实现。</p>
+<h3 id="allowlist">allowlist 门禁（两阶段的红利）</h3>
+<p>因为发布权在宿主手里，加门禁只需要改一个地方，对所有插件（含第三方）自动生效：</p>
+<div class="highlight"><pre><span></span><code><span class="go">=== 开启 allowlist：只放行 mod_hello.hello ===</span>
+
+<span class="go">&gt;&gt;&gt; load ./mod_hello.so</span>
+<span class="go">    plugin &#39;mod_hello&#39; v1.0.0 申报完成</span>
+<span class="go">    [SKIP ] &#39;upper&#39; 被 allowlist 拒绝</span>
+<span class="go">    [ADD  ] 命令 &#39;hello&#39;  (打个招呼)</span>
+
+<span class="go">&gt;&gt;&gt; load ./mod_dup.so</span>
+<span class="go">    plugin &#39;mod_dup&#39; v0.1 申报完成</span>
+<span class="go">    [SKIP ] &#39;dup&#39; 被 allowlist 拒绝</span>
+<span class="go">    [SKIP ] &#39;hello&#39; 被 allowlist 拒绝</span>
+
+<span class="go">=== 注册表（1 条） ===</span>
+<span class="go">  hello        打个招呼                  [mod_hello]</span>
+</code></pre></div>
+
+<p>如果当初让插件自己写全局表，这个 feature 就得改所有插件。</p>
+<hr>
+<h2 id="frequent-mistakes10">Frequent Mistakes：10 个坑，每个都有崩溃现场</h2>
+<h3 id="1-rtld_lazy">#1 用了 <code>RTLD_LAZY</code></h3>
+<p>已在上文实测：<code>RTLD_NOW</code> 报清晰错误，<code>RTLD_LAZY</code> 延迟到调用时 SIGSEGV。<strong>改成 <code>RTLD_NOW</code>，一行的事。</strong></p>
+<h3 id="2-fvisibilityhidden">#2 <code>-fvisibility=hidden</code> 把入口点也藏了</h3>
+<p>我自己在写这篇的实验时就踩了：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>nm<span class="w"> </span>-gU<span class="w"> </span>p_a.so
+<span class="go">（空 —— plugin_init 被 -fvisibility=hidden 藏起来了，dlsym 找不到）</span>
+
+<span class="gp">$ </span>nm<span class="w"> </span>-gU<span class="w"> </span>p_a2.so<span class="w">     </span><span class="c1"># 加了 __attribute__((visibility(&quot;default&quot;)))</span>
+<span class="go">0000000000000558 T _plugin_init</span>
+</code></pre></div>
+
+<p><strong>规矩：全局 <code>hidden</code> + 入口点显式 <code>default</code>。</strong> 用 <code>MP_PLUGIN_DEFINE</code> 这种宏把 <code>visibility("default")</code> 封进去，人就不会忘。</p>
+<h3 id="3-linux-rdynamic">#3 Linux 上宿主忘了 <code>-rdynamic</code></h3>
+<p>症状：插件在 macOS 上加载正常，搬到 Linux 报 <code>undefined symbol: host_xxx</code>。</p>
+<p>原因：ELF 可执行文件默认不把符号放进 <code>.dynsym</code>，插件的未定义符号无处解析。</p>
+<p>排查：</p>
+<div class="highlight"><pre><span></span><code>nm<span class="w"> </span>-D<span class="w"> </span>--dynamic<span class="w"> </span>host<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>host_report<span class="w">      </span><span class="c1"># Linux：空 = 忘了 -rdynamic</span>
+</code></pre></div>
+
+<h3 id="4-c-extern-c">#4 C++ 忘了 <code>extern "C"</code> —— 但没你想的那么简单</h3>
+<p>大家都知道要加 <code>extern "C"</code>。但<strong>具体哪些符号会被 mangle</strong>，规则比想象中细。实测：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>c++<span class="w"> </span>-shared<span class="w"> </span>-fPIC<span class="w"> </span>-o<span class="w"> </span>t_mangle.so<span class="w"> </span>t_mangle.cpp
+<span class="gp">$ </span>nm<span class="w"> </span>-gU<span class="w"> </span>t_mangle.so
+<span class="go">0000000000000598 T __Z11plugin_initv          ← 函数：被 mangle 了！</span>
+<span class="go">0000000000008008 D _plugin_descriptor         ← 全局命名空间的变量：没有 mangle</span>
+<span class="go">0000000000008018 D _plugin_descriptor_ok</span>
+<span class="go">00000000000005b8 T _plugin_init_ok</span>
+</code></pre></div>
+
+<p>再细一层：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>nm<span class="w"> </span>-gU<span class="w"> </span>t_mangle2.so<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="k">while</span><span class="w"> </span><span class="nb">read</span><span class="w"> </span>a<span class="w"> </span>b<span class="w"> </span>c<span class="p">;</span><span class="w"> </span><span class="k">do</span><span class="w"> </span><span class="nb">printf</span><span class="w"> </span><span class="s2">&quot;%-32s -&gt; %s\n&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$c</span><span class="s2">&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span><span class="nb">echo</span><span class="w"> </span><span class="nv">$c</span><span class="p">|</span>c++filt<span class="k">)</span><span class="s2">&quot;</span><span class="p">;</span><span class="w"> </span><span class="k">done</span>
+<span class="go">__ZN6Holder8cls_descE            -&gt; Holder::cls_desc          ← 类静态成员：mangle</span>
+<span class="go">__ZN6myplug7ns_descE             -&gt; myplug::ns_desc           ← namespace 里的变量：mangle</span>
+<span class="go">_global_desc                     -&gt; _global_desc              ← 全局命名空间变量：不 mangle</span>
+</code></pre></div>
+
+<p>结论（Itanium ABI）：</p>
+<table>
+<thead>
+<tr>
+<th>符号</th>
+<th>是否 mangle</th>
+<th><code>dlsym</code> 能找到吗</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>全局命名空间的<strong>函数</strong></td>
+<td>✅ mangle</td>
+<td>❌</td>
+</tr>
+<tr>
+<td>全局命名空间的<strong>变量</strong></td>
+<td>❌ 不 mangle</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>namespace 里的变量</td>
+<td>✅ mangle</td>
+<td>❌</td>
+</tr>
+<tr>
+<td>类静态成员</td>
+<td>✅ mangle</td>
+<td>❌</td>
+</tr>
+<tr>
+<td><code>static</code> 的任何东西</td>
+<td>不导出</td>
+<td>❌</td>
+</tr>
+</tbody>
+</table>
+<p><strong>这就是 Pattern B（数据符号）对 C++ 更友好的原因</strong> —— 一个放在全局命名空间的描述符变量，即使忘了 <code>extern "C"</code> 也能被 <code>dlsym</code> 找到。</p>
+<p>但别指望这个运气。<strong>规矩还是：入口一律包在 <code>extern "C"</code> 里</strong>，因为你不知道下一个人会不会把它挪进 namespace。</p>
+<h3 id="5-dlsym">#5 用 <code>dlsym</code> 的返回值判断错误</h3>
+<p>三个相关的误解，实测：</p>
+<div class="highlight"><pre><span></span><code><span class="go">=== 坑 1：dlerror() 读一次就清空 ===</span>
+<span class="go">  第一次 dlerror(): dlsym(0x74d9ca40, no_such_symbol_1): symbol not found</span>
+<span class="go">  第二次 dlerror(): (NULL —— 已经被清空了)</span>
+
+<span class="go">=== 对照：dlsym 返回的是“变量的地址”，不是变量的值 ===</span>
+<span class="go">  dlsym 给的地址 = 0x102734008，*地址 = 0x0（变量值确实是 0）</span>
+
+<span class="go">=== dlsym 返回 NULL 的真实合法场景：未解析的弱符号 ===</span>
+<span class="go">  &amp;maybe_missing 直接取址 = 0x0</span>
+<span class="go">  dlsym(RTLD_DEFAULT,&quot;maybe_missing&quot;) = 0x0</span>
+<span class="go">  dlerror() = dlsym(RTLD_DEFAULT, maybe_missing): symbol not found</span>
+</code></pre></div>
+
+<p>要点：</p>
+<ol>
+<li><strong><code>dlsym</code> 返回的是符号的地址。</strong> 查一个函数指针变量，你拿到的是"那个变量的地址"，不是它存的函数指针 —— 要再解引用一层。这是最常见的实际错误。</li>
+<li><strong><code>dlerror()</code> 读一次即清空。</strong> 正确姿势是"先清空、再调用、再判断"：</li>
+</ol>
+<div class="highlight"><pre><span></span><code><span class="n">dlerror</span><span class="p">();</span><span class="w">                       </span><span class="cm">/* 清掉残留 */</span>
+<span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">p</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dlsym</span><span class="p">(</span><span class="n">h</span><span class="p">,</span><span class="w"> </span><span class="n">name</span><span class="p">);</span>
+<span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">e</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dlerror</span><span class="p">();</span><span class="w">             </span><span class="cm">/* 用它判错，不看 p */</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* 真的找不到 */</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+
+<ol>
+<li>⚠️ 关于"上一次的错误会污染下一次判断"：这条在 <strong>glibc 上成立</strong>（成功的 <code>dlsym</code> 不清错误字符串），<strong>但我在 macOS 上没复现</strong>，dyld 会在成功调用后清掉。所以"先清空"这个习惯还是要有。</li>
+</ol>
+<h3 id="6-so">#6 把 <code>.so</code> 里的指针存进宿主的数据结构</h3>
+<p>已在上文实测 SIGSEGV。最阴的是它看起来无害 —— 只是个 <code>const char *name</code>。</p>
+<p><strong>规矩：跨越 <code>.so</code> 边界存下来的任何东西，字符串一律 <code>strdup</code>/<code>pstrdup</code> 到宿主内存。</strong></p>
+<h3 id="7-detached">#7 插件起了 detached 线程</h3>
+<p>已在上文实测 SIGSEGV。</p>
+<p><strong>规矩：插件不许自己 detach 线程。</strong> 要么把线程句柄交给宿主管理（宿主在卸载时 join），要么由宿主提供 <code>host-&gt;spawn_worker()</code>，线程的生命周期归宿主。FreeSWITCH 的 <code>runtime</code> 回调就是这个思路 —— 线程由 core 起、core 管、core 停。</p>
+<h3 id="8">#8 静态库被链了两份 → 两套全局状态</h3>
+<p>这个坑很隐蔽，杀伤力很大。宿主和插件都静态链接了 <code>libcounter.a</code>（里面有个 <code>static int counter</code>）：</p>
+<div class="highlight"><pre><span></span><code><span class="go">宿主和插件都静态链接了 libcounter.a（同一份 static int counter）</span>
+<span class="go">    [host]   counter_bump() = 1   (&amp;counter = 0x1046b0000)</span>
+<span class="go">    [host]   counter_bump() = 2   (&amp;counter = 0x1046b0000)</span>
+<span class="go">    [plugin] counter_bump() = 1   (&amp;counter = 0x1046e0010)   ← 另一个地址！</span>
+<span class="go">    [plugin] counter_bump() = 2   (&amp;counter = 0x1046e0010)</span>
+<span class="go">    [host]   counter_bump() = 3   (&amp;counter = 0x1046b0000)</span>
+</code></pre></div>
+
+<p><strong>两个地址、两个独立的计数器。</strong> 现实中这会表现为：</p>
+<ul>
+<li>插件调 <code>SSL_library_init()</code>，但用的是自己那份 OpenSSL 状态，宿主设置的 CA 路径全失效</li>
+<li>日志库有两份配置，插件的日志级别怎么调都不生效</li>
+<li>某个"单例"变成了两个</li>
+<li>内存池的统计数字对不上</li>
+</ul>
+<p><strong>规矩：宿主和插件共享的库必须是动态库，不能静态链。</strong> 或者反过来：插件完全不链，全部能力走 vtable（Redis 那条路）。</p>
+<p>排查：</p>
+<div class="highlight"><pre><span></span><code>nm<span class="w"> </span>-gU<span class="w"> </span>plugin.so<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>&lt;可疑符号&gt;<span class="w">       </span><span class="c1"># 插件是不是自带了一份？</span>
+</code></pre></div>
+
+<h3 id="9-rtld_global">#9 不该用 <code>RTLD_GLOBAL</code> 却用了</h3>
+<p>已在上文用 <code>-flat_namespace</code> 实测符号劫持。<strong>默认 <code>RTLD_LOCAL</code>，需要 GLOBAL 的插件自己在 flags 里声明。</strong></p>
+<h3 id="10">#10 名字冲突静默覆盖</h3>
+<p>上一篇实测过 FreeSWITCH 的行为：我写个模块注册同名 API <code>uptime</code>，热加载后 <code>uptime</code> 返回 <code>HIJACKED by mod_walter</code>；卸载我的模块后，<code>uptime</code> <strong>彻底消失</strong>，而 <code>mod_commands</code> 是 <code>NOUNLOAD</code> 的，只能重启进程救回来。</p>
+<p>三种修法，按推荐度排：</p>
+<ol>
+<li><strong>插入时检测重复，报错拒绝</strong>（本文参考实现的做法）</li>
+<li>注册表存链表 + 显式 qualifier（"取 <code>mod_x</code> 的 <code>foo</code>"），让覆盖变成调用方的显式决定 —— FreeSWITCH 的 codec/file 注册表就是这样</li>
+<li>卸载时只删"确实指向我"的项（比指针，不比名字）—— 这条<strong>必须做</strong>，不管你选 1 还是 2</li>
+</ol>
+<hr>
+<h2 id="best-practice12">Best Practice：12 条</h2>
+<p><strong>加载</strong></p>
+<ol>
+<li><strong>入口用导出的数据符号</strong>（Pattern B），第一个字段是 ABI 版本。顺手也避开了 <code>void*</code>→函数指针的 UB，还对 C++ 更宽容。</li>
+<li><strong>符号名由文件名推导</strong>（Pattern D），多插件共存不撞名。把这个规则写进文档，并在构建里加检查。</li>
+<li><strong><code>RTLD_NOW</code></strong>，永远不要 <code>RTLD_LAZY</code>。</li>
+<li><strong><code>RTLD_LOCAL</code> 默认</strong>，需要 GLOBAL 的插件在 flags 里自己声明，加载器读到之后重开一次。</li>
+<li><strong>先在宿主自身 <code>dlsym</code>，再 <code>dlopen</code></strong> —— 静态编入和动态加载走同一套协议，切换只需改构建。</li>
+<li><strong><code>-fvisibility=hidden</code> + 入口点显式 <code>default</code></strong>，用宏封装避免遗漏。<code>nm -gU</code> 的输出应该是个位数。</li>
+</ol>
+<p><strong>注入</strong></p>
+<ol>
+<li><strong>核心能力走 vtable</strong>（带 <code>abi</code> + <code>size</code>），工具函数才走未定义符号。Linux 宿主别忘 <code>-rdynamic</code>。</li>
+<li><strong>pool / logger / config 从 <code>init</code> 参数注入</strong>，不让插件摸全局单例。插件依赖库用 <code>$ORIGIN</code> / <code>@loader_path</code>，不用环境变量。</li>
+<li><strong>宿主和插件共享的库一律动态链</strong>，不要静态链进两边。</li>
+</ol>
+<p><strong>注册</strong></p>
+<ol>
+<li><strong>两阶段：插件申报 → 宿主发布。</strong> 门禁、审计、冲突检查、启动顺序编排全靠这一层。这是最值钱的一条。</li>
+<li><strong>名字冲突报错，不静默覆盖</strong>；卸载时只删指针相符的项；注册表里的字符串一律复制到宿主内存。</li>
+</ol>
+<p><strong>运行时</strong></p>
+<ol>
+<li><strong>对外只给 <code>execute(name, args)</code>，不给 <code>get(name)</code> 返回裸指针。</strong> C 没有 RAII，配对释放的责任放在调用方就一定会漏。要支持卸载则加引用计数 + 读写锁 + 超时策略；不支持卸载也行，但要写进文档并考虑 <code>RTLD_NODELETE</code>。</li>
+</ol>
+<hr>
+<h2 id="checklist">Checklist</h2>
+<p><strong>协议设计</strong></p>
+<ul>
+<li>[ ] 入口是<strong>数据符号</strong>，第一个字段是 ABI 版本</li>
+<li>[ ] 描述符有 <code>size</code> 字段，VTable 有 <code>reserved</code>/<code>padding</code></li>
+<li>[ ] 符号名推导规则已写文档，并有构建期检查</li>
+<li>[ ] 入口包在 <code>extern "C"</code> 里（即使现在是纯 C 项目）</li>
+<li>[ ] 宿主 vtable 也带 <code>abi</code> + <code>size</code>，插件也校验宿主</li>
+</ul>
+<p><strong>加载器</strong></p>
+<ul>
+<li>[ ] <code>RTLD_NOW | RTLD_LOCAL</code></li>
+<li>[ ] <code>dlerror()</code> 使用"先清空、再调用、再判断"三步</li>
+<li>[ ] 门禁顺序：符号存在 → abi → size → 必填字段 → 才调 <code>init</code></li>
+<li>[ ] 先查宿主自身，再 <code>dlopen</code></li>
+<li>[ ] 重复加载被拒绝</li>
+<li>[ ] <code>GLOBAL_SYMBOLS</code> flag 支持重开</li>
+</ul>
+<p><strong>构建</strong></p>
+<ul>
+<li>[ ] 插件：<code>-shared -fPIC -fvisibility=hidden</code></li>
+<li>[ ] macOS 插件：<code>-undefined dynamic_lookup</code></li>
+<li>[ ] <strong>Linux 宿主：<code>-rdynamic</code></strong></li>
+<li>[ ] rpath 用 <code>$ORIGIN</code> / <code>@loader_path</code></li>
+<li>[ ] <code>nm -gU plugin.so</code> 只有入口符号</li>
+<li>[ ] 没有任何库被同时静态链进宿主和插件</li>
+</ul>
+<p><strong>注册表</strong></p>
+<ul>
+<li>[ ] 两阶段：暂存区申报 → 宿主发布</li>
+<li>[ ] 名字冲突报错</li>
+<li>[ ] 每张表明确是"单绑定"还是"多提供者"（后者要有 qualifier）</li>
+<li>[ ] 注册表里的字符串已复制到宿主内存</li>
+<li>[ ] 观测接口（<code>show plugins</code>）暴露和内部一致的类型维度</li>
+</ul>
+<p><strong>生命周期</strong></p>
+<ul>
+<li>[ ] 对外只暴露 <code>execute()</code>，不暴露裸接口指针</li>
+<li>[ ] 插件不许自己 detach 线程</li>
+<li>[ ] 卸载时只删指针相符的项</li>
+<li>[ ] 卸载策略已明确：refcount+rwlock+超时 / <code>RTLD_NODELETE</code> / 不支持卸载</li>
+<li>[ ] 卸载后跑一遍 ASan + 压测，确认没有 use-after-unmap</li>
+</ul>
+<hr>
+<h2 id="_17">排障命令速查</h2>
+<div class="highlight"><pre><span></span><code><span class="c1"># 这个 .so 需要谁？（排查 undefined symbol）</span>
+nm<span class="w"> </span>-u<span class="w"> </span>plugin.so<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-v<span class="w"> </span><span class="s1">&#39;^_\?dyld&#39;</span><span class="w">       </span><span class="c1"># macOS</span>
+nm<span class="w"> </span>-D<span class="w"> </span>--undefined-only<span class="w"> </span>plugin.so<span class="w">           </span><span class="c1"># Linux</span>
+
+<span class="c1"># 这个 .so 给出什么？（排查 dlsym 找不到、导出面积过大）</span>
+nm<span class="w"> </span>-gU<span class="w"> </span>plugin.so<span class="w">                           </span><span class="c1"># macOS</span>
+nm<span class="w"> </span>-D<span class="w"> </span>--defined-only<span class="w"> </span>plugin.so<span class="w">             </span><span class="c1"># Linux</span>
+nm<span class="w"> </span>-gU<span class="w"> </span>plugin.so<span class="w"> </span><span class="p">|</span><span class="w"> </span>c++filt<span class="w">                 </span><span class="c1"># C++ 看 demangle 后的名字</span>
+
+<span class="c1"># 宿主到底导出了哪些符号（排查 -rdynamic 漏加）</span>
+nm<span class="w"> </span>-D<span class="w"> </span>--dynamic<span class="w"> </span>host<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s1">&#39; T &#39;</span><span class="w">          </span><span class="c1"># Linux</span>
+
+<span class="c1"># 依赖链</span>
+otool<span class="w"> </span>-L<span class="w"> </span>plugin.so<span class="w">                         </span><span class="c1"># macOS</span>
+ldd<span class="w"> </span>plugin.so<span class="w">                              </span><span class="c1"># Linux</span>
+
+<span class="c1"># 加载过程发生了什么（最有用的一招）</span>
+<span class="nv">DYLD_PRINT_LIBRARIES</span><span class="o">=</span><span class="m">1</span><span class="w"> </span>./host<span class="w">              </span><span class="c1"># macOS</span>
+<span class="nv">LD_DEBUG</span><span class="o">=</span>libs,bindings,symbols<span class="w"> </span>./host<span class="w">      </span><span class="c1"># Linux</span>
+
+<span class="c1"># 符号被谁劫持了（排查 RTLD_GLOBAL 污染，几乎是唯一手段）</span>
+<span class="nv">LD_DEBUG</span><span class="o">=</span>bindings<span class="w"> </span>./host<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>shared_helper<span class="w">    </span><span class="c1"># Linux</span>
+
+<span class="c1"># 运行期反查地址属于哪个 .so</span>
+<span class="c1"># 代码里用 dladdr()，见上面“现场一”的例子</span>
+</code></pre></div>
+
+<hr>
+<h2 id="_18">总结：三句话</h2>
+<ol>
+<li><strong><code>dlopen</code> 只负责把代码映射进地址空间。</strong> 入口协议、回调机制、ABI 守卫、卸载安全，四件事全归你。传统方法的全部工程量都在这里。</li>
+<li><strong>默认方案是明确的</strong>：Pattern B 数据符号入口 + Pattern D 文件名推导 + <code>RTLD_NOW|RTLD_LOCAL</code> + vtable 注入核心能力 + 三层 ABI 守卫 + 两阶段注册 + 不支持热卸载。上面那份参考实现就是这套。</li>
+<li><strong>但先问一句：静态注册表行不行？</strong> 如果第三方不需要在不重编你的宿主的前提下扩展你，那 <code>dlopen</code> 带来的全是成本。</li>
+</ol>
+<p>想看这套机制在真实的大型项目里长成什么样、以及它二十年积累下来的疤，可以接着读<a href="https://www.fanyamin.com/blog/c-dynamic-load-di-service-registry.html">上一篇：把 FreeSWITCH 的模块机制拆到底</a>。</p>
+<hr>
+<p>你的项目里插件系统是怎么设计的？入口用的是函数还是数据符号？ABI 出过事吗 —— 我最想听的是"升级宿主之后所有插件挂了"那一类故事，那种坑往往比教科书更有信息量。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/c-plugin-dlopen-practical-guide.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/tech.html">tech</a>
+      <a href="https://www.fanyamin.com/blog/tag/c.html">C</a>
+      <a href="https://www.fanyamin.com/blog/tag/dlopen.html">dlopen</a>
+      <a href="https://www.fanyamin.com/blog/tag/plugin.html">plugin</a>
+      <a href="https://www.fanyamin.com/blog/tag/so.html">so</a>
+      <a href="https://www.fanyamin.com/blog/tag/abi.html">abi</a>
+      <a href="https://www.fanyamin.com/blog/tag/dynamic-linking.html">dynamic-linking</a>
+      <a href="https://www.fanyamin.com/blog/tag/best-practice.html">best-practice</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/c-dynamic-load-di-service-registry.html" title="C 语言的动态加载、依赖注入与服务注册：把 FreeSWITCH 的模块机制拆到底">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/freeswitch-testing-unit-and-integration.html" title="给 FreeSWITCH 写测试：从单元测试到集成测试，用一个真 bug 串起来">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/c-dynamic-load-di-service-registry.html">C 语言的动态加载、依赖注入与服务注册：把 FreeSWITCH 的模块机制拆到底</a></li>
+      <li><a href="https://www.fanyamin.com/blog/cpp-memory-management-evolution.html">C/C++ 内存管理方法的变迁：把纪律写进类型系统</a></li>
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-testing-unit-and-integration.html">给 FreeSWITCH 写测试：从单元测试到集成测试，用一个真 bug 串起来</a></li>
+      <li><a href="https://www.fanyamin.com/blog/apache-portable-runtime.html">APR 入门：一个 30 年前的答案，为什么还在你的代码库里</a></li>
+      <li><a href="https://www.fanyamin.com/blog/cpp-dangling-reference-lambda-capture.html">C++ 悬垂引用与 lambda 捕获：语法上最省事，出事时最难查</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

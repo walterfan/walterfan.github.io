@@ -1,0 +1,917 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="上一篇讲清了 SIP.js 怎么打进 FreeSWITCH,这次把它做成了一个完整项目——webrtc-to-freeswitch。这篇从整体架构、信令与媒体的完整流程、协议分层三个层面把它讲透:它是什么、有什么用、怎么用;浏览器到 FreeSWITCH 之间一次通话到底发生了什么;以及最容易被忽略、却最容易踩坑的 FreeSWITCH 侧配置——WSS binding、candidate ACL、ext-rtp-ip。" />
+<meta name="keywords" content="tech, webrtc, sip, freeswitch, vue, fastapi">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "webrtc-to-freeswitch:一个浏览器软电话的架构、流程与协议全解",
+  "description": "上一篇讲清了 SIP.js 怎么打进 FreeSWITCH,这次把它做成了一个完整项目——webrtc-to-freeswitch。这篇从整体架构、信令与媒体的完整流程、协议分层三个层面把它讲透:它是什么、有什么用、怎么用;浏览器到 FreeSWITCH 之间一次通话到底发生了什么;以及最容易被忽略、却最容易踩坑的 FreeSWITCH 侧配置——WSS binding、candidate ACL、ext-rtp-ip。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-09-14T08:51:00+08:00",
+  "dateModified": "2026-09-14T08:51:00+08:00",
+  "url": "https://www.fanyamin.com/blog/2026-09-14-webrtc-to-freeswitch.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/2026-09-14-webrtc-to-freeswitch.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "tech, webrtc, sip, freeswitch, vue, fastapi"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="webrtc-to-freeswitch:一个浏览器软电话的架构、流程与协议全解"/>
+  <meta property="og:description" content="上一篇讲清了 SIP.js 怎么打进 FreeSWITCH,这次把它做成了一个完整项目——webrtc-to-freeswitch。这篇从整体架构、信令与媒体的完整流程、协议分层三个层面把它讲透:它是什么、有什么用、怎么用;浏览器到 FreeSWITCH 之间一次通话到底发生了什么;以及最容易被忽略、却最容易踩坑的 FreeSWITCH 侧配置——WSS binding、candidate ACL、ext-rtp-ip。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/2026-09-14-webrtc-to-freeswitch.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-09-14 08:51:00+08:00"/>
+  <meta property="article:modified_time" content="2026-09-14 08:51:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="tech"/>
+  <meta property="article:tag" content="webrtc"/>
+  <meta property="article:tag" content="sip"/>
+  <meta property="article:tag" content="freeswitch"/>
+  <meta property="article:tag" content="vue"/>
+  <meta property="article:tag" content="fastapi"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; webrtc-to-freeswitch:一个浏览器软电话的架构、流程与协议全解</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="2026-09-14-webrtc-to-freeswitch">webrtc-to-freeswitch:一个浏览器软电话的架构、流程与协议全解</h1>
+    <p>
+      Posted on 一 14 9月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>webrtc-to-freeswitch:一个浏览器软电话的架构、流程与协议全解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Version</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-09-14</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">大纲</h2>
+<details>
+<summary>展开看看</summary>
+<ul>
+<li><strong>它是什么、有什么用</strong>:一个浏览器直连 FreeSWITCH 的 WebRTC 音频客户端</li>
+<li><strong>整体架构</strong>:两个 workspace、一个 origin,后端只管配置不碰 SIP</li>
+<li><strong>协议分层</strong>:信令走 SIP over WSS,媒体走 WebRTC(DTLS-SRTP + ICE)</li>
+<li><strong>完整流程</strong>:从加载配置、注册,到一次通话的信令与媒体时序</li>
+<li><strong>状态机</strong>:注册和通话的两组有限状态,以及重连策略</li>
+<li><strong>FreeSWITCH 侧配置</strong>:<code>internal.xml</code> 里的 WSS binding、candidate ACL、ext-rtp-ip</li>
+<li><strong>怎么用</strong>:几条命令跑起来,以及排障清单</li>
+</ul>
+</details>
+<hr>
+<h2 id="_2">一、它是什么,有什么用</h2>
+<p>浏览器早就能打电话了。不用装 Zoiper,不用装 Linphone,一个网页就能注册到你的 SIP 服务器、拨号、接听。底层是两条独立的线:<strong>信令走 SIP over WebSocket,媒体走 WebRTC</strong>。</p>
+<p><a href="https://www.fanyamin.com/2026-09-11-sipjs-call-freeswitch.html">上一篇</a>我把 SIP.js 的官方 demo 拆开,补上注册、鉴权和那座 WSS 到 SIP 的桥,最后浏览器确实打进了 FreeSWITCH。但那还是一段"能演示"的代码。这篇要讲的 <a href="https://github.com/walterfan/webrtc-to-freeswitch">webrtc-to-freeswitch</a>,是把那段代码做成了一个规格先行、能测、能部署的<strong>参考客户端</strong>。</p>
+<p>它能做什么:</p>
+<ul>
+<li>用 SIP over 安全 WebSocket(WSS)向一台<strong>已有的</strong> FreeSWITCH 注册,连接和注册状态显式可见,断线有节制地重连,报错说人话。</li>
+<li>一次一路音频通话:打出、接入,支持接听、拒接、取消、挂断、静音、DTMF。</li>
+<li>麦克风按需获取,远端音频自动播放,被浏览器 autoplay 策略挡住时给一个"启用音频"的手势。</li>
+</ul>
+<p>它明确<strong>不做</strong>:视频、转移、保持、会议、通话记录、录音、PSTN 对接,以及任何 FreeSWITCH 服务端的配置——它假设你已经有一台配好的 FreeSWITCH。</p>
+<p>谁用得上:想给内部系统嵌一个网页软电话的、想做客服/呼叫中心前端原型的、或者单纯想搞明白"浏览器打电话到底怎么打通的"人。</p>
+<hr>
+<h2 id="workspace-origin">二、整体架构:两个 workspace,一个 origin</h2>
+<p>项目是两个独立工作区:</p>
+<div class="highlight"><pre><span></span><code>浏览器 (Vue 3 SPA)
+  │
+  ├──── GET /api/config ─────►  FastAPI 后端 (只下发非机密配置)
+  │     GET /health/*
+  │
+  ├──── SIP over WSS ────────►  FreeSWITCH (mod_sofia, :7443)   ← 信令
+  │
+  └──── WebRTC / DTLS-SRTP ──►  FreeSWITCH (RTP 媒体, ICE)      ← 媒体
+</code></pre></div>
+
+<ul>
+<li><strong>前端</strong> <code>frontend/</code>:Vue 3 + TypeScript + Vite,<code>sip.js</code> 固定版本、藏在<strong>唯一一个 SIP 适配器</strong>后面。SIP 信令和 WebRTC 媒体都是浏览器↔FreeSWITCH <strong>直连</strong>,不经过后端。</li>
+<li><strong>后端</strong> <code>backend/</code>:Python + FastAPI + Pydantic settings,用 <code>uv</code> 管理。只暴露三个接口:<code>GET /api/config</code>、<code>GET /health/live</code>、<code>GET /health/ready</code>。生产环境里它顺便把打包好的前端从<strong>同一个 origin</strong> 提供出去。</li>
+</ul>
+<p>这里有一条最反直觉、也最重要的设计:<strong>后端完全不碰 SIP</strong>。它不是 SIP 代理,不做鉴权中转。SIP 用户名、密码、WSS 地址、SIP 域名,<strong>全部由用户在浏览器里输入</strong>。密码只活在当前 SIP 服务实例的内存里,断开就清空,从不发给 FastAPI、从不进 URL、从不进日志、从不写进浏览器持久存储。刷新页面就得重输。</p>
+<p>代码里连这个保证都写死成了断言——适配器每次拿到密码,都会去 <code>localStorage</code> 里比对一遍,确认它没被写进存储:</p>
+<div class="highlight"><pre><span></span><code><span class="k">private</span><span class="w"> </span><span class="nx">assertNoLeak</span><span class="p">(</span><span class="nx">password</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="ow">void</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">password</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="p">;</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">stored</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">storage</span><span class="o">?</span><span class="p">.</span><span class="nx">getItem</span><span class="p">(</span><span class="s2">&quot;sipPassword&quot;</span><span class="p">);</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">stored</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="nx">password</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="ne">Error</span><span class="p">(</span><span class="s2">&quot;password leaked to storage&quot;</span><span class="p">);</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>那后端下发的 <code>/api/config</code> 里有什么?一个<strong>白名单</strong>响应,而且是显式拼出来的,不是把 settings 对象序列化了事:</p>
+<div class="highlight"><pre><span></span><code>{
+  &quot;environment&quot;: &quot;production&quot;,
+  &quot;sipWebSocketUrl&quot;: &quot;wss://fs.example.com:7443&quot;,  // 只是预填表单,可为空
+  &quot;sipDomain&quot;: &quot;fs.example.com&quot;,
+  &quot;iceServers&quot;: [                                  // STUN/TURN,直接喂给 RTCPeerConnection
+    { &quot;urls&quot;: [&quot;stun:stun.example:3478&quot;] }
+  ],
+  &quot;registration&quot;: { &quot;maxRetries&quot;: 5, &quot;baseDelayMs&quot;: 1000, &quot;maxDelayMs&quot;: 15000 },
+  &quot;dtmf&quot;: { &quot;preferredMethod&quot;: &quot;rtp&quot; }
+}
+</code></pre></div>
+
+<p>注意 <code>iceServers</code> 里的 TURN <code>username</code>/<code>credential</code> 是 <strong>ICE 传输层凭据</strong>,和 SIP 账号密码是两码事,可以下发;SIP 密码永远不在这里。</p>
+<p>为什么这么分?因为如果让后端做 SIP 代理,你就得在后端塞一个完整 SIP 协议栈、信令多一跳延迟、还把凭据和媒体的信任边界整个扩大了。得不偿失。</p>
+<hr>
+<h2 id="_3">三、协议分层:一次通话上跑着几种协议</h2>
+<p>浏览器打电话,表面是"点一下按钮",底下叠着好几层协议。分清楚它们,排障时才知道该看哪一层。</p>
+<table>
+<thead>
+<tr>
+<th>层</th>
+<th>协议</th>
+<th>谁负责</th>
+<th>传什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>信令传输</td>
+<td>WebSocket(<code>wss://</code>)</td>
+<td>SIP.js <code>UserAgent</code></td>
+<td>承载 SIP 消息的管道</td>
+</tr>
+<tr>
+<td>信令</td>
+<td>SIP over WebSocket(<a href="https://www.rfc-editor.org/rfc/rfc7118">RFC 7118</a>)</td>
+<td>SIP.js <code>Registerer</code> / <code>Inviter</code> / <code>Invitation</code></td>
+<td>REGISTER、INVITE、BYE、INFO</td>
+</tr>
+<tr>
+<td>媒体协商</td>
+<td>SDP + ICE</td>
+<td><code>RTCPeerConnection</code></td>
+<td>codec、candidate、指纹</td>
+</tr>
+<tr>
+<td>媒体加密</td>
+<td>DTLS-SRTP</td>
+<td>浏览器 WebRTC 栈</td>
+<td>密钥交换 + 加密语音</td>
+</tr>
+<tr>
+<td>媒体传输</td>
+<td>SRTP over RTP</td>
+<td>浏览器 ↔ FreeSWITCH</td>
+<td>加密后的音频包</td>
+</tr>
+<tr>
+<td>DTMF</td>
+<td>RFC 4733 telephone-event 或 SIP INFO</td>
+<td>SIP 适配器</td>
+<td>按键音</td>
+</tr>
+</tbody>
+</table>
+<p>有一条鸿沟必须先记住:<strong>浏览器发出的媒体一定是 WebRTC——DTLS-SRTP 加密、走 ICE 收集 candidate</strong>。而 FreeSWITCH 的普通分机默认用明文 RTP。这条沟怎么填,一半靠浏览器,一半靠 FreeSWITCH 的 <code>internal.xml</code> 配置(第六节细讲)。</p>
+<p>DTMF 的处理是个不错的例子,能看出这层协议怎么落地。项目默认用 RTP telephone-event,但它会先检查协商出的 SDP 里有没有 <code>telephone-event</code>,没有就自动降级到 SIP INFO:</p>
+<div class="highlight"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">canRtp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">preferredMethod</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">&quot;rtp&quot;</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">hasTelephoneEvent</span><span class="p">(</span><span class="nx">sessionId</span><span class="p">);</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">canRtp</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">handler</span><span class="o">?</span><span class="p">.</span><span class="nx">sendDtmf</span><span class="o">?</span><span class="p">.(</span><span class="nx">digit</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="s2">&quot;rtp&quot;</span><span class="p">;</span>
+<span class="p">}</span>
+<span class="c1">// 降级:发一个 SIP INFO application/dtmf-relay</span>
+<span class="k">await</span><span class="w"> </span><span class="nx">record</span><span class="p">.</span><span class="nx">session</span><span class="p">.</span><span class="nx">info</span><span class="p">({</span>
+<span class="w">  </span><span class="nx">requestOptions</span><span class="o">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">body</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">contentType</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;application/dtmf-relay&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">content</span><span class="o">:</span><span class="w"> </span><span class="sb">`Signal=</span><span class="si">${</span><span class="nx">digit</span><span class="si">}</span><span class="sb">\r\nDuration=160`</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="p">});</span>
+<span class="k">return</span><span class="w"> </span><span class="s2">&quot;info&quot;</span><span class="p">;</span>
+</code></pre></div>
+
+<p><code>hasTelephoneEvent</code> 就是直接去翻 <code>peerConnection</code> 的 local/remote SDP 里有没有 <code>telephone-event</code> 字样——协议细节暴露得很直白。</p>
+<hr>
+<h2 id="_4">四、完整流程:一次通话到底发生了什么</h2>
+<p>把时序拆成三段:启动配置、注册、通话。</p>
+<h3 id="41">4.1 启动:拉配置</h3>
+<p>浏览器加载 SPA 后第一件事是 <code>GET /api/config</code>。后端如果配置校验没过,<code>/health/ready</code> 返回 503、<code>/api/config</code> 也返回 503,前端会进"配置加载重试"状态而不是白屏。配置拿到后,WSS 地址和 SIP 域名预填到注册表单里,但用户名密码永远是空的、要用户手输。</p>
+<h3 id="42">4.2 注册</h3>
+<p>用户填完 SIP 端点和账号,点连接。SIP 适配器用底层 <code>UserAgent</code>(不是省事的 <code>SimpleUser</code>)建连:</p>
+<div class="highlight"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">userAgent</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">UserAgent</span><span class="p">({</span>
+<span class="w">  </span><span class="nx">uri</span><span class="p">,</span><span class="w">                                          </span><span class="c1">// sip:user@domain</span>
+<span class="w">  </span><span class="nx">authorizationUsername</span><span class="o">:</span><span class="w"> </span><span class="kt">input.username</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">authorizationPassword</span><span class="o">:</span><span class="w"> </span><span class="kt">this.password</span><span class="p">,</span><span class="w">          </span><span class="c1">// 只在内存</span>
+<span class="w">  </span><span class="nx">transportOptions</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">server</span><span class="o">:</span><span class="w"> </span><span class="kt">input.webSocketUrl</span><span class="w"> </span><span class="p">},</span><span class="w">  </span><span class="c1">// wss://fs:7443</span>
+<span class="w">  </span><span class="nx">sessionDescriptionHandlerFactoryOptions</span><span class="o">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">peerConnectionConfiguration</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">iceServers</span><span class="o">:</span><span class="w"> </span><span class="kt">input.iceServers</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nx">delegate</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">onInvite</span><span class="p">,</span><span class="w"> </span><span class="nx">onNotify</span><span class="p">,</span><span class="w"> </span><span class="nx">onDisconnect</span><span class="w"> </span><span class="p">},</span>
+<span class="p">});</span>
+<span class="k">await</span><span class="w"> </span><span class="nx">userAgent</span><span class="p">.</span><span class="nx">start</span><span class="p">();</span><span class="w">     </span><span class="c1">// 建 WebSocket</span>
+<span class="k">await</span><span class="w"> </span><span class="nx">registerer</span><span class="p">.</span><span class="nx">register</span><span class="p">();</span><span class="w"> </span><span class="c1">// 发 REGISTER,digest 鉴权</span>
+</code></pre></div>
+
+<p>信令上的时序:</p>
+<div class="highlight"><pre><span></span><code>浏览器                         FreeSWITCH
+  │── WebSocket 握手 (wss) ───►│
+  │── REGISTER ───────────────►│
+  │◄── 401 Unauthorized ───────│  (带 nonce)
+  │── REGISTER + Authorization ►│  (digest 摘要)
+  │◄── 200 OK ─────────────────│  注册成功
+</code></pre></div>
+
+<p>鉴权失败(401/403/407)会被明确归类成 <code>authentication</code> 错误,<strong>不自动重试</strong>——那只会制造注册风暴。</p>
+<p>一个容易踩的细节:FreeSWITCH 注册成功后常会发一条 out-of-dialog NOTIFY(message-summary,语音信箱指示灯)。这个客户端从不 SUBSCRIBE,所以适配器的做法是"收下、回 200、丢弃",避免 SIP.js 默认回 481 造成日志噪音:</p>
+<div class="highlight"><pre><span></span><code><span class="nx">onNotify</span><span class="o">:</span><span class="w"> </span><span class="p">(</span><span class="nx">notification</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="ow">void</span><span class="w"> </span><span class="nx">notification</span><span class="p">.</span><span class="nx">accept</span><span class="p">();</span><span class="w"> </span><span class="p">},</span>
+</code></pre></div>
+
+<h3 id="43">4.3 通话(以拨出为例)</h3>
+<div class="highlight"><pre><span></span><code>浏览器                                   FreeSWITCH
+  │── 请麦克风权限 (getUserMedia) ──(本地)
+  │── ICE 收集 candidate ──────(本地/STUN/TURN)
+  │── INVITE + SDP offer ──────────────►│   (含 DTLS 指纹、ICE candidate)
+  │◄── 100 Trying ──────────────────────│
+  │◄── 180 Ringing ─────────────────────│   → 状态: outgoing-ringing
+  │◄── 200 OK + SDP answer ─────────────│   → 状态: active
+  │── ACK ──────────────────────────────►│
+  │◄═══ DTLS 握手 ═══════════════════════►│   (媒体面)
+  │◄═══ SRTP 音频 ═══════════════════════►│   通话中
+  │── BYE ──────────────────────────────►│   挂断
+  │◄── 200 OK ──────────────────────────│   → 状态: ended
+</code></pre></div>
+
+<p>麦克风是<strong>按需获取</strong>的:拨出或接听时才请求权限,注册和拒接都不碰麦克风。远端音频从 <code>peerConnection.getReceivers()</code> 里把 audio track 收进一个 <code>MediaStream</code>,接到一个专用 <code>&lt;audio&gt;</code> 元素上。如果 <code>play()</code> 被浏览器 autoplay 策略拒了,通话保持活着,UI 弹出一个"启用音频"的按钮让用户手动触发——这是个很常见、很多 demo 直接忽略的坑。</p>
+<hr>
+<h2 id="_5">五、状态机:让非法状态根本表达不出来</h2>
+<p>"来电时正在通话怎么办"这种问题,如果用几个布尔变量 <code>isRinging</code>、<code>isActive</code> 去凑,迟早会撞上"既在响铃又在通话"这种非法组合。项目的做法是用两组<strong>有限状态机</strong>,合法迁移写死在表里:</p>
+<p><strong>注册状态</strong>:<code>disconnected</code> → <code>connecting</code> → <code>registering</code> → <code>registered</code> → <code>reconnecting</code> → <code>failed</code></p>
+<p><strong>通话状态</strong>:<code>idle</code> → <code>outgoing-dialing</code>/<code>incoming-ringing</code> → <code>outgoing-ringing</code> → <code>active</code> → <code>terminating</code> → <code>ended</code></p>
+<p>每个状态允许哪些事件,直接是一张表,非法迁移会直接抛异常:</p>
+<div class="highlight"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">LEGAL</span><span class="o">:</span><span class="w"> </span><span class="kt">Record</span><span class="o">&lt;</span><span class="nx">CallStatus</span><span class="p">,</span><span class="w"> </span><span class="nx">ReadonlySet</span><span class="o">&lt;</span><span class="nx">CallEvent</span><span class="p">[</span><span class="s2">&quot;type&quot;</span><span class="p">]</span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">idle</span><span class="o">:</span><span class="w"> </span><span class="kt">new</span><span class="w"> </span><span class="nb">Set</span><span class="p">([</span><span class="s2">&quot;outgoing-start&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;incoming&quot;</span><span class="p">]),</span>
+<span class="w">  </span><span class="s2">&quot;outgoing-ringing&quot;</span><span class="o">:</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nb">Set</span><span class="p">([</span><span class="s2">&quot;accepted&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;terminate&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;ended&quot;</span><span class="p">]),</span>
+<span class="w">  </span><span class="nx">active</span><span class="o">:</span><span class="w"> </span><span class="kt">new</span><span class="w"> </span><span class="nb">Set</span><span class="p">([</span><span class="s2">&quot;terminate&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;ended&quot;</span><span class="p">]),</span>
+<span class="w">  </span><span class="c1">// ...</span>
+<span class="p">};</span>
+</code></pre></div>
+
+<p>只有<strong>一个</strong>权威 session 引用:第二个拨出请求本地直接拒,通话中来的新邀请也直接拒、不替换当前通话。SIP.js 的乱序事件靠比对一个生成的 session id 忽略掉。</p>
+<p><strong>重连</strong>也是状态机的一部分。传输意外断开进 <code>reconnecting</code>,重试延迟是 <code>min(baseDelayMs * 2^(n-1), maxDelayMs)</code> 加满抖动,大致 1、2、4、8、15 秒,最多 5 次,之后进 <code>failed</code> 需手动重来。鉴权错误和配置错误不自动重试。这些参数全部来自后端下发的 <code>registration</code> 配置块。</p>
+<hr>
+<h2 id="freeswitch">六、FreeSWITCH 侧配置:最容易踩坑的一段</h2>
+<p>前面反复说"直连一台已配好的 FreeSWITCH"。这台 FreeSWITCH 到底要配什么?核心全在 <code>conf/sip_profiles/internal.xml</code>(或者你专门建一个 WSS profile)里。</p>
+<h3 id="61-wss-binding">6.1 开 WSS binding</h3>
+<p>浏览器的 SIP over WebSocket 需要 mod_sofia 监听一个 WSS 端口:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;param</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;wss-binding&quot;</span><span class="w"> </span><span class="na">value=</span><span class="s">&quot;:7443&quot;</span><span class="nt">/&gt;</span>
+</code></pre></div>
+
+<p>这一行让 FreeSWITCH 在 7443 上接受安全 WebSocket。生产环境浏览器<strong>必须</strong>用 <code>wss://</code> 且证书要被浏览器信任——自签证书会直接报安全连接错误。要么在 FreeSWITCH 上装可信证书,要么在前面架一个反向代理终结 TLS,证书的 hostname 必须和 UI 里填的 WSS 地址一致。</p>
+<h3 id="62-candidate-acl-ice">6.2 candidate ACL:让 ICE 找到正确的地址</h3>
+<p>WebRTC 靠 ICE 交换 candidate 来打通媒体通道。FreeSWITCH 需要知道:哪些本地地址值得作为 candidate 发给浏览器。这就是 <code>apply-candidate-acl</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;param</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;apply-candidate-acl&quot;</span><span class="w"> </span><span class="na">value=</span><span class="s">&quot;localnet.auto&quot;</span><span class="nt">/&gt;</span>
+<span class="nt">&lt;param</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;apply-candidate-acl&quot;</span><span class="w"> </span><span class="na">value=</span><span class="s">&quot;rfc1918.auto&quot;</span><span class="nt">/&gt;</span>
+<span class="nt">&lt;param</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;apply-candidate-acl&quot;</span><span class="w"> </span><span class="na">value=</span><span class="s">&quot;wan_v4.auto&quot;</span><span class="nt">/&gt;</span>
+<span class="nt">&lt;param</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;apply-candidate-acl&quot;</span><span class="w"> </span><span class="na">value=</span><span class="s">&quot;any_v4.auto&quot;</span><span class="nt">/&gt;</span>
+</code></pre></div>
+
+<p>这几条把本地网段、RFC1918 私网、WAN v4、以及所有 v4 地址都纳入 candidate。如果不配,FreeSWITCH 可能只发一个浏览器根本连不上的地址,表现就是<strong>信令全通、注册成功、INVITE 也 200 了,但就是没声音</strong>——这是 WebRTC 最经典、最折磨人的症状。</p>
+<h3 id="63-ext-rtp-ip-ext-sip-ip-freeswitch">6.3 ext-rtp-ip / ext-sip-ip:告诉 FreeSWITCH 它对外的地址</h3>
+<p>FreeSWITCH 如果在 NAT 后面、或者绑在一个内网网卡上,它自己不一定知道对外该用哪个 IP。手动指定:</p>
+<div class="highlight"><pre><span></span><code><span class="cm">&lt;!-- internal ip address for rtp and sip by walter --&gt;</span>
+<span class="nt">&lt;param</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;ext-rtp-ip&quot;</span><span class="w"> </span><span class="na">value=</span><span class="s">&quot;10.100.200.30&quot;</span><span class="nt">/&gt;</span>
+<span class="nt">&lt;param</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;ext-sip-ip&quot;</span><span class="w"> </span><span class="na">value=</span><span class="s">&quot;10.100.200.30&quot;</span><span class="nt">/&gt;</span>
+</code></pre></div>
+
+<p><code>ext-sip-ip</code> 影响 SIP 消息里 Contact/Via 用什么地址,<code>ext-rtp-ip</code> 影响 SDP 里 RTP 媒体地址写什么。在实验环境里,这两个填 FreeSWITCH 那台机器<strong>浏览器能直接访问到的地址</strong>(我这里是内网 <code>10.100.200.30</code>);在公网部署里,通常填公网 IP,并配合 STUN/TURN。填错的直接后果同样是"信令通、没声音"。</p>
+<h3 id="64-codec-dtls-srtp">6.4 别忘了 codec 和 DTLS-SRTP</h3>
+<p>WebRTC 媒体一定是加密的,所以 FreeSWITCH 的媒体路径要开 DTLS-SRTP,并提供浏览器能协商的编解码(Opus 和/或 PCMU/PCMA)。这部分和 <code>apply-candidate-acl</code>、<code>ext-rtp-ip</code> 一起,才算把"WebRTC 加密媒体 vs 普通 RTP"那条鸿沟真正填平。</p>
+<p>改完配置记得 <code>reloadxml</code>,或者用项目自带的 Fabric 任务(见下节)。</p>
+<hr>
+<h2 id="_6">七、怎么用</h2>
+<p>好消息:<strong>不需要任何 SIP 账号密码</strong>就能把本地界面跑起来。</p>
+<p>前提:Node.js 20 LTS、Python 3.11+ 和 <a href="https://docs.astral.sh/uv/"><code>uv</code></a>,真要打电话再准备一台配好 WSS 的 FreeSWITCH。</p>
+<div class="highlight"><pre><span></span><code>cp<span class="w"> </span>backend/.env.example<span class="w"> </span>backend/.env
+
+<span class="c1"># 后端 —— http://127.0.0.1:8000</span>
+make<span class="w"> </span>backend-sync
+make<span class="w"> </span>backend-dev
+
+<span class="c1"># 前端 —— http://127.0.0.1:5173</span>
+make<span class="w"> </span>frontend-install
+make<span class="w"> </span>frontend-dev
+
+<span class="c1"># 确认后端活着</span>
+curl<span class="w"> </span>http://127.0.0.1:8000/health/live<span class="w">   </span><span class="c1"># {&quot;status&quot;:&quot;live&quot;}</span>
+</code></pre></div>
+
+<p>浏览器打开 Vite 地址,界面能加载、配置能拉到。等有了 FreeSWITCH,在注册表单里填 WSS 地址、SIP 域名、用户名、密码——<strong>密码只在这里输,别写进任何环境变量</strong>。</p>
+<p>项目还带了一套 Fabric 任务(<code>fabfile.py</code>),能 SSH 到 FreeSWITCH 主机上 <code>docker exec</code> 跑 <code>fs_cli</code>、抓包、拉日志,排障时非常省事:</p>
+<div class="highlight"><pre><span></span><code>cp<span class="w"> </span>ops.env.example<span class="w"> </span>.env<span class="w">   </span><span class="c1"># 设 FS_HOST / FS_USER / FS_SSH_KEY</span>
+uv<span class="w"> </span>sync
+uv<span class="w"> </span>run<span class="w"> </span>fab<span class="w"> </span>fs-cli<span class="w"> </span>--cmd<span class="o">=</span><span class="s1">&#39;sofia status&#39;</span>
+uv<span class="w"> </span>run<span class="w"> </span>fab<span class="w"> </span>fs-log<span class="w"> </span>--pattern<span class="o">=</span><span class="s1">&#39;Call-ID: ...&#39;</span><span class="w"> </span>--context<span class="o">=</span><span class="m">10</span>
+uv<span class="w"> </span>run<span class="w"> </span>fab<span class="w"> </span>pcap-start<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>fab<span class="w"> </span>pcap-stop
+uv<span class="w"> </span>run<span class="w"> </span>fab<span class="w"> </span>pcap-pull<span class="w"> </span>--remote<span class="o">=</span>/tmp/fs-xxxx.pcap
+</code></pre></div>
+
+<h3 id="_7">排障速查表</h3>
+<table>
+<thead>
+<tr>
+<th>症状</th>
+<th>该看哪层</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/health/ready</code> 返回 503</td>
+<td>后端 <code>APP_*</code> 配置校验没过,看 reason 字段</td>
+</tr>
+<tr>
+<td>UI 一直在"配置加载重试"</td>
+<td>后端没起,或 <code>/api/config</code> 挂了</td>
+</tr>
+<tr>
+<td>认证错误</td>
+<td>分机/密码被拒;检查 FreeSWITCH 用户,不会自动重试</td>
+</tr>
+<tr>
+<td>证书/安全连接报错</td>
+<td>WSS 证书不被信任,或 hostname 对不上</td>
+</tr>
+<tr>
+<td><strong>注册成功、能拨号、200 了,但没声音</strong></td>
+<td>ICE/candidate ACL、<code>ext-rtp-ip</code>、TURN、codec,或 autoplay 被挡("启用音频")</td>
+</tr>
+</tbody>
+</table>
+<p>最后那一行,九成九是 FreeSWITCH 的 <code>apply-candidate-acl</code> 或 <code>ext-rtp-ip</code> 没配对。信令和媒体是两条独立的线,信令通不代表媒体通——这是整篇文章最想让你记住的一句话。</p>
+<hr>
+<h2 id="_8">要点回收</h2>
+<ul>
+<li><strong>它是什么</strong>:浏览器直连 FreeSWITCH 的 WebRTC 音频客户端,规格先行、能测能部署。</li>
+<li><strong>架构</strong>:两个 workspace、一个 origin;后端只下发非机密配置,<strong>从不碰 SIP 密码</strong>。</li>
+<li><strong>协议</strong>:信令走 SIP over WSS,媒体走 WebRTC(DTLS-SRTP + ICE),两条线独立。</li>
+<li><strong>流程</strong>:拉配置 → 注册(digest)→ INVITE/SDP/ICE → SRTP 通话 → BYE,状态用有限状态机管。</li>
+<li><strong>FreeSWITCH 配置三件套</strong>:<code>wss-binding</code> 开端口、<code>apply-candidate-acl</code> 让 ICE 找对地址、<code>ext-rtp-ip</code>/<code>ext-sip-ip</code> 告诉它对外地址。</li>
+<li><strong>黄金排障法则</strong>:信令通 ≠ 媒体通;没声音先查 candidate ACL 和 ext-rtp-ip。</li>
+</ul>
+<h3 id="_9">可执行清单</h3>
+<ul>
+<li>[ ] FreeSWITCH:<code>wss-binding :7443</code> + 可信证书(或反代终结 TLS)。</li>
+<li>[ ] FreeSWITCH:配齐 <code>apply-candidate-acl</code>,别让 ICE 只发一个连不上的地址。</li>
+<li>[ ] FreeSWITCH:<code>ext-rtp-ip</code>/<code>ext-sip-ip</code> 填浏览器真能访问到的地址。</li>
+<li>[ ] FreeSWITCH:开 DTLS-SRTP,提供 Opus / PCMU / PCMA。</li>
+<li>[ ] 客户端:密码只在浏览器内存,永不进后端/URL/日志。</li>
+<li>[ ] 客户端:所有状态用有限状态机,重连有退避有上限,鉴权错误不重试。</li>
+<li>[ ] 部署:HTTPS + WSS + 收紧的 CSP,同源提供前端。</li>
+</ul>
+<p>项目地址:<a href="https://github.com/walterfan/webrtc-to-freeswitch">https://github.com/walterfan/webrtc-to-freeswitch</a></p>
+<p>你在打通浏览器到 FreeSWITCH 的媒体面时,踩过哪些"信令通就是没声音"的坑?欢迎留言——candidate ACL 和 TURN 这摊水,值得单开一篇。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/2026-09-14-webrtc-to-freeswitch.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/tech.html">tech</a>
+      <a href="https://www.fanyamin.com/blog/tag/webrtc.html">webrtc</a>
+      <a href="https://www.fanyamin.com/blog/tag/sip.html">sip</a>
+      <a href="https://www.fanyamin.com/blog/tag/freeswitch.html">freeswitch</a>
+      <a href="https://www.fanyamin.com/blog/tag/vue.html">vue</a>
+      <a href="https://www.fanyamin.com/blog/tag/fastapi.html">fastapi</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-09-13-sunk-cost-anxiety.html" title="焦虑与沉没成本：写给夜里睡不着的自己">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/2026-09-11-sipjs-call-freeswitch.html">用 SIP.js 从浏览器打电话到 FreeSWITCH</a></li>
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-testing-unit-and-integration.html">给 FreeSWITCH 写测试：从单元测试到集成测试，用一个真 bug 串起来</a></li>
+      <li><a href="https://www.fanyamin.com/blog/c-dynamic-load-di-service-registry.html">C 语言的动态加载、依赖注入与服务注册：把 FreeSWITCH 的模块机制拆到底</a></li>
+      <li><a href="https://www.fanyamin.com/blog/apache-portable-runtime.html">APR 入门：一个 30 年前的答案，为什么还在你的代码库里</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2023-07-19-webrtc-video.html">WebRTC 的音视频如何同步</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

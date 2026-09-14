@@ -1,0 +1,904 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="给 FreeSWITCH 写测试有两条路：一条是自带的 FST 框架，起一个真 core、真 session，在进程内测 switch_* 函数；另一条是拉起整个服务、用 SIPp 打真呼叫、看 ESL 事件的集成测试。本文用我修的一个 mod_dialplan_xml use-after-free bug（PR #3151）串起前者，再讲清后者什么时候非用不可、怎么搭、坑在哪，最后给一张&#34;这个 bug 该写哪种测试&#34;的决策表和检查清单。" />
+<meta name="keywords" content="tech, freeswitch, testing, unit-test, integration-test, c, pcre2, sipp">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "给 FreeSWITCH 写测试：从单元测试到集成测试，用一个真 bug 串起来",
+  "description": "给 FreeSWITCH 写测试有两条路：一条是自带的 FST 框架，起一个真 core、真 session，在进程内测 switch_* 函数；另一条是拉起整个服务、用 SIPp 打真呼叫、看 ESL 事件的集成测试。本文用我修的一个 mod_dialplan_xml use-after-free bug（PR #3151）串起前者，再讲清后者什么时候非用不可、怎么搭、坑在哪，最后给一张&#34;这个 bug 该写哪种测试&#34;的决策表和检查清单。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-09-10T09:00:00+08:00",
+  "dateModified": "2026-09-10T09:00:00+08:00",
+  "url": "https://www.fanyamin.com/blog/freeswitch-testing-unit-and-integration.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/freeswitch-testing-unit-and-integration.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "tech, freeswitch, testing, unit-test, integration-test, c, pcre2, sipp"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="给 FreeSWITCH 写测试：从单元测试到集成测试，用一个真 bug 串起来"/>
+  <meta property="og:description" content="给 FreeSWITCH 写测试有两条路：一条是自带的 FST 框架，起一个真 core、真 session，在进程内测 switch_* 函数；另一条是拉起整个服务、用 SIPp 打真呼叫、看 ESL 事件的集成测试。本文用我修的一个 mod_dialplan_xml use-after-free bug（PR #3151）串起前者，再讲清后者什么时候非用不可、怎么搭、坑在哪，最后给一张&#34;这个 bug 该写哪种测试&#34;的决策表和检查清单。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/freeswitch-testing-unit-and-integration.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-09-10 09:00:00+08:00"/>
+  <meta property="article:modified_time" content="2026-09-10 09:00:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="tech"/>
+  <meta property="article:tag" content="freeswitch"/>
+  <meta property="article:tag" content="testing"/>
+  <meta property="article:tag" content="unit-test"/>
+  <meta property="article:tag" content="integration-test"/>
+  <meta property="article:tag" content="c"/>
+  <meta property="article:tag" content="pcre2"/>
+  <meta property="article:tag" content="sipp"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 给 FreeSWITCH 写测试：从单元测试到集成测试，用一个真 bug 串起来</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="freeswitch-testing-unit-and-integration">给 FreeSWITCH 写测试：从单元测试到集成测试，用一个真 bug 串起来</h1>
+    <p>
+      Posted on 四 10 9月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>给 FreeSWITCH 写测试：从单元测试到集成测试</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Version</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-09-10</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">大纲</h2>
+<details>
+<summary>展开看看</summary>
+<ul>
+<li><strong>核心结论</strong>：给 FreeSWITCH 写测试不是"要不要写"，而是"写哪一层"。能在进程内用 FST 复现的，就别去搭一整套 SIP 环境；FST 够不着的（媒体、协议交互、并发时序），才上集成测试。</li>
+<li><strong>FST 是什么</strong>：FreeSWITCH 自带的单元测试框架，<code>FST_CORE_BEGIN</code> 起一个真 core，<code>FST_SESSION_BEGIN</code> 起一个真 session，你直接调 <code>switch_*</code> 函数——不是 mock，是真跑。</li>
+<li><strong>一个真实案例</strong>：<code>mod_dialplan_xml</code> 里 <code>regex="all"</code> 下的 <code>$1</code> 变空，根因是 PCRE2 subject 的 use-after-free。这种内存 bug 光读代码不放心，值钱的是能复现的测试。</li>
+<li><strong>单元测试的边界</strong>：FST 测的是"函数在活 session 上的行为"。一旦问题跨进程、跨协议、跨网络（SIP 信令、RTP 媒体、编解码协商、多方呼叫），单元测试就够不着了。</li>
+<li><strong>集成测试怎么搭</strong>：SIPp 打真呼叫、ESL 订阅事件、专用 dialplan 和配置目录、CI 里用 Docker 拉起整套。核心是"能自动判定通过/失败"，而不是人肉盯日志。</li>
+<li><strong>两种测试的分工</strong>：一张决策表——给定一个 bug 或一个 feature，先问"能不能在一个 session 内复现"，答案决定你写哪种。</li>
+<li><strong>可抄的东西</strong>：FST 骨架、Makefile.am 改法、单个测试的跑法、集成测试的判定思路、一张检查清单。</li>
+</ul>
+</details>
+<hr>
+<p>先说个场景。你在 FreeSWITCH 的拨号计划里写了这么一段：一个 <code>&lt;condition regex="all"&gt;</code>，里面第一条判 <code>${did_number}</code> 为空，第二条从 <code>${sip_h_Diversion}</code> 里用正则 <code>sip:1(\d+)@.+$</code> 抓号码，然后 action 里 <code>log("transfer to $1")</code>。来一个 <code>Diversion: sip:17001234567@...</code> 的 INVITE，你满心以为日志会打 <code>transfer to 7001234567</code>。</p>
+<p>结果它打了 <code>transfer to</code>——后面是空的。</p>
+<p>同样的正则，写成经典的单 <code>&lt;condition&gt;</code> 就正常；<code>field</code> 用裸的 caller-profile 名字也正常。只有 <code>regex="all"</code> 配 <code>field="${var}"</code> 这一种组合会丢捕获。这是 issue #3141，我提了 PR #3151 去修它。修的过程里我真正想聊的不是这个 bug 本身，而是一件更普遍的事：<strong>给 FreeSWITCH 这种"跑起来才是它"的软件写测试，到底该怎么写。</strong></p>
+<p>答案有两层。一层是单元测试,在进程内测一个函数；一层是集成测试，拉起整个服务打真呼叫。选错层，要么白搭一套重环境，要么根本测不到问题。</p>
+<hr>
+<h2 id="fst-freeswitch">第一层：FST——在进程内起一个真 FreeSWITCH</h2>
+<p>FreeSWITCH 自带一个 header-only 的单元测试框架，底子是 <a href="https://github.com/imb/fctx">fctx</a>，在 <code>src/include/test/switch_test.h</code> 里包了一层，把"起 core、起 session、注入 DTMF、断言"都做成了宏。现成的例子在 <code>tests/unit/</code>（测 core），以及各模块自己的 <code>test/</code> 子目录（测模块）。</p>
+<p>它和你平时写的 C 单元测试有个根本区别：<strong>不打桩</strong>。它是真的把 FreeSWITCH 的 core 跑起来，真的开一个 session，然后让你在这个活着的 session 上调 <code>switch_*</code> 函数。你测的是真实行为，不是替身的行为。</p>
+<blockquote>
+<p>打桩（mock）：用一个假的、行为可控的对象顶替真实依赖，好处是快、隔离，坏处是"测过了"不等于"真环境里对"。
+FST 反其道而行——宁可重一点，也要测真的。对 telephony 这种时序和状态极多的系统，这个取舍是对的。</p>
+</blockquote>
+<p>一个测试文件的骨架是四层宏，从外到内套：</p>
+<div class="highlight"><pre><span></span><code><span class="n">FST_CORE_BEGIN</span><span class="p">(</span><span class="s">&quot;./conf_playsay&quot;</span><span class="p">)</span><span class="w">        </span><span class="c1">// 起 core，参数是这份实例的配置目录</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="n">FST_SUITE_BEGIN</span><span class="p">(</span><span class="n">switch_ivr_play_say</span><span class="p">)</span><span class="w">  </span><span class="c1">// 一个测试套件</span>
+<span class="w">  </span><span class="p">{</span>
+<span class="w">    </span><span class="n">FST_SETUP_BEGIN</span><span class="p">()</span><span class="w">                   </span><span class="c1">// 每个 test 前跑，常用来确认依赖模块在</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="n">fst_requires_module</span><span class="p">(</span><span class="s">&quot;mod_sndfile&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="n">FST_SETUP_END</span><span class="p">()</span>
+
+<span class="w">    </span><span class="n">FST_TEARDOWN_BEGIN</span><span class="p">()</span><span class="w"> </span><span class="p">{}</span><span class="w">             </span><span class="c1">// 每个 test 后跑；就算空也必须写</span>
+<span class="w">    </span><span class="n">FST_TEARDOWN_END</span><span class="p">()</span>
+
+<span class="w">    </span><span class="n">FST_SESSION_BEGIN</span><span class="p">(</span><span class="n">play_and_collect</span><span class="p">)</span><span class="w"> </span><span class="c1">// 一个用 session 的 test</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="c1">// 自动给你四个局部变量：</span>
+<span class="w">      </span><span class="c1">//   fst_session / fst_channel / fst_session_pool / fst_pool</span>
+<span class="w">      </span><span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">switch_ivr_play_and_collect_input</span><span class="p">(</span><span class="n">fst_session</span><span class="p">,</span><span class="w"> </span><span class="p">...);</span>
+<span class="w">      </span><span class="n">fst_check</span><span class="p">(</span><span class="n">status</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">SWITCH_STATUS_SUCCESS</span><span class="p">);</span>
+<span class="w">      </span><span class="n">fst_check_string_equals</span><span class="p">(</span><span class="n">digits_collected</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;123&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="n">FST_SESSION_END</span><span class="p">()</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="w">  </span><span class="n">FST_SUITE_END</span><span class="p">()</span>
+<span class="p">}</span>
+<span class="n">FST_CORE_END</span><span class="p">()</span><span class="w">                          </span><span class="c1">// 关掉 core</span>
+</code></pre></div>
+
+<p>几个要点，都是踩过才记得住的：</p>
+<ul>
+<li><code>FST_CORE_BEGIN</code> 的参数是一个<strong>真的配置目录</strong>（如 <code>./conf_playsay</code>），里面得放能让 core 起来的 FreeSWITCH 配置，不是随便一个空文件夹。</li>
+<li><code>FST_SESSION_BEGIN</code> 免费给你 <code>fst_session</code>、<code>fst_channel</code>、<code>fst_session_pool</code>、<code>fst_pool</code> 四个局部变量，直接用。</li>
+<li>要模拟外部输入，用 <code>fst_sched_recv_dtmf("+1", "1")</code>——预约在第 1 秒往 session 注入 DTMF 键"1"，用来模拟 IVR 收号。</li>
+<li>断言就两个常用的：<code>fst_check(cond)</code> 判真，<code>fst_check_string_equals(a, b)</code> 判字符串相等。</li>
+<li><code>FST_SETUP</code> 和 <code>FST_TEARDOWN</code> 就算什么都不做，也<strong>必须</strong>成对写在套件里，少一个编不过。</li>
+</ul>
+<p>写完文件还得让它进构建，否则 <code>make check</code> 根本不编它，你会误以为"测试过了"：</p>
+<ul>
+<li><strong>Core 测试</strong>：文件放 <code>tests/unit/</code>，在 <code>tests/unit/Makefile.am</code> 的 <code>noinst_PROGRAMS</code> 里加上文件名。</li>
+<li><strong>模块测试</strong>：文件放模块的 <code>test/</code> 子目录，改模块的 <code>Makefile.am</code>——把测试加进 <code>noinst_PROGRAMS</code>，设 <code>TESTS = $(noinst_PROGRAMS)</code>（<code>make check</code> 认这个变量）。如果是这个模块第一个测试，还得在 <code>noinst_LTLIBRARIES</code> 里建一个库让测试链接过去。</li>
+</ul>
+<p>跑法：<code>make install</code> 之后 <code>make check</code> 跑全部；调试单个就进目录直接跑那个二进制；只跑某几个用名字前缀过滤：</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span><span class="nb">cd</span><span class="w"> </span>tests/unit
+<span class="gp">$ </span>./switch_dialplan_xml<span class="w">                       </span><span class="c1"># 跑这个程序里所有 case</span>
+<span class="gp">$ </span>./switch_dialplan_xml<span class="w"> </span>regex_all_var_field<span class="w">   </span><span class="c1"># 只跑名字以此为前缀的 case</span>
+</code></pre></div>
+
+<hr>
+<h2 id="bug">回到那个 bug：单元测试怎么把它钉死</h2>
+<p><code>mod_dialplan_xml</code> 的 <code>$1</code> 变空,根因是一个 use-after-free。<code>switch_regex_perform()</code> 会把 PCRE2 的匹配偏移量存进 subject 字符串里；而 <code>regex="all"</code> 的循环里，<code>${var}</code> 被展开进一块堆缓冲 <code>field_expanded</code>，匹配成功后代码做了 <code>strdup(field_data)</code> 再 <code>switch_safe_free(field_expanded)</code>——可 <code>save_match_data</code> 还指着那块刚被释放的原缓冲。后面 <code>switch_perform_substitution()</code> 去取 <code>$1</code>，取的就是悬垂指针里的内容。</p>
+<blockquote>
+<p>那个 <code>strdup</code> 的本意只是给后面算 <code>strlen</code> 用，好定 buffer 大小；它并没有把 PCRE2 的 subject 指针重新绑到新内存上。这是最典型的"看起来 copy 了一份，其实关键的那根指针还指着旧的"。</p>
+</blockquote>
+<p>这种 bug 有个讨厌的性质：它可能不崩，只是算错。靠肉眼 review 很难拍胸脯说"改对了"。值钱的东西是<strong>能复现的测试</strong>。我在 <code>tests/unit/switch_dialplan_xml.c</code> 里加了 5 个 FST case:</p>
+<table>
+<thead>
+<tr>
+<th>测试 case</th>
+<th>测什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>regex_all_var_field_keeps_capture</code></td>
+<td>正面复现：<code>regex="all"</code> + <code>field="${var}"</code> 匹配后 <code>$1</code> 必须拿到号码</td>
+</tr>
+<tr>
+<td><code>classic_var_field_keeps_capture</code></td>
+<td>经典 condition 路径不能被这次修改改坏</td>
+</tr>
+<tr>
+<td><code>regex_all_second_regex_fail_skips_action</code></td>
+<td>第二条 regex 不匹配时，action 不该跑</td>
+</tr>
+<tr>
+<td><code>regex_all_did_already_set_skips_action</code></td>
+<td>前置条件已满足时正确跳过</td>
+</tr>
+<tr>
+<td><code>classic_var_field_mismatch_skips_action</code></td>
+<td>不匹配就跳过 action</td>
+</tr>
+</tbody>
+</table>
+<p>注意这 5 个不只是测"修好没有"，还测了"别的路径有没有被连累"和"该跳过的时候跳没跳"。改内存相关的代码，正例反例都得覆盖,不然你只知道那一个 case 绿了，不知道有没有按下葫芦浮起瓢。</p>
+<p>流程是死的，顺序不能颠倒：</p>
+<ol>
+<li>先写测试，跑出 <code>1/2 failing</code>——<strong>确认失败可复现</strong>（修之前 action 打的就是 <code>transfer to</code>）。</li>
+<li>打补丁。</li>
+<li>同一批测试跑出 <code>PASSED (5/5)</code>（<code>transfer to 7001234567</code>）。</li>
+</ol>
+<blockquote>
+<p><strong>没见它红过的测试，等于没测。</strong> 只跑到"修完是绿的"这一步，你无法证明这个测试真的在测这个 bug——说不定它对着一个永远成立的条件在断言。先让它红，再让它绿。</p>
+</blockquote>
+<p>整套跑法是 <code>./tests/unit/switch_dialplan_xml</code>，全程在 in-tree 的 FST 二进制上,<strong>不需要一个真的 SIP 环境</strong>。这就引出了下一个问题:什么时候你就非得要真 SIP 环境了?</p>
+<hr>
+<h2 id="_2">第二层：集成测试——单元测试够不着的地方</h2>
+<p>FST 强在"真 core + 真 session",但它的边界也正在这里:<strong>它测的是一个进程内、一个 session 上的函数行为</strong>。上面那个 dialplan bug 之所以能用 FST 测,是因为它的因果链完全落在进程内——喂一个 header 变量，跑正则,看捕获。没有一个字节需要过网络。</p>
+<p>可 FreeSWITCH 的一大半价值恰恰在进程之外:</p>
+<ul>
+<li><strong>SIP 信令交互</strong>:INVITE / 100 Trying / 180 Ringing / 200 OK / ACK / BYE 这一整套握手,重传、超时、Re-INVITE、CANCEL 的时序。</li>
+<li><strong>RTP 媒体</strong>:声音有没有真的通、编解码协商(codec negotiation)对不对、DTMF 是走 RFC 2833 还是 SIP INFO。</li>
+<li><strong>多方交互</strong>:两条腿的桥接(bridge)、转接(transfer)、会议、排队。</li>
+<li><strong>和外部系统的集成</strong>:注册到上游、ESL(Event Socket Library)事件流、数据库、其他媒体网关。</li>
+</ul>
+<p>这些东西,你没法在一个 <code>FST_SESSION_BEGIN</code> 里"调个函数"就测出来。你得<strong>把整个 FreeSWITCH 拉起来,从外面像一个真话机/真对端那样跟它对话</strong>,然后判断它的反应对不对。这就是集成测试。</p>
+<p>一套典型的 FreeSWITCH 集成测试长这样:</p>
+<ol>
+<li><strong>拉起被测的 FreeSWITCH</strong>——用一份专门的配置目录(专用 dialplan、profile、只加载需要的模块),干净、可复现、和你的开发机无关。CI 里通常用 Docker 起一个隔离实例。</li>
+<li><strong>用 SIPp 扮演对端打呼叫</strong>。<a href="https://github.com/SIPp/sipp">SIPp</a> 是事实标准的 SIP 压测/仿真工具,你用 XML scenario 描述"发 INVITE → 等 200 → 回 ACK → 挂 BYE",它就按脚本跟 FreeSWITCH 完整走一遍呼叫。它还能带 RTP、放 pcap 媒体、并发拉几百上千路,顺手把负载测试也做了。</li>
+<li><strong>用 ESL 订阅事件做断言</strong>。这是集成测试能"自动判定"的关键。你连上 FreeSWITCH 的 Event Socket,订阅 <code>CHANNEL_CREATE</code>、<code>CHANNEL_ANSWER</code>、<code>CHANNEL_HANGUP</code> 这些事件,然后断言:呼叫有没有接通?挂断原因(hangup cause)是不是 <code>NORMAL_CLEARING</code>?通道变量对不对?——<strong>判定依据是结构化的事件,不是人肉去 grep 日志。</strong></li>
+</ol>
+<p>一段示意(概念示意,不同项目脚手架各异):</p>
+<div class="highlight"><pre><span></span><code><span class="gp"># </span><span class="m">1</span>.<span class="w"> </span>起一个隔离的<span class="w"> </span>FreeSWITCH<span class="w"> </span>实例<span class="o">(</span>专用<span class="w"> </span>conf<span class="o">)</span>
+<span class="gp">$ </span>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span>--name<span class="w"> </span>fs-under-test<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-v<span class="w"> </span><span class="nv">$PWD</span>/test-conf:/etc/freeswitch<span class="w"> </span>freeswitch:test
+
+<span class="gp"># </span><span class="m">2</span>.<span class="w"> </span>SIPp<span class="w"> </span>按<span class="w"> </span>scenario<span class="w"> </span>打一路呼叫
+<span class="gp">$ </span>sipp<span class="w"> </span>-sf<span class="w"> </span>uac_invite.xml<span class="w"> </span><span class="m">127</span>.0.0.1:5060<span class="w"> </span>-m<span class="w"> </span><span class="m">1</span><span class="w"> </span>-mp<span class="w"> </span><span class="m">6000</span>
+
+<span class="gp"># </span><span class="m">3</span>.<span class="w"> </span>从<span class="w"> </span>ESL<span class="w"> </span>侧确认事件序列符合预期<span class="o">(</span>伪代码<span class="o">)</span>
+<span class="gp">#    </span>connect<span class="w"> </span>ESL<span class="w"> </span>-&gt;<span class="w"> </span>subscribe<span class="w"> </span>CHANNEL_HANGUP
+<span class="gp">#    </span>assert<span class="w"> </span><span class="nv">hangup_cause</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s2">&quot;NORMAL_CLEARING&quot;</span>
+</code></pre></div>
+
+<p><strong>集成测试的死穴是"判定"而不是"发起"。</strong> 打一路呼叫很容易,难的是让机器<strong>自动、稳定地判断这一路呼叫对不对</strong>。所以 ESL 事件这条线才是重点——它给了你一个可断言的、结构化的观察点,让集成测试能进 CI 自动跑,而不是变成"发布前人工拨个号听听声音"。</p>
+<hr>
+<h2 id="_3">两种测试怎么分工:一张决策表</h2>
+<p>别纠结"该写单元还是集成",先问一个问题:<strong>这个行为能不能在一个 session、一个进程内复现?</strong> 答案基本就决定了。</p>
+<table>
+<thead>
+<tr>
+<th>你要测的东西</th>
+<th>能在一个 session 内复现?</th>
+<th>写哪种</th>
+<th>理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>switch_*</code> 核心函数的返回值/副作用</td>
+<td>能</td>
+<td><strong>FST 单元测试</strong></td>
+<td>进程内,<code>FST_SESSION_BEGIN</code> 直接调</td>
+</tr>
+<tr>
+<td>dialplan 条件/正则/变量替换(如 #3141)</td>
+<td>能</td>
+<td><strong>FST 单元测试</strong></td>
+<td>因果链全在进程内,喂变量看结果</td>
+</tr>
+<tr>
+<td>IVR 收号、放音、语音识别接口</td>
+<td>能</td>
+<td><strong>FST 单元测试</strong></td>
+<td><code>fst_sched_recv_dtmf</code> 注入即可</td>
+</tr>
+<tr>
+<td>SIP 握手时序、重传、Re-INVITE</td>
+<td>不能</td>
+<td><strong>集成测试</strong></td>
+<td>需要真对端,SIPp 打真信令</td>
+</tr>
+<tr>
+<td>RTP 媒体是否连通、codec 协商</td>
+<td>不能</td>
+<td><strong>集成测试</strong></td>
+<td>需要真媒体流,单元测试摸不到</td>
+</tr>
+<tr>
+<td>桥接、转接、会议、排队</td>
+<td>不能</td>
+<td><strong>集成测试</strong></td>
+<td>跨多条腿,跨进程状态</td>
+</tr>
+<tr>
+<td>挂断原因、事件序列是否正确</td>
+<td>不能</td>
+<td><strong>集成测试</strong></td>
+<td>用 ESL 订阅事件断言</td>
+</tr>
+<tr>
+<td>高并发下的稳定性/泄漏</td>
+<td>不能</td>
+<td><strong>集成测试 + Sanitizer</strong></td>
+<td>SIPp 拉并发,ASan/valgrind 盯内存</td>
+</tr>
+</tbody>
+</table>
+<p>一句话记住这个分工:</p>
+<blockquote>
+<p><strong>能进程内复现的,一律 FST,别搭重环境;跨进程/跨协议/跨网络的,才上 SIPp + ESL 的集成测试。</strong>
+内存类 bug(像 #3141 这种 use-after-free)是个特例——即便能被集成测试间接触发,也优先用 FST 精确复现,再叠一层 ASan 兜底。因为集成测试告诉你"结果错了",FST + ASan 才告诉你"错在哪一行"。</p>
+</blockquote>
+<hr>
+<h2 id="_4">可抄的检查清单</h2>
+<p>修 bug 或加 feature 时,照这个走:</p>
+<ol>
+<li><strong>先分层</strong>:问"能不能在一个 session 内复现"。能 → FST;不能 → 集成测试。拿不准就先试 FST,它最快。</li>
+<li><strong>FST 建文件</strong>:core → <code>tests/unit/xxx.c</code>;模块 → <code>src/mod/.../test/xxx.c</code>。骨架照抄四层宏,<code>FST_SETUP</code>/<code>FST_TEARDOWN</code> 就算空也要写。</li>
+<li><strong>改 Makefile.am</strong>:core 加进 <code>tests/unit/Makefile.am</code> 的 <code>noinst_PROGRAMS</code>;模块加进模块 <code>Makefile.am</code> 并设 <code>TESTS = $(noinst_PROGRAMS)</code>。<strong>忘了这步测试根本不编。</strong></li>
+<li><strong>先红再绿</strong>:<code>make install &amp;&amp; make check</code>;确认测试在打补丁<strong>前会失败</strong>,再打补丁转绿。测试和补丁放<strong>同一个 PR</strong>,描述里贴出"修之前失败态 / 修之后 PASSED"。</li>
+<li><strong>正反都覆盖</strong>:改内存/状态相关的代码,别只测正例;把"该跳过""该失败""相邻路径"也测上(#3141 就配了 5 个 case)。</li>
+<li><strong>集成测试要能自动判定</strong>:SIPp 发起呼叫,ESL 订阅事件做断言。判定靠结构化事件(hangup cause、channel 变量),不靠人肉 grep 日志。CI 里用 Docker 起隔离实例。</li>
+<li><strong>内存 bug 叠 Sanitizer</strong>:能开 ASan 就开,尤其注意 <code>detect_stack_use_after_return</code> 这类默认关掉的开关——不开它,栈上的 use-after-return 只打乱码不报错。</li>
+</ol>
+<p>一句话:</p>
+<blockquote>
+<p><strong>测试的价值一半在"证明修好了",一半在"锁住别人以后别改坏"。</strong> 一个见过红、正反都覆盖、能自动判定的测试,才配跟补丁一起进 PR。</p>
+</blockquote>
+<hr>
+<h2 id="_5">总结:先分层,再"先红后绿",两个一起提</h2>
+<p>给 FreeSWITCH 写测试,难的从来不是语法,是<strong>分层</strong>:能进程内复现的用 FST,跨协议跨网络的用 SIPp + ESL。选对层,一个下午能钉死一个 bug;选错层,要么白搭环境,要么根本测不到。</p>
+<p>而不管哪一层,规矩是同一条——<strong>先让测试红,再让它绿,测试跟补丁一起进 PR</strong>。#3141 就是这么修完的:5 个 FST case,从 <code>1/2 failing</code> 到 <code>PASSED (5/5)</code>,补丁和测试同在 PR #3151 里。修 bug 交出去的不该只是一行改动,而是一份"我改对了、而且以后谁都别想再改坏"的证据。</p>
+<h2 id="_6">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* 给 FreeSWITCH 写测试
+** 单元测试 (FST)
+*** 真 core + 真 session,不打桩
+*** 四层宏 CORE/SUITE/SETUP/SESSION
+*** fst_check / fst_sched_recv_dtmf
+*** 改 Makefile.am 才进构建
+** 真实案例 #3141/#3151
+*** regex=all 下 $1 变空
+*** 根因 PCRE2 subject use-after-free
+*** 5 个 FST case,正反覆盖
+*** 先红(1/2 fail)后绿(5/5 pass)
+** 集成测试
+*** SIPp 打真呼叫
+*** ESL 订阅事件做断言
+*** 专用 conf + Docker 隔离
+*** 判定靠结构化事件,非人肉日志
+** 分工决策
+*** 能否一个 session 内复现
+*** 能 -&gt; FST
+*** 不能 -&gt; 集成测试
+*** 内存 bug 优先 FST + ASan
+@endmindmap
+</code></pre></div>
+
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/freeswitch-testing-unit-and-integration.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/tech.html">tech</a>
+      <a href="https://www.fanyamin.com/blog/tag/freeswitch.html">freeswitch</a>
+      <a href="https://www.fanyamin.com/blog/tag/testing.html">testing</a>
+      <a href="https://www.fanyamin.com/blog/tag/unit-test.html">unit-test</a>
+      <a href="https://www.fanyamin.com/blog/tag/integration-test.html">integration-test</a>
+      <a href="https://www.fanyamin.com/blog/tag/c.html">c</a>
+      <a href="https://www.fanyamin.com/blog/tag/pcre2.html">pcre2</a>
+      <a href="https://www.fanyamin.com/blog/tag/sipp.html">sipp</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/c-plugin-dlopen-practical-guide.html" title="C 插件系统实战指南：dlopen 没告诉你的四件事">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/2026-09-11-sipjs-call-freeswitch.html" title="用 SIP.js 从浏览器打电话到 FreeSWITCH">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/c-dynamic-load-di-service-registry.html">C 语言的动态加载、依赖注入与服务注册：把 FreeSWITCH 的模块机制拆到底</a></li>
+      <li><a href="https://www.fanyamin.com/blog/apache-portable-runtime.html">APR 入门：一个 30 年前的答案，为什么还在你的代码库里</a></li>
+      <li><a href="https://www.fanyamin.com/blog/cpp-memory-management-evolution.html">C/C++ 内存管理方法的变迁：把纪律写进类型系统</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-09-14-webrtc-to-freeswitch.html">webrtc-to-freeswitch:一个浏览器软电话的架构、流程与协议全解</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-09-11-sipjs-call-freeswitch.html">用 SIP.js 从浏览器打电话到 FreeSWITCH</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

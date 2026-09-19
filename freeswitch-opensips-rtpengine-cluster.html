@@ -1,0 +1,876 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="FreeSWITCH 是一台优秀的媒体/B2BUA 引擎，但它没有原生集群能力，信令和媒体又和业务逻辑挤在同一个进程里。想把它扩到上万路，硬堆 FreeSWITCH 是最贵的一条路。这篇讲清 FreeSWITCH 架构的精华与包袱各在哪，为什么 OpenSIPS 和 rtpengine 恰好补在它最薄的两个地方——信令边缘和媒体传输——以及三件套怎么分工、容量能提到什么量级。" />
+<meta name="keywords" content="tech, freeswitch, opensips, rtpengine, voip, sip, webrtc, architecture">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "给 FreeSWITCH 集群配两个搭档：OpenSIPS 管信令，rtpengine 管媒体",
+  "description": "FreeSWITCH 是一台优秀的媒体/B2BUA 引擎，但它没有原生集群能力，信令和媒体又和业务逻辑挤在同一个进程里。想把它扩到上万路，硬堆 FreeSWITCH 是最贵的一条路。这篇讲清 FreeSWITCH 架构的精华与包袱各在哪，为什么 OpenSIPS 和 rtpengine 恰好补在它最薄的两个地方——信令边缘和媒体传输——以及三件套怎么分工、容量能提到什么量级。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-09-19T14:00:00+08:00",
+  "dateModified": "2026-09-19T14:00:00+08:00",
+  "url": "https://www.fanyamin.com/blog/freeswitch-opensips-rtpengine-cluster.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/freeswitch-opensips-rtpengine-cluster.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "tech, freeswitch, opensips, rtpengine, voip, sip, webrtc, architecture"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="给 FreeSWITCH 集群配两个搭档：OpenSIPS 管信令，rtpengine 管媒体"/>
+  <meta property="og:description" content="FreeSWITCH 是一台优秀的媒体/B2BUA 引擎，但它没有原生集群能力，信令和媒体又和业务逻辑挤在同一个进程里。想把它扩到上万路，硬堆 FreeSWITCH 是最贵的一条路。这篇讲清 FreeSWITCH 架构的精华与包袱各在哪，为什么 OpenSIPS 和 rtpengine 恰好补在它最薄的两个地方——信令边缘和媒体传输——以及三件套怎么分工、容量能提到什么量级。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/freeswitch-opensips-rtpengine-cluster.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-09-19 14:00:00+08:00"/>
+  <meta property="article:modified_time" content="2026-09-19 14:00:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="tech"/>
+  <meta property="article:tag" content="freeswitch"/>
+  <meta property="article:tag" content="opensips"/>
+  <meta property="article:tag" content="rtpengine"/>
+  <meta property="article:tag" content="voip"/>
+  <meta property="article:tag" content="sip"/>
+  <meta property="article:tag" content="webrtc"/>
+  <meta property="article:tag" content="architecture"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 给 FreeSWITCH 集群配两个搭档：OpenSIPS 管信令，rtpengine 管媒体</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="freeswitch-opensips-rtpengine-cluster">给 FreeSWITCH 集群配两个搭档：OpenSIPS 管信令，rtpengine 管媒体</h1>
+    <p>
+      Posted on 六 19 9月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>给 FreeSWITCH 集群配两个搭档：OpenSIPS 管信令，rtpengine 管媒体</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Version</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-09-19</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">大纲</h2>
+<details>
+<summary>展开看看</summary>
+<ul>
+<li><strong>一句话</strong>：FreeSWITCH 的精华是媒体引擎，包袱是没有集群、信令媒体业务同进程。OpenSIPS 补信令边缘，rtpengine 补媒体传输，正好各补在它最薄的地方。</li>
+<li><strong>精华在哪</strong>：小内核 + 可插拔模块、session/channel 双层抽象、强事件驱动 + ESL、信令媒体关注点分离、媒体作为一等公民。这几条今天从零设计也照抄。</li>
+<li><strong>包袱在哪</strong>：没有原生集群（活跃呼叫钉死在一个节点）、XML 配置地狱、单进程有状态、纯 C 的安全债。这些不是 bug，是二十年前的合理取舍在今天过期了。</li>
+<li><strong>为什么不硬堆 FreeSWITCH</strong>：一台 FreeSWITCH 撑死几百到一千路并发、一两百 CPS，且信令 CPS 和媒体带宽两种完全不同的负载被绑在一起扩，浪费。</li>
+<li><strong>OpenSIPS 补信令</strong>：无状态 SIP 代理，单节点上万 CPS、十万级注册，<code>clusterer</code> 原生集群，还能通过 <code>freeswitch</code> 模块实时读 FS 的空闲 CPU 做容量感知调度。</li>
+<li><strong>rtpengine 补媒体</strong>：内核态 RTP 转发（<code>nft_rtpengine</code>），WebRTC/SRTP/ICE 一站终结，NAT 统一锚定，还能 media fork 一份给 AI 分析。</li>
+<li><strong>三件套分工</strong>：OpenSIPS 站信令边缘，rtpengine 站媒体代理，FreeSWITCH 退成一排纯媒体工人，业务逻辑外置成微服务。</li>
+<li><strong>怎么落地</strong>：先把 FS 精简成无状态媒体工人，再把 OpenSIPS/rtpengine 各自做 HA，最后把 ACD、AI 编排搬出去。</li>
+</ul>
+</details>
+<hr>
+<p>前面几篇把 FreeSWITCH 拆得差不多了：<a href="../journal/freeswitch-session-lifecycle.html">一次呼叫的 session 生命周期</a>、<a href="../journal/freeswitch-architecture-fast-and-fragile.html">架构为什么又快又脆</a>、<a href="../journal/2026-09-14-opensips-intro.html">OpenSIPS 这个可编程的信令引擎是什么</a>。这篇把它们接起来，回答一个做过 FreeSWITCH 的人迟早会撞上的问题：</p>
+<p><strong>一台 FreeSWITCH 跑得挺好，可我要接上万路、还要高可用，怎么办？</strong></p>
+<p>多数人第一反应是"再加几台 FreeSWITCH"。但 FreeSWITCH 没有原生集群，活跃呼叫钉死在建立它的那个节点上，节点一挂，上面所有在途呼叫全丢。你加机器，加的是一堆彼此不认识的孤岛。这条路能走，但它是三条路里最贵、最难运维的一条。</p>
+<p>这篇想说清楚的是：<strong>FreeSWITCH 该守的是媒体引擎这块精华，该甩的是"什么都自己扛"的包袱。信令边缘交给 OpenSIPS，媒体传输交给 rtpengine，各补一刀，正好补在它最薄的两个地方。</strong> 这不是三个工具的堆叠，是一次关注点的重新切分。</p>
+<hr>
+<h2 id="freeswitch">先认清 FreeSWITCH 的精华：它凭什么值得留</h2>
+<p>要判断一个老系统还值不值得用，先看它有没有过不了时的核心能力。FreeSWITCH 有，而且不止一处。</p>
+<p><strong>媒体是一等公民。</strong> 这是它和纯 SIP proxy（Kamailio、OpenSIPS）最本质的区别。转码、会议混音、录音、放音、DTMF 检测——这些都是内核级能力，不是外挂。媒体处理链路是 <code>SIP/SDP → mod_sofia → switch_core_media → codec layer → switch_rtp → network</code>，每条呼叫腿独立协商编解码器，两端编码一致就直接转发 RTP、零 CPU，编码不同就自动落到"解码→内部 PCM→重编码"的转码通道。到了 AI 时代，ASR、TTS、实时质检都要深度访问媒体流，这个"媒体引擎"的定位比二十年前更值钱。</p>
+<p><strong>session/channel 双层抽象。</strong> 每条呼叫腿是一个独立的 session（运行时容器）加一个 channel（状态/数据对象），两条腿通过 bridge 关联。转接、会议、复杂路由，在这个模型上都很自然——比直接在 SIP dialog 层面拧要清楚得多。这套抽象的细节我在 <a href="../journal/freeswitch-session-lifecycle.html">session 那篇</a>里拆过，这里不重复。</p>
+<p><strong>强事件驱动 + ESL 外部控制。</strong> channel 的每一次创建、应答、挂断、DTMF 都产生类型化事件，<code>mod_event_socket</code> 通过 TCP 把事件流和命令接口暴露出去，这就是 ESL（Event Socket Library）。它是把业务逻辑从交换核心里解耦出去的关键——外部应用可以完整地控制一路呼叫，而不用改 FreeSWITCH 一行代码。后面三件套方案能成立，全靠这道口子。</p>
+<p>还有小内核 + 可插拔模块、Sofia Profile 对信令的正交隔离、dialplan context 的路由隔离——这些放到今天从零设计一个软交换，照样是教科书答案。<strong>留 FreeSWITCH，留的就是这些。</strong></p>
+<hr>
+<h2 id="bug">再认清它的包袱：不是 bug，是过期的取舍</h2>
+<p>FreeSWITCH 2006 年从 Asterisk 社区分裂出来，很多设计在当年单核双核、SIP 硬话机为主的条件下是合理的工程取舍。放到 2026 年多核、云原生、WebRTC 为主流的环境里，它们成了拖后腿的包袱。这里挑对"扩容"影响最直接的几条。</p>
+<table>
+<thead>
+<tr>
+<th>包袱</th>
+<th>当年为什么合理</th>
+<th>今天为什么难受</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>没有原生集群</strong></td>
+<td>一台服务器跑一个软交换实例，够用</td>
+<td>活跃呼叫钉死在单节点，节点故障即丢全部在途呼叫；注册、会议、队列状态全要手工外部化</td>
+</tr>
+<tr>
+<td><strong>信令+媒体+业务同进程</strong></td>
+<td>减少 IPC 延迟，单机部署简单</td>
+<td>三种负载被绑死一起扩：信令按 CPS 扩、媒体按带宽扩、业务按并发扩，混在一起谁都浪费</td>
+</tr>
+<tr>
+<td><strong>单进程有状态</strong></td>
+<td>进程内函数调用延迟最低</td>
+<td>和云原生"Pod 可抛弃"的理念根本冲突；模块升级要重启整个进程</td>
+</tr>
+<tr>
+<td><strong>纯 C 代码</strong></td>
+<td>实时媒体处理要极致性能</td>
+<td>近二十年的大 C 代码库背着安全债，一个野指针拖垮全进程（2026 年 mod_verto 的预认证堆溢出 CVE 就是例子）</td>
+</tr>
+</tbody>
+</table>
+<p>这里面最要命的是第一条和第二条。</p>
+<p><strong>没有原生集群</strong>意味着你横向扩不出来——加机器只是加孤岛。<strong>信令媒体业务同进程</strong>意味着你连纵向的账都算不清：一路纯转发的呼叫（bypass media）几乎不吃 CPU，一路要转码的会议呼叫吃满一个核，它们却共享同一个进程的 admission control。你想按信令扩、按媒体扩、按业务扩，可它们焊死在一起，只能整体扩。</p>
+<blockquote>
+<p><strong>FreeSWITCH 又快又脆是同一个原因：没有进程边界。</strong>
+媒体能零成本读到信令协商好的编解码和通道变量，这是快；一个模块的野指针能拖垮整个进程连同上面所有通话，这是脆。快和脆，一体两面。</p>
+</blockquote>
+<p>想清楚这两条包袱，OpenSIPS 和 rtpengine 该补在哪，答案就自己浮出来了：<strong>把信令从进程里拆出去、把媒体传输从进程里拆出去，让 FreeSWITCH 退回它最擅长的那一小块——媒体处理。</strong></p>
+<hr>
+<h2 id="opensips">OpenSIPS：补信令边缘那一刀</h2>
+<p>OpenSIPS 是高性能的模块化 SIP 代理/注册服务器，它和 FreeSWITCH 的能力曲线几乎是镜像的——FreeSWITCH 弱的信令扩展，正是它的强项。</p>
+<ul>
+<li><strong>信令吞吐差一个数量级。</strong> 单节点 OpenSIPS 轻松上万 CPS，十万级并发注册；而一台 FreeSWITCH 撑死一两百 CPS。原因很简单：OpenSIPS 是无状态/事务级的 SIP 处理，不碰媒体、不建 session，每个包进来查表、改头、转发就走。</li>
+<li><strong>原生集群。</strong> <code>clusterer</code> 模块做节点间状态交换和协调，分布式 usrloc 处理注册的 HA 和地理分布——这正是 FreeSWITCH 最缺的那块。</li>
+<li><strong>智能调度不靠拍脑袋。</strong> 这是我最想强调的一点：OpenSIPS 有个 <code>freeswitch</code> 模块，能通过 ESL 实时读到每台 FreeSWITCH 的 <code>Idle-CPU</code>、<code>Max-Sessions</code>、<code>Session-Count</code>。于是 <code>load_balancer</code> 可以基于<strong>实际负载</strong>调度，而不是静态的呼叫计数上限。哪台 FS 空闲就往哪台送，哪台快满了就绕开——这比"每台最多 500 路"这种死规则精细太多。</li>
+</ul>
+<p>把 OpenSIPS 摆在最前面，它就成了信令边缘：对外终结 SIP/WSS、做注册鉴权、拓扑隐藏、限流防欺诈，对内把需要媒体的呼叫智能分发给后面一排 FreeSWITCH。FreeSWITCH 从此只处理"确实需要媒体"的呼叫，信令的洪峰全被 OpenSIPS 挡在门外。</p>
+<p>OpenSIPS 的脚本模型、路由流程、模块结构，我在 <a href="../journal/2026-09-14-opensips-intro.html">OpenSIPS 入门那篇</a>里讲过，这里只讲它在集群里的角色。</p>
+<hr>
+<h2 id="rtpengine">rtpengine：补媒体传输那一刀</h2>
+<p>信令拆出去了，媒体呢？这就是 rtpengine 的位置。它是 Sipwise 维护的高性能媒体代理/中继，专治 FreeSWITCH 在媒体传输层的三个痛点。</p>
+<p><strong>第一，内核态 RTP 转发。</strong> rtpengine 提供 Linux 内核模块（<code>nft_rtpengine</code>），RTP 包在内核态直接转发，不用拷到用户态、不用上下文切换。对高 PPS（每秒包数）场景，这是单节点扛万级并发媒体流的关键。FreeSWITCH 的 <code>switch_rtp</code> 是用户态处理，纯做媒体中继时，这个开销是白交的。</p>
+<blockquote>
+<p>一个实战细节：高呼叫建立/拆除速率下，别用动态 nftables 规则——规则的增删本身会成为瓶颈。用一条覆盖整个媒体 UDP 端口范围的静态规则，让内核模块自己在里面转发。</p>
+</blockquote>
+<p><strong>第二，WebRTC 一站终结。</strong> ICE/Trickle ICE、DTLS-SRTP、RTP/RTCP Mux、BUNDLE，还有 RTP↔SRTP、SRTP↔SRTP 的桥接——这些浏览器侧的媒体协商全交给 rtpengine。FreeSWITCH 自己也能处理 ICE/DTLS，但那会占掉本该留给应用逻辑的 CPU。让 rtpengine 专职干这个，FreeSWITCH 的核就解放出来做转码、会议、IVR。</p>
+<p><strong>第三，媒体锚定与 media fork。</strong> rtpengine 通过改写 SDP 把所有媒体流锚定到自己身上，NAT 穿越统一处理，拓扑隐藏也更彻底——外面看不到后面那排 FreeSWITCH 的真实地址。而 media fork 能把通话的 RTP 流实时复制一份，喂给 AI 分析服务（实时转写、情感分析、质检），不碰主通话路径的延迟。做智能呼叫中心，这一条是刚需。</p>
+<hr>
+<h2 id="_2">三件套怎么分工：一张图讲清</h2>
+<p>把三个东西摆到一起，职责就清爽了：<strong>OpenSIPS 站信令边缘，rtpengine 站媒体代理，FreeSWITCH 退成一排纯媒体工人。</strong></p>
+<div class="highlight"><pre><span></span><code>flowchart TB
+    trunk[&quot;PSTN Trunk&quot;]
+    webrtc[&quot;WebRTC&quot;]
+    phone[&quot;SIP Phone&quot;]
+
+    subgraph sig[&quot;信令层&quot;]
+        opensips[&quot;OpenSIPS HA&lt;br/&gt;注册/鉴权/路由 · WSS 终结&lt;br/&gt;拓扑隐藏 · 负载均衡/故障转移&lt;br/&gt;基于 FS 实时负载调度&quot;]
+    end
+
+    subgraph media[&quot;媒体代理层&quot;]
+        rtpengine[&quot;rtpengine HA&lt;br/&gt;NAT/SRTP/ICE · WebRTC 桥接&lt;br/&gt;内核态 RTP 转发 · media fork → AI&quot;]
+    end
+
+    subgraph engine[&quot;媒体/应用引擎层（纯媒体工人 · 无状态 · ESL 受控）&quot;]
+        fs1[&quot;FreeSWITCH&lt;br/&gt;IVR/放音&quot;]
+        fs2[&quot;FreeSWITCH&lt;br/&gt;会议&quot;]
+        fs3[&quot;FreeSWITCH&lt;br/&gt;转码/录音&quot;]
+    end
+
+    subgraph svc[&quot;自研微服务 (K8s)&quot;]
+        micro[&quot;FS Adapter (ESL)&lt;br/&gt;ACD/路由 · AI 编排&lt;br/&gt;坐席状态 · CDR&quot;]
+    end
+
+    trunk --&gt; opensips
+    webrtc --&gt; opensips
+    phone --&gt; opensips
+    opensips --&gt;|SIP| rtpengine
+    rtpengine --&gt;|RTP| fs1
+    rtpengine --&gt;|RTP| fs2
+    rtpengine --&gt;|RTP| fs3
+    fs1 --&gt;|ESL Events/Commands| micro
+    fs2 --&gt;|ESL Events/Commands| micro
+    fs3 --&gt;|ESL Events/Commands| micro
+</code></pre></div>
+
+<p>关键的设计动作是<strong>把 FreeSWITCH 精简成无状态媒体工人</strong>：拿掉内置的 <code>mod_callcenter</code>（它的单机 ACD 用 SQLite 存状态，根本不是分布式编排平台），把状态外置到 Redis/PostgreSQL，禁掉用不上的模块，Docker 化。它只干一件事：接受 ESL 命令，处理媒体，产出事件。ACD、智能路由、AI 编排这些业务逻辑，全搬到 Kubernetes 上的微服务里，通过一个 FS Adapter（ESL 网关，Go/Rust 写）把 ESL 事件翻译成 Kafka/NATS 领域事件。</p>
+<p>这样一来，三种负载各扩各的：信令按 CPS 扩 OpenSIPS，媒体按 PPS/带宽扩 rtpengine 和 FreeSWITCH，业务按并发扩微服务。谁是瓶颈扩谁，不再互相绑架。</p>
+<hr>
+<h2 id="_3">容量能提到什么量级</h2>
+<p>分工的价值最终要落到数字上。下面这组是参考量级，具体到你的 dialplan、编解码、功能配置上会有出入，务必用 SIPp 在真实配置下实测，别信理论值。</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>纯 FreeSWITCH</th>
+<th>三件套组合</th>
+<th>提升来自哪</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>信令处理（CPS）</td>
+<td>~100–300</td>
+<td>10,000+</td>
+<td>OpenSIPS 接管信令边缘，FS 只碰需要媒体的呼叫</td>
+</tr>
+<tr>
+<td>并发媒体流</td>
+<td>~500–1000/节点</td>
+<td>线性水平扩展</td>
+<td>OpenSIPS 按实时负载调度到多个 FS 节点</td>
+</tr>
+<tr>
+<td>WebRTC 终结</td>
+<td>FS 自行处理 ICE/DTLS</td>
+<td>rtpengine 专职 + 内核态转发</td>
+<td>FS 的 CPU 释放给应用逻辑</td>
+</tr>
+<tr>
+<td>NAT 穿越</td>
+<td>每个 FS 各自处理</td>
+<td>rtpengine 统一媒体锚定</td>
+<td>简化 FS 配置，拓扑隐藏更彻底</td>
+</tr>
+<tr>
+<td>高可用</td>
+<td>单点故障</td>
+<td>每层独立 HA</td>
+<td>OpenSIPS 探测 FS 健康并自动故障转移</td>
+</tr>
+<tr>
+<td>注册容量</td>
+<td>~数千</td>
+<td>10 万+</td>
+<td>OpenSIPS 分布式 usrloc</td>
+</tr>
+</tbody>
+</table>
+<p>容量规划有条原则值得记住：<strong>FreeSWITCH 节点按实测饱和容量的 60–75% 设 admission control</strong>（<code>max-sessions</code>、<code>sessions-per-second</code>），留出余量给突发和故障转移时的负载转移。OpenSIPS 的 <code>load_balancer</code> 配合 <code>freeswitch</code> 模块实时感知每台 FS 还剩多少 CPU 和 session，把这个余量用活。</p>
+<hr>
+<h2 id="_4">落地：分三步，别一次到位</h2>
+<p>想清楚了架构，落地要分层推，别指望一步到位。</p>
+<ol>
+<li>
+<p><strong>先立信令和媒体两道边缘。</strong>
+   部署 OpenSIPS HA 做 SIP 信令边缘，配 <code>load_balancer</code> + <code>freeswitch</code> 模块做容量感知调度；部署 rtpengine 处理 NAT/SRTP/WebRTC 桥接。这一步做完，你已经有了一个能横向扩、能故障转移的 FreeSWITCH 集群。</p>
+</li>
+<li>
+<p><strong>再把 FreeSWITCH 精简成媒体工人。</strong>
+   移除 <code>mod_callcenter</code>，禁掉用不上的模块，状态外置，Docker 化，通过 ESL 接受外部控制。开发 FS Adapter（Go/Rust），把 ESL 事件翻译成领域事件发到 Kafka/NATS。这一步把业务逻辑从交换核心里彻底剥出来。</p>
+</li>
+<li>
+<p><strong>最后把业务和 AI 搬到外面。</strong>
+   外部 ACD 服务做技能路由、全渠道排队、坐席状态管理；通过 rtpengine 的 media fork 接 Streaming ASR、实时质检、情感分析；LLM/RAG 做知识驱动的 AI Agent。这一步是长期演进，但前两步的信令层和媒体层投资会一直有效。</p>
+</li>
+</ol>
+<p>一句话：</p>
+<blockquote>
+<p><strong>别重起炉灶，也别硬堆 FreeSWITCH。留它的媒体引擎，补它的信令和媒体传输，剥它的业务逻辑。</strong>
+重写一个软交换，二十年的协议兼容性、边界 case、运营商适配经验没法短期复现；而硬堆 FreeSWITCH，堆的是一堆互不相认的孤岛。分层增强是这两个极端之间唯一走得通的路。</p>
+</blockquote>
+<hr>
+<h2 id="_5">总结：扬长避短，比推倒重来靠谱</h2>
+<p>FreeSWITCH 到今天仍是最成熟的开源媒体/B2BUA 引擎，它的问题从来不是"不够好"，而是"什么都想自己扛"。二十年前一台机器跑一个软交换实例，这个假设合理；今天要上万路、要高可用、要云原生，这个假设过期了。</p>
+<p>正确的做法不是换掉它，而是给它配两个搭档：<strong>OpenSIPS 补上它最缺的信令集群和智能调度，rtpengine 补上它最费的媒体传输和 WebRTC 终结，FreeSWITCH 退回它最擅长的媒体处理。</strong> 三件套不是三个工具的简单叠加，是把"信令、媒体、业务"这三种本就该分开的关注点，重新切回它们各自的边界。</p>
+<p>判断一个老架构还值不值得用，我的两把尺子始终是这两条：<strong>先看它的核心能力过没过时，再看它的时代假设还成不成立。</strong> FreeSWITCH 的媒体引擎没过时，它的"单机全包"假设成不立了——留前者，补后者，就这么简单。</p>
+<h2 id="_6">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* FreeSWITCH 三件套集群
+** 精华（该留）
+*** 媒体是一等公民
+*** session/channel 双层抽象
+*** 事件驱动 + ESL 外控
+*** 小内核 + 可插拔模块
+** 包袱（该甩）
+*** 没有原生集群
+*** 信令+媒体+业务同进程
+*** 单进程有状态
+*** 纯 C 安全债
+** OpenSIPS 补信令
+*** 上万 CPS / 十万注册
+*** clusterer 原生集群
+*** freeswitch 模块容量感知调度
+** rtpengine 补媒体
+*** 内核态 RTP 转发
+*** WebRTC/SRTP/ICE 终结
+*** media fork 喂 AI
+** 三件套分工
+*** OpenSIPS 站信令边缘
+*** rtpengine 站媒体代理
+*** FS 退成纯媒体工人
+*** 业务外置成微服务
+** 落地三步
+*** 先立信令+媒体边缘
+*** 再精简 FS
+*** 最后外置业务与 AI
+@endmindmap
+</code></pre></div>
+
+<p><img alt="给 FreeSWITCH 集群配两个搭档 - 思维导图" src="../images/freeswitch_opensips_rtpengine_cluster_mindmap.png"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/freeswitch-opensips-rtpengine-cluster.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/tech.html">tech</a>
+      <a href="https://www.fanyamin.com/blog/tag/freeswitch.html">freeswitch</a>
+      <a href="https://www.fanyamin.com/blog/tag/opensips.html">opensips</a>
+      <a href="https://www.fanyamin.com/blog/tag/rtpengine.html">rtpengine</a>
+      <a href="https://www.fanyamin.com/blog/tag/voip.html">voip</a>
+      <a href="https://www.fanyamin.com/blog/tag/sip.html">sip</a>
+      <a href="https://www.fanyamin.com/blog/tag/webrtc.html">webrtc</a>
+      <a href="https://www.fanyamin.com/blog/tag/architecture.html">architecture</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/freeswitch-session-lifecycle.html" title="FreeSWITCH 的 session：一次呼叫的生老病死，都装在一个容器里">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/2026-09-19-jupyter-read-old-code.html" title="与其硬啃老代码，不如用 Jupyter 造一个看得见的简化版">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-architecture-fast-and-fragile.html">FreeSWITCH 架构设计之快与脆</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-09-14-opensips-intro.html">OpenSIPS 入门:一台 SIP 服务器,一个可编程的呼叫路由引擎</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-09-14-webrtc-to-freeswitch.html">webrtc-to-freeswitch:一个浏览器软电话的架构、流程与协议全解</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-09-11-sipjs-call-freeswitch.html">用 SIP.js 从浏览器打电话到 FreeSWITCH</a></li>
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-session-lifecycle.html">FreeSWITCH 的 session：一次呼叫的生老病死，都装在一个容器里</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

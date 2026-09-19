@@ -1,0 +1,844 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="FreeSWITCH 的 session 是整个系统最核心的抽象——它是一路呼叫的容器，也是它的边界。这篇顺着源码，把一次呼叫从 SIP INVITE 进来、到 session 创建、媒体协商、桥接、挂断销毁的完整生命周期讲清楚：哪些数据是线程私有、哪些是共享，session 为什么和内存池、线程死死绑在一起，以及为什么&#34;把会话从服务器 A 迁到服务器 B&#34;这条路基本走不通——真要做会话漂移，让客户端 endpoint 重连新服务器，比在服务端桥接靠谱得多。" />
+<meta name="keywords" content="tech, freeswitch, session, lifecycle, memory-pool, voip, c">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "FreeSWITCH 的 session：一次呼叫的生老病死，都装在一个容器里",
+  "description": "FreeSWITCH 的 session 是整个系统最核心的抽象——它是一路呼叫的容器，也是它的边界。这篇顺着源码，把一次呼叫从 SIP INVITE 进来、到 session 创建、媒体协商、桥接、挂断销毁的完整生命周期讲清楚：哪些数据是线程私有、哪些是共享，session 为什么和内存池、线程死死绑在一起，以及为什么&#34;把会话从服务器 A 迁到服务器 B&#34;这条路基本走不通——真要做会话漂移，让客户端 endpoint 重连新服务器，比在服务端桥接靠谱得多。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-09-19T09:00:00+08:00",
+  "dateModified": "2026-09-19T10:00:00+08:00",
+  "url": "https://www.fanyamin.com/blog/freeswitch-session-lifecycle.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/freeswitch-session-lifecycle.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "tech, freeswitch, session, lifecycle, memory-pool, voip, c"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="FreeSWITCH 的 session：一次呼叫的生老病死，都装在一个容器里"/>
+  <meta property="og:description" content="FreeSWITCH 的 session 是整个系统最核心的抽象——它是一路呼叫的容器，也是它的边界。这篇顺着源码，把一次呼叫从 SIP INVITE 进来、到 session 创建、媒体协商、桥接、挂断销毁的完整生命周期讲清楚：哪些数据是线程私有、哪些是共享，session 为什么和内存池、线程死死绑在一起，以及为什么&#34;把会话从服务器 A 迁到服务器 B&#34;这条路基本走不通——真要做会话漂移，让客户端 endpoint 重连新服务器，比在服务端桥接靠谱得多。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/freeswitch-session-lifecycle.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-09-19 09:00:00+08:00"/>
+  <meta property="article:modified_time" content="2026-09-19 10:00:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="tech"/>
+  <meta property="article:tag" content="freeswitch"/>
+  <meta property="article:tag" content="session"/>
+  <meta property="article:tag" content="lifecycle"/>
+  <meta property="article:tag" content="memory-pool"/>
+  <meta property="article:tag" content="voip"/>
+  <meta property="article:tag" content="c"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; FreeSWITCH 的 session：一次呼叫的生老病死，都装在一个容器里</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记本"
+               data-en="Notebook">
+              笔记本
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="freeswitch-session-lifecycle">FreeSWITCH 的 session：一次呼叫的生老病死，都装在一个容器里</h1>
+    <p>
+      Posted on 六 19 9月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>FreeSWITCH 的 session：一次呼叫的生老病死，都装在一个容器里</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Version</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-09-19</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">大纲</h2>
+<details>
+<summary>展开看看</summary>
+<ul>
+<li><strong>一句话</strong>：session 是一路呼叫的<strong>容器</strong>，也是它的<strong>边界</strong>。它把这路通话的信令、媒体、状态、内存、线程全部收拢到一个结构体里，生死与共。</li>
+<li><strong>它到底装了什么</strong>：一个 <code>switch_core_session_t</code> 里挂着 channel（呼叫状态）、media_handle（媒体）、一个专属<strong>内存池</strong>、一个专属<strong>线程</strong>、一堆锁和队列。这不是散装的字段，是一个有明确生命周期的整体。</li>
+<li><strong>生命周期八个状态</strong>：<code>CS_NEW → CS_INIT → CS_ROUTING → CS_EXECUTE → CS_EXCHANGE_MEDIA → CS_HANGUP → CS_REPORTING → CS_DESTROY</code>，一台状态机把呼叫的生老病死串成一条线。</li>
+<li><strong>私有 vs 共享</strong>：session 线程独占地跑自己的状态机、读写自己的媒体缓冲；别的线程想动它，只能过 <code>session_locate</code> 拿读锁，或者往它的<strong>消息队列</strong>里投递——不是直接改内存，是"敲门递条子"。</li>
+<li><strong>为什么绑死内存池</strong>：session 里几乎所有东西都从它自己的 pool 里分配。销毁时一句 <code>switch_core_destroy_memory_pool</code> 全部回收。这个设计干净利落，但也把 session 钉死在了本进程的地址空间里。</li>
+<li><strong>为什么不能跨进程迁移</strong>：内存池是本进程的裸指针，线程是本进程的调度实体，socket、锁、协商好的媒体上下文全是本机资源。序列化这些东西的成本，远超过重建一路呼叫。</li>
+<li><strong>会话漂移怎么做</strong>：与其在服务端把 session 从 A 搬到 B，不如让客户端 endpoint 重新 INVITE 到 B。障碍不在服务端搬不搬得动，而在<strong>媒体不能断</strong>和<strong>状态谁来接续</strong>。</li>
+<li><strong>收尾</strong>：session 是 FreeSWITCH 的"进程内的进程"——理解了这个容器的边界，就理解了它能做什么、做不了什么。</li>
+</ul>
+</details>
+<hr>
+<p>上一篇《FreeSWITCH 架构设计之快与脆》里我说，FreeSWITCH 把整套电话系统塞进一个进程里，状态归 session 管，“一路呼叫一个 session，一个 session 一个线程一台状态机”。那篇是站在高处看架构。这一篇，我想钻进去，把这个反复出现的 <code>session</code> 拆开来看：<strong>它到底是个什么东西？一次呼叫从进来到消失，在它内部经历了什么？</strong></p>
+<p>修那个 use-after-free 的时候我盯着 <code>struct switch_core_session</code> 看了很久，越看越觉得这个结构体不简单。它不是随便一个装数据的 bag。它是一路通话的<strong>容器</strong>——把信令、媒体、状态、内存、线程全部收进来；它也是一路通话的<strong>边界</strong>——通话与通话之间靠它隔离，而它一旦跨过某条线（比如跨进程），整套设计就崩了。</p>
+<p>这一篇就讲三件事：<strong>一次呼叫在 session 里完整的生命周期是怎样的；session 里哪些数据私有、哪些共享；以及为什么这个容器几乎不可能整体搬到另一台机器上——真想做“会话漂移”，正确的姿势是什么。</strong></p>
+<blockquote>
+<p>术语先对齐：<strong>session</strong>（会话）是 FreeSWITCH 里一路呼叫（call leg）的运行时对象；<strong>channel</strong>（通道）是挂在 session 上、专门管呼叫状态和通道变量的那部分；<strong>endpoint</strong>（端点）是发起或接收这路呼叫的一方——可以是 <code>mod_sofia</code> 代表的 SIP 对端，也可以是一个 WebRTC 浏览器。下文这几个词会反复用到。</p>
+</blockquote>
+<hr>
+<h2 id="session">先看它装了什么：session 是个“进程内的进程”</h2>
+<p>要理解 session，最快的办法是直接看它的结构体。我把 <code>switch_core_pvt.h</code> 里 <code>struct switch_core_session</code> 开头那几行摘出来，删掉次要字段，留下最能说明问题的：</p>
+<div class="highlight"><pre><span></span><code><span class="k">struct</span><span class="w"> </span><span class="nc">switch_core_session</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">switch_memory_pool_t</span><span class="w"> </span><span class="o">*</span><span class="n">pool</span><span class="p">;</span><span class="w">        </span><span class="cm">/* 专属内存池 */</span>
+<span class="w">    </span><span class="n">switch_thread_t</span><span class="w"> </span><span class="o">*</span><span class="kr">thread</span><span class="p">;</span><span class="w">           </span><span class="cm">/* 专属线程 */</span>
+<span class="w">    </span><span class="n">switch_thread_id_t</span><span class="w"> </span><span class="n">thread_id</span><span class="p">;</span>
+<span class="w">    </span><span class="n">switch_endpoint_interface_t</span><span class="w"> </span><span class="o">*</span><span class="n">endpoint_interface</span><span class="p">;</span><span class="w">  </span><span class="cm">/* 是谁创建的我：mod_sofia? */</span>
+<span class="w">    </span><span class="n">switch_channel_t</span><span class="w"> </span><span class="o">*</span><span class="n">channel</span><span class="p">;</span><span class="w">         </span><span class="cm">/* 呼叫状态、通道变量 */</span>
+
+<span class="w">    </span><span class="n">switch_mutex_t</span><span class="w"> </span><span class="o">*</span><span class="n">mutex</span><span class="p">;</span><span class="w">             </span><span class="cm">/* 一堆锁 */</span>
+<span class="w">    </span><span class="n">switch_thread_rwlock_t</span><span class="w"> </span><span class="o">*</span><span class="n">rwlock</span><span class="p">;</span><span class="w">    </span><span class="cm">/* 跨线程访问的读写锁 */</span>
+
+<span class="w">    </span><span class="n">switch_queue_t</span><span class="w"> </span><span class="o">*</span><span class="n">event_queue</span><span class="p">;</span><span class="w">       </span><span class="cm">/* 事件队列 */</span>
+<span class="w">    </span><span class="n">switch_queue_t</span><span class="w"> </span><span class="o">*</span><span class="n">message_queue</span><span class="p">;</span><span class="w">     </span><span class="cm">/* 消息队列——别人给我递条子的地方 */</span>
+<span class="w">    </span><span class="n">switch_queue_t</span><span class="w"> </span><span class="o">*</span><span class="n">private_event_queue</span><span class="p">;</span>
+
+<span class="w">    </span><span class="n">switch_media_handle_t</span><span class="w"> </span><span class="o">*</span><span class="n">media_handle</span><span class="p">;</span><span class="w">   </span><span class="cm">/* 媒体：codec、RTP、缓冲 */</span>
+<span class="w">    </span><span class="n">switch_buffer_t</span><span class="w"> </span><span class="o">*</span><span class="n">raw_read_buffer</span><span class="p">;</span><span class="w">      </span><span class="cm">/* 读到的原始音频 */</span>
+<span class="w">    </span><span class="n">switch_buffer_t</span><span class="w"> </span><span class="o">*</span><span class="n">raw_write_buffer</span><span class="p">;</span><span class="w">     </span><span class="cm">/* 要写出的原始音频 */</span>
+<span class="w">    </span><span class="cm">/* ... 还有一大堆 codec、resampler、media bug ... */</span>
+<span class="p">};</span>
+</code></pre></div>
+
+<p>看出门道了吗？这个结构体里有<strong>它自己的内存池、它自己的线程、它自己的锁、它自己的消息队列、它自己的媒体缓冲</strong>。</p>
+<p>这几样东西凑在一起是什么概念？操作系统里的一个进程，无非就是“独立的地址空间 + 独立的执行流 + 和外界通信的信道”。而一个 session：内存池就是它的“地址空间”（这路呼叫要用的内存都从这里出），专属线程就是它的“执行流”，消息队列和事件队列就是它“和外界通信的信道”。</p>
+<p>所以我更愿意把 session 理解成 <strong>FreeSWITCH 进程内部的一个“轻量进程”</strong>。它不是真的进程——没有内核给的隔离，一个野指针照样能踩到隔壁——但从<strong>资源组织</strong>的角度看，它确实是一个自成一体、有明确边界、有独立生命周期的单元。这个类比，是理解后面所有问题的钥匙。</p>
+<hr>
+<h2 id="_2">生命周期：一次呼叫的生老病死</h2>
+<p>session 不是一个静态的容器，它是<strong>活的</strong>——从被创建的那一刻起，它就在一台状态机上流转，直到被销毁。这台状态机的状态，<code>switch_types.h</code> 里定义得清清楚楚：</p>
+<div class="highlight"><pre><span></span><code>CS_NEW → CS_INIT → CS_ROUTING → CS_EXECUTE
+       → CS_EXCHANGE_MEDIA → CS_HANGUP → CS_REPORTING → CS_DESTROY
+</code></pre></div>
+
+<p>跟着一通电话走一遍，你就懂了。假设一个 SIP INVITE 打进来：</p>
+<p><strong>1. 出生（CS_NEW / CS_INIT）。</strong> <code>mod_sofia</code> 收到 INVITE，调 <code>switch_core_session_request_uuid()</code> 请求一个新 session。这一步做的第一件大事，就是<strong>开一个新内存池</strong>：</p>
+<div class="highlight"><pre><span></span><code><span class="n">switch_core_new_memory_pool</span><span class="p">(</span><span class="o">&amp;</span><span class="n">usepool</span><span class="p">);</span>
+<span class="n">session</span><span class="o">-&gt;</span><span class="n">pool</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">usepool</span><span class="p">;</span>
+<span class="n">switch_channel_alloc</span><span class="p">(</span><span class="o">&amp;</span><span class="n">session</span><span class="o">-&gt;</span><span class="n">channel</span><span class="p">,</span><span class="w"> </span><span class="n">direction</span><span class="p">,</span><span class="w"> </span><span class="n">session</span><span class="o">-&gt;</span><span class="n">pool</span><span class="p">);</span><span class="w">   </span><span class="cm">/* channel 从 pool 分配 */</span>
+<span class="n">switch_mutex_init</span><span class="p">(</span><span class="o">&amp;</span><span class="n">session</span><span class="o">-&gt;</span><span class="n">mutex</span><span class="p">,</span><span class="w"> </span><span class="p">...,</span><span class="w"> </span><span class="n">session</span><span class="o">-&gt;</span><span class="n">pool</span><span class="p">);</span><span class="w">               </span><span class="cm">/* 锁从 pool 分配 */</span>
+<span class="n">switch_queue_create</span><span class="p">(</span><span class="o">&amp;</span><span class="n">session</span><span class="o">-&gt;</span><span class="n">message_queue</span><span class="p">,</span><span class="w"> </span><span class="p">...,</span><span class="w"> </span><span class="n">session</span><span class="o">-&gt;</span><span class="n">pool</span><span class="p">);</span><span class="w">     </span><span class="cm">/* 队列从 pool 分配 */</span>
+<span class="n">switch_thread_rwlock_create</span><span class="p">(</span><span class="o">&amp;</span><span class="n">session</span><span class="o">-&gt;</span><span class="n">rwlock</span><span class="p">,</span><span class="w"> </span><span class="n">session</span><span class="o">-&gt;</span><span class="n">pool</span><span class="p">);</span><span class="w">         </span><span class="cm">/* rwlock 从 pool 分配 */</span>
+</code></pre></div>
+
+<p>注意每一行末尾——channel、锁、队列、rwlock，<strong>全部从 <code>session-&gt;pool</code> 里分配</strong>。这不是巧合，是刻意的设计，后面讲销毁的时候你会看到它的威力。session 建好后被登记进全局的 <code>session_table</code>（那张用 UUID 查 session 的哈希表），然后 <code>switch_core_session_thread_launch()</code> 给它拉起专属线程，状态机开始转。</p>
+<p><strong>2. 找路（CS_ROUTING）。</strong> 呼叫要去哪儿？这个状态里，拨号计划（dialplan）登场，根据主被叫号码、通道变量，决定这通电话该干嘛——转接、进 IVR、进会议、还是直接桥接到另一路。</p>
+<p><strong>3. 干活（CS_EXECUTE）。</strong> 拨号计划里排好的一个个 application（<code>answer</code>、<code>bridge</code>、<code>playback</code>、<code>conference</code>……）在这里依次执行。大部分业务逻辑都发生在这个状态。</p>
+<p><strong>4. 通媒体（CS_EXCHANGE_MEDIA）。</strong> 到了真正收发 RTP 包的阶段。session 线程在这里跑一个循环：从 socket 读 RTP → 解码 → 丢进 <code>raw_read_buffer</code> → 应用各种 media bug（录音、检测）→ 编码 → 从 socket 写出去。每 20 毫秒一帧，雷打不动。</p>
+<p><strong>5. 挂断（CS_HANGUP）。</strong> 一方挂了，或者逻辑走到头了。状态机进入 CS_HANGUP，通知 endpoint 模块发 BYE、拆媒体、做收尾。</p>
+<p><strong>6. 记账（CS_REPORTING）。</strong> 挂断后，生成这通电话的 CDR（话单：谁打给谁、通了多久、什么原因挂的）。</p>
+<p><strong>7. 销毁（CS_DESTROY）。</strong> 最后一步，也是最能说明 session 设计哲学的一步，下一节专门讲。</p>
+<p>每一个状态转换，状态机都先调<strong>创建这个 session 的 endpoint 模块</strong>（比如 <code>mod_sofia</code>）注册的 state handler——这就是上一篇说的“模块是状态机上的插件”。模块处理完，再走通用逻辑，把 channel 推向下一个状态。整个流程，都在 session 自己那个专属线程里跑，不借别人的线程。</p>
+<hr>
+<h2 id="_3">私有还是共享：线程独占，别人只能敲门</h2>
+<p>现在回答那个更细的问题：session 里的数据，哪些是线程私有的，哪些是共享的？</p>
+<p><strong>默认全是“私有”的——由 session 自己那个线程独占地访问。</strong> 状态机的流转、媒体缓冲的读写、codec 的编解码，都发生在 session 线程内部。正常情况下，没有别的线程会去碰这些东西。这就是为什么“一路呼叫一个线程”能跑得又快又不容易出并发问题——大部分时候根本不需要加锁，因为只有一个线程在动它。</p>
+<p>问题是，总有别的线程需要跟这路呼叫打交道。比如：</p>
+<ul>
+<li>你在 <code>fs_cli</code> 里敲命令要挂断某路呼叫——发命令的是 CLI 线程。</li>
+<li>另一路呼叫要跟它桥接、要给它发个 DTMF、要往它的媒体流里插一段放音——发起方是另一个 session 的线程。</li>
+<li>一个事件订阅者想读它的通道变量。</li>
+</ul>
+<p>这些“外来线程”怎么安全地访问一个不属于自己的 session？FreeSWITCH 给了<strong>两条路，而且都不是“直接改内存”</strong>：</p>
+<p><strong>第一条：<code>session_locate</code> 拿读锁。</strong> 上一篇讲过，拿 UUID 去 <code>session_table</code> 查，查到给你一个<strong>加了读锁</strong>的指针，用完必须解锁，而且别锁超过几毫秒。这条路适合“我要读一下它的状态”或者“我要短暂地操作它”。锁的存在本身就说明：session 是共享的资源，但共享是<strong>有代价、要小心</strong>的。</p>
+<p><strong>第二条：往消息队列里投递。</strong> 这是我觉得更能体现设计思想的一条。如果你想让某个 session“做件事”，很多时候不是你直接去改它的内存，而是构造一个消息，<code>switch_core_session_queue_message()</code> 塞进它的 <code>message_queue</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="n">switch_status_t</span><span class="w"> </span><span class="nf">switch_core_session_queue_message</span><span class="p">(</span>
+<span class="w">    </span><span class="n">switch_core_session_t</span><span class="w"> </span><span class="o">*</span><span class="n">session</span><span class="p">,</span><span class="w"> </span><span class="n">switch_core_session_message_t</span><span class="w"> </span><span class="o">*</span><span class="n">message</span><span class="p">);</span>
+</code></pre></div>
+
+<p>然后<strong>它自己的线程</strong>在状态机循环里 pop 出这个消息，<code>switch_core_session_receive_message()</code> 处理掉。</p>
+<p>这是什么模式？<strong>这是 actor 模式的雏形——不共享内存，靠消息通信。</strong> 你不能随便闯进别人家里改家具，你只能把要求写成条子，塞进人家门口的信箱，等主人自己出来处理。跨 session 的很多交互（比如桥接时把一方的媒体请求转给另一方），底层走的就是这套“投递消息、对方线程自己消化”的机制。</p>
+<p>所以“私有 vs 共享”的准确答案是：</p>
+<table>
+<thead>
+<tr>
+<th>数据/资源</th>
+<th>谁能访问</th>
+<th>怎么访问</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>状态机流转、媒体缓冲读写、codec</td>
+<td>session 自己的线程</td>
+<td>独占，基本无锁</td>
+</tr>
+<tr>
+<td>整个 session 结构体（读）</td>
+<td>任意线程</td>
+<td><code>session_locate</code> 拿读锁，快进快出</td>
+</tr>
+<tr>
+<td>让 session“做件事”</td>
+<td>任意线程</td>
+<td>往 <code>message_queue</code> 投递，它自己消化</td>
+</tr>
+<tr>
+<td>全局资源（session_table、事件系统）</td>
+<td>任意线程</td>
+<td>各自的全局锁保护</td>
+</tr>
+</tbody>
+</table>
+<p><strong>这套“线程独占为主、外来访问靠锁或消息”的设计，是 session 能既高效又相对安全的关键。</strong> 它把并发的复杂度收敛到了几个明确的入口上，而不是让所有线程在共享内存里自由厮杀。</p>
+<hr>
+<h2 id="_4">为什么和内存池绑死：一句话回收整个宇宙</h2>
+<p>回到 CS_DESTROY，看销毁那一刻发生了什么。<code>switch_core_session_perform_destroy()</code> 的结尾，是这样几行：</p>
+<div class="highlight"><pre><span></span><code><span class="cm">/* 清空还没处理完的事件队列 */</span>
+<span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="n">switch_queue_trypop</span><span class="p">(</span><span class="n">session</span><span class="o">-&gt;</span><span class="n">event_queue</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">pop</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">SWITCH_STATUS_SUCCESS</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">switch_event_destroy</span><span class="p">(</span><span class="o">&amp;</span><span class="n">event</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="n">pool</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">session</span><span class="o">-&gt;</span><span class="n">pool</span><span class="p">;</span>
+<span class="o">*</span><span class="n">session</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">NULL</span><span class="p">;</span>
+<span class="n">switch_core_destroy_memory_pool</span><span class="p">(</span><span class="o">&amp;</span><span class="n">pool</span><span class="p">);</span><span class="w">   </span><span class="cm">/* 关键就这一句 */</span>
+</code></pre></div>
+
+<p>看最后一句。<strong>销毁一个 session，核心动作就是销毁它的内存池。</strong></p>
+<p>前面出生的时候，channel、锁、队列、rwlock、大部分缓冲……全是从 <code>session-&gt;pool</code> 分配的。所以销毁的时候，不需要一个个 <code>free</code>——把整个池子端掉，里面所有东西一次性全部回收。这就是 FreeSWITCH（底层是 APR 内存池）最优雅的地方：<strong>用内存池的生命周期，精确地框定 session 的生命周期。session 生，则池生；session 亡，则池亡。分配时不用操心谁来释放，销毁时一网打尽。</strong></p>
+<p>对一个每秒可能创建销毁成百上千路呼叫的系统来说，这个设计有两个实在的好处：一是<strong>不容易内存泄漏</strong>——只要你把内存挂在 session 的池上，session 一销毁就自动回收，忘了 free 也不怕；二是<strong>快</strong>——批量回收一个池，比逐个 free 成千上万个小对象高效得多。</p>
+<p>但是——凡事有一利就有一弊，这句话在 FreeSWITCH 里我要说第二遍了——<strong>正是这个“和内存池绑死”的优雅设计，把 session 死死钉在了本进程的地址空间里。</strong> 这就引出了那个最有意思的问题。</p>
+<hr>
+<h2 id="session_1">为什么 session 不能随便跨进程迁移</h2>
+<p>现在来正面回答那个问题：能不能把一路正在进行的呼叫，连同它的 session，从服务器 A 整体搬到服务器 B？</p>
+<p>结论是：<strong>几乎不可能，而且障碍不是“没人写这个功能”，是这个设计从根上就不支持。</strong> 逐条看 session 里那些东西，它们无一例外都是<strong>本进程、本机的资源</strong>：</p>
+<p><strong>内存池是本进程的裸指针。</strong> session 里到处是指针——<code>session-&gt;channel</code>、<code>session-&gt;media_handle</code>、<code>session-&gt;pool</code> 自己。这些指针指向的是<strong>本进程虚拟地址空间里的地址</strong>。搬到另一台机器上，这些地址一文不值。你要迁移，就得把整个对象图（session 引用的 channel、channel 引用的通道变量、media_handle 引用的 codec 状态……）全部<strong>序列化</strong>成一份和地址无关的数据，在对端<strong>反序列化</strong>重建。这个对象图有多大、多深、多少循环引用，想想就头疼。</p>
+<p><strong>线程是本进程的调度实体。</strong> session 那个专属线程，是本机操作系统调度的。你没法把一个正在运行的线程“搬”到另一台机器上——线程的栈、寄存器状态、它正卡在哪一行代码，这些是 CPU 和 OS 的私产。对端只能<strong>重新起一个线程</strong>，从某个状态重新开始跑。</p>
+<p><strong>媒体上下文是本机的实时资源。</strong> 这是最要命的一条。这路呼叫协商好的 codec、正在用的 RTP socket、丢包重传的状态、jitter buffer 里缓着的包、加密的密钥……全是<strong>和这台机器、这个网络位置绑定</strong>的。RTP 是有状态的实时流，序列号、时间戳、SSRC 都在连续推进。你就算把这些状态字节不差地搬过去，对端那台机器的 IP 变了，对方（remote endpoint）还在往<strong>老地址</strong>发包呢。</p>
+<p>把这几条摆一起，答案就很清楚了：<strong>序列化一个 session 并在异地重建它的成本，远远超过“干脆重新建一路呼叫”。</strong> 这不是 FreeSWITCH 偷懒，是它当年选择“信令媒体同处一个地址空间、用内存池管生命周期”这套架构时，顺带付出的代价。上一篇说“信令媒体贴得近换来对话零成本”，这一篇就是那笔账的另一面——<strong>贴得越近、绑得越死，就越搬不动。</strong></p>
+<hr>
+<h2 id="_5">那“会话漂移”到底该怎么做</h2>
+<p>既然服务端搬不动 session，是不是就没法做会话保持、故障切换了？不是。<strong>换个思路：不搬服务端的 session，让客户端 endpoint 重新连到新服务器。</strong></p>
+<p>这正是我一开始的判断，从源码角度看，它是对的。想象一下：与其绞尽脑汁把 A 上那个绑死了内存池和线程的 session 整体搬到 B，不如让持有这路呼叫的那个客户端（浏览器、软电话、话机）<strong>重新发起一次 INVITE，连到 B</strong>。B 上按标准流程新建一个 session——走一遍 CS_NEW 到 CS_EXCHANGE_MEDIA，干净利落，完全在这套架构的舒适区里。</p>
+<p>但这条路也不是白捡的，它把难题从“服务端搬不搬得动”换成了另外两个更本质的问题：</p>
+<p><strong>难题一：媒体不能断，或者尽量少断。</strong> 重新 INVITE 意味着要重新协商媒体、重新建 RTP 流。这中间必然有一小段空档，对方可能听到卡顿甚至断音。要把这段空档压到用户无感，得靠客户端和信令层配合——比如提前和 B 建好媒体通道再切、用 ICE 重启保住连接、或者上层协议（像某些 WebRTC 方案里的连接迁移）来兜底。<strong>真正的技术含量在这里，不在“搬 session”。</strong></p>
+<p><strong>难题二：状态谁来接续。</strong> 这路呼叫在 A 上已经进行到某个业务状态了——放到 IVR 第三层菜单了、已经录了 5 分钟音了、正在一个有 8 个人的会议里。B 新建的 session 是张白纸，它不知道这些。要接续，就得把<strong>业务状态</strong>（不是内存指针，是“这通电话逻辑上进行到哪了”）存在 session 之外的地方——数据库、共享缓存、或者干脆由客户端携带。这本质上是在做<strong>有状态服务的状态外置</strong>，和 Web 后端把用户会话从内存挪到 Redis 是同一个道理。</p>
+<p>所以“会话漂移”的正确打开方式，一句话：<strong>别跟服务端那个绑死的 session 较劲，把可迁移的状态外置出来，让客户端 endpoint 重连新节点、由外置状态接续。</strong> 服务端的 session 该销毁就销毁，该新建就新建——它本来就是设计成“廉价地生、干净地灭”的东西。</p>
+<p>这里其实藏着一个更普适的道理：<strong>当一个对象和它的运行时环境（内存、线程、连接）绑得太死，你就别指望能整体迁移它；能迁移的，永远是那些被刻意剥离出来、和环境无关的状态。</strong> 这条规律，从 FreeSWITCH 的 session，到无状态微服务，到 Kubernetes 里的 Pod 为什么是“杀掉重建”而不是“热迁移”，背后是同一句话。</p>
+<hr>
+<h2 id="session_2">总结：session 是容器，是边界，也是它搬不动的原因</h2>
+<p>把这一篇收一下，三句话：</p>
+<ol>
+<li>
+<p><strong>session 是一路呼叫的容器。</strong> 它把信令（channel）、媒体（media_handle）、内存（pool）、执行流（thread）、通信信道（queue）全部收进一个结构体，是 FreeSWITCH 进程内的一个“轻量进程”。它有完整的生老病死：<code>CS_NEW → … → CS_DESTROY</code>，一台状态机串起呼叫的一生。</p>
+</li>
+<li>
+<p><strong>session 是并发的边界。</strong> 数据默认由自己的线程独占访问；外来线程要么 <code>session_locate</code> 拿读锁快进快出，要么往消息队列投条子让它自己消化。这套“独占为主、访问收敛到明确入口”的设计，是它既高效又相对安全的根。</p>
+</li>
+<li>
+<p><strong>session 搬不动，是因为它和本机资源绑死了。</strong> 内存池是本进程裸指针、线程是本机调度实体、媒体是本机实时流。销毁时一句 <code>destroy_memory_pool</code> 全回收的那份优雅，反过来就是它无法跨进程迁移的枷锁。真要做会话漂移，让客户端 endpoint 重连新服务器、把业务状态外置，比在服务端搬 session 靠谱得多。</p>
+</li>
+</ol>
+<p>上一篇看的是“整个进程为什么这么组织”，这一篇看的是“进程里每一路呼叫这个原子单元长什么样、活多久、边界在哪”。两篇连起来，FreeSWITCH 的骨架就露出来了：<strong>一个进程，里面跑着一群绑死了内存和线程的 session，彼此靠锁和消息小心地打交道。</strong></p>
+<p>下一篇，想接着往媒体那一层钻：CS_EXCHANGE_MEDIA 状态里，一帧音频从 RTP 包进来、到被另一路呼叫听见，中间到底经过了哪些手？media bug、codec、jitter buffer 是怎么串在这条流水线上的？</p>
+<h2 id="_6">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* FreeSWITCH session：\n一次呼叫的一生
+** session 装了什么
+*** 内存池 = 地址空间
+*** 专属线程 = 执行流
+*** 队列 = 通信信道
+*** 进程内的&quot;轻量进程&quot;
+** 生命周期
+*** CS_NEW / CS_INIT 出生
+*** CS_ROUTING 找路
+*** CS_EXECUTE 干活
+*** CS_EXCHANGE_MEDIA 通媒体
+*** CS_HANGUP / REPORTING / DESTROY
+** 私有 vs 共享
+*** 默认线程独占，基本无锁
+*** session_locate 拿读锁
+*** message_queue 投条子（actor 雏形）
+** 和内存池绑死
+*** 万物从 session-&gt;pool 分配
+*** destroy_memory_pool 一句回收
+*** 优雅的代价：钉死在本进程
+** 为什么搬不动
+*** 内存池是本进程裸指针
+*** 线程是本机调度实体
+*** 媒体是本机实时流
+** 会话漂移怎么做
+*** 让 endpoint 重连新服务器
+*** 难点在媒体不断
+*** 难点在状态外置接续
+@endmindmap
+</code></pre></div>
+
+<p><img alt="FreeSWITCH 的 session 生命周期 - 思维导图" src="../images/freeswitch_session_lifecycle_mindmap.png"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/freeswitch-session-lifecycle.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/tech.html">tech</a>
+      <a href="https://www.fanyamin.com/blog/tag/freeswitch.html">freeswitch</a>
+      <a href="https://www.fanyamin.com/blog/tag/session.html">session</a>
+      <a href="https://www.fanyamin.com/blog/tag/lifecycle.html">lifecycle</a>
+      <a href="https://www.fanyamin.com/blog/tag/memory-pool.html">memory-pool</a>
+      <a href="https://www.fanyamin.com/blog/tag/voip.html">voip</a>
+      <a href="https://www.fanyamin.com/blog/tag/c.html">c</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/freeswitch-architecture-fast-and-fragile.html" title="FreeSWITCH 架构设计之快与脆">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/freeswitch-opensips-rtpengine-cluster.html" title="给 FreeSWITCH 集群配两个搭档：OpenSIPS 管信令，rtpengine 管媒体">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-architecture-fast-and-fragile.html">FreeSWITCH 架构设计之快与脆</a></li>
+      <li><a href="https://www.fanyamin.com/blog/apache-portable-runtime.html">APR 入门：一个 30 年前的答案，为什么还在你的代码库里</a></li>
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-opensips-rtpengine-cluster.html">给 FreeSWITCH 集群配两个搭档：OpenSIPS 管信令，rtpengine 管媒体</a></li>
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-testing-unit-and-integration.html">给 FreeSWITCH 写测试：从单元测试到集成测试，用一个真 bug 串起来</a></li>
+      <li><a href="https://www.fanyamin.com/blog/c-dynamic-load-di-service-registry.html">C 语言的动态加载、依赖注入与服务注册：把 FreeSWITCH 的模块机制拆到底</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

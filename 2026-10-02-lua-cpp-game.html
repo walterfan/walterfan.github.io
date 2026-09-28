@@ -1,0 +1,994 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="想改一下小球的速度，却要等三分钟重新编译整个 C++ 工程——这是自己拿 C++ 写游戏时最劝退的一件事。这篇借一个真实的 SDL 打砖块项目（eliasdaler/sdl_breakout）讲清楚一种分层写法：C++ 只当&#34;引擎&#34;，负责窗口、渲染、音频、输入这些慢变的底层；游戏玩法整个搬到 Lua，改了存盘就生效。文章拆解 sol2 怎么把 C++ 的类和函数暴露给 Lua、GC 怎么接管 SDL 资源，最后附上我把它移植到 macOS 时踩的三个坑和改法。代码引用来自该项目 master 分支，移植改动在 macOS + Apple clang 上实测。" />
+<meta name="keywords" content="tech, lua, cpp, sdl, sol2, game, gamedev">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "引擎归 C++，玩法归 Lua：一个打砖块游戏的分层写法",
+  "description": "想改一下小球的速度，却要等三分钟重新编译整个 C++ 工程——这是自己拿 C++ 写游戏时最劝退的一件事。这篇借一个真实的 SDL 打砖块项目（eliasdaler/sdl_breakout）讲清楚一种分层写法：C++ 只当&#34;引擎&#34;，负责窗口、渲染、音频、输入这些慢变的底层；游戏玩法整个搬到 Lua，改了存盘就生效。文章拆解 sol2 怎么把 C++ 的类和函数暴露给 Lua、GC 怎么接管 SDL 资源，最后附上我把它移植到 macOS 时踩的三个坑和改法。代码引用来自该项目 master 分支，移植改动在 macOS + Apple clang 上实测。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-10-02T21:30:00+08:00",
+  "dateModified": "2026-10-02T21:30:00+08:00",
+  "url": "https://www.fanyamin.com/blog/2026-10-02-lua-cpp-game.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/2026-10-02-lua-cpp-game.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "tech, lua, cpp, sdl, sol2, game, gamedev"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="引擎归 C++，玩法归 Lua：一个打砖块游戏的分层写法"/>
+  <meta property="og:description" content="想改一下小球的速度，却要等三分钟重新编译整个 C++ 工程——这是自己拿 C++ 写游戏时最劝退的一件事。这篇借一个真实的 SDL 打砖块项目（eliasdaler/sdl_breakout）讲清楚一种分层写法：C++ 只当&#34;引擎&#34;，负责窗口、渲染、音频、输入这些慢变的底层；游戏玩法整个搬到 Lua，改了存盘就生效。文章拆解 sol2 怎么把 C++ 的类和函数暴露给 Lua、GC 怎么接管 SDL 资源，最后附上我把它移植到 macOS 时踩的三个坑和改法。代码引用来自该项目 master 分支，移植改动在 macOS + Apple clang 上实测。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/2026-10-02-lua-cpp-game.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-10-02 21:30:00+08:00"/>
+  <meta property="article:modified_time" content="2026-10-02 21:30:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="tech"/>
+  <meta property="article:tag" content="lua"/>
+  <meta property="article:tag" content="cpp"/>
+  <meta property="article:tag" content="sdl"/>
+  <meta property="article:tag" content="sol2"/>
+  <meta property="article:tag" content="game"/>
+  <meta property="article:tag" content="gamedev"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 引擎归 C++，玩法归 Lua：一个打砖块游戏的分层写法</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记"
+               data-en="Notebook">
+              笔记
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="2026-10-02-lua-cpp-game">引擎归 C++，玩法归 Lua：一个打砖块游戏的分层写法</h1>
+    <p>
+      Posted on 五 02 10月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>引擎归 C++，玩法归 Lua：一个打砖块游戏的分层写法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-10-02</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">大纲</h2>
+<details>
+<summary>展开看看</summary>
+<ul>
+<li><strong>一个改速度要等三分钟的痛点</strong>：为什么纯 C++ 写游戏改起来这么烦</li>
+<li><strong>分层这条线</strong>：C++ 当引擎，Lua 当玩法，谁快变谁上脚本</li>
+<li><strong>一帧是怎么跑起来的</strong>：C++ 的主循环怎么回调 Lua 的 update / draw</li>
+<li><strong>sol2 怎么把 C++ 递给 Lua</strong>：注册函数、包装 usertype、用 GC 管 SDL 资源</li>
+<li><strong>玩法为什么留在 Lua</strong>：看 game.lua 里那段碰撞逻辑</li>
+<li><strong>移植到 macOS 踩的三个坑</strong>：可执行文件目录、current_path 抛异常、sol::nil</li>
+<li><strong>总结</strong>：这套分层适合谁，不适合谁</li>
+</ul>
+</details>
+<hr>
+<p>自己拿 C++ 写过小游戏的人，大概都体会过这么一个时刻：小球飞得太快了，你想把速度从 90 调成 70，一个数字的事。结果呢——改完源码，等 CMake 增量编译，等链接，运行，看一眼，还是太快，再改一次，再等一遍。一下午就耗在"改数字—编译—看效果"这个循环里。</p>
+<p>问题不在 C++ 本身，而在于<strong>你把"每天都要改的东西"和"几乎不动的东西"编译在了一起</strong>。窗口怎么创建、纹理怎么渲染、音频怎么播放，这些底层一旦写对就很少动；而小球速度、砖块布局、什么时候播哪个音效，这些是你每天都在调的玩法。把它们捆在一个二进制里，等于让最稳定的代码拖累最爱变的代码。</p>
+<p>这篇讲一种把两者拆开的写法：<strong>C++ 只当引擎，玩法整个搬到 Lua</strong>。载体是一个真实的开源项目 <a href="https://github.com/eliasdaler/sdl_breakout">eliasdaler/sdl_breakout</a>——一个用 SDL 做的打砖块，作者刻意把 C++ 和 Lua 分得很干净，整个游戏逻辑是 Lua 写的，C++ 那层小到可以叫"engine"。读完你会拿到：这套分层的边界划在哪、sol2 这个绑定库怎么把 C++ 递给 Lua、以及我把它移植到 macOS 时踩的三个坑。</p>
+<ul>
+<li>一句话立住主张：<strong>引擎归 C++，玩法归 Lua</strong>——慢变的底层用编译语言锁死，快变的玩法用脚本随时改。</li>
+<li>一句话划清边界：这不是"用 Lua 替代 C++"，而是让两者各干自己擅长的活。</li>
+</ul>
+<hr>
+<h2 id="_2">分层这条线划在哪</h2>
+<p>先把边界说清楚，不然容易理解成"把 C++ 能力削一半塞给 Lua"。</p>
+<p>这个项目里有一个叫 <code>edge</code> 的目录，是 C++ 写的引擎；还有一个 <code>games/breakout</code> 目录，游戏逻辑几乎全在里面的 <code>.lua</code> 文件里。分工是这样的：</p>
+<table>
+<thead>
+<tr>
+<th>层</th>
+<th>语言</th>
+<th>负责什么</th>
+<th>变化频率</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>引擎</td>
+<td>C++ + SDL</td>
+<td>窗口、渲染、音频、字体、键盘、主循环</td>
+<td>低，写对就不动</td>
+</tr>
+<tr>
+<td>玩法</td>
+<td>Lua</td>
+<td>小球运动、碰撞判定、砖块布局、菜单、播哪个音效</td>
+<td>高，天天调</td>
+</tr>
+<tr>
+<td>桥</td>
+<td>sol2</td>
+<td>把 C++ 的类和函数暴露成 Lua 能调的东西</td>
+<td>中，加新能力时才动</td>
+</tr>
+</tbody>
+</table>
+<p>判断一段代码该放哪层，我用一个土办法：<strong>问它多久改一次</strong>。"小球撞到砖块后往哪弹"这种规则，一个通宵能改二十版，放 Lua；"怎么把一张 PNG 变成 GPU 纹理"这种，写对一次就是一年，放 C++。</p>
+<blockquote>
+<p><strong>慢变的东西用编译换性能，快变的东西用脚本换迭代速度。</strong>
+分层的本质不是语言之争，是把不同变化频率的代码隔开，别让它们互相拖累。</p>
+</blockquote>
+<p>C++ 那层小到什么程度？主入口 <code>games/breakout/src/main.cpp</code> 一共十几行：</p>
+<div class="highlight"><pre><span></span><code><span class="kt">int</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">argc</span><span class="p">,</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">argv</span><span class="p">[])</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="n">edge</span><span class="o">::</span><span class="n">GameParams</span><span class="w"> </span><span class="n">params</span><span class="p">{</span>
+<span class="w">        </span><span class="p">.</span><span class="n">screenWidth</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">256</span><span class="p">,</span>
+<span class="w">        </span><span class="p">.</span><span class="n">screenHeight</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">240</span><span class="p">,</span>
+<span class="w">        </span><span class="p">.</span><span class="n">screenScale</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span>
+<span class="w">        </span><span class="p">.</span><span class="n">windowTitle</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;SDL Breakout&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="p">};</span>
+
+<span class="w">    </span><span class="n">edge</span><span class="o">::</span><span class="n">Game</span><span class="w"> </span><span class="n">game</span><span class="p">;</span>
+<span class="w">    </span><span class="n">game</span><span class="p">.</span><span class="n">start</span><span class="p">(</span><span class="n">params</span><span class="p">);</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>C++ 侧只声明"我要一个多大的窗口、叫什么名字"，然后 <code>start()</code> 一把梭。至于窗口里跑什么游戏，<code>main.cpp</code> 一无所知——它只会去加载一个叫 <code>scripts/game.lua</code> 的文件。换句话说，<strong>同一个引擎二进制，换一套 Lua 脚本就是另一个游戏</strong>。项目里那个 <code>games/minimal</code> 就是证据，它的 <code>game.lua</code> 是空的：</p>
+<div class="highlight"><pre><span></span><code><span class="kd">local</span> <span class="n">class</span> <span class="o">=</span> <span class="nb">require</span> <span class="s1">&#39;lib.middleclass&#39;</span>
+<span class="kd">local</span> <span class="n">Game</span> <span class="o">=</span> <span class="n">class</span><span class="p">(</span><span class="s2">&quot;Game&quot;</span><span class="p">)</span>
+
+<span class="kr">function</span> <span class="nc">Game</span><span class="p">:</span><span class="nf">initialize</span><span class="p">()</span> <span class="kr">end</span>
+<span class="kr">function</span> <span class="nc">Game</span><span class="p">:</span><span class="nf">update</span><span class="p">(</span><span class="n">dt</span><span class="p">)</span> <span class="kr">end</span>
+<span class="kr">function</span> <span class="nc">Game</span><span class="p">:</span><span class="nf">draw</span><span class="p">()</span> <span class="kr">end</span>
+
+<span class="kr">return</span> <span class="n">Game</span><span class="p">:</span><span class="n">new</span><span class="p">()</span>
+</code></pre></div>
+
+<p>三个空函数，能跑，只是画面上什么都没有。这就是引擎和玩法之间的契约：<strong>Lua 交出一个带 <code>update</code> 和 <code>draw</code> 的对象，剩下的引擎来驱动。</strong></p>
+<hr>
+<h2 id="_3">一帧是怎么跑起来的</h2>
+<p>要理解这套分层，得先看清 C++ 和 Lua 在一帧里怎么来回交棒。</p>
+<p>引擎的心脏是 <code>edge/src/Game.cpp</code> 里的 <code>loop()</code>，一个标准的固定时间步长游戏循环。剥掉计时的细节，核心就两句：</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// update：把逻辑交给 Lua</span>
+<span class="n">luautil</span><span class="o">::</span><span class="n">safeSelfCall</span><span class="p">(</span><span class="n">luaGame</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;update&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">dt</span><span class="p">);</span>
+
+<span class="c1">// render：把画面交给 Lua</span>
+<span class="n">luautil</span><span class="o">::</span><span class="n">safeSelfCall</span><span class="p">(</span><span class="n">luaGame</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;draw&quot;</span><span class="p">);</span>
+</code></pre></div>
+
+<p><code>luaGame</code> 是什么？是 <code>init()</code> 阶段执行 <code>scripts/game.lua</code> 后拿到的那个 Lua 对象——也就是上面 <code>return Game:new()</code> 返回的东西。引擎每一帧做两件事：调它的 <code>update(dt)</code> 让玩法推进一步，再调它的 <code>draw()</code> 让玩法把自己画出来。</p>
+<p><code>safeSelfCall</code> 这个包装（在 <code>edge/src/LuaUtil.h</code>）值得看一眼，因为它体现了跨语言调用最容易被忽略的一点——<strong>Lua 里的错误不能让 C++ 直接崩掉</strong>：</p>
+<div class="highlight"><pre><span></span><code><span class="k">template</span><span class="o">&lt;</span><span class="k">typename</span><span class="p">...</span><span class="w"> </span><span class="n">T</span><span class="o">&gt;</span>
+<span class="kt">void</span><span class="w"> </span><span class="n">safeSelfCall</span><span class="p">(</span><span class="n">sol</span><span class="o">::</span><span class="n">table</span><span class="o">&amp;</span><span class="w"> </span><span class="n">t</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="n">T</span><span class="o">&amp;&amp;</span><span class="p">...</span><span class="w"> </span><span class="n">args</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="n">sol</span><span class="o">::</span><span class="n">protected_function</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">t</span><span class="p">[</span><span class="n">name</span><span class="p">];</span>
+<span class="w">    </span><span class="n">sol</span><span class="o">::</span><span class="n">protected_function_result</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">f</span><span class="p">(</span><span class="n">t</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">forward</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">(</span><span class="n">args</span><span class="p">)...);</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">result</span><span class="p">.</span><span class="n">valid</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">sol</span><span class="o">::</span><span class="n">error</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">result</span><span class="p">;</span>
+<span class="w">        </span><span class="n">std</span><span class="o">::</span><span class="n">cout</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">err</span><span class="p">.</span><span class="n">what</span><span class="p">();</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><code>sol::protected_function</code> 是关键。它保证：就算你在 <code>game.lua</code> 里写了个 <code>nil</code> 上取字段这种低级错误，引擎也不会段错误退出，而是把 Lua 的报错信息打印出来，游戏继续跑。对脚本层来说这太重要了——你天天在改 Lua，天天会写错，要是每个笔误都让整个进程崩掉，那这套分层的迭代优势就没了。</p>
+<p>用一张图看清一帧里的交棒关系：</p>
+<div class="highlight"><pre><span></span><code>  C++ 引擎 (Game::loop)                    Lua 玩法 (game.lua)
+  ─────────────────────                    ────────────────────
+        │
+        │  poll SDL events (退出/键盘)
+        │
+        │  safeSelfCall(luaGame,&quot;update&quot;) ──▶  Game:update(dt)
+        │                                        读输入、算碰撞、动小球
+        │  ◀───────────────────────────────     （中途会回调 C++ 能力，见下节）
+        │
+        │  safeSelfCall(luaGame,&quot;draw&quot;)   ──▶  Game:draw()
+        │                                        sprite:draw() / drawRect()...
+        │  ◀───────────────────────────────
+        │
+        │  SDL_RenderPresent (上屏)
+        │
+        └──▶ 下一帧
+</code></pre></div>
+
+<p>注意箭头是双向的。C++ 调 Lua 的 <code>update</code>，Lua 在 <code>update</code> 里又会回头调 C++ 的能力（比如"播个音效""这个键按下了没"）。这就引出下一个问题：<strong>Lua 凭什么能调 C++？</strong></p>
+<hr>
+<h2 id="sol2-c-lua">sol2 怎么把 C++ 递给 Lua</h2>
+<p>Lua 本身是个"什么都不会"的小语言——不会开窗口，不会画图，连读键盘都不会。它能干活，全靠宿主（这里是 C++ 引擎）把能力"注册"给它。这个注册工作，项目用的是 <a href="https://github.com/ThePhD/sol2">sol2</a>，一个 header-only 的 C++/Lua 绑定库。所有绑定都集中在一个文件：<code>edge/src/LuaBindings.cpp</code>。</p>
+<p>sol2 的好处是把绑定写得几乎像普通 C++。有三类东西要递给 Lua，从易到难：</p>
+<h3 id="1">1. 递一个函数 / 一个常量</h3>
+<p>最简单，直接赋值：</p>
+<div class="highlight"><pre><span></span><code><span class="n">sol</span><span class="o">::</span><span class="n">table</span><span class="w"> </span><span class="n">edge</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">lua</span><span class="p">[</span><span class="s">&quot;edge&quot;</span><span class="p">].</span><span class="n">force</span><span class="p">();</span>
+
+<span class="c1">// 递一个函数：Lua 里 edge.isKeyPressed(...) 就能用</span>
+<span class="n">edge</span><span class="p">[</span><span class="s">&quot;isKeyPressed&quot;</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">isKeyPressed</span><span class="p">;</span>
+
+<span class="c1">// 递几个常量：Lua 里 edge.KEY_LEFT 就是 SDL 的扫描码</span>
+<span class="n">edge</span><span class="p">[</span><span class="s">&quot;KEY_UP&quot;</span><span class="p">]</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="n">SDL_SCANCODE_UP</span><span class="p">;</span>
+<span class="n">edge</span><span class="p">[</span><span class="s">&quot;KEY_LEFT&quot;</span><span class="p">]</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="n">SDL_SCANCODE_LEFT</span><span class="p">;</span>
+<span class="n">edge</span><span class="p">[</span><span class="s">&quot;KEY_RIGHT&quot;</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">SDL_SCANCODE_RIGHT</span><span class="p">;</span>
+</code></pre></div>
+
+<p><code>edge</code> 是一个 Lua table，相当于给引擎能力开的一个"命名空间"。递进去之后，Lua 侧就能写 <code>edge.isKeyPressed(edge.KEY_LEFT)</code>——这正是 <code>game.lua</code> 里读方向键的写法。C++ 函数 <code>isKeyPressed</code> 内部调的是 <code>SDL_GetKeyboardState</code>，但 Lua 完全不用知道 SDL 的存在。</p>
+<h3 id="2-c-usertype">2. 递一个 C++ 对象（usertype）</h3>
+<p>这是 sol2 真正省事的地方。以 <code>Sprite</code>（精灵，游戏里能画出来的图元）为例，C++ 侧是个普通结构体：</p>
+<div class="highlight"><pre><span></span><code><span class="k">struct</span><span class="w"> </span><span class="nc">Sprite</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">Sprite</span><span class="p">(</span><span class="n">Texture</span><span class="o">*</span><span class="w"> </span><span class="n">texture</span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">texture</span><span class="p">(</span><span class="n">texture</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* ... */</span><span class="w"> </span><span class="p">}</span>
+<span class="w">    </span><span class="kt">void</span><span class="w"> </span><span class="n">draw</span><span class="p">(</span><span class="kt">double</span><span class="w"> </span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="kt">double</span><span class="w"> </span><span class="n">y</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* SDL_RenderCopy... */</span><span class="w"> </span><span class="p">}</span>
+<span class="w">    </span><span class="kt">void</span><span class="w"> </span><span class="n">setTextureRect</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">y</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">h</span><span class="p">);</span>
+<span class="w">    </span><span class="c1">// ...</span>
+<span class="p">};</span>
+</code></pre></div>
+
+<p>用 sol2 的 <code>new_usertype</code> 把它注册成 Lua 里的一个类型，把方法一个个挂上去：</p>
+<div class="highlight"><pre><span></span><code><span class="k">auto</span><span class="w"> </span><span class="n">su</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">edge</span><span class="p">.</span><span class="n">new_usertype</span><span class="o">&lt;</span><span class="n">Sprite</span><span class="o">&gt;</span><span class="p">(</span><span class="s">&quot;Sprite&quot;</span><span class="p">);</span>
+<span class="n">su</span><span class="p">[</span><span class="s">&quot;setTextureRect&quot;</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">&amp;</span><span class="n">Sprite</span><span class="o">::</span><span class="n">setTextureRect</span><span class="p">;</span>
+<span class="n">su</span><span class="p">[</span><span class="s">&quot;draw&quot;</span><span class="p">]</span><span class="w">           </span><span class="o">=</span><span class="w"> </span><span class="o">&amp;</span><span class="n">Sprite</span><span class="o">::</span><span class="n">draw</span><span class="p">;</span>
+
+<span class="c1">// 给 Lua 一个工厂函数来造 Sprite</span>
+<span class="n">edge</span><span class="p">[</span><span class="s">&quot;newSprite&quot;</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="o">&amp;</span><span class="n">lua</span><span class="p">](</span><span class="n">Texture</span><span class="o">*</span><span class="w"> </span><span class="n">texture</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">sol</span><span class="o">::</span><span class="n">object</span><span class="p">(</span><span class="n">lua</span><span class="p">,</span><span class="w"> </span><span class="n">sol</span><span class="o">::</span><span class="n">in_place_type</span><span class="o">&lt;</span><span class="n">Sprite</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="n">texture</span><span class="p">);</span>
+<span class="p">};</span>
+</code></pre></div>
+
+<p>注册完，Lua 侧就能这么用，跟操作一个原生 Lua 对象没差别：</p>
+<div class="highlight"><pre><span></span><code><span class="kd">local</span> <span class="n">sprite</span> <span class="o">=</span> <span class="n">edge</span><span class="p">.</span><span class="n">newSprite</span><span class="p">(</span><span class="n">texture</span><span class="p">)</span>
+<span class="n">sprite</span><span class="p">:</span><span class="n">setTextureRect</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">16</span><span class="p">,</span> <span class="mi">16</span><span class="p">)</span>
+<span class="n">sprite</span><span class="p">:</span><span class="n">draw</span><span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="mi">120</span><span class="p">)</span>
+</code></pre></div>
+
+<p><code>sprite:draw(...)</code> 里的冒号，会把 <code>sprite</code> 自己当第一个参数传给 C++ 的 <code>Sprite::draw</code>。一个 Lua 对象背后其实是一块 C++ 内存，sol2 把这层完全藏起来了。</p>
+<h3 id="3-gc-sdl">3. 用 GC 接管 SDL 资源（最容易出事的一环）</h3>
+<p>这里有个跨语言最经典的坑：<strong>SDL 的纹理、字体、音频都是 C 侧手动管理的资源，用完必须显式释放</strong>（<code>SDL_DestroyTexture</code> 之类）。可 Lua 是自动垃圾回收的，你没法在 Lua 里手动 <code>free</code>。谁来释放？</p>
+<p>sol2 的解法是把 C++ 对象的析构挂到 Lua 的 GC 元方法上。看 <code>Texture</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="k">struct</span><span class="w"> </span><span class="nc">Texture</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kt">void</span><span class="w"> </span><span class="nf">destroy</span><span class="p">()</span><span class="w">  </span><span class="c1">// 交给 Lua GC 调用</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">        </span><span class="n">assert</span><span class="p">(</span><span class="n">texture</span><span class="p">);</span>
+<span class="w">        </span><span class="n">SDL_DestroyTexture</span><span class="p">(</span><span class="n">texture</span><span class="p">);</span>
+<span class="w">        </span><span class="n">texture</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">nullptr</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="n">SDL_Texture</span><span class="o">*</span><span class="w"> </span><span class="n">texture</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">nullptr</span><span class="p">;</span>
+<span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">width</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">height</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">};</span>
+
+<span class="kt">void</span><span class="w"> </span><span class="nf">registerTexture</span><span class="p">(</span><span class="n">sol</span><span class="o">::</span><span class="n">state</span><span class="o">&amp;</span><span class="w"> </span><span class="n">lua</span><span class="p">,</span><span class="w"> </span><span class="n">sol</span><span class="o">::</span><span class="n">table</span><span class="o">&amp;</span><span class="w"> </span><span class="n">edge</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">dsu</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">edge</span><span class="p">.</span><span class="n">new_usertype</span><span class="o">&lt;</span><span class="n">Texture</span><span class="o">&gt;</span><span class="p">(</span><span class="s">&quot;Texture&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="c1">// 关键这一行：Lua GC 回收这个对象时，自动调 destroy()</span>
+<span class="w">    </span><span class="n">dsu</span><span class="p">[</span><span class="n">sol</span><span class="o">::</span><span class="n">meta_function</span><span class="o">::</span><span class="n">garbage_collect</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">&amp;</span><span class="n">Texture</span><span class="o">::</span><span class="n">destroy</span><span class="p">;</span>
+
+<span class="w">    </span><span class="n">edge</span><span class="p">[</span><span class="s">&quot;loadTexture&quot;</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">loadTexture</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><code>sol::meta_function::garbage_collect</code> 对应 Lua 的 <code>__gc</code> 元方法。这么一挂，效果就是：<strong>Lua 侧的一个 texture 变量没人引用了，Lua GC 会在某个时刻回收它，回收时自动调用 C++ 的 <code>destroy()</code>，把底层 SDL 纹理释放掉。</strong> 写 Lua 的人完全不用操心 C 侧的内存——他只管 <code>local tex = edge.loadTexture("res/ball.png")</code>，用完不管，剩下的交给 GC。</p>
+<p>这就是分层的红利落到实处的地方：<strong>C++ 侧把资源生命周期这种最容易出错的活兜住，Lua 侧的人可以像写脚本一样放松地写。</strong></p>
+<p>项目里 <code>Texture</code>、<code>Font</code>、<code>Sound</code>、<code>Music</code>、<code>DrawableString</code> 全是这个套路——一个 <code>destroy()</code> 方法 + 一行 <code>garbage_collect</code> 注册。看懂一个，就看懂了全部。</p>
+<hr>
+<h2 id="lua">玩法为什么值得留在 Lua</h2>
+<p>绑定讲完，回头看看 Lua 侧到底写了什么，你就明白为什么这些东西留在脚本里更舒服。</p>
+<p><code>game.lua</code> 里的 <code>updateGame</code> 是每帧的玩法主逻辑，读起来几乎就是自然语言：</p>
+<div class="highlight"><pre><span></span><code><span class="kr">function</span> <span class="nc">Game</span><span class="p">:</span><span class="nf">updateGame</span><span class="p">(</span><span class="n">dt</span><span class="p">)</span>
+  <span class="kd">local</span> <span class="n">ball</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="n">ball</span>
+  <span class="kd">local</span> <span class="n">border</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="n">border</span>
+  <span class="kd">local</span> <span class="n">paddle</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="n">paddle</span>
+
+  <span class="kr">if</span> <span class="n">logic</span><span class="p">.</span><span class="n">checkBallLost</span><span class="p">(</span><span class="n">ball</span><span class="p">,</span> <span class="n">border</span><span class="p">)</span> <span class="kr">then</span>
+    <span class="n">self</span><span class="p">.</span><span class="n">soundCache</span><span class="p">:</span><span class="n">playSound</span><span class="p">(</span><span class="s2">&quot;ball_fall&quot;</span><span class="p">)</span>
+    <span class="n">self</span><span class="p">:</span><span class="n">showMenu</span><span class="p">(</span><span class="n">menu</span><span class="p">.</span><span class="n">State</span><span class="p">.</span><span class="n">GameOver</span><span class="p">)</span>
+    <span class="kr">do</span> <span class="kr">return</span> <span class="kr">end</span>
+  <span class="kr">end</span>
+
+  <span class="kr">if</span> <span class="n">logic</span><span class="p">.</span><span class="n">checkGameWin</span><span class="p">(</span><span class="n">self</span><span class="p">.</span><span class="n">blocks</span><span class="p">)</span> <span class="kr">then</span>
+    <span class="n">self</span><span class="p">:</span><span class="n">showMenu</span><span class="p">(</span><span class="n">menu</span><span class="p">.</span><span class="n">State</span><span class="p">.</span><span class="n">Win</span><span class="p">)</span>
+    <span class="kr">do</span> <span class="kr">return</span> <span class="kr">end</span>
+  <span class="kr">end</span>
+
+  <span class="c1">-- 处理各种碰撞，撞到了就播对应音效</span>
+  <span class="kr">if</span> <span class="n">logic</span><span class="p">.</span><span class="n">handleBallPaddleCollision</span><span class="p">(</span><span class="n">ball</span><span class="p">,</span> <span class="n">paddle</span><span class="p">)</span> <span class="kr">then</span>
+    <span class="n">self</span><span class="p">.</span><span class="n">soundCache</span><span class="p">:</span><span class="n">playSound</span><span class="p">(</span><span class="s2">&quot;ball_collision_paddle&quot;</span><span class="p">)</span>
+  <span class="kr">end</span>
+  <span class="kr">if</span> <span class="n">logic</span><span class="p">.</span><span class="n">handleBallBorderCollision</span><span class="p">(</span><span class="n">ball</span><span class="p">,</span> <span class="n">border</span><span class="p">)</span> <span class="kr">then</span>
+    <span class="n">self</span><span class="p">.</span><span class="n">soundCache</span><span class="p">:</span><span class="n">playSound</span><span class="p">(</span><span class="s2">&quot;ball_collision&quot;</span><span class="p">)</span>
+  <span class="kr">end</span>
+  <span class="kr">if</span> <span class="n">logic</span><span class="p">.</span><span class="n">handleBallBlocksCollision</span><span class="p">(</span><span class="n">ball</span><span class="p">,</span> <span class="n">self</span><span class="p">.</span><span class="n">blocks</span><span class="p">)</span> <span class="kr">then</span>
+    <span class="n">self</span><span class="p">.</span><span class="n">soundCache</span><span class="p">:</span><span class="n">playSound</span><span class="p">(</span><span class="s2">&quot;ball_collision&quot;</span><span class="p">)</span>
+  <span class="kr">end</span>
+
+  <span class="c1">-- 按速度推进小球位置</span>
+  <span class="n">ball</span><span class="p">.</span><span class="n">pos</span><span class="p">.</span><span class="n">x</span> <span class="o">=</span> <span class="n">ball</span><span class="p">.</span><span class="n">pos</span><span class="p">.</span><span class="n">x</span> <span class="o">+</span> <span class="n">ball</span><span class="p">.</span><span class="n">vel</span><span class="p">.</span><span class="n">x</span> <span class="o">*</span> <span class="n">dt</span>
+  <span class="n">ball</span><span class="p">.</span><span class="n">pos</span><span class="p">.</span><span class="n">y</span> <span class="o">=</span> <span class="n">ball</span><span class="p">.</span><span class="n">pos</span><span class="p">.</span><span class="n">y</span> <span class="o">+</span> <span class="n">ball</span><span class="p">.</span><span class="n">vel</span><span class="p">.</span><span class="n">y</span> <span class="o">*</span> <span class="n">dt</span>
+<span class="kr">end</span>
+</code></pre></div>
+
+<p>现在回到开头那个"改小球速度"的痛点。在这套结构里，速度写在 <code>game.lua</code> 的 <code>initialize</code> 里：</p>
+<div class="highlight"><pre><span></span><code><span class="n">ball</span><span class="p">.</span><span class="n">speed</span> <span class="o">=</span> <span class="n">em</span><span class="p">.</span><span class="n">Vec2</span><span class="p">:</span><span class="n">new</span><span class="p">(</span><span class="mi">90</span><span class="p">,</span> <span class="mi">90</span><span class="p">)</span>
+</code></pre></div>
+
+<p>把 <code>90</code> 改成 <code>70</code>，<strong>存盘，重跑，立刻生效——不碰 C++，不用编译。</strong> 想调砖块布局？改 <code>numBlocksX</code> / <code>numBlocksY</code> 两个数字。想换碰撞后小球怎么弹？改 <code>logic.lua</code> 里的函数。这些正是你在做游戏时改得最频繁的东西，全都落在了不需要编译的那一层。</p>
+<p>而 C++ 侧那些"怎么把纹理拷到屏幕上""怎么和音频设备打交道"，一次都没动。这就是分层的收益：<strong>你花在"改玩法—看效果"上的时间，从分钟级降到了秒级。</strong></p>
+<hr>
+<h2 id="macos">移植到 macOS 踩的三个坑</h2>
+<p>这个项目原本主要在 Linux / Windows 上跑。我把它拉到 macOS（Apple Silicon + Apple clang）上编译运行时，撞了三处，都改在 <code>edge/src/Game.cpp</code> 里。下面的改动在我本机实测通过；三处独立，可以对照原始逻辑单独看。完整改动我推到了自己的 fork：<a href="https://github.com/walterfan/sdl_breakout">github.com/walterfan/sdl_breakout</a>。</p>
+<h3 id="_4">坑一：找不到可执行文件所在目录</h3>
+<p>引擎启动时要把工作目录切到可执行文件旁边，好用相对路径找 <code>scripts/</code> 和 <code>res/</code>。原代码在非 Windows 分支上读的是 <code>/proc/self/exe</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// 原代码：依赖 Linux 特有的 /proc</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">filesystem</span><span class="o">::</span><span class="n">exists</span><span class="p">(</span><span class="s">&quot;/proc/self/exe&quot;</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">filesystem</span><span class="o">::</span><span class="n">read_symlink</span><span class="p">(</span><span class="s">&quot;/proc/self/exe&quot;</span><span class="p">).</span><span class="n">parent_path</span><span class="p">();</span>
+<span class="p">}</span>
+<span class="k">return</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">filesystem</span><span class="o">::</span><span class="n">path</span><span class="p">();</span>
+</code></pre></div>
+
+<p>macOS 没有 <code>/proc</code> 这套东西，这段直接返回空路径，后面全崩。改法是用 SDL 自带的跨平台 API <code>SDL_GetBasePath()</code>——它在每个平台上都能给出可执行文件目录，反正已经依赖 SDL 了，不如用它抹平差异：</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// 改后：用 SDL 的跨平台 API，顺手用 unique_ptr 管住它返回的 C 字符串</span>
+<span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><span class="kt">char</span><span class="p">,</span><span class="w"> </span><span class="k">decltype</span><span class="p">(</span><span class="o">&amp;</span><span class="n">SDL_free</span><span class="p">)</span><span class="o">&gt;</span><span class="w"> </span><span class="n">basePath</span><span class="p">(</span><span class="n">SDL_GetBasePath</span><span class="p">(),</span><span class="w"> </span><span class="n">SDL_free</span><span class="p">);</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">basePath</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">fprintf</span><span class="p">(</span><span class="n">stderr</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;Unable to determine executable directory: %s</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">SDL_GetError</span><span class="p">());</span>
+<span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">exit</span><span class="p">(</span><span class="mi">1</span><span class="p">);</span>
+<span class="p">}</span>
+<span class="k">return</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">filesystem</span><span class="o">::</span><span class="n">path</span><span class="p">(</span><span class="n">basePath</span><span class="p">.</span><span class="n">get</span><span class="p">());</span>
+</code></pre></div>
+
+<p><code>SDL_GetBasePath()</code> 返回的字符串需要调用方用 <code>SDL_free</code> 释放。这里用 <code>unique_ptr</code> 加自定义删除器 <code>SDL_free</code> 把它兜住，比手写 <code>SDL_free</code> 更省心，异常路径下也不会漏。</p>
+<h3 id="_5">坑二：切换工作目录时抛异常</h3>
+<p>原代码这么切目录：</p>
+<div class="highlight"><pre><span></span><code><span class="n">std</span><span class="o">::</span><span class="n">filesystem</span><span class="o">::</span><span class="n">current_path</span><span class="p">(</span><span class="n">getExecutableDir</span><span class="p">());</span>
+</code></pre></div>
+
+<p><code>std::filesystem::current_path</code> 有两个重载：不带 <code>error_code</code> 参数的那个，一出错就<strong>抛异常</strong>。移植过程中路径一旦有问题，抛出来的异常没人接，程序直接终止，还看不清是哪一步挂的。改成带 <code>error_code</code> 的版本，把错误变成可检查的返回值，自己打清楚日志再退出：</p>
+<div class="highlight"><pre><span></span><code><span class="n">std</span><span class="o">::</span><span class="n">error_code</span><span class="w"> </span><span class="n">pathError</span><span class="p">;</span>
+<span class="n">std</span><span class="o">::</span><span class="n">filesystem</span><span class="o">::</span><span class="n">current_path</span><span class="p">(</span><span class="n">getExecutableDir</span><span class="p">(),</span><span class="w"> </span><span class="n">pathError</span><span class="p">);</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">pathError</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">fprintf</span><span class="p">(</span><span class="n">stderr</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;Unable to use executable directory: %s</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="n">pathError</span><span class="p">.</span><span class="n">message</span><span class="p">().</span><span class="n">c_str</span><span class="p">());</span>
+<span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">exit</span><span class="p">(</span><span class="mi">1</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这条不算 macOS 独有的问题，但移植期间路径最容易出岔子，把隐式抛异常换成显式检查，排错省了不少事。</p>
+<h3 id="solnil-sol2">坑三：<code>sol::nil</code> 在新版 sol2 上编不过</h3>
+<p>清理 Lua 状态时，原代码把游戏对象置空：</p>
+<div class="highlight"><pre><span></span><code><span class="n">luaGame</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">sol</span><span class="o">::</span><span class="n">nil</span><span class="p">;</span>
+</code></pre></div>
+
+<p>我用的 sol2 版本里 <code>sol::nil</code> 这个名字不认了，得用 <code>sol::lua_nil</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="n">luaGame</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">sol</span><span class="o">::</span><span class="n">lua_nil</span><span class="p">;</span>
+</code></pre></div>
+
+<p>原因是 <code>nil</code> 太容易和别处的宏或标识符撞名，新版 sol2 用 <code>lua_nil</code> 这个更保险的名字。这类库升级带来的重命名，编译器会直接报"未声明的标识符"，照着换名字就行——只是第一次撞上，未必想得到是版本差异。</p>
+<p>一张表收一下这三处：</p>
+<table>
+<thead>
+<tr>
+<th>坑</th>
+<th>症状</th>
+<th>改法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/proc/self/exe</code></td>
+<td>macOS 无 <code>/proc</code>，工作目录设成空，找不到资源</td>
+<td>换 <code>SDL_GetBasePath()</code>，用 <code>unique_ptr</code> + <code>SDL_free</code> 管字符串</td>
+</tr>
+<tr>
+<td><code>current_path</code> 抛异常</td>
+<td>路径出错时程序直接终止，看不清哪一步</td>
+<td>用带 <code>std::error_code</code> 的重载，显式检查并打日志</td>
+</tr>
+<tr>
+<td><code>sol::nil</code></td>
+<td>新版 sol2 编不过，报未声明标识符</td>
+<td>改成 <code>sol::lua_nil</code></td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="_6">总结：分层不是炫技，是把变化频率隔开</h2>
+<p>回到最开始那个改速度等三分钟的循环。这套 C++ + Lua 的分层，本质上做的就一件事：<strong>把你天天要改的玩法，从需要编译的那一层里挪出来。</strong> 引擎归 C++——窗口、渲染、音频、资源生命周期，这些慢变、对性能敏感、写错了会崩的东西，用编译语言锁死；玩法归 Lua——碰撞、速度、布局、音效触发，这些快变、你天天在调的东西，用脚本随时改、存盘就生效。中间用 sol2 这座桥连起来：注册函数、包装 usertype、把 SDL 资源的释放挂到 Lua 的 GC 上。</p>
+<p>这套写法适合谁？<strong>适合玩法会反复迭代的项目</strong>——独立小游戏、原型验证、需要给策划或非 C++ 同学开放调参的场景。不适合谁？如果你的东西就是个固定不变的 demo，或者性能敏感到每一帧都要抠 C++（比如玩法逻辑本身就是热点），那多一层脚本的开销和跨语言调用成本，反而是负担。</p>
+<p>一句话记住取舍：</p>
+<blockquote>
+<p><strong>能编译一次就不动的，交给 C++；会天天改的，交给 Lua。</strong>
+分层划错了地方——把玩法编进 C++、或者把渲染写进 Lua——两头的好处都拿不到。</p>
+</blockquote>
+<p>如果你也想上手，路径很短：clone 仓库（macOS 可以直接用我这份带改动的 fork <a href="https://github.com/walterfan/sdl_breakout">github.com/walterfan/sdl_breakout</a>），<code>git submodule update --init --recursive</code> 把 SDL 和 sol2 拉全，按 README 编译跑起来，然后<strong>别改 C++，先去 <code>game.lua</code> 里把小球速度改一下，感受一下"存盘即生效"</strong>。这一下，比看十遍架构图都管用。</p>
+<h2 id="_7">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* 引擎归 C++\n玩法归 Lua
+** 为什么分层
+*** 改玩法不该等编译
+*** 按&quot;变化频率&quot;划层
+*** 同一引擎换脚本即换游戏
+** 一帧怎么跑
+*** C++ loop 回调 update/draw
+*** protected_function 兜住 Lua 报错
+*** 双向交棒
+** sol2 这座桥
+*** 递函数/常量
+*** usertype 包装 C++ 对象
+*** __gc 接管 SDL 资源
+** 玩法留在 Lua
+*** updateGame 读起来像自然语言
+*** 改速度/布局 存盘即生效
+** macOS 三个坑
+*** SDL_GetBasePath 替代 /proc
+*** current_path 用 error_code
+*** sol::nil 改 sol::lua_nil
+@endmindmap
+</code></pre></div>
+
+<p><img alt="引擎归 C++，玩法归 Lua - 思维导图" src="./images/tech_20261002_lua-cpp-game_mindmap.png"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/2026-10-02-lua-cpp-game.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/tech.html">tech</a>
+      <a href="https://www.fanyamin.com/blog/tag/lua.html">lua</a>
+      <a href="https://www.fanyamin.com/blog/tag/cpp.html">cpp</a>
+      <a href="https://www.fanyamin.com/blog/tag/sdl.html">sdl</a>
+      <a href="https://www.fanyamin.com/blog/tag/sol2.html">sol2</a>
+      <a href="https://www.fanyamin.com/blog/tag/game.html">game</a>
+      <a href="https://www.fanyamin.com/blog/tag/gamedev.html">gamedev</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-10-01-lua-c-binding.html" title="让 Lua 插上翅膀：C 与 Lua 是怎么绑在一起的">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/2026-10-01-lua-c-binding.html">让 Lua 插上翅膀：C 与 Lua 是怎么绑在一起的</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-09-29-freeswitch-lua-llm-ai-agent.html">用 Lua 写 Dialplan 接 LLM:从零搓一个 AI 智能客服</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-09-14-lua-in-freeswitch.html">重拾 Lua：从月亮语言到 FreeSWITCH 里的胶水</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-09-30-voice-ai-latency-trust.html">AI 语音客服的两道生死坎:延迟和可信度</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-09-28-freeswitch-unimrcp-llm-agent.html">给电话装个"会聊天的大脑":FreeSWITCH + UniMRCP + LLM 的语音智能体</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

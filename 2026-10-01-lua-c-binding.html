@@ -1,0 +1,925 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="Lua 自己什么都不会——不会发网络请求，不会读数据库，连打开一个文件都得靠宿主给的库。它小得可怜，却长在魔兽世界、Nginx、Redis、FreeSWITCH 这些庞然大物里，靠的就是一件事：跟 C 无缝对接，借用整个 C/C++ 生态。这篇讲清楚 C 和 Lua 到底是怎么绑在一起的——从那个来回倒数据的栈，到注册 C 函数、包装 C 对象，再落到两种真实风格：FreeSWITCH 用 SWIG 预生成胶水，OpenResty 用 LuaJIT FFI 干脆不写胶水。代码引用来自 FreeSWITCH master 分支与 LuaJIT 官方文档。" />
+<meta name="keywords" content="tech, lua, c, ffi, swig, freeswitch, openresty, luajit">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "让 Lua 插上翅膀：C 与 Lua 是怎么绑在一起的",
+  "description": "Lua 自己什么都不会——不会发网络请求，不会读数据库，连打开一个文件都得靠宿主给的库。它小得可怜，却长在魔兽世界、Nginx、Redis、FreeSWITCH 这些庞然大物里，靠的就是一件事：跟 C 无缝对接，借用整个 C/C++ 生态。这篇讲清楚 C 和 Lua 到底是怎么绑在一起的——从那个来回倒数据的栈，到注册 C 函数、包装 C 对象，再落到两种真实风格：FreeSWITCH 用 SWIG 预生成胶水，OpenResty 用 LuaJIT FFI 干脆不写胶水。代码引用来自 FreeSWITCH master 分支与 LuaJIT 官方文档。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-10-01T22:30:00+08:00",
+  "dateModified": "2026-10-01T22:30:00+08:00",
+  "url": "https://www.fanyamin.com/blog/2026-10-01-lua-c-binding.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/2026-10-01-lua-c-binding.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "tech, lua, c, ffi, swig, freeswitch, openresty, luajit"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="让 Lua 插上翅膀：C 与 Lua 是怎么绑在一起的"/>
+  <meta property="og:description" content="Lua 自己什么都不会——不会发网络请求，不会读数据库，连打开一个文件都得靠宿主给的库。它小得可怜，却长在魔兽世界、Nginx、Redis、FreeSWITCH 这些庞然大物里，靠的就是一件事：跟 C 无缝对接，借用整个 C/C++ 生态。这篇讲清楚 C 和 Lua 到底是怎么绑在一起的——从那个来回倒数据的栈，到注册 C 函数、包装 C 对象，再落到两种真实风格：FreeSWITCH 用 SWIG 预生成胶水，OpenResty 用 LuaJIT FFI 干脆不写胶水。代码引用来自 FreeSWITCH master 分支与 LuaJIT 官方文档。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/2026-10-01-lua-c-binding.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-10-01 22:30:00+08:00"/>
+  <meta property="article:modified_time" content="2026-10-01 22:30:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="tech"/>
+  <meta property="article:tag" content="lua"/>
+  <meta property="article:tag" content="c"/>
+  <meta property="article:tag" content="ffi"/>
+  <meta property="article:tag" content="swig"/>
+  <meta property="article:tag" content="freeswitch"/>
+  <meta property="article:tag" content="openresty"/>
+  <meta property="article:tag" content="luajit"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 让 Lua 插上翅膀：C 与 Lua 是怎么绑在一起的</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记"
+               data-en="Notebook">
+              笔记
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="2026-10-01-lua-c-binding">让 Lua 插上翅膀：C 与 Lua 是怎么绑在一起的</h1>
+    <p>
+      Posted on 四 01 10月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>让 Lua 插上翅膀：C 与 Lua 是怎么绑在一起的</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-10-01</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">大纲</h2>
+<details>
+<summary>展开看看</summary>
+<ul>
+<li><strong>一个残酷的事实</strong>：Lua 标准库里没有网络、没有数据库，连读文件都很朴素。它能干大事，全靠借 C 的力。</li>
+<li><strong>栈是唯一的通道</strong>：C 和 Lua 不共享内存视图，所有数据都过一个虚拟栈——C 往上压，Lua 取走；反过来也一样。理解了栈，就理解了绑定的一半。</li>
+<li><strong>三件事撑起全部绑定</strong>：把 C 函数注册给 Lua 调；把 Lua 值取出来喂给 C；把 C 的对象/指针包成 Lua 能安全拿着的 userdata。</li>
+<li><strong>FreeSWITCH：SWIG 帮你把胶水写完</strong>：<code>freeswitch.i</code> 一份接口声明，SWIG 生成几万行 <code>_wrap_*</code> 栈操作函数，<code>session:answer()</code> 背后就是一次 C++ 调用。</li>
+<li><strong>OpenResty：LuaJIT FFI 干脆不写胶水</strong>：<code>ffi.cdef</code> 声明 C 签名，<code>ffi.C.printf(...)</code> 直接调，还能被 JIT 编译进热路径。</li>
+<li><strong>两条路怎么选</strong>：手写栈操作、SWIG 预生成、FFI 直调，各自的适用场景和代价。</li>
+<li><strong>收尾</strong>：Lua 的翅膀是 C 给的；想清楚"哪一半用 Lua、哪一半留在 C"，才用得好这门语言。</li>
+</ul>
+</details>
+<hr>
+<p>Lua 的标准库小得让人吃惊。你想发个 HTTP 请求？没有。想连数据库？没有。想开个 socket？也没有。连读写文件都只有最朴素的 <code>io.open</code>。一门 2020 年代还在被大量新项目采用的语言，标准库却像是上世纪的产物。</p>
+<p>但它偏偏长在最能干的一批软件里：魔兽世界用它写插件，Redis 用它跑原子脚本，Nginx（OpenResty）用它扛住百万并发，FreeSWITCH 用它控制每一通电话的走向。一门"什么都不会"的语言，怎么会出现在这些地方？</p>
+<p><strong>答案就一句话：Lua 自己不长翅膀，它的翅膀是 C 借给它的。</strong> Lua 从设计第一天就不打算独立飞——它要长在一个 C/C++ 写的宿主进程里，通过一套干净的接口，把宿主已有的能力（网络、数据库、媒体处理、协议栈）借过来用。这篇就把这套接口拆开：C 和 Lua 到底是怎么绑在一起的,然后看两个真实项目——FreeSWITCH 和 OpenResty——用两种截然不同的风格把这件事做到极致。</p>
+<blockquote>
+<p>这篇专讲"C 怎么把能力递给 Lua"这层底座。至于拿到能力之后,Lua 在 FreeSWITCH 里具体怎么用(四个挂载点、最佳实践、坑),我另写过一篇<a href="https://www.fanyamin.com/blog/2026-09-14-lua-in-freeswitch.html">《重拾 Lua:从月亮语言到 FreeSWITCH 里的胶水》</a>,两篇正好互补。</p>
+</blockquote>
+<hr>
+<h2 id="c-lua">栈：C 和 Lua 之间唯一的通道</h2>
+<p>先立一个最重要的心智模型,后面全靠它。</p>
+<p>C 和 Lua 活在两个世界里。C 的世界是裸内存、指针、<code>malloc</code>/<code>free</code>,你说了算;Lua 的世界是带垃圾回收的托管值,解释器说了算。这两个世界不能直接互相读写对方的变量——C 不能随手改一个 Lua 的 table,Lua 也不能随手解引用一个 C 指针,否则垃圾回收和内存安全立刻崩掉。</p>
+<p>那怎么传数据?<strong>靠一个虚拟栈。</strong> 每个 Lua 状态机(<code>lua_State</code>)自带一个栈,它是 C 和 Lua 之间唯一的中转站:</p>
+<ul>
+<li>C 想给 Lua 传值,就把值<strong>压</strong>到栈上(<code>lua_pushnumber</code>、<code>lua_pushstring</code>……),Lua 那边去栈上取。</li>
+<li>Lua 调用一个 C 函数时,参数已经被解释器摆在栈上了,C 函数用 <code>lua_tonumber(L, 1)</code>、<code>lua_tostring(L, 2)</code> 按位置<strong>取</strong>下来。</li>
+<li>C 函数算完,把返回值<strong>压</strong>回栈上,然后 <code>return</code> 一个整数告诉 Lua "我压了几个返回值"。</li>
+</ul>
+<p>用最短的一段 C 代码感受一下,宿主怎么起一个 Lua 引擎、跑一段脚本:</p>
+<div class="highlight"><pre><span></span><code><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;lua.h&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;lauxlib.h&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;lualib.h&gt;</span>
+
+<span class="kt">int</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">lua_State</span><span class="w"> </span><span class="o">*</span><span class="n">L</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">luaL_newstate</span><span class="p">();</span><span class="w">   </span><span class="c1">// 新建一个状态机(带自己的栈)</span>
+<span class="w">    </span><span class="n">luaL_openlibs</span><span class="p">(</span><span class="n">L</span><span class="p">);</span><span class="w">                 </span><span class="c1">// 打开标准库</span>
+<span class="w">    </span><span class="n">luaL_dostring</span><span class="p">(</span><span class="n">L</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;print(&#39;Hello from Lua&#39;)&quot;</span><span class="p">);</span><span class="w">  </span><span class="c1">// 跑一段脚本</span>
+<span class="w">    </span><span class="n">lua_close</span><span class="p">(</span><span class="n">L</span><span class="p">);</span><span class="w">                     </span><span class="c1">// 收摊,释放</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><code>lua_State *L</code> 是所有 C API 的第一个参数——它就是那个"世界",栈也在里面。<strong>把"C 和 Lua 靠一个栈来回倒数据"这句话刻进脑子,后面所有绑定套路都是它的变体。</strong></p>
+<p>下面这张图是整篇文章的骨架:</p>
+<div class="highlight"><pre><span></span><code>sequenceDiagram
+    participant Lua as Lua 脚本
+    participant Stack as 栈 (lua_State)
+    participant C as C / C++ 世界
+
+    Lua-&gt;&gt;Stack: 调用 answer()，压入 [self] [arg1]
+    Stack-&gt;&gt;C: 取参，调 switch_channel_answer(...)
+    C-&gt;&gt;C: 真正干活的 C 代码
+    C-&gt;&gt;Stack: 压入 [返回值]
+    Stack-&gt;&gt;Lua: 取返回值，= ret
+</code></pre></div>
+
+<p>不管是手写、SWIG 生成还是 FFI,本质都是这张图。区别只在于:<strong>中间那层"取参—调用—压结果"的胶水,是谁写、什么时候写、要不要写。</strong></p>
+<hr>
+<h2 id="_2">撑起全部绑定的三件事</h2>
+<p>所谓"绑定"(binding),说穿了就是三件事。把这三件搞明白,任何 Lua 扩展的源码你都能看懂。</p>
+<h3 id="c-lua_1">一、把 C 函数注册给 Lua 调</h3>
+<p>C 里符合特定签名的函数,可以注册进 Lua,让脚本像调普通 Lua 函数一样调它。这个签名固定是 <code>int (*)(lua_State *L)</code>——参数只有状态机,返回值是"我压了几个返回值"。</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// 一个能被 Lua 调用的 C 函数:把两个数相加</span>
+<span class="k">static</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="nf">l_add</span><span class="p">(</span><span class="n">lua_State</span><span class="w"> </span><span class="o">*</span><span class="n">L</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kt">double</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">luaL_checknumber</span><span class="p">(</span><span class="n">L</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">);</span><span class="w">   </span><span class="c1">// 取第 1 个参数</span>
+<span class="w">    </span><span class="kt">double</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">luaL_checknumber</span><span class="p">(</span><span class="n">L</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">);</span><span class="w">   </span><span class="c1">// 取第 2 个参数</span>
+<span class="w">    </span><span class="n">lua_pushnumber</span><span class="p">(</span><span class="n">L</span><span class="p">,</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">b</span><span class="p">);</span><span class="w">            </span><span class="c1">// 压入结果</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w">                            </span><span class="c1">// 告诉 Lua:我压了 1 个返回值</span>
+<span class="p">}</span>
+
+<span class="c1">// 注册进 Lua,起个名字叫 add</span>
+<span class="n">lua_pushcfunction</span><span class="p">(</span><span class="n">L</span><span class="p">,</span><span class="w"> </span><span class="n">l_add</span><span class="p">);</span>
+<span class="n">lua_setglobal</span><span class="p">(</span><span class="n">L</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;add&quot;</span><span class="p">);</span>
+</code></pre></div>
+
+<p>注册完,脚本里就能写 <code>print(add(3, 4))</code>,打印 <code>7</code>。<code>luaL_checknumber</code> 会顺带做类型检查,参数不是数字就报错——这是 <code>luaL_check*</code> 系列比裸 <code>lua_to*</code> 更常用的原因。</p>
+<p>现实里 C 库有几百个函数要注册,不会一个个 <code>setglobal</code>,而是打包成一个模块。约定俗成,模块的入口函数叫 <code>luaopen_&lt;模块名&gt;</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="k">static</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">luaL_Reg</span><span class="w"> </span><span class="n">mylib</span><span class="p">[]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="p">{</span><span class="s">&quot;add&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">l_add</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="s">&quot;sub&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">l_sub</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nb">NULL</span><span class="p">,</span><span class="w"> </span><span class="nb">NULL</span><span class="p">}</span><span class="w">          </span><span class="c1">// 结尾哨兵</span>
+<span class="p">};</span>
+
+<span class="kt">int</span><span class="w"> </span><span class="nf">luaopen_mylib</span><span class="p">(</span><span class="n">lua_State</span><span class="w"> </span><span class="o">*</span><span class="n">L</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">luaL_newlib</span><span class="p">(</span><span class="n">L</span><span class="p">,</span><span class="w"> </span><span class="n">mylib</span><span class="p">);</span><span class="w">   </span><span class="c1">// 建一个表,把函数都塞进去</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w">                </span><span class="c1">// 把这个表返回给 require</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>脚本里 <code>local m = require("mylib"); m.add(1, 2)</code> 就能用了。<strong>记住 <code>luaopen_xxx</code> 这个名字,一会儿在 FreeSWITCH 源码里会原样撞见它。</strong></p>
+<h3 id="lua-c">二、把 Lua 值取出来喂给 C</h3>
+<p>这是第一件事的反面。C 函数被调用时,参数在栈上,你按位置和类型取:<code>lua_tonumber(L, 1)</code>、<code>lua_tostring(L, 2)</code>、<code>lua_toboolean(L, 3)</code>。要遍历一个 Lua table(比如脚本传进来一个配置),就用 <code>lua_getfield</code>、<code>lua_next</code> 一层层拆。</p>
+<p>这一步的麻烦不在语法,在<strong>边界检查</strong>:栈上到底有几个值?类型对不对?table 里那个 key 存不存在?漏一个检查,轻则脚本报错,重则宿主进程段错误。所以真正的绑定代码里,取参前后到处是 <code>luaL_check*</code> 和栈平衡的断言——胶水代码又臭又长,一多半是花在这上面。</p>
+<h3 id="c-lua-userdata">三、把 C 对象包成 Lua 能安全拿着的 userdata</h3>
+<p>前两件传的都是数字、字符串这种简单值。可 FreeSWITCH 要传给脚本的是一个"通话会话"对象,OpenResty 要传的是一个连接、一个 buffer——这些是 C 结构体或 C++ 对象,Lua 没法直接持有。</p>
+<p>解决办法叫 <strong>userdata</strong>:Lua 里一种特殊的值,内部裹着一块 C 内存(或一个指针)。脚本能拿着这个 userdata 传来传去,但不能直接读写里面的内容;想操作它,只能调你为它注册的方法。再给这个 userdata 挂一个<strong>元表</strong>(metatable),把 <code>__index</code> 指向一张方法表,脚本里 <code>session:answer()</code> 就能找到对应的 C 函数。userdata 还能挂 <code>__gc</code> 元方法,让 Lua 垃圾回收时顺便把底层 C 资源释放掉——这是防内存泄漏的关键。</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// 大意:把一个 C 指针包成带方法的 userdata</span>
+<span class="n">MySession</span><span class="w"> </span><span class="o">**</span><span class="n">ud</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">lua_newuserdata</span><span class="p">(</span><span class="n">L</span><span class="p">,</span><span class="w"> </span><span class="k">sizeof</span><span class="p">(</span><span class="n">MySession</span><span class="w"> </span><span class="o">*</span><span class="p">));</span>
+<span class="o">*</span><span class="n">ud</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">create_session</span><span class="p">();</span><span class="w">                 </span><span class="c1">// 底层 C 对象</span>
+<span class="n">luaL_getmetatable</span><span class="p">(</span><span class="n">L</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;MySession&quot;</span><span class="p">);</span><span class="w">      </span><span class="c1">// 取事先注册好的元表</span>
+<span class="n">lua_setmetatable</span><span class="p">(</span><span class="n">L</span><span class="p">,</span><span class="w"> </span><span class="mi">-2</span><span class="p">);</span><span class="w">                </span><span class="c1">// 挂上去</span>
+<span class="c1">// 现在脚本拿到的这个值,session:xxx() 会走元表里的方法</span>
+</code></pre></div>
+
+<p><strong>这三件事——注册 C 函数、取 Lua 值、包装 C 对象——就是所有 Lua-C 绑定的全部内容。</strong> 手写当然可以,但一个像 FreeSWITCH 那样有上千个 API 的项目,手写几万行栈操作是要命的。于是有了两条省事的路。</p>
+<hr>
+<h2 id="freeswitch-swig">FreeSWITCH:让 SWIG 把胶水一次写完</h2>
+<p>FreeSWITCH 是个开源软交换机(处理呼叫、媒体、SIP 信令的软件电话交换机),几十万行 C/C++。它要把成百上千个 <code>switch_*</code> 能力暴露给 Lua 脚本——按上面手写,得写到天荒地老。它的做法是:<strong>用 SWIG 自动生成绑定。</strong></p>
+<p>SWIG(Simplified Wrapper and Interface Generator)是个老牌工具:你给它一份 C/C++ 的接口声明,它替你生成任意目标语言(Lua、Python、Java……)的绑定胶水。上面那三件苦活,SWIG 全包了。</p>
+<h3 id="i">一份 <code>.i</code> 接口文件</h3>
+<p>FreeSWITCH 在 <code>src/mod/languages/mod_lua/freeswitch.i</code> 里声明要暴露什么。文件头一句就是:</p>
+<div class="highlight"><pre><span></span><code>%module freeswitch
+</code></pre></div>
+
+<p>这决定了生成出来的模块叫 <code>freeswitch</code>——脚本里那个全局的 <code>freeswitch.consoleLog(...)</code> 就是从这来的。接口文件里还 <code>%include</code> 了 C++ 的类声明(<code>CoreSession</code>、<code>Event</code>、<code>API</code>、<code>Stream</code>、<code>EventConsumer</code> 等,声明在 <code>src/include/switch_cpp.h</code>),并为 Lua 定义了 <code>LUA::Session</code> 这样的子类。</p>
+<h3 id="swig-_wrap_">SWIG 生成几万行 <code>_wrap_*</code></h3>
+<p>构建时,<code>Makefile.am</code> 里这一句把 SWIG 跑起来:</p>
+<div class="highlight"><pre><span></span><code><span class="nf">mod_lua_wrap.cpp</span><span class="o">:</span><span class="w"> </span><span class="n">mod_lua_extra</span>.<span class="n">c</span>
+<span class="w">    </span>swig<span class="w"> </span>-lua<span class="w"> </span>-c++<span class="w"> </span>-I../../../../src/include<span class="w"> </span>-oh<span class="w"> </span>mod_lua_wrap.h<span class="w"> </span>-o<span class="w"> </span>mod_lua_wrap.cpp<span class="w"> </span>freeswitch.i
+</code></pre></div>
+
+<p><code>-lua -c++</code> 是告诉 SWIG:目标是 Lua,源是 C++。产物 <code>mod_lua_wrap.cpp</code> 就是那份自动生成的胶水,里面全是这样的函数:</p>
+<div class="highlight"><pre><span></span><code><span class="k">static</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="nf">_wrap_CoreSession_answer</span><span class="p">(</span><span class="n">lua_State</span><span class="o">*</span><span class="w"> </span><span class="n">L</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="c1">// (SWIG 生成) 从栈上取出 self 指针,做类型检查,</span>
+<span class="w">    </span><span class="c1">// 调用 C++ 的 CoreSession::answer(),</span>
+<span class="w">    </span><span class="c1">// 把返回值压回栈上</span>
+<span class="w">    </span><span class="p">...</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>看这个函数的形状——<code>static int</code>、参数 <code>lua_State* L</code>、从栈取参、调 C++、压返回值——<strong>跟前面我们手写的 <code>l_add</code> 一模一样。</strong> SWIG 只是替你把上千个这样的 <code>_wrap_*</code> 批量写了出来。它还生成方法表,把 Lua 里的名字映射到这些 wrapper:</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// (SWIG 生成) 大意</span>
+<span class="p">{</span><span class="w"> </span><span class="s">&quot;answer&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">_wrap_CoreSession_answer</span><span class="w"> </span><span class="p">},</span>
+<span class="p">{</span><span class="w"> </span><span class="s">&quot;hangup&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">_wrap_CoreSession_hangup</span><span class="w"> </span><span class="p">},</span>
+<span class="p">...</span>
+</code></pre></div>
+
+<p>于是脚本里 <code>session:answer()</code>,冒号调用把 <code>session</code> 当作第一个参数(self)压栈,SWIG 生成的 <code>_wrap_CoreSession_answer</code> 从栈上把它还原成 C++ 的 <code>CoreSession*</code>,调真正的 <code>answer()</code>。<strong>这就是那句"脚本里一个 <code>session:answer()</code> 背后就是一次 C++ 调用"的全部真相。</strong></p>
+<h3 id="luaopen_freeswitch">那个熟悉的 <code>luaopen_freeswitch</code></h3>
+<p>还记得第二节说的模块入口约定吗?SWIG 生成的入口就叫 <code>luaopen_freeswitch</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="cp">#define SWIG_name  &quot;freeswitch&quot;</span>
+<span class="cp">#define SWIG_init  luaopen_freeswitch</span>
+</code></pre></div>
+
+<p>而 <code>mod_lua.cpp</code> 在每次创建一个新的 Lua 状态机时,亲手调它:</p>
+<div class="highlight"><pre><span></span><code><span class="k">static</span><span class="w"> </span><span class="n">lua_State</span><span class="w"> </span><span class="o">*</span><span class="nf">lua_init</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">lua_State</span><span class="w"> </span><span class="o">*</span><span class="n">L</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">luaL_newstate</span><span class="p">();</span>
+<span class="w">    </span><span class="n">luaL_openlibs</span><span class="p">(</span><span class="n">L</span><span class="p">);</span>
+<span class="w">    </span><span class="n">luaopen_freeswitch</span><span class="p">(</span><span class="n">L</span><span class="p">);</span><span class="w">   </span><span class="c1">// 把整个 freeswitch 表注册进这个状态机</span>
+<span class="w">    </span><span class="p">...</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">L</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>一路对下来:我们手写的 <code>luaopen_mylib</code> → SWIG 生成的 <code>luaopen_freeswitch</code> → 宿主 <code>mod_lua.cpp</code> 在建状态机时调用它。<strong>同一个约定,从玩具例子贯穿到几十万行的生产系统。</strong> 看懂了小的,大的就不神秘了。</p>
+<p>SWIG 这条路的代价也很实在:生成的 <code>mod_lua_wrap.cpp</code> 是个几万行的庞然大物,几乎没法读、更没法手改;<code>.i</code> 文件的写法有它自己的一套脾气,C++ 里稍微花哨点的模板、重载,SWIG 处理起来就会别扭。<strong>它换来的是"一次声明,批量生成",对一个 API 面极大的项目来说,这笔买卖划算。</strong></p>
+<hr>
+<h2 id="openrestyluajit-ffi">OpenResty:LuaJIT FFI 干脆不写胶水</h2>
+<p>FreeSWITCH 是"把胶水自动生成";OpenResty 走了另一条更激进的路——<strong>在 Lua 这一侧,干脆不写胶水。</strong></p>
+<p>先说个前提:OpenResty 跑的不是标准 Lua,而是 <strong>LuaJIT</strong>(lua-nginx-module 的官方说明是"embeds LuaJIT 2.0/2.1 into Nginx",并且从 v0.10.16 起明确不再支持标准 Lua 解释器)。LuaJIT 是 Lua 5.1 的一个即时编译(JIT)实现,把热点 Lua 代码直接编成机器码,性能能逼近原生 C。而 JIT 之外,LuaJIT 还带来一个改变游戏规则的东西:<strong>FFI</strong>。</p>
+<h3 id="fficdef">用 <code>ffi.cdef</code> 声明,直接调</h3>
+<p>FFI(Foreign Function Interface)让你在纯 Lua 代码里,声明一个 C 函数的签名,然后<strong>直接调它</strong>——不写一行 C 胶水,不生成任何 wrapper。看 LuaJIT 官方文档里的这个例子:</p>
+<div class="highlight"><pre><span></span><code><span class="kd">local</span> <span class="n">ffi</span> <span class="o">=</span> <span class="nb">require</span><span class="p">(</span><span class="s2">&quot;ffi&quot;</span><span class="p">)</span>
+<span class="n">ffi</span><span class="p">.</span><span class="n">cdef</span><span class="s">[[</span>
+<span class="s">int printf(const char *fmt, ...);</span>
+<span class="s">]]</span>
+<span class="n">ffi</span><span class="p">.</span><span class="n">C</span><span class="p">.</span><span class="n">printf</span><span class="p">(</span><span class="s2">&quot;Hello %s!&quot;</span><span class="p">,</span> <span class="s2">&quot;world&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<p>三行。<code>ffi.cdef</code> 里写的就是 C 头文件里的原样声明,LuaJIT 直接解析它;<code>ffi.C</code> 是默认的 C 库命名空间(libc 那些符号都在里面);<code>ffi.C.printf(...)</code> 就直接调到了 libc 的 <code>printf</code>。要用别的库,<code>ffi.load("z")</code> 加载 <code>libz</code>,拿到它的命名空间再调。结构体也能声明和创建:</p>
+<div class="highlight"><pre><span></span><code><span class="n">ffi</span><span class="p">.</span><span class="n">cdef</span><span class="s">[[</span>
+<span class="s">typedef struct { uint8_t red, green, blue, alpha; } rgba_pixel;</span>
+<span class="s">]]</span>
+<span class="kd">local</span> <span class="n">img</span> <span class="o">=</span> <span class="n">ffi</span><span class="p">.</span><span class="n">new</span><span class="p">(</span><span class="s2">&quot;rgba_pixel[?]&quot;</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>   <span class="c1">-- 一个变长数组</span>
+</code></pre></div>
+
+<p>对比一下就看出反差了:SWIG 那边要写 <code>.i</code> 文件、跑生成、编译几万行 wrapper;FFI 这边三行 Lua,连编译步骤都没有。<strong>手写胶水 → SWIG 生成胶水 → FFI 不要胶水,这是一条"胶水越来越少"的演化线。</strong></p>
+<h3 id="openresty-ffi">为什么 OpenResty 官方推 FFI</h3>
+<p>不只是省事,还更快。这一点 OpenResty 自己讲得很直白。它的 <code>ngx.*</code> API 原本是用<strong>经典 Lua C API</strong>(就是第二节那套栈操作)实现的,但官方后来用 FFI 重写了一大部分,放进 <code>lua-resty-core</code> 库,并且从某个版本起<strong>强制加载</strong>。原因写在 <code>lua-resty-core</code> 的说明里(直译):</p>
+<blockquote>
+<p>"它的 FFI 实现比 ngx_lua 模块的 Lua C API 更快、更安全、也更完整。"</p>
+<p>"基于 FFI 的 Lua API 能配合 LuaJIT 的 JIT 编译器工作。ngx_lua 默认的 API 基于标准 Lua C API,永远不会被 JIT 编译,用户 Lua 代码始终以(慢的)解释方式运行。"</p>
+</blockquote>
+<p>关键就在这:<strong>经典 C API 注册的那些 <code>lua_CFunction</code>,LuaJIT 无法把它们编进 JIT 热路径;而 FFI 调用可以被内联进 JIT 编译出来的机器码。</strong> 在一个每秒要处理海量请求的网关里,这个差别是实打实的吞吐。</p>
+<p>这里也有个诚实的边界:FFI 的性能优势<strong>要建立在周围的 Lua 代码确实跑上了 JIT 热路径之上</strong>。<code>lua-resty-core</code> 自己也提醒,如果你的 Lua 代码没被 JIT 编译(还在解释执行),用 FFI 反而可能更慢。<strong>天下没有白来的快。</strong></p>
+<hr>
+<h2 id="_3">三条路,怎么选</h2>
+<p>把手写、SWIG、FFI 放一起对比,选择就清楚了。</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>手写 C API</th>
+<th>SWIG 生成</th>
+<th>LuaJIT FFI</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>胶水谁写</strong></td>
+<td>你,一行行栈操作</td>
+<td>SWIG 从 <code>.i</code> 自动生成</td>
+<td>没有胶水,<code>cdef</code> 声明即用</td>
+</tr>
+<tr>
+<td><strong>依赖</strong></td>
+<td>标准 Lua/LuaJIT 都行</td>
+<td>标准 Lua/LuaJIT 都行</td>
+<td>只有 LuaJIT 有</td>
+</tr>
+<tr>
+<td><strong>能否 JIT</strong></td>
+<td>不能内联进热路径</td>
+<td>不能内联进热路径</td>
+<td>可被 JIT 内联,最快</td>
+</tr>
+<tr>
+<td><strong>适合</strong></td>
+<td>API 很少、要精确控制</td>
+<td>API 极多的大型 C++ 项目</td>
+<td>LuaJIT 环境、性能敏感</td>
+</tr>
+<tr>
+<td><strong>代价</strong></td>
+<td>量大时写到吐</td>
+<td>生成物巨大、难读难改、<code>.i</code> 有脾气</td>
+<td>绕过 Lua 类型安全,声明写错会段错误</td>
+</tr>
+</tbody>
+</table>
+<p>一句话决策:</p>
+<ul>
+<li>你在<strong>标准 Lua</strong> 上,只想把十来个 C 函数递给脚本 —— 手写,清清楚楚。</li>
+<li>你有一个<strong>几百上千 API 的 C++ 项目</strong>要整体暴露(像 FreeSWITCH) —— 上 SWIG,一次声明批量生成。</li>
+<li>你在 <strong>LuaJIT</strong> 上,又在乎性能(像 OpenResty) —— 用 FFI,少写胶水还能吃到 JIT 红利,但声明务必小心,写错类型是直接崩进程的。</li>
+</ul>
+<p>FFI 那条最后一句得强调:它把 C 的签名直接暴露给 Lua,也就把 C 的不安全一并带了进来。<code>cdef</code> 里少写个 <code>const</code>、struct 字段顺序摆错,不会像经典 API 那样报个 Lua 错误,而是可能直接段错误。<strong>FFI 给你的是 C 的翅膀,连 C 的重力也一起给了。</strong></p>
+<hr>
+<h2 id="c">总结:翅膀是 C 给的,但方向得自己把</h2>
+<p>回到开头那个问题:一门标准库小得可怜的语言,凭什么长在这么多庞然大物里?</p>
+<p>凭的就是它跟 C 之间那条又窄又干净的通道——<strong>一个栈,三件事</strong>。C 把自己积累了几十年的能力(协议栈、数据库、媒体编解码)顺着这条通道递过来,Lua 负责把这些能力灵活地编排成业务逻辑。FreeSWITCH 用 SWIG 把这条通道批量拓宽,OpenResty 用 FFI 把它修得又快又直——手段不同,吃的都是同一口"借 C 生态"的饭。</p>
+<p>所以用好 Lua 的关键,从来不是把 Lua 本身学多深,而是想清楚一条边界:<strong>哪一半交给 Lua(需要经常改、要灵活的黏合逻辑),哪一半留在 C(性能敏感、稳定的重活)。</strong> 把该 C 的重活硬塞进 Lua,你会失去性能;把该灵活的逻辑焊死在 C 里,你会失去 Lua 存在的意义。</p>
+<h4 id="_4">上手清单</h4>
+<ul>
+<li>[ ] 记住那张图:<strong>栈是 C 和 Lua 之间唯一的通道</strong>,压入取出,来回倒。</li>
+<li>[ ] 绑定就三件事:<strong>注册 C 函数、取 Lua 值、把 C 对象包成 userdata(带元表 + <code>__gc</code>)</strong>。</li>
+<li>[ ] 模块入口约定是 <code>luaopen_&lt;模块名&gt;</code>——从玩具例子到 <code>luaopen_freeswitch</code> 是同一个套路。</li>
+<li>[ ] API 极多的 C++ 项目考虑 <strong>SWIG</strong>:一份 <code>.i</code>,批量生成 <code>_wrap_*</code>;代价是生成物巨大、难改。</li>
+<li>[ ] LuaJIT 环境优先 <strong>FFI</strong>:<code>ffi.cdef</code> 声明 + <code>ffi.C</code> 直调,可被 JIT 内联;但声明写错会段错误,当心。</li>
+<li>[ ] 性能敏感时,别忘了:经典 C API 进不了 JIT 热路径,FFI 才行——前提是周围代码确实在热路径上。</li>
+<li>[ ] 动手前先划边界:<strong>哪一半用 Lua,哪一半留在 C。</strong></li>
+</ul>
+<h2 id="_5">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* 让 Lua 插上翅膀
+** 为什么要借 C
+*** 标准库极小:无网络/DB/socket
+*** 却长在 WoW/Redis/Nginx/FreeSWITCH
+*** 翅膀是 C 给的
+** 栈:唯一的通道
+*** lua_State 自带栈
+*** C 压入 / Lua 取走
+*** 反过来也一样
+** 绑定的三件事
+*** 注册 C 函数 (int f(lua_State*))
+*** 取 Lua 值 (luaL_check*)
+*** 包成 userdata (元表 + __gc)
+*** 入口约定 luaopen_xxx
+** FreeSWITCH:SWIG 生成
+*** freeswitch.i 声明
+*** 生成 _wrap_* 栈操作
+*** session:answer() = C++ 调用
+*** luaopen_freeswitch
+** OpenResty:LuaJIT FFI
+*** ffi.cdef 声明即用
+*** ffi.C 直接调
+*** 可被 JIT 内联,更快
+*** 官方推 FFI 而非经典 C API
+** 三条路怎么选
+*** 手写:API 少
+*** SWIG:API 极多
+*** FFI:LuaJIT + 性能敏感
+@endmindmap
+</code></pre></div>
+
+<p><img alt="让 Lua 插上翅膀 - 思维导图" src="./images/tech_20261001_lua-c-binding_mindmap.png"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/2026-10-01-lua-c-binding.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/tech.html">tech</a>
+      <a href="https://www.fanyamin.com/blog/tag/lua.html">lua</a>
+      <a href="https://www.fanyamin.com/blog/tag/c.html">c</a>
+      <a href="https://www.fanyamin.com/blog/tag/ffi.html">ffi</a>
+      <a href="https://www.fanyamin.com/blog/tag/swig.html">swig</a>
+      <a href="https://www.fanyamin.com/blog/tag/freeswitch.html">freeswitch</a>
+      <a href="https://www.fanyamin.com/blog/tag/openresty.html">openresty</a>
+      <a href="https://www.fanyamin.com/blog/tag/luajit.html">luajit</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-09-30-voice-ai-latency-trust.html" title="AI 语音客服的两道生死坎:延迟和可信度">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/2026-10-02-lua-cpp-game.html" title="引擎归 C++，玩法归 Lua：一个打砖块游戏的分层写法">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/2026-09-29-freeswitch-lua-llm-ai-agent.html">用 Lua 写 Dialplan 接 LLM:从零搓一个 AI 智能客服</a></li>
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-session-lifecycle.html">FreeSWITCH 的 session：一次呼叫的生老病死，都装在一个容器里</a></li>
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-architecture-fast-and-fragile.html">FreeSWITCH 架构设计之快与脆</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-09-14-lua-in-freeswitch.html">重拾 Lua：从月亮语言到 FreeSWITCH 里的胶水</a></li>
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-testing-unit-and-integration.html">给 FreeSWITCH 写测试：从单元测试到集成测试，用一个真 bug 串起来</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

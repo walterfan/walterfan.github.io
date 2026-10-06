@@ -1,0 +1,978 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="C/C++ 最头疼的从来不是写代码，是交付——一个二进制换台机器就跑不起来，缺了某个 .so、glibc 版本对不上、编译器一升级全乱套。这篇讲怎么用 Docker 把这事根治：build 阶段锁死编译环境，run 阶段用 multi-stage 把几 GB 的构建镜像瘦成几十 MB 的运行镜像，distribute 阶段一条 docker push 把带所有依赖的服务发出去。配一个用 CMake + cpp-httplib 写的小 HTTP 服务做完整示例，顺带说清 static 链接、distroless、DNS 这些真会咬人的坑。" />
+<meta name="keywords" content="tech, docker, c++, cmake, multi-stage, distroless, devops">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "把 C/C++ 服务装进集装箱：用 Docker 构建、运行、分发",
+  "description": "C/C++ 最头疼的从来不是写代码，是交付——一个二进制换台机器就跑不起来，缺了某个 .so、glibc 版本对不上、编译器一升级全乱套。这篇讲怎么用 Docker 把这事根治：build 阶段锁死编译环境，run 阶段用 multi-stage 把几 GB 的构建镜像瘦成几十 MB 的运行镜像，distribute 阶段一条 docker push 把带所有依赖的服务发出去。配一个用 CMake + cpp-httplib 写的小 HTTP 服务做完整示例，顺带说清 static 链接、distroless、DNS 这些真会咬人的坑。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-10-04T21:00:00+08:00",
+  "dateModified": "2026-10-04T21:00:00+08:00",
+  "url": "https://www.fanyamin.com/blog/2026-10-04-docker-cpp-service.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/2026-10-04-docker-cpp-service.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "tech, docker, c++, cmake, multi-stage, distroless, devops"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="把 C/C++ 服务装进集装箱：用 Docker 构建、运行、分发"/>
+  <meta property="og:description" content="C/C++ 最头疼的从来不是写代码，是交付——一个二进制换台机器就跑不起来，缺了某个 .so、glibc 版本对不上、编译器一升级全乱套。这篇讲怎么用 Docker 把这事根治：build 阶段锁死编译环境，run 阶段用 multi-stage 把几 GB 的构建镜像瘦成几十 MB 的运行镜像，distribute 阶段一条 docker push 把带所有依赖的服务发出去。配一个用 CMake + cpp-httplib 写的小 HTTP 服务做完整示例，顺带说清 static 链接、distroless、DNS 这些真会咬人的坑。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/2026-10-04-docker-cpp-service.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-10-04 21:00:00+08:00"/>
+  <meta property="article:modified_time" content="2026-10-04 21:00:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="tech"/>
+  <meta property="article:tag" content="docker"/>
+  <meta property="article:tag" content="c++"/>
+  <meta property="article:tag" content="cmake"/>
+  <meta property="article:tag" content="multi-stage"/>
+  <meta property="article:tag" content="distroless"/>
+  <meta property="article:tag" content="devops"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 把 C/C++ 服务装进集装箱：用 Docker 构建、运行、分发</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记"
+               data-en="Notebook">
+              笔记
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="2026-10-04-docker-cpp-service">把 C/C++ 服务装进集装箱：用 Docker 构建、运行、分发</h1>
+    <p>
+      Posted on 日 04 10月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>把 C/C++ 服务装进集装箱：用 Docker 构建、运行、分发</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-10-04</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">大纲</h2>
+<details>
+<summary>展开看看</summary>
+<ul>
+<li><strong>C/C++ 的真正痛点在交付</strong>：代码再漂亮，换台机器缺个 <code>.so</code>、glibc 版本不对就跑不起来。"在我机器上能跑"在 C/C++ 这里尤其致命。</li>
+<li><strong>Docker 解决的是三件事</strong>：build（锁死编译环境）、run（给二进制配齐运行时依赖）、distribute（整包发出去）。一个镜像把这三件事焊在一起。</li>
+<li><strong>一个能跑的例子</strong>：CMake + cpp-httplib 写的小 HTTP 服务，从源码到 <code>docker run</code> 全流程。</li>
+<li><strong>multi-stage build 是关键一招</strong>：构建阶段几 GB，运行阶段几十 MB。编译器、头文件、中间产物全留在上一层，最终镜像只带二进制和它真正需要的运行时。</li>
+<li><strong>运行镜像到底该多瘦</strong>：debian-slim、alpine（musl 的坑）、distroless、scratch，怎么选。</li>
+<li><strong>真会咬人的坑</strong>：glibc 静态链接把 DNS 搞坏、动态库漏拷、CMake 缓存污染、时区和证书。</li>
+<li><strong>分发</strong>：打 tag、推到 registry、别人一条 <code>docker run</code> 就能跑；版本即镜像。</li>
+</ul>
+</details>
+<hr>
+<p>写 C/C++ 的人都有过这个时刻：本地编译、本地跑、一切正常，信心满满地把二进制拷到测试机，<code>./myservice</code> 一敲——</p>
+<div class="highlight"><pre><span></span><code><span class="go">./myservice: error while loading shared libraries: libstdc++.so.6: cannot open shared object file: No such file or directory</span>
+</code></pre></div>
+
+<p>或者更隐蔽的：能启动，跑着跑着在某个调用上 core dump，<code>gdb</code> 一看，是某个库的 ABI 和编译时的版本对不上。你开始一个个 <code>ldd</code>，一个个 <code>apt install</code>，装到第五个依赖的时候已经忘了最初要干嘛了。</p>
+<p><strong>C/C++ 这门语言，难的从来不是写，是交付。</strong> Java 有 jar 和 JVM 兜底，Go 干脆静态编译成一个胖二进制，Python 有 venv 和 pip。到了 C/C++，你交付的是一个<strong>裸二进制</strong>，它对运行环境的假设全是隐式的：哪个版本的 glibc、哪些 <code>.so</code> 在 <code>/usr/lib</code> 下、编译器是 GCC 还是 Clang、是不是同一个发行版。这些假设只要有一条在目标机器上不成立，服务就起不来。</p>
+<p>这篇就讲一件事：<strong>用 Docker 把这些隐式假设全部变成显式的、可复现的、能一键分发的东西。</strong> 面向已经会用 g++/cmake、但还没系统用 Docker 交付过 C/C++ 服务的工程师。看完你应该能把自己手上的服务打成一个几十 MB、换任何装了 Docker 的机器都能跑的镜像。</p>
+<hr>
+<h2 id="docker-cc">Docker 到底替 C/C++ 解决了什么</h2>
+<p>容器不是虚拟机，它不虚拟化硬件，只是用 Linux 的 namespace 和 cgroup 把一个进程和它的文件系统视图隔离出来。对 C/C++ 交付来说，真正有用的是后半句：<strong>镜像把你的二进制和它需要的整个用户态环境（libc、<code>.so</code>、证书、时区）打包成一个只读的层叠文件系统，连同二进制一起分发。</strong></p>
+<p>一句话：</p>
+<blockquote>
+<p><strong>容器交付的不是你的程序，是你的程序 + 它运行所需的整个世界。</strong>
+目标机器只需要有 Docker，不需要懂你用了哪个版本的 Boost。</p>
+</blockquote>
+<p>把这件事拆成三步，正好对应标题里的 build / run / distribute：</p>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>没有 Docker 时的痛</th>
+<th>Docker 怎么管</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>build</strong></td>
+<td>"我装的是 GCC 11，CI 上是 9，编出来行为不一样"</td>
+<td>构建镜像里锁死编译器、CMake、第三方库版本，谁 build 都一样</td>
+</tr>
+<tr>
+<td><strong>run</strong></td>
+<td>"目标机缺 <code>libstdc++</code>、glibc 版本太老"</td>
+<td>运行镜像自带配齐的运行时，二进制对环境的假设全写进 Dockerfile</td>
+</tr>
+<tr>
+<td><strong>distribute</strong></td>
+<td>"拷二进制 + 写一页部署文档 + 祈祷"</td>
+<td><code>docker push</code> / <code>docker pull</code>，版本即镜像 tag</td>
+</tr>
+</tbody>
+</table>
+<p>下面用一个能跑的例子把这三步走一遍。</p>
+<hr>
+<h2 id="cmake-cpp-httplib">一个能跑的例子：CMake + cpp-httplib</h2>
+<p>先把示例立住，后面所有讨论都基于它。<a href="https://github.com/yhirose/cpp-httplib">cpp-httplib</a> 是一个单头文件的 C++ HTTP 库，适合做例子：没有一堆外部依赖要装，又真的是个监听端口的服务，比 <code>hello world</code> 更贴近实际。</p>
+<p>项目结构：</p>
+<div class="highlight"><pre><span></span><code>cpp-docker-demo/
+├── CMakeLists.txt
+├── src/
+│   └── main.cpp
+└── Dockerfile
+</code></pre></div>
+
+<p><code>src/main.cpp</code> —— 一个监听 8080、返回 JSON 的小服务：</p>
+<div class="highlight"><pre><span></span><code><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;httplib.h&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;string&gt;</span>
+
+<span class="kt">int</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">httplib</span><span class="o">::</span><span class="n">Server</span><span class="w"> </span><span class="n">svr</span><span class="p">;</span>
+
+<span class="w">    </span><span class="n">svr</span><span class="p">.</span><span class="n">Get</span><span class="p">(</span><span class="s">&quot;/healthz&quot;</span><span class="p">,</span><span class="w"> </span><span class="p">[](</span><span class="k">const</span><span class="w"> </span><span class="n">httplib</span><span class="o">::</span><span class="n">Request</span><span class="o">&amp;</span><span class="p">,</span><span class="w"> </span><span class="n">httplib</span><span class="o">::</span><span class="n">Response</span><span class="o">&amp;</span><span class="w"> </span><span class="n">res</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">res</span><span class="p">.</span><span class="n">set_content</span><span class="p">(</span><span class="s">&quot;ok&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;text/plain&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="p">});</span>
+
+<span class="w">    </span><span class="n">svr</span><span class="p">.</span><span class="n">Get</span><span class="p">(</span><span class="s">&quot;/hello&quot;</span><span class="p">,</span><span class="w"> </span><span class="p">[](</span><span class="k">const</span><span class="w"> </span><span class="n">httplib</span><span class="o">::</span><span class="n">Request</span><span class="o">&amp;</span><span class="w"> </span><span class="n">req</span><span class="p">,</span><span class="w"> </span><span class="n">httplib</span><span class="o">::</span><span class="n">Response</span><span class="o">&amp;</span><span class="w"> </span><span class="n">res</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">req</span><span class="p">.</span><span class="n">has_param</span><span class="p">(</span><span class="s">&quot;name&quot;</span><span class="p">)</span>
+<span class="w">                               </span><span class="o">?</span><span class="w"> </span><span class="n">req</span><span class="p">.</span><span class="n">get_param_value</span><span class="p">(</span><span class="s">&quot;name&quot;</span><span class="p">)</span>
+<span class="w">                               </span><span class="o">:</span><span class="w"> </span><span class="s">&quot;world&quot;</span><span class="p">;</span>
+<span class="w">        </span><span class="n">res</span><span class="p">.</span><span class="n">set_content</span><span class="p">(</span><span class="s">&quot;{</span><span class="se">\&quot;</span><span class="s">msg</span><span class="se">\&quot;</span><span class="s">:</span><span class="se">\&quot;</span><span class="s">hello, &quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">name</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">&quot;</span><span class="se">\&quot;</span><span class="s">}&quot;</span><span class="p">,</span>
+<span class="w">                        </span><span class="s">&quot;application/json&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="p">});</span>
+
+<span class="w">    </span><span class="c1">// 容器里一定要监听 0.0.0.0，不是 127.0.0.1——否则端口映射出去也连不上</span>
+<span class="w">    </span><span class="n">svr</span><span class="p">.</span><span class="n">listen</span><span class="p">(</span><span class="s">&quot;0.0.0.0&quot;</span><span class="p">,</span><span class="w"> </span><span class="mi">8080</span><span class="p">);</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这里埋了第一个常见坑：<strong>容器里的服务必须监听 <code>0.0.0.0</code>，不能监听 <code>127.0.0.1</code>。</strong> 容器有自己的网络栈，监听 <code>127.0.0.1</code> 意味着只接受容器内部的连接，你从宿主机 <code>-p 8080:8080</code> 映射出去也连不上。这个坑我见过不止一个人踩，因为在本机直接跑的时候 <code>127.0.0.1</code> 是好使的。</p>
+<p><code>CMakeLists.txt</code> —— 用 CMake 的 <code>FetchContent</code> 把 cpp-httplib 拉进来，省得手动管头文件：</p>
+<div class="highlight"><pre><span></span><code><span class="nb">cmake_minimum_required</span><span class="p">(</span><span class="s">VERSION</span><span class="w"> </span><span class="s">3.14</span><span class="p">)</span>
+<span class="nb">project</span><span class="p">(</span><span class="s">cpp_docker_demo</span><span class="w"> </span><span class="s">CXX</span><span class="p">)</span>
+
+<span class="nb">set</span><span class="p">(</span><span class="s">CMAKE_CXX_STANDARD</span><span class="w"> </span><span class="s">17</span><span class="p">)</span>
+<span class="nb">set</span><span class="p">(</span><span class="s">CMAKE_CXX_STANDARD_REQUIRED</span><span class="w"> </span><span class="s">ON</span><span class="p">)</span>
+
+<span class="nb">include</span><span class="p">(</span><span class="s">FetchContent</span><span class="p">)</span>
+<span class="nb">FetchContent_Declare</span><span class="p">(</span>
+<span class="w">    </span><span class="s">httplib</span>
+<span class="w">    </span><span class="s">GIT_REPOSITORY</span><span class="w"> </span><span class="s">https://github.com/yhirose/cpp-httplib.git</span>
+<span class="w">    </span><span class="s">GIT_TAG</span><span class="w">        </span><span class="s">v0.18.1</span><span class="w">   </span><span class="c"># 锁一个具体版本，别用 master</span>
+<span class="p">)</span>
+<span class="nb">FetchContent_MakeAvailable</span><span class="p">(</span><span class="s">httplib</span><span class="p">)</span>
+
+<span class="nb">add_executable</span><span class="p">(</span><span class="s">myservice</span><span class="w"> </span><span class="s">src/main.cpp</span><span class="p">)</span>
+<span class="nb">target_link_libraries</span><span class="p">(</span><span class="s">myservice</span><span class="w"> </span><span class="s">PRIVATE</span><span class="w"> </span><span class="s">httplib::httplib</span><span class="p">)</span>
+</code></pre></div>
+
+<p>注意 <code>GIT_TAG</code> 我锁了一个具体版本而不是 <code>master</code>。这不是洁癖——<strong>可复现的构建要求每一个输入都是固定的</strong>，依赖拉 <code>master</code> 意味着今天编出来和下周编出来可能是两个东西，而这正是 Docker 想消灭的不确定性。</p>
+<p>到这一步，本机能不能编出来还取决于你装没装对 CMake 和编译器。接下来把这份不确定性交给 Docker。</p>
+<hr>
+<h2 id="dockerfile">第一版 Dockerfile：能跑，但臃肿</h2>
+<p>先写一个最直白的、把所有东西塞一个镜像里的版本，看看问题在哪：</p>
+<div class="highlight"><pre><span></span><code><span class="k">FROM</span><span class="w"> </span><span class="s">ubuntu:24.04</span>
+
+<span class="k">RUN</span><span class="w"> </span>apt-get<span class="w"> </span>update<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>g++<span class="w"> </span>cmake<span class="w"> </span>git<span class="w"> </span>ca-certificates<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="o">&amp;&amp;</span><span class="w"> </span>rm<span class="w"> </span>-rf<span class="w"> </span>/var/lib/apt/lists/*
+
+<span class="k">WORKDIR</span><span class="w"> </span><span class="s">/app</span>
+<span class="k">COPY</span><span class="w"> </span>.<span class="w"> </span>.
+<span class="k">RUN</span><span class="w"> </span>cmake<span class="w"> </span>-S<span class="w"> </span>.<span class="w"> </span>-B<span class="w"> </span>build<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="o">&amp;&amp;</span><span class="w"> </span>cmake<span class="w"> </span>--build<span class="w"> </span>build<span class="w"> </span>-j<span class="k">$(</span>nproc<span class="k">)</span>
+
+<span class="k">EXPOSE</span><span class="w"> </span><span class="s">8080</span>
+<span class="k">CMD</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;/app/build/myservice&quot;</span><span class="p">]</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>docker<span class="w"> </span>build<span class="w"> </span>-t<span class="w"> </span>myservice:fat<span class="w"> </span>.
+<span class="gp">$ </span>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-p<span class="w"> </span><span class="m">8080</span>:8080<span class="w"> </span>myservice:fat
+<span class="gp">$ </span>curl<span class="w"> </span>localhost:8080/hello?name<span class="o">=</span>walter
+<span class="go">{&quot;msg&quot;:&quot;hello, walter&quot;}</span>
+</code></pre></div>
+
+<p>能跑。但 <code>docker images</code> 一看就知道问题了：这个镜像带着整个 <code>g++</code>、<code>cmake</code>、<code>git</code>、一堆头文件、构建中间产物——一个几 KB 的服务，镜像轻松上到 1GB 级别。你把编译工具链和源码全发给了生产环境，而生产环境一行都用不上。</p>
+<p>这不只是浪费磁盘。镜像越大，<code>docker pull</code> 越慢，攻击面越大（生产容器里有编译器，对安全团队是个红灯），每次改一行代码重新分发的成本也越高。</p>
+<hr>
+<h2 id="multi-stage-build">第二版：multi-stage build，这是关键一招</h2>
+<p>Docker 的 multi-stage build 允许在一个 Dockerfile 里写多个 <code>FROM</code>，<strong>前一个阶段负责编译，后一个阶段只从前一个阶段拷贝产物</strong>，中间的编译器、源码、缓存全部不进入最终镜像。</p>
+<div class="highlight"><pre><span></span><code><span class="c"># ---------- 构建阶段 ----------</span>
+<span class="k">FROM</span><span class="w"> </span><span class="s">ubuntu:24.04</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="s">builder</span>
+
+<span class="k">RUN</span><span class="w"> </span>apt-get<span class="w"> </span>update<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>g++<span class="w"> </span>cmake<span class="w"> </span>git<span class="w"> </span>ca-certificates<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="o">&amp;&amp;</span><span class="w"> </span>rm<span class="w"> </span>-rf<span class="w"> </span>/var/lib/apt/lists/*
+
+<span class="k">WORKDIR</span><span class="w"> </span><span class="s">/app</span>
+<span class="k">COPY</span><span class="w"> </span>.<span class="w"> </span>.
+<span class="k">RUN</span><span class="w"> </span>cmake<span class="w"> </span>-S<span class="w"> </span>.<span class="w"> </span>-B<span class="w"> </span>build<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="o">&amp;&amp;</span><span class="w"> </span>cmake<span class="w"> </span>--build<span class="w"> </span>build<span class="w"> </span>-j<span class="k">$(</span>nproc<span class="k">)</span>
+
+<span class="c"># ---------- 运行阶段 ----------</span>
+<span class="k">FROM</span><span class="w"> </span><span class="s">ubuntu:24.04</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="s">runtime</span>
+
+<span class="c"># 只拷二进制，不拷编译器和源码</span>
+<span class="k">COPY</span><span class="w"> </span>--from<span class="o">=</span>builder<span class="w"> </span>/app/build/myservice<span class="w"> </span>/usr/local/bin/myservice
+
+<span class="k">EXPOSE</span><span class="w"> </span><span class="s">8080</span>
+<span class="k">CMD</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;/usr/local/bin/myservice&quot;</span><span class="p">]</span>
+</code></pre></div>
+
+<p>关键就是 <code>COPY --from=builder</code>：运行镜像从 <code>ubuntu:24.04</code> 干净起步，只把编译好的二进制拿过来。编译器、CMake、源码、<code>build/</code> 里几百个中间 <code>.o</code> 全留在 <code>builder</code> 阶段，随构建结束被丢弃。</p>
+<p>现在运行镜像从 1GB 级别掉到 <code>ubuntu:24.04</code> 的基础大小（约 78MB）加上你的二进制。工具链一点没进去。</p>
+<p>但还能更瘦。<code>ubuntu:24.04</code> 里有一整套 shell、包管理器、系统工具，你的服务一个都不用。下一步就是选一个更小的运行基础镜像——而这一步会把 C/C++ 的链接问题逼到台面上。</p>
+<hr>
+<h2 id="slim-scratch">运行镜像该多瘦：从 slim 到 scratch</h2>
+<p>运行阶段的基础镜像有一条明确的梯子，越往下越小、也越考验你对链接的理解：</p>
+<table>
+<thead>
+<tr>
+<th>基础镜像</th>
+<th>量级</th>
+<th>带什么</th>
+<th>适合</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ubuntu:24.04</code> / <code>debian:12</code></td>
+<td>~78MB</td>
+<td>完整 userland</td>
+<td>图省事、要进容器调试</td>
+</tr>
+<tr>
+<td><code>debian:12-slim</code></td>
+<td>~30MB</td>
+<td>精简 userland + glibc</td>
+<td>动态链接、想保留一点调试能力</td>
+</tr>
+<tr>
+<td><code>alpine</code></td>
+<td>~8MB</td>
+<td>musl libc + busybox</td>
+<td>想要极小，但<strong>要接受 musl 不是 glibc</strong></td>
+</tr>
+<tr>
+<td><code>gcr.io/distroless/cc</code></td>
+<td>~20MB</td>
+<td>glibc + libstdc++，无 shell</td>
+<td>动态链接的 C/C++ 服务，安全优先</td>
+</tr>
+<tr>
+<td><code>scratch</code></td>
+<td>0</td>
+<td>什么都没有</td>
+<td><strong>完全静态链接</strong>的二进制</td>
+</tr>
+</tbody>
+</table>
+<p>这张表里藏着 C/C++ 容器化真正的分水岭：<strong>你的二进制是动态链接还是静态链接？</strong></p>
+<p>默认 <code>g++</code> 编出来是<strong>动态链接</strong>的——它运行时要去系统里找 <code>libstdc++.so.6</code>、<code>libc.so.6</code> 等等。这意味着运行镜像必须提供这些 <code>.so</code>，版本还得兼容。对动态链接的服务，<code>gcr.io/distroless/cc</code> 是个很好的落点：它在 glibc 基础上加了 <code>libgcc</code> 和 <code>libstdc++</code>，专门伺候 C/C++，又没有 shell 和包管理器（攻击面小），大小只有 20MB 出头。</p>
+<p>用 distroless 的运行阶段长这样：</p>
+<div class="highlight"><pre><span></span><code><span class="c"># ---------- 运行阶段（distroless）----------</span>
+<span class="k">FROM</span><span class="w"> </span><span class="s">gcr.io/distroless/cc-debian12</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="s">runtime</span>
+<span class="k">COPY</span><span class="w"> </span>--from<span class="o">=</span>builder<span class="w"> </span>/app/build/myservice<span class="w"> </span>/usr/local/bin/myservice
+<span class="k">EXPOSE</span><span class="w"> </span><span class="s">8080</span>
+<span class="k">CMD</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;/usr/local/bin/myservice&quot;</span><span class="p">]</span>
+</code></pre></div>
+
+<blockquote>
+<p><strong>distroless 没有 shell，<code>docker exec -it ... /bin/sh</code> 进不去。</strong>
+调试时用它的 <code>:debug</code> tag（带一个 busybox），上生产再换回无 shell 版本。</p>
+</blockquote>
+<p>如果你想一路干到 <code>scratch</code>（镜像里真的什么都没有，只有你的二进制），那二进制必须<strong>完全静态链接</strong>。这里是全文最该小心的一个坑。</p>
+<hr>
+<h2 id="glibc-dns">最该小心的坑：glibc 静态链接会悄悄搞坏 DNS</h2>
+<p>很多人以为静态链接就是加个 <code>-static</code> 的事。对 glibc 来说，<strong>它能链上，但会在运行时坑你</strong>。</p>
+<p>glibc 的名字解析（<code>getaddrinfo</code>、<code>gethostbyname</code>）靠一套叫 NSS（Name Service Switch）的机制，而 NSS 是运行时用 <code>dlopen</code> 动态加载模块实现的。你把 glibc 静态链进二进制，NSS 那部分并没有真的被静态进去——它仍然想在运行时找 <code>.so</code>，而 <code>scratch</code> 里什么都没有。结果就是：<strong>二进制能启动，但一做 DNS 解析（比如连另一个服务的域名）就失败。</strong></p>
+<p>编译时 glibc 其实会警告你：</p>
+<div class="highlight"><pre><span></span><code><span class="go">warning: Using &#39;getaddrinfo&#39; in statically linked applications requires</span>
+<span class="go">at runtime the shared libraries from the glibc version used for linking</span>
+</code></pre></div>
+
+<p>这条警告很多人直接划过去了，然后在生产上调试几个小时为什么连不上下游。想真正做到 <code>scratch</code> 级别的静态二进制，实际路线是<strong>用 musl libc 静态链接</strong>（Alpine 的工具链，或专门的 musl 交叉编译器），musl 没有 glibc 这个 NSS 的历史包袱。</p>
+<p>所以这条梯子的务实建议是：</p>
+<ul>
+<li><strong>大多数 C/C++ 服务</strong>：动态链接 + <code>distroless/cc</code>。省心，20MB 够小了。</li>
+<li><strong>真要极致小 / <code>scratch</code></strong>：接受 musl 工具链这套额外复杂度，别用 <code>-static</code> 硬链 glibc 然后指望 DNS 还能用。</li>
+<li><strong>用 Alpine 当运行镜像</strong>：记住它的 libc 是 musl 不是 glibc，你在 ubuntu <code>builder</code> 里动态编出来的二进制<strong>不能</strong>直接丢进 alpine 跑（ABI 不同），要么在 alpine 里编，要么静态链接。这是 Alpine 省体积的隐藏代价。</li>
+</ul>
+<hr>
+<h2 id="_2">其他几个真会咬人的坑</h2>
+<p>除了链接，容器化 C/C++ 时还有几个反复出现的坑，列成一张自检表：</p>
+<ul>
+<li>
+<p><strong>动态库漏拷</strong>：如果你的服务依赖某个自己编的 <code>.so</code>（而不是系统库），<code>COPY --from=builder</code> 只拷了二进制、没拷那个 <code>.so</code>，运行时就 <code>cannot open shared object file</code>。用 <code>ldd /app/build/myservice</code> 列出所有动态依赖，确认运行镜像里每一个都在。</p>
+</li>
+<li>
+<p><strong>CMake 缓存污染</strong>：别把本机的 <code>build/</code> 目录 <code>COPY</code> 进镜像。本机 CMake 缓存里存着本机的绝对路径和编译器路径，进了容器会导致诡异的构建失败。用 <code>.dockerignore</code> 把 <code>build/</code> 挡在外面：</p>
+</li>
+</ul>
+<p><code>build/
+  .git/
+  *.o</code></p>
+<ul>
+<li>
+<p><strong>证书和时区</strong>：distroless 和 slim 镜像默认带了 <code>ca-certificates</code> 和 tzdata，但 <code>scratch</code> 什么都没有。如果你的服务要发 HTTPS 请求，<code>scratch</code> 里没有 CA 证书会导致 TLS 握手失败——需要显式从 builder 把 <code>/etc/ssl/certs/ca-certificates.crt</code> 拷过去。</p>
+</li>
+<li>
+<p><strong><code>CMAKE_BUILD_TYPE</code> 忘了设</strong>：不写 <code>-DCMAKE_BUILD_TYPE=Release</code>，CMake 默认是空的（既不是 Debug 也不是 Release），很多优化不开。容器构建里一定要显式指定。</p>
+</li>
+<li>
+<p><strong>用非 root 用户跑</strong>：生产容器别用 root。distroless 有 <code>:nonroot</code> tag，或者在 Dockerfile 里 <code>USER</code> 切到一个普通用户，降低被攻破后的影响面。</p>
+</li>
+</ul>
+<hr>
+<h2 id="_3">分发：版本即镜像</h2>
+<p>build 和 run 都收拾干净了，分发就是水到渠成的一步。核心观念是：<strong>镜像 tag 就是你的版本号，推到 registry 后，别人不需要知道任何构建细节。</strong></p>
+<div class="highlight"><pre><span></span><code><span class="gp"># </span>打一个带版本的<span class="w"> </span>tag
+<span class="gp">$ </span>docker<span class="w"> </span>build<span class="w"> </span>-t<span class="w"> </span>registry.example.com/team/myservice:1.2.0<span class="w"> </span>.
+
+<span class="gp"># </span>推到镜像仓库（公司内网<span class="w"> </span>Harbor、AWS<span class="w"> </span>ECR、GitHub/GitLab<span class="w"> </span>Registry<span class="w"> </span>都行）
+<span class="gp">$ </span>docker<span class="w"> </span>push<span class="w"> </span>registry.example.com/team/myservice:1.2.0
+
+<span class="gp"># </span>任何装了<span class="w"> </span>Docker<span class="w"> </span>的机器，一条命令就能跑
+<span class="gp">$ </span>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span>-p<span class="w"> </span><span class="m">8080</span>:8080<span class="w"> </span>registry.example.com/team/myservice:1.2.0
+</code></pre></div>
+
+<p>对方不需要装 g++、不需要对 glibc 版本，不需要你那页部署文档。他 <code>pull</code> 下来的是你编译好的二进制加上它运行所需的整个世界——这正是开头那句话的闭环。</p>
+<p>几个分发实践：</p>
+<ul>
+<li><strong>tag 用语义化版本 + git commit</strong>，比如 <code>1.2.0</code> 配一个 <code>1.2.0-a1b2c3d</code>。<code>latest</code> 只适合随手测，生产部署永远用确定的 tag，别让"今天的 latest"和"昨天的 latest"是两个东西。</li>
+<li><strong>build 一次，到处跑</strong>：同一个镜像从测试环境一路推到生产，中间不重新构建。重新构建就是重新引入不确定性。</li>
+<li><strong>把构建放进 CI</strong>：Dockerfile 里锁死了环境，CI 里 <code>docker build</code> 出来的和你本地一致，这是 Docker 给 C/C++ 最大的一份红利——"在我机器上能跑"这句话从此作废，因为根本没有"我的机器"这个变量了。</li>
+</ul>
+<hr>
+<h2 id="_4">总结：交付的是环境，不只是二进制</h2>
+<p>C/C++ 的交付难，难在二进制对运行环境的假设全是隐式的。Docker 的价值不是"让程序跑在容器里"这么浅，而是<strong>逼你把那些隐式假设一条条写进 Dockerfile，变成可复现、可分发的东西</strong>：</p>
+<ul>
+<li><strong>build</strong>：构建镜像锁死编译器和依赖版本，<code>FetchContent</code> 的 tag、<code>CMAKE_BUILD_TYPE</code> 都钉死，谁构建结果都一样。</li>
+<li><strong>run</strong>：multi-stage 把几 GB 的构建环境瘦成几十 MB 的运行环境，动态链接配 <code>distroless/cc</code>，想上 <code>scratch</code> 先搞定 musl 静态链接别碰 glibc 的 DNS 坑。</li>
+<li><strong>distribute</strong>：tag 即版本，build 一次到处跑，<code>docker push</code> 取代那页没人看的部署文档。</li>
+</ul>
+<p>一份可以照抄的最终 Dockerfile 骨架：</p>
+<div class="highlight"><pre><span></span><code><span class="k">FROM</span><span class="w"> </span><span class="s">ubuntu:24.04</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="s">builder</span>
+<span class="k">RUN</span><span class="w"> </span>apt-get<span class="w"> </span>update<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span>g++<span class="w"> </span>cmake<span class="w"> </span>git<span class="w"> </span>ca-certificates<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="o">&amp;&amp;</span><span class="w"> </span>rm<span class="w"> </span>-rf<span class="w"> </span>/var/lib/apt/lists/*
+<span class="k">WORKDIR</span><span class="w"> </span><span class="s">/app</span>
+<span class="k">COPY</span><span class="w"> </span>.<span class="w"> </span>.
+<span class="k">RUN</span><span class="w"> </span>cmake<span class="w"> </span>-S<span class="w"> </span>.<span class="w"> </span>-B<span class="w"> </span>build<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="o">&amp;&amp;</span><span class="w"> </span>cmake<span class="w"> </span>--build<span class="w"> </span>build<span class="w"> </span>-j<span class="k">$(</span>nproc<span class="k">)</span>
+
+<span class="k">FROM</span><span class="w"> </span><span class="s">gcr.io/distroless/cc-debian12</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="s">runtime</span>
+<span class="k">COPY</span><span class="w"> </span>--from<span class="o">=</span>builder<span class="w"> </span>/app/build/myservice<span class="w"> </span>/usr/local/bin/myservice
+<span class="k">EXPOSE</span><span class="w"> </span><span class="s">8080</span>
+<span class="k">USER</span><span class="w"> </span><span class="s">nonroot</span>
+<span class="k">CMD</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;/usr/local/bin/myservice&quot;</span><span class="p">]</span>
+</code></pre></div>
+
+<p>下次再有人把二进制拷到测试机、对着 <code>libstdc++.so.6: cannot open shared object file</code> 发愁，你知道该递给他的不是又一条 <code>apt install</code>，而是一个 Dockerfile。</p>
+<h2 id="_5">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* Docker 交付 C/C++ 服务
+** 为什么难
+*** 裸二进制，环境假设全是隐式
+*** 缺 .so / glibc 版本 / ABI
+** build
+*** 构建镜像锁死编译器与依赖
+*** FetchContent 锁 tag
+*** CMAKE_BUILD_TYPE=Release
+** run
+*** multi-stage：构建与运行分离
+*** 基础镜像梯子 slim/alpine/distroless/scratch
+*** 动态链接 → distroless/cc
+*** 静态链接 → musl，别碰 glibc DNS 坑
+** distribute
+*** tag 即版本
+*** build 一次到处跑
+*** push 到 registry
+** 坑
+*** 监听 0.0.0.0 不是 127.0.0.1
+*** 动态库漏拷 / ldd 自检
+*** build 缓存污染 → .dockerignore
+*** 证书时区 / 非 root
+@endmindmap
+</code></pre></div>
+
+<p><img alt="把 C/C++ 服务装进集装箱 - 思维导图" src="./images/tech_20261004_docker-cpp-service_mindmap.png"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/2026-10-04-docker-cpp-service.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/tech.html">tech</a>
+      <a href="https://www.fanyamin.com/blog/tag/docker.html">docker</a>
+      <a href="https://www.fanyamin.com/blog/tag/c.html">c++</a>
+      <a href="https://www.fanyamin.com/blog/tag/cmake.html">cmake</a>
+      <a href="https://www.fanyamin.com/blog/tag/multi-stage.html">multi-stage</a>
+      <a href="https://www.fanyamin.com/blog/tag/distroless.html">distroless</a>
+      <a href="https://www.fanyamin.com/blog/tag/devops.html">devops</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-10-03-dns-how-many-outages.html" title="DNS，有多少问题因你而起">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/2026-10-05-business-knowledge-base.html" title="领域知识库：用 DDD 的思路，让人和各种 AI 工具都能读写">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/cpp-memory-management-evolution.html">C/C++ 内存管理方法的变迁：把纪律写进类型系统</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-10-01-lua-c-binding.html">让 Lua 插上翅膀：C 与 Lua 是怎么绑在一起的</a></li>
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-session-lifecycle.html">FreeSWITCH 的 session：一次呼叫的生老病死，都装在一个容器里</a></li>
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-architecture-fast-and-fragile.html">FreeSWITCH 架构设计之快与脆</a></li>
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-testing-unit-and-integration.html">给 FreeSWITCH 写测试：从单元测试到集成测试，用一个真 bug 串起来</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

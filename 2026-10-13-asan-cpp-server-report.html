@@ -1,0 +1,925 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="C/C++ 服务线上偶发崩溃、跑几天内存涨上去、core dump 栈全是问号——这类内存问题最磨人，因为它&#34;现在不报，等你忘了才报&#34;。AddressSanitizer（ASan）是把这类 bug 从&#34;偶发玄学&#34;变成&#34;当场报错并打出调用栈&#34;的照妖镜：编译时加一个 flag，运行时越界、use-after-free、double-free、泄漏当场抛报告。这篇用 FreeSWITCH 这种大型 C 服务做例子，从加编译参数、跑出报告、到读懂报告，给一套能直接照抄的流程，也讲清楚它为什么不能带着上生产。" />
+<meta name="keywords" content="tech, c, c++, asan, addresssanitizer, freeswitch, memory, debug">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "给 FreeSWITCH 这种大服务生成 ASan 报告：内存踩坑的照妖镜",
+  "description": "C/C++ 服务线上偶发崩溃、跑几天内存涨上去、core dump 栈全是问号——这类内存问题最磨人，因为它&#34;现在不报，等你忘了才报&#34;。AddressSanitizer（ASan）是把这类 bug 从&#34;偶发玄学&#34;变成&#34;当场报错并打出调用栈&#34;的照妖镜：编译时加一个 flag，运行时越界、use-after-free、double-free、泄漏当场抛报告。这篇用 FreeSWITCH 这种大型 C 服务做例子，从加编译参数、跑出报告、到读懂报告，给一套能直接照抄的流程，也讲清楚它为什么不能带着上生产。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-10-13T11:30:00+08:00",
+  "dateModified": "2026-10-13T11:30:00+08:00",
+  "url": "https://www.fanyamin.com/blog/2026-10-13-asan-cpp-server-report.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/2026-10-13-asan-cpp-server-report.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "tech, c, c++, asan, addresssanitizer, freeswitch, memory, debug"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="给 FreeSWITCH 这种大服务生成 ASan 报告：内存踩坑的照妖镜"/>
+  <meta property="og:description" content="C/C++ 服务线上偶发崩溃、跑几天内存涨上去、core dump 栈全是问号——这类内存问题最磨人，因为它&#34;现在不报，等你忘了才报&#34;。AddressSanitizer（ASan）是把这类 bug 从&#34;偶发玄学&#34;变成&#34;当场报错并打出调用栈&#34;的照妖镜：编译时加一个 flag，运行时越界、use-after-free、double-free、泄漏当场抛报告。这篇用 FreeSWITCH 这种大型 C 服务做例子，从加编译参数、跑出报告、到读懂报告，给一套能直接照抄的流程，也讲清楚它为什么不能带着上生产。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/2026-10-13-asan-cpp-server-report.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-10-13 11:30:00+08:00"/>
+  <meta property="article:modified_time" content="2026-10-13 11:30:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="tech"/>
+  <meta property="article:tag" content="c"/>
+  <meta property="article:tag" content="c++"/>
+  <meta property="article:tag" content="asan"/>
+  <meta property="article:tag" content="addresssanitizer"/>
+  <meta property="article:tag" content="freeswitch"/>
+  <meta property="article:tag" content="memory"/>
+  <meta property="article:tag" content="debug"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 给 FreeSWITCH 这种大服务生成 ASan 报告：内存踩坑的照妖镜</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记"
+               data-en="Notebook">
+              笔记
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="2026-10-13-asan-cpp-server-report">给 FreeSWITCH 这种大服务生成 ASan 报告：内存踩坑的照妖镜</h1>
+    <p>
+      Posted on 二 13 10月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>给 FreeSWITCH 这种大服务生成 ASan 报告：内存踩坑的照妖镜</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-10-13</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">大纲</h2>
+<details>
+<summary>展开看看</summary>
+<ul>
+<li><strong>内存 bug 为什么最磨人</strong>：越界写、释放后再用、漏释放，这三类问题的共性是"案发现场和崩溃现场不在一处"，等它崩的时候栈早就不是真凶了。</li>
+<li><strong>ASan 是什么</strong>：编译器给每次内存访问插一道检查，配合"影子内存"记录每个字节能不能碰。踩了就当场抛报告、打调用栈，把偶发 bug 变成稳定复现的报错。</li>
+<li><strong>原理一句话</strong>：8 个字节的内存状态压进 1 个影子字节；对象前后放"红区"；释放后整块标脏。访问前先查影子，脏就报错。</li>
+<li><strong>小例子跑一遍</strong>：十几行 C 代码，从编译参数到报告，先把流程走通。</li>
+<li><strong>怎么读报告</strong>：报错类型、出事地址、三段调用栈（现在谁在碰、当初谁分配、当初谁释放）、影子内存那张图。</li>
+<li><strong>上大服务：FreeSWITCH</strong>：它自带 <code>--enable-address-sanitizer</code>，怎么编、怎么跑、运行时环境变量怎么配、符号化怎么弄全。</li>
+<li><strong>代价和边界</strong>：约 2 倍慢、内存翻几倍，不能带上生产；和 TSan 互斥；第三方库、信号、<code>LD_PRELOAD</code> 这些坑。</li>
+</ul>
+</details>
+<hr>
+<p>写服务端 C/C++ 的人，多半都接过这样一个 case：线上某个进程每隔几天崩一次，core dump 捞回来，栈里一半是问号，另一半指向一个"看起来完全没问题"的函数。你盯着那段代码看半天，复现不出来，最后只能加日志、改重启策略，把问题"熬"过去。</p>
+<p>这类问题的真正麻烦不在于难，而在于<strong>案发现场和崩溃现场根本不在一处</strong>。你越界写了一个字节，它悄悄改坏了隔壁对象的一个指针；几万次调用之后，那个指针被解引用，程序才崩。崩的地方和真凶隔着十万八千里，栈再漂亮也没用。</p>
+<p>AddressSanitizer（下文简称 ASan）就是来解决这件事的：<strong>编译时加一个参数，运行时你一越界、一 use-after-free、一 double-free，它当场把程序停住，打出带文件行号的调用栈。</strong> 本来要熬一个礼拜的玄学 bug，它在你写出来的那一刻就报给你看。这篇给一套能直接照抄的流程——从一个十几行的小例子，到 FreeSWITCH 这种上百万行的大服务——并说清它为什么好用，以及为什么不能带着上生产。</p>
+<ul>
+<li>ASan 查的是<strong>内存访问错误</strong>：堆/栈/全局越界、use-after-free、double-free、内存泄漏。</li>
+<li>ASan 不是银弹：它查不了数据竞争（那是 ThreadSanitizer 的活），也不该出现在生产环境。</li>
+</ul>
+<blockquote>
+<p>下面的命令和报告均在 macOS（Apple clang）与 Linux（gcc/clang）上的通用做法，FreeSWITCH 的具体行为以你本地的版本为准；无法核实到具体版本的地方我会标出来。</p>
+</blockquote>
+<hr>
+<h2 id="bug">内存 bug 为什么是服务端的老大难</h2>
+<p>先把敌人认清楚。C/C++ 里最常见、最难查的内存问题就三类：</p>
+<table>
+<thead>
+<tr>
+<th>类型</th>
+<th>通俗说</th>
+<th>典型后果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>越界访问</strong>（buffer overflow）</td>
+<td>数组开 8 个字节，你写到第 9 个</td>
+<td>改坏隔壁数据，或崩在别处</td>
+</tr>
+<tr>
+<td><strong>释放后使用</strong>（use-after-free）</td>
+<td><code>free</code> 了还接着用那块内存</td>
+<td>读到脏数据，或崩在别处</td>
+</tr>
+<tr>
+<td><strong>重复释放 / 漏释放</strong>（double-free / leak）</td>
+<td>同一块 <code>free</code> 两次，或 <code>malloc</code> 了忘了还</td>
+<td>堆结构损坏 / 内存持续上涨</td>
+</tr>
+</tbody>
+</table>
+<p>它们有个共同的坏毛病：<strong>不立即崩</strong>。越界写了一个字节，内存还在、程序照跑，等那块内存被别人读到或者堆管理器自己发现结构坏了，才崩。所以你拿到的 core dump，栈顶往往是个无辜的受害者，真凶早就跑路了。</p>
+<p>传统办法有两条路，各有各的难受：</p>
+<ul>
+<li><strong>人肉 + core dump + 日志</strong>：靠经验猜，靠运气复现，大服务上基本是"熬"。</li>
+<li><strong>Valgrind</strong>：能查，但它是纯运行时模拟，慢得发指——十几倍甚至几十倍的 slowdown，大服务跑起来约等于不可用。</li>
+</ul>
+<p>ASan 走的是第三条路：<strong>编译期插桩</strong>。它不靠事后猜，而是在编译时就把检查代码焊进每一次内存访问里，访问的那一刻就判断"这块你能不能碰"。慢，但只慢大约 2 倍，大服务也扛得住。这是它和 Valgrind 最根本的区别。</p>
+<hr>
+<h2 id="asan">ASan 的原理：影子内存 + 红区</h2>
+<p>不懂原理也能用 ASan，但懂了之后你读报告会快很多，尤其是报告末尾那张"影子内存图"。这一节讲清三个词：<strong>影子内存、红区、插桩</strong>。读过的可以跳到下一节。</p>
+<p><strong>影子内存（shadow memory）</strong>：ASan 启动时，额外占用约 1/8 的地址空间，专门用来记录"你的每一块内存现在能不能访问"。规则是 <strong>8 个应用字节，对应 1 个影子字节</strong>——因为内存通常按 8 字节对齐，一个影子字节足够描述这 8 个字节的状态。影子字节的值很简单：<code>0</code> 表示这 8 个字节全部可访问；正数 <code>k</code> 表示前 <code>k</code> 个可访问、后面不可；负数表示整块都不可碰（而且用不同的负值区分"这是红区"还是"这是已释放的内存"）。</p>
+<p>地址到影子地址的换算也很直接，就是一次移位加一个偏移：</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// 概念示意：把应用地址映射到它的影子字节地址</span>
+<span class="n">shadow_addr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">app_addr</span><span class="w"> </span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="mi">3</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">Offset</span><span class="p">;</span><span class="w">   </span><span class="c1">// &gt;&gt;3 就是除以 8；Offset 是平台相关的常量</span>
+</code></pre></div>
+
+<p><strong>红区（redzone）</strong>：ASan 在每个对象的<strong>前后</strong>各塞一段"毒区"，并把对应的影子字节标成"不可访问"。你一旦越界读写，碰到的就是红区，影子字节是负数，当场报错。栈、堆、全局变量都是这么保护的。</p>
+<p><strong>插桩（instrumentation）</strong>：编译器在每一次 load/store 之前，自动插一小段检查——算出影子地址、读影子字节、不为 0 就走慢路径判断到底越了没，越了就 <code>ReportAndCrash</code>。一次内存访问的代价，大致是这样一段逻辑：</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// 概念示意：每次内存访问前，编译器自动插入的检查</span>
+<span class="n">byte</span><span class="w"> </span><span class="n">shadow</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">*</span><span class="p">(</span><span class="n">byte</span><span class="o">*</span><span class="p">)((</span><span class="n">addr</span><span class="w"> </span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="mi">3</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">Offset</span><span class="p">);</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">shadow</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">SlowPathCheck</span><span class="p">(</span><span class="n">shadow</span><span class="p">,</span><span class="w"> </span><span class="n">addr</span><span class="p">,</span><span class="w"> </span><span class="n">access_size</span><span class="p">))</span>
+<span class="w">        </span><span class="n">ReportError</span><span class="p">(</span><span class="n">addr</span><span class="p">,</span><span class="w"> </span><span class="n">access_size</span><span class="p">,</span><span class="w"> </span><span class="n">is_write</span><span class="p">);</span><span class="w">   </span><span class="c1">// 打报告 + 调用栈 + 退出</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>把这三件事串起来就是 ASan 的全部套路：<strong>分配时给对象围上红区、释放时把整块标脏、每次访问前查一眼影子</strong>。越界撞红区、use-after-free 撞脏块，都是"影子字节不为 0"这同一个判断。原理就这么朴素。</p>
+<hr>
+<h2 id="_2">先跑通一个小例子</h2>
+<p>大服务之前，先用十几行代码把流程走通。看着踩坑：</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// uaf.c —— 一个故意写坏的例子：释放后再用</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;stdlib.h&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;string.h&gt;</span>
+
+<span class="kt">int</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">p</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">malloc</span><span class="p">(</span><span class="mi">16</span><span class="p">);</span>
+<span class="w">    </span><span class="n">strcpy</span><span class="p">(</span><span class="n">p</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;hello&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="n">free</span><span class="p">(</span><span class="n">p</span><span class="p">);</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">p</span><span class="p">[</span><span class="mi">0</span><span class="p">];</span><span class="w">   </span><span class="c1">// use-after-free：free 之后还读 p[0]</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>编译时加三个关键参数：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># -fsanitize=address 开启 ASan；-g 保留符号给出文件行号；</span>
+<span class="c1"># -fno-omit-frame-pointer 让调用栈更准（否则栈可能缺帧）</span>
+clang<span class="w"> </span>-fsanitize<span class="o">=</span>address<span class="w"> </span>-g<span class="w"> </span>-fno-omit-frame-pointer<span class="w"> </span>-O1<span class="w"> </span>uaf.c<span class="w"> </span>-o<span class="w"> </span>uaf
+./uaf
+</code></pre></div>
+
+<p>运行，ASan 当场抛出报告（下面是简化后的结构，真实输出更长）：</p>
+<div class="highlight"><pre><span></span><code><span class="go">==12345==ERROR: AddressSanitizer: heap-use-after-free on address 0x602000000010 ...</span>
+<span class="go">READ of size 1 at 0x602000000010 thread T0</span>
+<span class="gp">    #</span><span class="m">0</span><span class="w"> </span>0x...<span class="w"> </span><span class="k">in</span><span class="w"> </span>main<span class="w"> </span>uaf.c:9<span class="w">           </span>&lt;-<span class="w"> </span>现在谁在碰这块内存
+<span class="go">    ...</span>
+
+<span class="go">0x602000000010 is located 0 bytes inside of 16-byte region [...]</span>
+<span class="go">freed by thread T0 here:              &lt;- 这块当初是谁 free 的</span>
+<span class="gp">    #</span><span class="m">0</span><span class="w"> </span>0x...<span class="w"> </span><span class="k">in</span><span class="w"> </span>free
+<span class="gp">    #</span><span class="m">1</span><span class="w"> </span>0x...<span class="w"> </span><span class="k">in</span><span class="w"> </span>main<span class="w"> </span>uaf.c:8
+
+<span class="go">previously allocated by thread T0 here:  &lt;- 这块当初是谁 malloc 的</span>
+<span class="gp">    #</span><span class="m">0</span><span class="w"> </span>0x...<span class="w"> </span><span class="k">in</span><span class="w"> </span>malloc
+<span class="gp">    #</span><span class="m">1</span><span class="w"> </span>0x...<span class="w"> </span><span class="k">in</span><span class="w"> </span>main<span class="w"> </span>uaf.c:6
+
+<span class="go">SUMMARY: AddressSanitizer: heap-use-after-free uaf.c:9 in main</span>
+</code></pre></div>
+
+<p>注意看：报告一口气给了你<strong>三个现场</strong>——现在谁在碰（第 9 行读）、当初谁释放（第 8 行 <code>free</code>）、当初谁分配（第 6 行 <code>malloc</code>）。换成 core dump，你顶多拿到第一个，另外两个得自己考古。这就是 ASan 省事的地方。</p>
+<hr>
+<h2 id="asan_1">怎么读懂一份 ASan 报告</h2>
+<p>报告再长，骨架就四块。拿到任何一份都照这个顺序看：</p>
+<ol>
+<li>
+<p><strong>第一行：错误类型 + 出事地址。</strong> <code>heap-use-after-free</code>、<code>heap-buffer-overflow</code>、<code>stack-buffer-overflow</code>、<code>global-buffer-overflow</code>、<code>double-free</code>、<code>detected memory leaks</code>——看类型就知道往哪个方向查。</p>
+</li>
+<li>
+<p><strong>访问栈：现在谁在碰。</strong> <code>READ of size 1</code> / <code>WRITE of size 4</code> 告诉你读还是写、碰了几个字节，底下的 <code>#0 #1 #2</code> 就是当前调用栈。这是"案发时"的现场。</p>
+</li>
+<li>
+<p><strong>分配 / 释放栈：这块内存的来历。</strong> <code>allocated by</code> 和 <code>freed by</code> 两段，告诉你这块内存当初在哪 <code>malloc</code>、在哪 <code>free</code>。内存 bug 的根因八成藏在这两段里，而不是访问栈里。</p>
+</li>
+<li>
+<p><strong>影子内存图：出事点周围的内存地形。</strong> 报告最后那张 <code>Shadow bytes around the buggy address</code>，就是前面讲的影子字节。<code>00</code> 是干净可访问，<code>fa</code> 是堆左红区，<code>fd</code> 是已释放的堆内存，<code>f1</code> 是栈左红区……箭头指着的那个字节就是你踩的点。对照一眼，立刻知道自己是越到了红区（越界）还是踩进了脏块（use-after-free）。</p>
+</li>
+</ol>
+<div class="highlight"><pre><span></span><code><span class="go">Shadow bytes around the buggy address:</span>
+<span class="go">  ...</span>
+<span class="go">=&gt;0x0c047fff8000: fa fa[fd]fd fd fd fd fd fa fa 00 00 ...</span>
+<span class="go">  ...</span>
+<span class="go"> Heap left redzone:       fa     &lt;- 堆对象左边的红区</span>
+<span class="go"> Freed heap region:       fd     &lt;- 被 free 掉的堆内存</span>
+</code></pre></div>
+
+<p>一句话记法：<strong>第一行看病名，中间看三段栈定位根因，最后看影子图确认踩点。</strong></p>
+<hr>
+<h2 id="freeswitch-asan">上大服务：给 FreeSWITCH 生成 ASan 报告</h2>
+<p>小例子跑通了，重点来了——怎么把这套东西用在 FreeSWITCH 这种上百万行、几十个模块的大型 C 服务上。</p>
+<p>好消息是：<strong>FreeSWITCH 自己就内置了 ASan 开关。</strong> 它的 <code>configure.ac</code> 里有一段，专门提供 <code>--enable-address-sanitizer</code> 选项，打开后会往 <code>CFLAGS</code>、<code>CXXFLAGS</code>、<code>LDFLAGS</code> 里加上 ASan 需要的参数（大致是 <code>-fsanitize=address -fno-omit-frame-pointer -fstack-protector-strong</code>）。所以你不用自己去改 Makefile，直接用它的构建开关就行。</p>
+<h3 id="asan_2">第一步：带 ASan 编译</h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># 从源码构建 FreeSWITCH，开启 ASan</span>
+./bootstrap.sh<span class="w"> </span>-j<span class="w">          </span><span class="c1"># 生成 configure（源码树首次构建需要）</span>
+./configure<span class="w"> </span>--enable-address-sanitizer<span class="w"> </span><span class="se">\</span>
+<span class="w">            </span>--enable-debug<span class="w"> </span><span class="se">\</span>
+<span class="w">            </span><span class="nv">CFLAGS</span><span class="o">=</span><span class="s2">&quot;-g -O1&quot;</span><span class="w">   </span><span class="c1"># -O1 让报告更可读，-g 给文件行号</span>
+make<span class="w"> </span>-j<span class="s2">&quot;</span><span class="k">$(</span>nproc<span class="k">)</span><span class="s2">&quot;</span>
+</code></pre></div>
+
+<p>几个要点：</p>
+<ul>
+<li><strong>别用 <code>-O2</code>/<code>-O3</code>。</strong> 高优化会把函数内联、把变量优化掉，ASan 报告里的调用栈和变量名会变得没法看。<code>-O1</code> 是可读性和速度的平衡点。</li>
+<li><strong>带上 <code>-g</code>。</strong> 没有调试符号，报告里全是地址没有文件行号，等于白跑。</li>
+<li><strong>全量重编。</strong> ASan 要求插桩代码和运行时一致，如果你只重编了一部分、链接了没插桩的旧 <code>.o</code>，行为会很诡异。改了 flag 就 <code>make clean</code> 重来。</li>
+</ul>
+<h3 id="_3">第二步：带着环境变量跑</h3>
+<p>编出来的 FreeSWITCH 二进制已经把 ASan 运行时静态链进去了，直接跑就行。但有几个环境变量强烈建议配上：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># ASAN_OPTIONS 控制运行时行为；下面这组是服务端排查的常用组合</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">ASAN_OPTIONS</span><span class="o">=</span><span class="s2">&quot;detect_leaks=1:halt_on_error=0:log_path=/var/log/fs_asan:abort_on_error=0:print_stats=1&quot;</span>
+
+<span class="c1"># 让报告里的地址自动翻译成&quot;函数名 + 文件:行号&quot;，否则你得手动 addr2line</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">ASAN_SYMBOLIZER_PATH</span><span class="o">=</span><span class="s2">&quot;</span><span class="k">$(</span><span class="nb">command</span><span class="w"> </span>-v<span class="w"> </span>llvm-symbolizer<span class="k">)</span><span class="s2">&quot;</span>
+
+<span class="c1"># 前台跑，方便直接看输出；正式排查时用 log_path 落盘更稳</span>
+./freeswitch<span class="w"> </span>-nonat<span class="w"> </span>-nf
+</code></pre></div>
+
+<p><code>ASAN_OPTIONS</code> 里这几个值的含义：</p>
+<table>
+<thead>
+<tr>
+<th>选项</th>
+<th>作用</th>
+<th>服务端建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>detect_leaks=1</code></td>
+<td>退出时报内存泄漏</td>
+<td>开，但大服务退出时泄漏噪声多，见下文</td>
+</tr>
+<tr>
+<td><code>halt_on_error=0</code></td>
+<td>报错后不立刻退出，继续跑</td>
+<td>服务端常设 0，一次跑尽量多收集几个报告</td>
+</tr>
+<tr>
+<td><code>log_path=/path</code></td>
+<td>报告写到文件而不是 stderr</td>
+<td>强烈建议，否则和业务日志混在一起</td>
+</tr>
+<tr>
+<td><code>abort_on_error=1</code></td>
+<td>报错时 <code>abort()</code> 产生 core</td>
+<td>要配合 gdb 时开</td>
+</tr>
+<tr>
+<td><code>print_stats=1</code></td>
+<td>退出时打印统计</td>
+<td>可选</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><code>detect_leaks</code> 底层是 LeakSanitizer（LSan），在 Linux 上随 ASan 自动启用，在进程退出时扫一遍。像 FreeSWITCH 这种长期运行、退出时未必清理所有资源的服务，退出时的泄漏报告会有不少"善意泄漏"（进程反正要死了，没必要 free 的全局缓存）。真要查泄漏，用 <code>LSAN_OPTIONS</code> 加一个 suppression 文件把这些已知噪声屏蔽掉，别一股脑全当 bug。</p>
+</blockquote>
+<h3 id="_4">第三步：触发问题 + 符号化</h3>
+<p>跑起来之后，照你平常复现问题的路子操作——打电话、发 SIP 消息、加载某个有问题的模块。一旦踩到内存错误，<code>log_path</code> 指定的文件里就会出现一份完整报告。</p>
+<p>如果报告里还是地址没有函数名（常见于符号化没配好），手动翻译：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># 把报告里的 &quot;0x... (/usr/lib/.../mod_xxx.so+0x1234)&quot; 翻译成文件行号</span>
+llvm-symbolizer<span class="w"> </span>--obj<span class="o">=</span>/usr/lib/freeswitch/mod/mod_xxx.so<span class="w"> </span>0x1234
+<span class="c1"># gcc 工具链用 addr2line：</span>
+addr2line<span class="w"> </span>-e<span class="w"> </span>/usr/lib/freeswitch/mod/mod_xxx.so<span class="w"> </span>-f<span class="w"> </span>-C<span class="w"> </span>0x1234
+</code></pre></div>
+
+<h3 id="_5">一个真实的佐证</h3>
+<p>这套路子在 FreeSWITCH 生态里是实打实用的。FreeSWITCH 依赖的 SIP 协议栈 sofia-sip，就有过用 ASan 发现并记录的安全漏洞——它的漏洞复现步骤里，正是 <code>CFLAGS="-fsanitize=address" LDFLAGS="-fsanitize=address" ./configure &amp;&amp; make</code>，然后喂一个构造好的 STUN 报文，ASan 当场抛出 <code>heap-buffer-overflow</code>。<!-- 建议亲自补充：如果你本地复现过某个 FreeSWITCH 模块的内存 bug，把真实报告片段贴一段，比引用更有说服力 --></p>
+<hr>
+<h2 id="_6">代价和边界：它为什么不能上生产</h2>
+<p>ASan 好用，但它是<strong>调试工具，不是生产防护</strong>。把代价和边界讲清楚，比吹它多强更重要。</p>
+<ul>
+<li><strong>性能代价约 2 倍。</strong> 每次内存访问都多一道检查，官方的说法是大约 2x slowdown。对 FreeSWITCH 这种对时延敏感的实时通信服务，2 倍意味着通话质量明显下降——所以 ASan 版本只能在测试/预发环境压，不能顶线上流量。</li>
+<li><strong>内存翻几倍。</strong> 影子内存吃掉约 1/8 地址空间，加上每个对象两侧的红区，常驻内存会明显膨胀。内存紧张的机器上要留意。</li>
+<li><strong>和 TSan 互斥。</strong> AddressSanitizer 和 ThreadSanitizer（查数据竞争的）<strong>不能同时开</strong>。内存错误用 ASan，数据竞争用 TSan，分两次构建、两次跑。ASan 可以和 UndefinedBehaviorSanitizer（UBSan）一起开（<code>-fsanitize=address,undefined</code>），一趟多抓一类问题。</li>
+<li><strong>第三方库和插件。</strong> FreeSWITCH 大量用动态加载的模块（<code>mod_*.so</code>）。只要主程序带 ASan 编译，加载的模块也必须用同一套 flag 编——否则模块里的内存访问没插桩，ASan 看不见，照样漏报。混编是大服务上最常见的坑。</li>
+<li><strong>信号和 <code>LD_PRELOAD</code>。</strong> ASan 会接管 <code>malloc/free</code> 并注册信号处理，和某些自己装信号处理器、或者用 <code>LD_PRELOAD</code> 挂钩内存分配的组件可能打架。遇到诡异行为，先怀疑这一层。</li>
+</ul>
+<p>一句话：</p>
+<blockquote>
+<p><strong>ASan 是你在测试环境里举着的照妖镜，不是披在生产上的盔甲。</strong>
+让它在 CI、在压测、在复现环境里跑；上线前把它卸掉。</p>
+</blockquote>
+<hr>
+<h2 id="bug_1">总结：把偶发内存 bug 变成当场报错</h2>
+<p>内存 bug 难，难在"案发和崩溃不在一处"。ASan 的全部价值，就是把这个时间差消灭掉——<strong>你一踩错，它当场停、当场打栈</strong>，连带告诉你这块内存当初是谁分配、谁释放的。对 FreeSWITCH 这种大服务，它还贴心地内置了 <code>--enable-address-sanitizer</code>，省了你改构建系统的功夫。</p>
+<p>照抄清单：</p>
+<ol>
+<li><strong>编译</strong>：<code>./configure --enable-address-sanitizer --enable-debug CFLAGS="-g -O1"</code>，然后 <code>make clean &amp;&amp; make</code>。别用 <code>-O2</code>，别留旧 <code>.o</code>。</li>
+<li><strong>运行</strong>：配好 <code>ASAN_OPTIONS</code>（<code>log_path</code>、<code>halt_on_error=0</code>、<code>detect_leaks=1</code>）和 <code>ASAN_SYMBOLIZER_PATH</code>，前台跑或落盘。</li>
+<li><strong>复现</strong>：照平常路子触发问题，等 <code>log_path</code> 里出报告。</li>
+<li><strong>读报告</strong>：第一行看病名 → 三段栈定位根因（重点看 allocated/freed）→ 影子图确认踩点。</li>
+<li><strong>符号化</strong>：地址没翻译就用 <code>llvm-symbolizer</code> / <code>addr2line</code> 手动补。</li>
+<li><strong>收尾</strong>：泄漏噪声用 suppression 屏蔽；上线前务必卸掉 ASan 版本。</li>
+</ol>
+<p>内存问题最怕的是"熬"。与其等它半夜崩给你看，不如在测试环境里举起这面照妖镜，让它在你写出来的那一刻就现原形。</p>
+<h2 id="_7">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* ASan 给大服务照妖
+** 要解决的问题
+*** 案发≠崩溃现场
+*** 越界 / UAF / double-free / 泄漏
+*** core dump 栈不是真凶
+** 原理
+*** 影子内存 8:1
+*** 对象两侧红区
+*** 每次访问前查影子
+** 用法
+*** -fsanitize=address -g -O1
+*** -fno-omit-frame-pointer
+*** 全量重编
+** 读报告
+*** 第一行看病名
+*** 三段栈定位根因
+*** 影子图确认踩点
+** FreeSWITCH
+*** --enable-address-sanitizer
+*** ASAN_OPTIONS 落盘
+*** 模块必须同套 flag
+** 边界
+*** ~2x 慢 / 内存翻倍
+*** 和 TSan 互斥
+*** 不上生产
+@endmindmap
+</code></pre></div>
+
+<p><img alt="给 FreeSWITCH 这种大服务生成 ASan 报告 - 思维导图" src="./images/tech_20261013_asan-cpp-server-report_mindmap.png"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/2026-10-13-asan-cpp-server-report.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/tech.html">tech</a>
+      <a href="https://www.fanyamin.com/blog/tag/c.html">c</a>
+      <a href="https://www.fanyamin.com/blog/tag/c.html">c++</a>
+      <a href="https://www.fanyamin.com/blog/tag/asan.html">asan</a>
+      <a href="https://www.fanyamin.com/blog/tag/addresssanitizer.html">addresssanitizer</a>
+      <a href="https://www.fanyamin.com/blog/tag/freeswitch.html">freeswitch</a>
+      <a href="https://www.fanyamin.com/blog/tag/memory.html">memory</a>
+      <a href="https://www.fanyamin.com/blog/tag/debug.html">debug</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/etcd-cluster-state-split-brain.html" title="集群状态为什么该交给 etcd：用 Raft 从根上消除脑裂">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/web-proxy-how-apps-discover-it.html" title="Web Proxy 这道关：应用怎么知道自己该走代理">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/cpp-memory-management-evolution.html">C/C++ 内存管理方法的变迁：把纪律写进类型系统</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-10-01-lua-c-binding.html">让 Lua 插上翅膀：C 与 Lua 是怎么绑在一起的</a></li>
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-session-lifecycle.html">FreeSWITCH 的 session：一次呼叫的生老病死，都装在一个容器里</a></li>
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-architecture-fast-and-fragile.html">FreeSWITCH 架构设计之快与脆</a></li>
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-testing-unit-and-integration.html">给 FreeSWITCH 写测试：从单元测试到集成测试，用一个真 bug 串起来</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

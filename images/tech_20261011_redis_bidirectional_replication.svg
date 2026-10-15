@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 470" role="img" aria-labelledby="title desc" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <title id="title">开源 Redis / Valkey 双集群双向复制的工作机制</title>
+  <desc id="desc">两个独立集群 A 和 B，各自前面放一个复制工具（如 redis-shake）。工具 A 读 A 集群的 key 变化并写入 B，工具 B 读 B 集群的变化并写入 A，形成双向。关键：应用在 A 只写 a: 前缀、在 B 只写 b: 前缀，两条复制流搬运的是互不相交的 key 空间，所以不会出现两地同时写同一个 key 的冲突。右下角提示：若两地写同一个 key，开源靠 last-write-wins 可能丢更新，真正自动合并需要企业版 CRDT。</desc>
+  <style>
+    .hdr { fill:#1E3A5F; font-size:16px; font-weight:bold; }
+    .dc  { fill:#1E3A5F; font-size:14px; font-weight:bold; }
+    .lbl { fill:#111827; font-size:12px; }
+    .lbl-sm { fill:#4b5563; font-size:11px; }
+    .tool { fill:#92400E; font-size:12px; font-weight:bold; }
+    .ok  { fill:#065F46; font-size:12px; font-weight:bold; }
+    .warn{ fill:#991B1B; font-size:11px; }
+  </style>
+  <rect x="0" y="0" width="900" height="470" fill="#ffffff"/>
+  <text x="450" y="30" text-anchor="middle" class="hdr">双集群双向复制:两条单向流 + key 前缀分区</text>
+
+  <defs>
+    <marker id="aG" markerWidth="11" markerHeight="11" refX="9" refY="3.5" orient="auto"><path d="M0,0 L9,3.5 L0,7 Z" fill="#10B981"/></marker>
+    <marker id="aB" markerWidth="11" markerHeight="11" refX="9" refY="3.5" orient="auto"><path d="M0,0 L9,3.5 L0,7 Z" fill="#3B82F6"/></marker>
+    <marker id="aGray" markerWidth="11" markerHeight="11" refX="9" refY="3.5" orient="auto"><path d="M0,0 L9,3.5 L0,7 Z" fill="#6b7280"/></marker>
+  </defs>
+
+  <!-- App A -->
+  <rect x="40" y="70" width="150" height="48" rx="8" fill="#EEF2FF" stroke="#6366F1" stroke-width="1.3"/>
+  <text x="115" y="90" text-anchor="middle" class="lbl">机房 A 应用</text>
+  <text x="115" y="108" text-anchor="middle" class="ok">只写 a:* </text>
+
+  <!-- Cluster A -->
+  <rect x="40" y="160" width="190" height="120" rx="10" fill="#ECFDF5" stroke="#10B981" stroke-width="1.5"/>
+  <text x="56" y="182" class="dc">Redis 集群 A</text>
+  <text x="56" y="204" class="lbl-sm">持有 a:* (本地写)</text>
+  <text x="56" y="222" class="lbl-sm">+ b:* (复制来的)</text>
+  <rect x="56" y="234" width="158" height="32" rx="6" fill="#ffffff" stroke="#10B981"/>
+  <text x="135" y="254" text-anchor="middle" class="lbl">读:全量 a:* + b:*</text>
+
+  <!-- App B -->
+  <rect x="710" y="70" width="150" height="48" rx="8" fill="#EEF2FF" stroke="#6366F1" stroke-width="1.3"/>
+  <text x="785" y="90" text-anchor="middle" class="lbl">机房 B 应用</text>
+  <text x="785" y="108" text-anchor="middle" class="ok" fill="#1E3A8A">只写 b:* </text>
+
+  <!-- Cluster B -->
+  <rect x="670" y="160" width="190" height="120" rx="10" fill="#EFF6FF" stroke="#3B82F6" stroke-width="1.5"/>
+  <text x="686" y="182" class="dc">Redis 集群 B</text>
+  <text x="686" y="204" class="lbl-sm">持有 b:* (本地写)</text>
+  <text x="686" y="222" class="lbl-sm">+ a:* (复制来的)</text>
+  <rect x="686" y="234" width="158" height="32" rx="6" fill="#ffffff" stroke="#3B82F6"/>
+  <text x="765" y="254" text-anchor="middle" class="lbl">读:全量 a:* + b:*</text>
+
+  <!-- App to cluster writes -->
+  <line x1="115" y1="118" x2="125" y2="158" stroke="#6366F1" stroke-width="1.6" marker-end="url(#aGray)"/>
+  <line x1="785" y1="118" x2="775" y2="158" stroke="#6366F1" stroke-width="1.6" marker-end="url(#aGray)"/>
+
+  <!-- Sync tool A->B -->
+  <rect x="360" y="150" width="180" height="40" rx="8" fill="#FFF7ED" stroke="#F59E0B" stroke-width="1.3"/>
+  <text x="450" y="168" text-anchor="middle" class="tool">复制工具 A→B</text>
+  <text x="450" y="184" text-anchor="middle" class="lbl-sm">读 A 的 a:* 变化 → 写 B</text>
+  <line x1="230" y1="186" x2="358" y2="172" stroke="#10B981" stroke-width="2.2" marker-end="url(#aG)"/>
+  <line x1="542" y1="172" x2="668" y2="186" stroke="#10B981" stroke-width="2.2" marker-end="url(#aG)"/>
+
+  <!-- Sync tool B->A -->
+  <rect x="360" y="246" width="180" height="40" rx="8" fill="#FFF7ED" stroke="#F59E0B" stroke-width="1.3"/>
+  <text x="450" y="264" text-anchor="middle" class="tool">复制工具 B→A</text>
+  <text x="450" y="280" text-anchor="middle" class="lbl-sm">读 B 的 b:* 变化 → 写 A</text>
+  <line x1="668" y1="248" x2="542" y2="262" stroke="#3B82F6" stroke-width="2.2" marker-end="url(#aB)"/>
+  <line x1="358" y1="262" x2="232" y2="248" stroke="#3B82F6" stroke-width="2.2" marker-end="url(#aB)"/>
+
+  <!-- key note -->
+  <rect x="300" y="208" width="300" height="26" rx="13" fill="#ECFDF5" stroke="#10B981"/>
+  <text x="450" y="226" text-anchor="middle" class="ok">两条流搬运互不相交的 key 空间 → 无冲突</text>
+
+  <!-- warning box -->
+  <rect x="40" y="320" width="820" height="118" rx="10" fill="#FEF2F2" stroke="#EF4444" stroke-width="1.2"/>
+  <text x="56" y="344" class="dc" fill="#991B1B">边界:如果两地写同一个 key 会怎样?</text>
+  <text x="56" y="368" class="warn">· 开源 Redis / Valkey:复制是 last-write-wins(按到达顺序覆盖),并发改同一 key 会丢更新,不会自动合并。</text>
+  <text x="56" y="390" class="warn">· 真正的"单 key 多地写自动合并"需要 CRDT:Redis Enterprise / Redis Cloud / Azure Managed Redis / AWS MemoryDB 提供。</text>
+  <text x="56" y="412" class="warn">· Valkey 开源目前(8.x/9.0)无 active-active CRDT,跨区仍是 REPLICAOF 只读副本 + 应用层写路由;CRDT 在其 roadmap 上。</text>
+  <text x="56" y="432" class="warn">· 结论:扣减型数据的强一致,CRDT 也不保证——它防的是"丢更新",不是"防超卖"。</text>
+</svg>

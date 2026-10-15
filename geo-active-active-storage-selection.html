@@ -1,0 +1,979 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="很多人一上来就问&#34;异地双活用什么库&#34;,顺序反了。先得想清楚容灾要做到什么程度（RTO/RPO），再决定要不要双活、双活怎么分层，最后才落到数据层选型。这篇按这个顺序走一遍：先讲容灾的两把尺子和五档常用做法，再讲双活为什么只是其中一档、难在分层，最后以 Redis 为例把数据层选型讲透——拓扑、故障切换、双向复制、Valkey 差异，一样不落。" />
+<meta name="keywords" content="tech, redis, valkey, newsql, tidb, etcd, cassandra, mysql, architecture, high-availability, disaster-recovery, cap">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "从容灾到异地双活：数据层怎么选，以 Redis 为例细讲",
+  "description": "很多人一上来就问&#34;异地双活用什么库&#34;,顺序反了。先得想清楚容灾要做到什么程度（RTO/RPO），再决定要不要双活、双活怎么分层，最后才落到数据层选型。这篇按这个顺序走一遍：先讲容灾的两把尺子和五档常用做法，再讲双活为什么只是其中一档、难在分层，最后以 Redis 为例把数据层选型讲透——拓扑、故障切换、双向复制、Valkey 差异，一样不落。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-10-11T15:00:00+08:00",
+  "dateModified": "2026-10-12T10:00:00+08:00",
+  "url": "https://www.fanyamin.com/blog/geo-active-active-storage-selection.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/geo-active-active-storage-selection.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "tech, redis, valkey, newsql, tidb, etcd, cassandra, mysql, architecture, high-availability, disaster-recovery, cap"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="从容灾到异地双活：数据层怎么选，以 Redis 为例细讲"/>
+  <meta property="og:description" content="很多人一上来就问&#34;异地双活用什么库&#34;,顺序反了。先得想清楚容灾要做到什么程度（RTO/RPO），再决定要不要双活、双活怎么分层，最后才落到数据层选型。这篇按这个顺序走一遍：先讲容灾的两把尺子和五档常用做法，再讲双活为什么只是其中一档、难在分层，最后以 Redis 为例把数据层选型讲透——拓扑、故障切换、双向复制、Valkey 差异，一样不落。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/geo-active-active-storage-selection.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-10-11 15:00:00+08:00"/>
+  <meta property="article:modified_time" content="2026-10-12 10:00:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="tech"/>
+  <meta property="article:tag" content="redis"/>
+  <meta property="article:tag" content="valkey"/>
+  <meta property="article:tag" content="newsql"/>
+  <meta property="article:tag" content="tidb"/>
+  <meta property="article:tag" content="etcd"/>
+  <meta property="article:tag" content="cassandra"/>
+  <meta property="article:tag" content="mysql"/>
+  <meta property="article:tag" content="architecture"/>
+  <meta property="article:tag" content="high-availability"/>
+  <meta property="article:tag" content="disaster-recovery"/>
+  <meta property="article:tag" content="cap"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 从容灾到异地双活：数据层怎么选，以 Redis 为例细讲</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记"
+               data-en="Notebook">
+              笔记
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="geo-active-active-storage-selection">从容灾到异地双活：数据层怎么选，以 Redis 为例细讲</h1>
+    <p>
+      Posted on 日 11 10月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>从容灾到异地双活：数据层怎么选，以 Redis 为例细讲</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Version</strong></td>
+<td>v2.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-10-12</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">大纲</h2>
+<details>
+<summary>展开看看</summary>
+<ul>
+<li><strong>一句话</strong>：别一上来就问"用什么库"。顺序是：先定容灾目标（RTO/RPO）→ 再定要不要双活、怎么分层 → 最后才选存储。换库不改变一致性约束，只改变你在哪一层交光速的税。</li>
+<li><strong>容灾怎么做</strong>：RPO（能丢多少数据）、RTO（能停多久服务）是两把独立的尺子；常用做法按成本从低到高是冷备份→主备异步→主备半同步→双活→多活/强一致，按业务容忍度选够用那一档，不是越强越好。</li>
+<li><strong>异地双活怎么做</strong>：双活只是容灾梯度里偏贵的一档，不是银弹。难点不在"选个库"，在于把数据按一致性诉求分成四类（信令/扣减/追加/协调），每类单独定档——因为没有库能让强一致写不等 RTT。</li>
+<li><strong>数据层选型，以 Redis 为例</strong>：信令/会话 Redis 是主场；但 Redis Cluster 原生不为跨机房设计，要靠双集群复制。三种拓扑（单集群跨机房=脑裂坑、双集群单向=主备、双集群双向+key 前缀=务实双活）。</li>
+<li><strong>拓扑二主集群挂了怎么切</strong>：单向异步 RPO 恒大于 0。切换五步 + "A 修好先当从别直接回切"的防回流闸门。想缩小窗口加 <code>WAIT</code>，想真零丢换 NewSQL。</li>
+<li><strong>双向复制怎么做</strong>：两条单向流拼的，靠 <code>redis-shake</code> 搬、靠 key 前缀切开写入域让冲突不发生；单 key 多地写自动合并要 CRDT（企业版/托管版）。</li>
+<li><strong>Valkey 差异</strong>：异地双活这层是开源 Redis 的平替，逻辑照搬（同源 7.2.4）。真正差异在许可证（BSD vs AGPL/SSPL），CRDT 两边开源都没有。</li>
+<li><strong>其他三类数据</strong>：扣减用 NewSQL（Raft 强一致）、追加用 Cassandra（多机房对等写）、协调用 etcd（裁判不是球员）。</li>
+<li><strong>组合拳</strong>：真实的异地双活不是"选一个库"，是每类数据配最懂它那种一致性的存储。</li>
+</ul>
+</details>
+<hr>
+<p><a href="../journal/freeswitch-mysql-geo-active-active.html">上一篇</a>讲音视频服务异地双活用 FreeSWITCH + MySQL，发出去之后被问得最多的一句是：</p>
+<p><strong>不用 MySQL 行不行？换 Redis，或者别的库，是不是能更简单/更快地做双活？</strong></p>
+<p>这个问题本身就把顺序搞反了。<strong>"用什么库"是最后一步,不是第一步。</strong> 正确的顺序是:先想清楚容灾要做到什么程度(能丢多少、能停多久),再决定要不要上双活、双活怎么分层,最后才轮到选存储。顺序一反,就会陷入"换个更先进的库就能绕过一致性难题"的幻觉——而这个幻觉不存在。</p>
+<p><strong>换存储不改变一致性约束,只改变两件事——你在哪一层交光速那笔税,以及你把冲突处理甩给谁。</strong> 这篇就按"容灾 → 双活 → 选型"的顺序走一遍,最后以 Redis 为例把数据层选型讲透。</p>
+<ul>
+<li>这篇默认你做过音视频/通信后端,SIP、RTP、主从复制这些术语直接用。</li>
+<li>下面的配置和参数都是示意,用来说明思路,不是生产模板。</li>
+</ul>
+<hr>
+<h2 id="_2">第一步:容灾怎么做——先定两把尺子</h2>
+<p>还没谈双活、没谈选库之前,先把容灾的目标量化。容灾设计有两把尺子,所有后续决策都挂在它们上面。</p>
+<h3 id="rto-rpo">RTO 和 RPO:一个管"停多久",一个管"丢多少"</h3>
+<ul>
+<li><strong>RPO(Recovery Point Objective,恢复点目标):灾难后你能接受丢多少数据。</strong> 单位是时间,比如"最多丢 5 秒的数据"。它衡量的是<strong>数据丢失量</strong>。</li>
+<li><strong>RTO(Recovery Time Objective,恢复时间目标):灾难后你能接受多久恢复服务。</strong> 单位也是时间,比如"10 秒内切换完成"。它衡量的是<strong>停机时长</strong>。</li>
+</ul>
+<p>两个都是<strong>目标值</strong>(Objective)——你和业务约定的容忍上限,不是实际发生的量。一个往故障点的左边看,一个往右边看:</p>
+<p><img alt="RTO、RPO 的含义与常用容灾做法的成本梯度" src="../images/tech_20261011_rto_rpo_dr_methods.svg"></p>
+<ul>
+<li><strong>RPO 往"左"看</strong>:从"最后一个没丢的数据点"到"故障时刻"之间的数据就是丢掉的,这段越短 RPO 越好。</li>
+<li><strong>RTO 往"右"看</strong>:从"故障发生"到"服务重新可用"之间服务是停的,这段越短 RTO 越好。</li>
+</ul>
+<p>一个记忆锚点:RP<strong>O</strong> 的 <strong>P</strong> 是 <strong>Point</strong>(数据点)→ 丢<strong>数据</strong>;RT<strong>O</strong> 的 <strong>T</strong> 是 <strong>Time</strong>(时间)→ 停<strong>服务</strong>。</p>
+<p>两个最常见的误区要避开:</p>
+<ul>
+<li><strong>"RTO 做好了数据就不会丢"——错。</strong> RTO 再短只是"切得快",切过去的那个备库本来就缺了复制延迟窗口里的数据。RTO 和 RPO 是<strong>两个独立目标</strong>,得分别达成。</li>
+<li><strong>"RPO=0 和 RTO=0 能一起免费拿到"——不行。</strong> RPO=0 要同步复制(每写付一个跨机房 RTT),RTO=0 要无缝切换(付冗余和复杂度),两个都趋零成本指数上升,而且 RPO=0 在跨机房下会和可用性冲突(CAP 的 CP 一侧)。<strong>现实都是定一个"能接受的上限",不是追零。</strong></li>
+</ul>
+<h3 id="_3">几种常用容灾做法,按成本从低到高</h3>
+<p>容灾不是只有"双活"一条路。从最省钱到最贵,是一条清晰的梯度,RPO/RTO 越小,成本越高(上图下半部分):</p>
+<table>
+<thead>
+<tr>
+<th>做法</th>
+<th>机制</th>
+<th>典型 RPO</th>
+<th>典型 RTO</th>
+<th>适用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>① 冷备份</strong></td>
+<td>定期快照/导出存异地</td>
+<td>小时~天</td>
+<td>小时级</td>
+<td>成本敏感、数据可容忍大窗口丢失(如离线分析)</td>
+</tr>
+<tr>
+<td><strong>② 主备异步</strong></td>
+<td>热备实时异步复制</td>
+<td>秒级(&gt;0)</td>
+<td>秒~分钟</td>
+<td>大多数业务的性价比之选</td>
+</tr>
+<tr>
+<td><strong>③ 主备半同步</strong></td>
+<td>写后 <code>WAIT</code>/半同步等对端 ACK</td>
+<td>近零</td>
+<td>秒级</td>
+<td>关键数据要尽量不丢,能接受写变慢</td>
+</tr>
+<tr>
+<td><strong>④ 双活</strong></td>
+<td>两地同时接客、按域分写</td>
+<td>近零~零</td>
+<td>秒级</td>
+<td>要两地都利用、扛机房级故障</td>
+</tr>
+<tr>
+<td><strong>⑤ 多活/强一致</strong></td>
+<td>共识协议多副本(Raft/CRDT)</td>
+<td>0</td>
+<td>亚秒~秒</td>
+<td>金融级零丢、预算充足</td>
+</tr>
+</tbody>
+</table>
+<p>读这张表的正确方式:<strong>不是越往下越好,而是按业务对"能丢多少、能停多久"的容忍度,选够用的那一档。</strong> 一个内部管理后台用①就行;一个计费系统可能要③或⑤;而大多数业务,②主备异步的性价比最高。</p>
+<p>还有三条不分做法、谁都得做的容灾基本功,比选哪一档更重要:</p>
+<ul>
+<li><strong>定期演练切换,别等真出事才第一次切。</strong> 没演练过的切换脚本,真用的时候八成会卡在某个没想到的地方(DNS 缓存、权限、防火墙规则)。上一篇讲"伪双活"也是这个道理——没被真实流量压过的路径不可信。</li>
+<li><strong>防脑裂的仲裁要独立于两个机房。</strong> 判断"主是不是真挂了"的那个裁判(仲裁节点),必须部署在第三个位置,否则机房间网络一断,两边各自判对方死、都提升自己为主,就是双主灾难。</li>
+<li><strong>别把任何单一存储当唯一真相源。</strong> 故障后的对账补偿能成立,前提是丢失的数据在别处还找得回来。多一份权威副本,RPO 的实际影响就小一分。</li>
+</ul>
+<p><strong>到这里,第一步完成:你已经有了两把尺子和五档选项。双活只是其中偏贵的一档,不是起点。</strong></p>
+<hr>
+<h2 id="_4">第二步:异地双活怎么做——难在分层,不在选库</h2>
+<p>容灾目标定了,假设业务确实需要"两地同时接客、扛机房级故障",落到了梯度的第④档——双活。那双活具体怎么做?</p>
+<p>先破一个最大的误区:<strong>双活不是"把数据库配成双主"这么一件事,它的难点根本不在"选哪个库",而在"把数据按一致性诉求分层"。</strong> 原因是一条绕不过的物理定律:</p>
+<blockquote>
+<p><strong>跨机房强一致写的延迟下限,是两机房间的 RTT,由光速决定,和你用什么数据库无关。</strong>
+上海到深圳单程约 1500 公里,光纤里光速打个折,物理极限 RTT 就是十几毫秒起步,加上交换设备实际常在几十毫秒。任何"强一致"的写,都要至少等对端确认一次——这一个 RTT,谁也省不掉。</p>
+</blockquote>
+<p>正因为强一致写必然要付这个 RTT,你不可能让所有数据都强一致(那样每次写都卡几十毫秒)。于是双活的核心工作变成:<strong>把数据按"要不要强一致"分类,只给真正需要的那部分付 RTT 的代价。</strong> 沿用上一篇音视频服务的四类数据:</p>
+<table>
+<thead>
+<tr>
+<th>数据类型</th>
+<th>典型内容</th>
+<th>一致性诉求</th>
+<th>容灾档位</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>信令 / 会话</strong></td>
+<td>注册、在线状态、路由缓存</td>
+<td>AP,可短暂不一致</td>
+<td>②主备异步足够(靠重注册自愈)</td>
+</tr>
+<tr>
+<td><strong>扣减型</strong></td>
+<td>余额、并发额度、席位</td>
+<td>CP,防超卖,RPO 趋零</td>
+<td>⑤多活/强一致</td>
+</tr>
+<tr>
+<td><strong>追加型</strong></td>
+<td>CDR、通话日志、事件流</td>
+<td>AP,最终一致</td>
+<td>④双活(多机房对等写)</td>
+</tr>
+<tr>
+<td><strong>协调 / 元数据</strong></td>
+<td>选主、分布式锁、配置</td>
+<td>CP,量小但绝对一致</td>
+<td>⑤强一致(但只存元信息)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>这张表才是双活真正的设计图。</strong> 同一个服务,四类数据用四个不同的容灾档位——这不是偷懒,恰恰是把 RTT 那笔税只花在扣减和协调这两类真正需要的地方,其余的用便宜方案。谁要是用"搭一套双主数据库"一招通吃这四类,要么在信令上为不需要的强一致白付延迟,要么在扣减上把超卖风险藏进了异步复制。</p>
+<p>所以选型就从"哪个库最好"变成了一个清爽的问题:<strong>我这层数据要不要强一致? 要,就选一个把强一致做扎实的库,并接受它的延迟; 不要,就选一个把本地写做快的库,并自己处理最终合并。</strong></p>
+<p>接下来第三步,就按这四类逐个落到具体存储,并以最常被问到的 Redis 为例,把它涉及的拓扑、切换、复制细节讲透。</p>
+<hr>
+<h2 id="redis">第三步:数据层选型,以 Redis 为例细讲</h2>
+<p>Redis 是被问得最多的——"信令用 Redis 没问题吧?扣减能不能也用 Redis?"——所以拿它当主线,把一个库在异地双活里的方方面面讲清楚,其他三类数据再快速归位。</p>
+<p><img alt="异地双活存储选型:四类数据 × 四种存储" src="../images/tech_20261011_geo_aa_storage_matrix.svg"></p>
+<h3 id="redis_1">Redis 的主场:信令 / 会话层</h3>
+<p>注册状态(AoR → Contact)、在线状态、路由缓存、呼叫上下文——这些数据的共同特征是:<strong>读多写多、单条小、可过期、短暂不一致无所谓。</strong> 这简直是照着 Redis 的能力画的。</p>
+<ul>
+<li><strong>天然带 TTL</strong>:SIP 注册本来就有租期(<code>Expires</code>),Redis 的 key 过期机制和它一一对应。注册续期就是 <code>SET key value EX &lt;expires&gt;</code>,到期自动清,不用你写清理逻辑。</li>
+<li><strong>AP 正合适</strong>:信令层可以 AP,靠 SIP 重注册自愈。Redis 跨机房异步复制的"短暂不一致"在这层完全可以接受——B 机房晚几百毫秒才知道某终端在 A 掉线,无伤大雅,下个注册周期就对齐了。</li>
+<li><strong>够快</strong>:信令层的 QPS 可能很高(大量注册刷新、路由查询),内存级的 Redis 吃得下,MySQL 在这个量级反而吃力。</li>
+</ul>
+<div class="highlight"><pre><span></span><code># 示意:注册状态存 Redis,和 SIP 租期对齐
+SET reg:alice@example.com &quot;sip:alice@10.1.2.3:5060&quot; EX 3600
+# B 机房异步复制过来,晚一点无所谓——AP 可接受
+</code></pre></div>
+
+<p><strong>一句话:信令和会话层,Redis 比 MySQL 更合适,这是少有的"换库确实更好"的地方。</strong> 对应容灾梯度,它用②主备异步就够。</p>
+<h3 id="redis-cluster">Redis Cluster 跨机房,拓扑怎么摆</h3>
+<p>既然信令层要用 Redis,就得把它的异地双活拓扑摆清楚。这里有个先入为主的误区得先破:<strong>Redis Cluster 的原生设计目标是"单机房内把数据分片到多台机器",不是"跨机房双活"。</strong> 它的分片用 gossip 协议维护集群视图、主从之间是异步复制——这两条在单机房内低延迟时都没问题,一旦拉到跨机房,异步复制的延迟和 gossip 的脑裂判定就开始互相打架。</p>
+<p>所以跨机房不是"把一个 Redis Cluster 拉长到两地",而是<strong>两个独立集群之间按业务方向复制</strong>。开源方案有三种拓扑,从保守到激进:</p>
+<p><img alt="Redis Cluster 异地双活的三种拓扑" src="../images/tech_20261011_redis_cluster_geo_topology.svg"></p>
+<ul>
+<li>
+<p><strong>拓扑一:单集群跨机房(不推荐)。</strong> 把一个 Redis Cluster 的主从节点分散到两个机房。听起来省事,实则是坑:主从跨机房异步复制,延迟高;更致命的是 gossip 的故障判定——机房间网络一抖,集群可能误判半边节点挂了,触发大规模 failover,甚至脑裂成两个都认为自己是主的半区。<strong>它把单机房的内部协议硬塞进了跨机房环境,除非两地有极稳的专线,否则别碰。</strong></p>
+</li>
+<li>
+<p><strong>拓扑二:双独立集群 + 单向复制(本质是主备)。</strong> A 机房一个完整集群负责读写,B 机房一个完整集群只读,靠复制工具(如 <code>redis-shake</code>)把 A 的数据单向同步到 B。A 挂了,把 B 提成可写、流量切过去。对应容灾梯度的②。<strong>这是最稳的做法,但它是主备不是双活</strong>——B 平时不接写,那条写路径没被真实流量压过,切换时风险和上一篇讲 MySQL 半同步主从时一样。胜在简单、不用处理冲突。</p>
+</li>
+<li>
+<p><strong>拓扑三:双独立集群 + 双向复制 + key 前缀分区(开源能做到的务实双活)。</strong> 两地各一个集群,双向复制,但<strong>两地各写各的 key 空间</strong>——A 机房只写 <code>a:*</code> 前缀的 key,B 机房只写 <code>b:*</code>。双向复制把对方的数据搬过来,于是两地都能读到全量,但永远不会两地同时写同一个 key。对应容灾梯度的④。这就把"跨机房写冲突"从设计上消灭了,和上一篇 MySQL 分片方案是同一个哲学:<strong>不解决冲突,而是让冲突不发生。</strong></p>
+</li>
+</ul>
+<h4 id="b">拓扑二主集群挂了,怎么切 B、怎么尽量不丢数据</h4>
+<p>这是用拓扑二的人迟早要面对的实操题:A 主集群所在机房整个出问题了,怎么把 B 从只读备份提升为可写主、流量切过去,并且尽量不丢数据。(这里的 RTO、RPO 就是第一步讲的那两把尺子。)</p>
+<p>先把最硬的真相摆在前面,别让期望落空:</p>
+<blockquote>
+<p><strong>单向异步复制,RPO 恒大于 0,理论上做不到零丢。</strong>
+复制是异步的——A 写完本地就给客户端返回 ACK,再慢慢推给 B。所以任意时刻,总有一段"A 已提交、但还没复制到 B"的数据悬在半空(就是那个复制延迟窗口)。A 机房一旦整体失效,这段数据就随 A 一起没了。谁跟你说"Redis 单向复制也能数据不丢",要么没搞懂异步复制,要么把"丢得很少"说成了"不丢"。</p>
+</blockquote>
+<p><img alt="单向复制下主集群故障切换时序与数据丢失窗口" src="../images/tech_20261011_redis_failover_sequence.svg"></p>
+<p>认清这条后,切换流程是一套有纪律的动作,顺序不能乱(尤其防脑裂和防回流两道闸门):</p>
+<ol>
+<li><strong>确认 A 真的不可达,并切断 A 的写入。</strong> 这是最容易出事的一步。跨机房"连不上"可能是 A 真挂了,也可能只是机房间网络断了而 A 还活着在接写(网络分区)。如果不确认就提升 B,两地会变成<strong>双主</strong>——A 这边老客户端还在写 A,B 这边新流量在写 B,数据各写各的,事后无法合并。所以切换前要先通过第三方视角(独立于两机房的仲裁点/监控)确认 A 确实失效,并在接入层把指向 A 的写路由硬关掉(fencing),宁可多等几秒也别双主。</li>
+<li><strong>确认 B 已追平"能追的"复制流。</strong> 让 B 把复制 backlog 里还没应用的数据尽量消化完——注意这只能追到"A 挂之前已经推过来的"部分,那段没推过来的窗口追不回来,但至少别在还没消化完就提升,白白多丢。</li>
+<li><strong>提升 B 为可写主。</strong> 对 B 执行 <code>REPLICAOF NO ONE</code>(Cluster 下是对应的脱离复制、转为独立可写),同时把它原来挂的"从 A 复制"的同步工具停掉,防止 A 万一短暂恢复又把旧数据倒灌回来。</li>
+<li><strong>把写路由和流量切到 B。</strong> 改接入层的写入指向(DNS/配置中心/服务发现),让应用的写从此落 B。SIP 这类有重注册语义的信令层,终端会在下个注册周期自然落到 B。</li>
+<li><strong>对账补偿丢失窗口。</strong> 这是"数据不丢"退而求其次的现实手段:<strong>用其他数据源把那段丢失窗口补回来</strong>。音视频场景里,很多 Redis 里的状态在别处有权威副本或可重建——注册状态靠终端重注册自愈、计费流水在 CDR(Cassandra/MySQL)里有账、会话上下文可以让客户端重建。<strong>能补偿的前提是你平时就没把 Redis 当唯一真相源</strong>(这正是第一步那条基本功)。</li>
+</ol>
+<p>还有一道常被忽略的闸门——<strong>A 修好之后不能直接当主回来</strong>:</p>
+<ul>
+<li>A 恢复后,它内存里是"故障那一刻"的旧数据,而 B 已经接了一段时间新写入。如果直接让 A 当主,会用旧数据覆盖 B 的新数据,等于二次事故。</li>
+<li>正确做法:<strong>A 回来后先作为 B 的从</strong>(反向复制,<code>REPLICAOF B</code>),把 B 期间的新数据追过来,确认数据一致、业务稳定后,再在一个计划内的低峰窗口考虑是否回切。很多团队干脆不回切,让 B 一直当主,A 当新的备——避免再切一次的风险。</li>
+</ul>
+<p>那"想把丢失窗口压到接近零"怎么办?在纯异步基础上加 <strong><code>WAIT</code> 命令做半同步</strong>(就是容灾梯度的③):关键写入后调 <code>WAIT numreplicas timeout</code>,等到对端副本确认收到了再给客户端返回。RPO 能大幅缩小到接近零,但代价诚实——<strong>每一次这样的写都多付一个跨机房 RTT</strong>,而且对端机房一抖,<code>WAIT</code> 要么超时要么拖慢写入。这又回到了那条铁律:强一致那笔税,你早晚要在某个地方交。</p>
+<p>一句话收口这个切换问题:</p>
+<blockquote>
+<p><strong>拓扑二的 failover 能做到"RTO 秒级、RPO 很小",但做不到"RPO 为零"。</strong>
+真要某类数据零丢失,别指望 Redis 单向复制——把那类数据(通常就是扣减型)下沉到 NewSQL 的 Raft 多数派,或用带同步事务日志的托管存储(如 AWS MemoryDB 的多 AZ 日志)。Redis 的单向复制是"快速恢复"的工具,不是"零丢失"的工具。</p>
+</blockquote>
+<h4 id="_5">双向复制具体怎么做的</h4>
+<p>开源 Redis 自身没有"双向复制"这个开关,<code>REPLICAOF</code> 只能做单向的主从。所谓双向,是<strong>拿两条单向复制拼出来的</strong>,靠外部工具搬运数据:</p>
+<p><img alt="开源 Redis / Valkey 双集群双向复制的工作机制" src="../images/tech_20261011_redis_bidirectional_replication.svg"></p>
+<p>机制拆开看就三步:</p>
+<ol>
+<li><strong>两个完全独立的集群。</strong> A、B 各自是一个正常的 Redis Cluster(各自有主从、各自 failover),彼此不知道对方存在、不走 gossip。这是和"拓扑一单集群跨机房"的根本区别——没有跨机房的集群协议,也就没有脑裂。</li>
+<li><strong>两个方向各挂一个复制工具。</strong> 常用 <code>redis-shake</code>(阿里开源)这类工具:工具 A→B 持续读 A 集群的写入流(通过 <code>psync</code> 伪装成从库拿到复制流,或解析 AOF/keyspace notification),把变化写进 B;工具 B→A 反过来。两条流独立运行,合起来就是"双向"。</li>
+<li><strong>用 key 前缀切开写入域。</strong> 应用层约定:连到 A 的写请求只落 <code>a:*</code>,连到 B 的只落 <code>b:*</code>。于是工具 A→B 搬的全是 <code>a:*</code>、工具 B→A 搬的全是 <code>b:*</code>,<strong>两条流搬运的 key 集合不相交</strong>。任何一个 key 永远只有一个机房在写,复制只是把它的副本送到对面供读。</li>
+</ol>
+<p>这套的代价要认清:</p>
+<ul>
+<li><strong>它不是强一致。</strong> 复制是异步的,A 写完 <code>a:user123</code> 到 B 能被读到,中间有个跨机房 RTT 的延迟窗口。信令/会话层能接受(AP),但别指望它做强一致的事。</li>
+<li><strong>前缀纪律必须在应用层守死。</strong> 一旦有代码图省事,在 A 机房写了个 <code>b:*</code> 的 key,双向复制立刻把"让冲突不发生"的前提打破——两地可能同时改同一个 key,就回到了会丢更新的老问题。这条约束是软的(靠代码自觉),不是存储帮你强制的,review 时要盯紧。</li>
+<li><strong>工具本身要做 HA。</strong> <code>redis-shake</code> 这类同步进程自己也是单点,挂了复制就断,两地数据开始漂移。生产里它也得有监控和自动拉起。</li>
+</ul>
+<p>那"真正的单 key 多地写"——同一个 key 两个机房都能改、系统自动合并——开源 Redis Cluster 做不到。开源的双向复制在遇到两地改同一 key 时是 <strong>last-write-wins(按到达顺序覆盖)</strong>,并发更新会丢。要自动合并,得上 <strong>CRDT(Conflict-free Replicated Data Type,无冲突复制数据类型)</strong>:底层数据类型自带合并语义(计数器两地各加、集合两地各插,复制时用向量时钟自动收敛),目前是 <strong>Redis Enterprise / Redis Cloud / Azure Managed Redis</strong> 的能力,托管侧 <strong>AWS MemoryDB</strong> 也专门定位多区 active-active CRDT。<strong>但注意:CRDT 的"自动合并"只对计数、集合这类可交换操作成立,它解决的是"不丢更新",不是"防超卖"——扣减型数据的强一致,CRDT 也救不了。</strong></p>
+<h4 id="valkey">换 Valkey 有什么不同</h4>
+<p>既然聊到开源,绕不开 <strong>Valkey</strong>——2024 年 3 月 Redis 改成源可见许可(SSPL)后,社区(AWS、Google、Oracle、阿里、Ericsson、华为、腾讯等)从 <strong>Redis 7.2.4</strong> fork 出来、放进 Linux Foundation、保持 <strong>BSD 许可</strong>的那个分支。它现在是多数云厂商的默认开源 Redis 引擎。</p>
+<p>就<strong>异地双活这件事</strong>而言,结论很干脆:<strong>Valkey 在跨机房拓扑上和开源 Redis 没有本质区别,上面三种拓扑、双向复制的拼法、key 前缀分区的约束,原封不动适用。</strong> 原因是它从 7.2.4 分叉,核心复制机制(<code>REPLICAOF</code>、<code>psync</code>、16384 槽的 Cluster 模式、异步主从)是同一套,<code>redis-shake</code> 这类工具也兼容。</p>
+<p>但有几点差异值得知道:</p>
+<ul>
+<li><strong>许可是最大的实际差异。</strong> Valkey 是 BSD 3-Clause(宽松、可商用、无 copyleft),Redis 8 改成了 AGPLv3/RSALv2/SSPL 三选一的 tri-license——其中 AGPLv3 带网络 copyleft 义务(改了源码并对外提供网络服务,通常要求公开改动)。做音视频这种对外服务,这条可能直接影响选型,<strong>而且它和技术无关,是法务问题</strong>。</li>
+<li><strong>active-active CRDT 两边开源都没有。</strong> 想要前面说的"单 key 多地写自动合并",开源 Redis 和开源 Valkey 都不提供,都得走商业版/托管版。Valkey 把 CRDT-based active-active 放进了 roadmap(社区资料提到 9.x 方向),但截至写稿它还不是开源可用的生产能力,别按"Valkey 免费版就能 CRDT 双活"来规划。</li>
+<li><strong>跨区部署方式一致。</strong> Valkey 跨区同样是 <code>REPLICAOF</code> 起只读副本(active-passive)+ 应用层写路由,想双活就自己拼双向复制。托管场景另说(比如 AWS 把 CRDT active-active 放在 MemoryDB,不是普通 Valkey)。</li>
+</ul>
+<p>一句话:<strong>在异地双活这层,Valkey 对开源 Redis 是"平替",技术选型逻辑完全照搬;真正会让你改决定的是许可证,不是复制能力。</strong></p>
+<h3 id="_6">其余三类数据,快速归位</h3>
+<p>Redis 讲透了,其他三类用同一套逻辑一句话定位,不再展开。</p>
+<p><strong>扣减层:Redis 的雷区,NewSQL 的主场。</strong> 余额、并发额度这类"减下去不能超"的数据,直接用 Redis 跨机房多写会超卖(两地各扣各的)。想在 Redis 上做强一致扣减要上 Redlock 或 <code>WAIT</code>,那笔 RTT 的税照样回来,还多了自己维护锁正确性的风险。真正的好归宿是 <strong>NewSQL</strong>(TiDB、CockroachDB):底层 Raft/Paxos 多副本,写事务多数派确认才提交,跨机房强一致是内建的,省掉你在 MySQL 上纠结半同步/MGR/分片。代价是写延迟被共识放大、运维更重。<strong>小规模业务,上一篇的 MySQL 半同步主从反而更省心——别为了一天几千次扣减扛一套 NewSQL。</strong></p>
+<p><strong>追加层:Cassandra 的主场。</strong> CDR、通话日志、事件流这类"只往后加、不改旧行"的数据,量通常最大。Cassandra 多机房对等写、天生无主(A 写 A 的话单、B 写 B 的,靠带时间的分区键天然不冲突),写用 <code>LOCAL_QUORUM</code>(本机房多数派就返回、不跨机房等),LSM 引擎吃海量写入、加机器线性扩。<strong>边界:它不是关系库,别拿它做复杂 JOIN、事务、强一致读——用对了是神器,当主业务库是灾难。</strong></p>
+<p><strong>协调层:etcd 不是业务库,是裁判。</strong> "谁是全局唯一写入点?分布式锁谁发?配置怎么一致下发?"这些元数据协调问题,Redis 和 MySQL 都不擅长。etcd 底层 Raft、天生线性一致,专门存"谁是主""锁在谁手上""配置版本几"这类必须绝对一致但量很小的元信息——前面 failover 里"独立仲裁确认 A 真挂了"的那个裁判,就是它的活。<strong>边界:不扛高吞吐、不存大 value,别把业务数据往里塞。</strong></p>
+<hr>
+<h2 id="_7">别选"一个库",选"一套组合"</h2>
+<p>三步走完,真实的异地双活从来不是"用 Redis 还是用 MySQL"的单选题,而是一套分工:</p>
+<table>
+<thead>
+<tr>
+<th>数据类型</th>
+<th>一致性诉求</th>
+<th>容灾档位</th>
+<th>首选存储</th>
+<th>次选 / 备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>信令 / 会话</td>
+<td>AP,可短暂不一致</td>
+<td>②主备异步</td>
+<td><strong>Redis</strong></td>
+<td>内存快 + TTL 对齐 SIP 租期,少有的换库更优</td>
+</tr>
+<tr>
+<td>扣减型(余额/额度)</td>
+<td>CP,防超卖</td>
+<td>⑤强一致</td>
+<td><strong>NewSQL(TiDB/CockroachDB)</strong></td>
+<td>小规模用 MySQL 半同步主从更省心;别用 Redis 裸多写</td>
+</tr>
+<tr>
+<td>追加型(CDR/日志)</td>
+<td>AP,最终一致</td>
+<td>④双活</td>
+<td><strong>Cassandra</strong></td>
+<td>多机房对等写 + <code>LOCAL_QUORUM</code>,吃下最大数据量</td>
+</tr>
+<tr>
+<td>协调 / 元数据(选主/锁/配置)</td>
+<td>CP,量小但必须绝对一致</td>
+<td>⑤强一致</td>
+<td><strong>etcd</strong></td>
+<td>裁判不是球员,别塞业务数据</td>
+</tr>
+</tbody>
+</table>
+<p>这张表才是全文的落地产出。读它的正确方式不是"哪个库赢了",而是:</p>
+<blockquote>
+<p><strong>每一类数据,先定它的容灾档位,再选一个把那种一致性做到极致的库;别指望一个库通吃四类。</strong>
+想用一个库(无论 MySQL 还是 Redis)伺候全部四类,结果一定是:在它不擅长的那几类上,你要么牺牲正确性,要么手搓一堆它本来就没有的能力。</p>
+</blockquote>
+<p>回到最初那个问题——"不用 MySQL,换 Redis 行不行":</p>
+<ul>
+<li>信令/会话层,<strong>换 Redis 确实更好</strong>,这一层 MySQL 本来就不该上。</li>
+<li>扣减层,<strong>换 Redis 是埋雷</strong>,要换就换成 NewSQL(真·升级),或者老老实实 MySQL + etcd 选主。</li>
+<li>追加层,<strong>MySQL 和 Redis 都不是最优</strong>,Cassandra 这类才是。</li>
+<li>协调层,<strong>谁都替代不了 etcd</strong>。</li>
+</ul>
+<p>所以"换不换 MySQL"是个伪问题。对的问法是:<strong>我这四类数据,每一类的容灾要做到什么程度,该放进哪个最懂它的库。</strong></p>
+<hr>
+<h2 id="_8">总结:顺序是"容灾 → 双活 → 选库",不是反过来</h2>
+<p>全文就想把一个被问反了的顺序掰正:<strong>先定容灾目标(RTO/RPO),再决定要不要双活、怎么分层,最后才选存储。</strong> 一上来就纠结"用什么库",是把最后一步当成了第一步。</p>
+<p>三步连起来:</p>
+<ol>
+<li><strong>容灾</strong>:两把尺子(RPO 丢多少、RTO 停多久)+ 五档做法(冷备份→主备异步→半同步→双活→多活),按业务容忍度选够用那一档。</li>
+<li><strong>双活</strong>:它只是梯度里偏贵的一档,难点不在选库,在把数据按一致性分成四类、各定各的档——因为强一致写绕不过 RTT,不能让所有数据都强一致。</li>
+<li><strong>选库</strong>:每类数据配最懂它的存储。以 Redis 为例,它是信令层的主场,但跨机房要靠双集群复制(单向=主备、双向+前缀=务实双活),且无论怎么配都扛不了扣减型的强一致——那是 NewSQL 的活。</li>
+</ol>
+<p>一句话:<strong>换存储永远绕不过一致性约束,光速收的税换哪个库都得交;你能选的只有"在哪一层交、交给谁"。</strong> 下次有人跟你安利"我们用 XX 库做异地双活,又快又一致",你可以反问一句:<strong>你的扣减型数据,是真强一致,还是把超卖风险藏在了异步复制里?</strong></p>
+<h2 id="_9">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* 从容灾到异地双活\n数据层选型
+** 1 容灾怎么做
+*** RPO: 能丢多少数据
+*** RTO: 能停多久服务
+*** 五档: 冷备→异步→半同步→双活→多活
+*** 选够用那档,不是越强越好
+** 2 双活怎么做
+*** 只是容灾第④档
+*** 难在分层,不在选库
+*** 强一致写绕不过 RTT
+*** 四类数据各定各的档
+** 3 选型 (以 Redis 为例)
+*** 信令主场 (AP, 主备异步)
+*** 三种拓扑: 单集群坑/单向主备/双向+前缀
+*** failover: RPO&gt;0, 五步+防回流
+*** 双向复制: 两条单向流+key前缀
+*** Valkey: 平替, 差在许可证
+*** 扣减→NewSQL 追加→Cassandra 协调→etcd
+** 结论
+*** 顺序: 容灾→双活→选库
+*** 每类数据配最懂它的库
+@endmindmap
+</code></pre></div>
+
+<p><img alt="从容灾到异地双活 - 思维导图" src="../images/tech_20261011_geo_aa_storage_mindmap.png"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/geo-active-active-storage-selection.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/tech.html">tech</a>
+      <a href="https://www.fanyamin.com/blog/tag/redis.html">redis</a>
+      <a href="https://www.fanyamin.com/blog/tag/valkey.html">valkey</a>
+      <a href="https://www.fanyamin.com/blog/tag/newsql.html">newsql</a>
+      <a href="https://www.fanyamin.com/blog/tag/tidb.html">tidb</a>
+      <a href="https://www.fanyamin.com/blog/tag/etcd.html">etcd</a>
+      <a href="https://www.fanyamin.com/blog/tag/cassandra.html">cassandra</a>
+      <a href="https://www.fanyamin.com/blog/tag/mysql.html">mysql</a>
+      <a href="https://www.fanyamin.com/blog/tag/architecture.html">architecture</a>
+      <a href="https://www.fanyamin.com/blog/tag/high-availability.html">high-availability</a>
+      <a href="https://www.fanyamin.com/blog/tag/disaster-recovery.html">disaster-recovery</a>
+      <a href="https://www.fanyamin.com/blog/tag/cap.html">cap</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-10-10-cap-ap-eventual-consistency.html" title="再论 CAP：会议和实时通信为什么要选 AP，以及最终一致性怎么落地">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/etcd-cluster-state-split-brain.html" title="集群状态为什么该交给 etcd：用 Raft 从根上消除脑裂">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/etcd-cluster-state-split-brain.html">集群状态为什么该交给 etcd：用 Raft 从根上消除脑裂</a></li>
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-mysql-geo-active-active.html">用 FreeSWITCH + MySQL 构建异地双活的音视频服务</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-10-10-cap-ap-eventual-consistency.html">再论 CAP：会议和实时通信为什么要选 AP，以及最终一致性怎么落地</a></li>
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-opensips-rtpengine-cluster.html">给 FreeSWITCH 集群配两个搭档：OpenSIPS 管信令，rtpengine 管媒体</a></li>
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-architecture-fast-and-fragile.html">FreeSWITCH 架构设计之快与脆</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

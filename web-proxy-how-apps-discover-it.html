@@ -1,0 +1,1007 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="企业里的 Web Proxy 不是可有可无的中转，而是把安全策略和网络出口收口的那道关——应用“无感知”地被代理，恰恰是设计目标。真正的坑在于：Windows/macOS 上的应用到底怎么发现自己该走代理？这篇讲清 WPAD/PAC、环境变量、系统设置这三条发现路径，CONNECT 隧道为什么挡不住 TLS，代理该部署在哪、有哪些开源方案，为什么信令可以走代理而实时媒体走 HTTP 代理是反模式，以及当安全策略把媒体逼上 443 时，TURN over TLS 怎么工作、还有哪些从 443 传媒体的方案。" />
+<meta name="keywords" content="tech, proxy, network, security, tls, webrtc, turn, http">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Web Proxy 这道关：应用怎么知道自己该走代理",
+  "description": "企业里的 Web Proxy 不是可有可无的中转，而是把安全策略和网络出口收口的那道关——应用“无感知”地被代理，恰恰是设计目标。真正的坑在于：Windows/macOS 上的应用到底怎么发现自己该走代理？这篇讲清 WPAD/PAC、环境变量、系统设置这三条发现路径，CONNECT 隧道为什么挡不住 TLS，代理该部署在哪、有哪些开源方案，为什么信令可以走代理而实时媒体走 HTTP 代理是反模式，以及当安全策略把媒体逼上 443 时，TURN over TLS 怎么工作、还有哪些从 443 传媒体的方案。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-10-13T14:00:00+08:00",
+  "dateModified": "2026-10-13T16:00:00+08:00",
+  "url": "https://www.fanyamin.com/blog/web-proxy-how-apps-discover-it.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/web-proxy-how-apps-discover-it.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "tech, proxy, network, security, tls, webrtc, turn, http"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="Web Proxy 这道关：应用怎么知道自己该走代理"/>
+  <meta property="og:description" content="企业里的 Web Proxy 不是可有可无的中转，而是把安全策略和网络出口收口的那道关——应用“无感知”地被代理，恰恰是设计目标。真正的坑在于：Windows/macOS 上的应用到底怎么发现自己该走代理？这篇讲清 WPAD/PAC、环境变量、系统设置这三条发现路径，CONNECT 隧道为什么挡不住 TLS，代理该部署在哪、有哪些开源方案，为什么信令可以走代理而实时媒体走 HTTP 代理是反模式，以及当安全策略把媒体逼上 443 时，TURN over TLS 怎么工作、还有哪些从 443 传媒体的方案。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/web-proxy-how-apps-discover-it.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-10-13 14:00:00+08:00"/>
+  <meta property="article:modified_time" content="2026-10-13 16:00:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="tech"/>
+  <meta property="article:tag" content="proxy"/>
+  <meta property="article:tag" content="network"/>
+  <meta property="article:tag" content="security"/>
+  <meta property="article:tag" content="tls"/>
+  <meta property="article:tag" content="webrtc"/>
+  <meta property="article:tag" content="turn"/>
+  <meta property="article:tag" content="http"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; Web Proxy 这道关：应用怎么知道自己该走代理</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记"
+               data-en="Notebook">
+              笔记
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="web-proxy-how-apps-discover-it">Web Proxy 这道关：应用怎么知道自己该走代理</h1>
+    <p>
+      Posted on 二 13 10月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>Web Proxy 这道关：应用怎么知道自己该走代理</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Version</strong></td>
+<td>v1.1</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-10-13</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">大纲</h2>
+<details>
+<summary>展开看看</summary>
+<ul>
+<li><strong>一句话</strong>：Web Proxy 是企业把安全策略和网络出口收口的那道关，应用“无感知”地被代理是设计目标；真正的坑是应用怎么发现自己该走代理。</li>
+<li><strong>为什么需要代理</strong>：安全要求（审计、DLP、恶意域名拦截）和网络限制（出口收口、合规、内外网隔离）两条线，不是性能优化。</li>
+<li><strong>应用怎么发现代理</strong>：三条路径——显式配置（环境变量 / 系统设置）、PAC 脚本、WPAD 自动发现。坑都在这里：curl 认环境变量、浏览器认系统设置、Java 认自己的 <code>-D</code> 参数，三套各走各的。</li>
+<li><strong>CONNECT 挡不住 TLS</strong>：HTTP 明文走 absolute-form，HTTPS 走 <code>CONNECT</code> 隧道，代理默认只搬密文字节。想看内容就得 TLS 拦截（SslBump），代价是全网装自签 CA。</li>
+<li><strong>代理部署在哪</strong>：出口网关、Sidecar、显式转发代理三种位置；开源方案 Squid / Envoy / mitmproxy / tinyproxy 各有各的位置。</li>
+<li><strong>信令与媒体</strong>：信令（HTTP/WebSocket）走代理天经地义；实时媒体（RTP/SRTP）走 HTTP 代理是反模式，该用 TURN。</li>
+<li><strong>媒体被逼上 443</strong>：安全策略只放行 443 时，正道是让 TURN 自己贴着 443（<code>turns:</code> TURN over TLS），用真 TLS 骗过 DPI。TLS 只覆盖客户端到 TURN 这一跳、只为翻墙不为保密；优先级 UDP &gt; TCP &gt; TLS。还有 TURN/UDP 443、ICE-TCP、WebSocket/SFU、QUIC/WebTransport 几条路。</li>
+</ul>
+</details>
+<hr>
+<p>做协作平台这些年，我见过最多的线上问题分类里，有一类永远排在前面：“在公司网络里连不上，回家就好了。” 排查到最后，十有八九指向同一个东西——公司出口上那台 Web Proxy，以及应用根本不知道自己该走它。</p>
+<p>很多人把代理理解成“帮你中转一下流量的服务器”。这个理解不算错，但抓错了重点。企业里的 Web Proxy 不是为了帮你中转，而是为了<strong>管住你</strong>：所有出网流量从这里过一遍，安全审计、数据防泄漏、恶意域名拦截、合规留痕，全在这一层做。应用“无感知”地被代理，恰恰是它的设计目标。</p>
+<p><strong>所以这篇文章的主线只有一条：应用到底怎么知道自己该走代理?</strong> 这个问题看着小，却是绝大多数代理相关故障的根因。讲清它，顺带把代理的部署位置、开源选型、信令媒体走代理的注意事项一起收了。</p>
+<hr>
+<h2 id="_2">为什么要有这道关：安全要求和网络限制</h2>
+<p>企业上 Web Proxy，动机就两条线。</p>
+<p><strong>安全要求。</strong> 公司得知道员工的机器往外发了什么、连了哪些域名。有了统一代理，就能做这几件事：</p>
+<ul>
+<li><strong>审计留痕</strong>：谁在什么时间访问了哪个域名，有日志可查。合规审计（SOC 2、等保）要的就是这个。</li>
+<li><strong>数据防泄漏（DLP）</strong>：出站流量里有没有带着客户名单、源代码、密钥往外传。</li>
+<li><strong>恶意域名拦截</strong>：已知的 C2 服务器、钓鱼站、矿池域名，在代理这一层直接拦掉，不用指望每台终端的杀毒软件。</li>
+</ul>
+<p><strong>网络限制。</strong> 很多公司的内网机器压根没有公网路由——你 <code>ping 8.8.8.8</code> 是不通的。想出网，唯一的路就是走代理。这么设计有几个现实原因：</p>
+<ul>
+<li><strong>出口收口</strong>：全公司一个出口，防火墙规则、带宽管理、NAT 地址都好管。</li>
+<li><strong>内外网隔离</strong>：开发网、办公网、生产网各自独立，跨网访问必须经过代理这道闸。</li>
+<li><strong>合规边界</strong>：金融、医疗这些行业，监管要求出网流量必须经过可审计的网关。</li>
+</ul>
+<p>一句话：</p>
+<blockquote>
+<p><strong>代理是企业把“安全策略”和“网络出口”收口到一个点的办法。</strong>
+它存在的价值不是加速，而是“让所有出网流量都从一个可控的地方过”。</p>
+</blockquote>
+<p>想明白这一点，下面的坑就有了解释——既然代理是强加的、是要“管住你”的，那它当然希望应用<strong>无感知</strong>地被代理。而“无感知”和“配置正确”之间的那条缝，就是所有故障的来源。</p>
+<hr>
+<h2 id="_3">核心问题：应用怎么发现自己该走代理</h2>
+<p>这是全文的题眼。一台机器上几十个进程，浏览器、<code>curl</code>、<code>git</code>、你写的那个 Python 脚本、JVM 里的服务——它们怎么知道“我这次请求得先发给代理，而不是直连目标”？</p>
+<p>答案是：<strong>没有统一答案。</strong> 操作系统并不会强制所有进程走代理（透明代理除外，后面讲）。绝大多数情况下，是<strong>每个应用自己去某个地方查“我该不该走代理”</strong>。查的地方不一样，就是 90% 代理故障的根源。</p>
+<p>发现代理一共三条路径，从“手动”到“自动”：</p>
+<table>
+<thead>
+<tr>
+<th>发现方式</th>
+<th>谁来配</th>
+<th>应用从哪读</th>
+<th>典型翻车点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>显式配置</strong></td>
+<td>人 / 运维</td>
+<td>环境变量、系统网络设置、应用自己的配置</td>
+<td>各应用读的地方不一样，配了 A 没配 B</td>
+</tr>
+<tr>
+<td><strong>PAC 脚本</strong></td>
+<td>运维集中管</td>
+<td>一个 JavaScript 文件，按 URL 决定走哪个代理</td>
+<td>脚本逻辑写错、文件拉不下来</td>
+</tr>
+<tr>
+<td><strong>WPAD 自动发现</strong></td>
+<td>几乎不用配</td>
+<td>通过 DHCP/DNS 猜 PAC 文件位置</td>
+<td>安全风险大，很多地方已禁用</td>
+</tr>
+</tbody>
+</table>
+<p>下面一条条拆。</p>
+<h3 id="_4">路径一：显式配置——最常见，也最容易配漏</h3>
+<p>“显式”意思是有人明明白白告诉应用：代理在 <code>http://proxy.corp:8080</code>。但“告诉”这个动作，在不同应用那里是不同的接口：</p>
+<ul>
+<li><strong>命令行工具</strong>（curl、wget、git、pip、npm）认<strong>环境变量</strong> <code>HTTP_PROXY</code> / <code>HTTPS_PROXY</code> / <code>NO_PROXY</code>。注意大小写：curl 两种都认，有些程序只认小写。</li>
+<li><strong>浏览器和桌面应用</strong>（Chrome、Edge、Outlook）认<strong>操作系统的网络设置</strong>。Windows 在“Internet 选项 → 连接 → 局域网设置”，macOS 在“系统设置 → 网络 → 代理”。它们不读环境变量。</li>
+<li><strong>JVM 应用</strong>认自己的那套 <code>-Dhttp.proxyHost</code> / <code>-Dhttp.proxyPort</code> 系统属性，环境变量和系统设置它都可以不理。</li>
+<li><strong>Go 程序</strong>默认读环境变量（<code>net/http</code> 的 <code>ProxyFromEnvironment</code>），但也可能被代码里写死。</li>
+</ul>
+<p>坑就在这里：你在终端里 <code>export HTTP_PROXY</code> 之后 <code>curl</code> 通了，就以为代理配好了；结果同一台机器上的 Chrome 还是连不上，因为它读的是系统设置，不是你的环境变量。<strong>一台机器上同时存在好几套互不相干的代理配置，是常态，不是异常。</strong></p>
+<p><code>NO_PROXY</code>（或系统设置里的“例外列表”）同样重要却常被忽略：内网地址、<code>localhost</code>、<code>127.0.0.1</code> 必须排除掉，否则连本机服务都要绕一圈代理，轻则变慢，重则直接连不上。</p>
+<h3 id="pac">路径二：PAC——把“走不走代理”的决策集中到一个脚本</h3>
+<p>手动给每台机器配代理，运维会疯。PAC（Proxy Auto-Config）的办法是：写一个 JavaScript 文件放在 Web 服务器上，里面有个固定签名的函数：</p>
+<div class="highlight"><pre><span></span><code><span class="kd">function</span><span class="w"> </span><span class="nx">FindProxyForURL</span><span class="p">(</span><span class="nx">url</span><span class="p">,</span><span class="w"> </span><span class="nx">host</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="c1">// 内网直连，不走代理</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">isInNet</span><span class="p">(</span><span class="nx">host</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;10.0.0.0&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;255.0.0.0&quot;</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="s2">&quot;DIRECT&quot;</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="c1">// 其它一律走公司代理，挂了就直连兜底</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="s2">&quot;PROXY proxy.corp:8080; DIRECT&quot;</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>应用每次要发请求，先把 URL 和 host 喂给这个函数，函数返回“DIRECT”（直连）还是“PROXY 某地址”。决策逻辑集中在一个文件里，改一处，全公司生效。客户端那头只需要配一次 PAC 文件的 URL。</p>
+<p>PAC 的两个经典坑：一是 <code>FindProxyForURL</code> 每次请求都会被调一遍，里面别写 <code>dnsResolve</code> 这种慢操作，否则每个请求都卡一下；二是 PAC 文件本身得拉得下来——它通常是 HTTP 明文托管的，PAC 服务器一挂，所有依赖它的客户端瞬间集体失联。</p>
+<h3 id="wpad-pac-url">路径三：WPAD——“连 PAC 的 URL 都不想配”，但别用</h3>
+<p>WPAD（Web Proxy Auto-Discovery）更进一步：连 PAC 文件的 URL 都不用人工配，客户端自己去“猜”。猜法有两条：</p>
+<ul>
+<li><strong>DHCP</strong>：客户端发 DHCPINFORM 查询，DHCP 服务器通过 <strong>option 252</strong> 直接把 PAC 文件地址塞回来。</li>
+<li><strong>DNS</strong>：客户端拿自己的域名前面拼一个 <code>wpad</code>，去拉 <code>http://wpad.&lt;你的域&gt;/wpad.dat</code>。文件名必须是 <code>wpad.dat</code>，MIME 类型必须是 <code>application/x-ns-proxy-autoconfig</code>，否则有些浏览器不认。</li>
+</ul>
+<p>听起来很省事，Windows 默认还开着这个（“自动检测设置”那个勾）。但 <strong>WPAD 是个安全重灾区，我的建议是关掉它。</strong> 道理很简单：既然客户端是靠“猜”去拉文件，攻击者就能在同一个网络里架个 DHCP/DNS，抢先把一个恶意 PAC 文件喂给你。2016 年 DEF CON 上，Context Information Security 的研究者演示过：恶意 PAC 文件里的 <code>FindProxyForURL</code> 能拿到完整 URL（包括 HTTPS 的路径和参数），再用 <code>dnsResolve</code> 把这些本该被 TLS 保护的 token 泄漏出去——HTTPS 加密没被破解，但被绕过去了。他们当时的原话是“No seriously, turn off WPAD!”</p>
+<p>如果确实要用 PAC，正确姿势是：<strong>关掉 WPAD 自动发现，显式配一个 PAC 的 URL，并且用 HTTPS 托管。</strong></p>
+<p>下面这张图把三条路径和它们的决策顺序串起来：</p>
+<div class="highlight"><pre><span></span><code>@startuml
+skinparam monochrome false
+skinparam shadowing false
+skinparam defaultFontName &quot;SansSerif&quot;
+
+start
+:应用准备发起一个 HTTP(S) 请求;
+
+if (应用自己配置/环境变量/系统设置\n指定了代理?) then (是)
+  :按显式配置选择代理;
+else (否)
+  if (配置了 PAC 的 URL?) then (是)
+    :拉取 PAC 文件;
+    :执行 FindProxyForURL(url, host);
+  else (否)
+    if (开启了 WPAD 自动发现?) then (是)
+      :DHCP option 252 / DNS wpad.dat\n猜 PAC 位置（有安全风险）;
+      :执行 FindProxyForURL(url, host);
+    else (否)
+      :直连目标;
+      stop
+    endif
+  endif
+endif
+
+if (结果是 DIRECT?) then (是)
+  :直连目标;
+else (否)
+  :把请求交给指定的代理;
+endif
+stop
+@enduml
+</code></pre></div>
+
+<p><img alt="应用发现代理的决策流程" src="../images/tech_20261013_web-proxy_discovery.png"></p>
+<hr>
+<h2 id="connect-https">CONNECT 隧道：为什么代理默认看不见你的 HTTPS</h2>
+<p>搞清楚应用怎么找到代理之后，下一个要命的问题是：代理到底能看见什么？这直接决定了它能不能做审计、DLP，以及信令媒体走代理时会发生什么。</p>
+<p>关键分水岭是明文 HTTP 和 HTTPS 的处理方式完全不同：</p>
+<ul>
+<li><strong>明文 HTTP</strong>：客户端把<strong>完整 URL</strong>（absolute-form，形如 <code>GET http://example.com/path HTTP/1.1</code>）发给代理，代理一眼看全——方法、路径、头、body 全都是明文。审计、缓存、改写都能做。</li>
+<li><strong>HTTPS</strong>：客户端先发一个 <code>CONNECT example.com:443</code> 请求，代理回 <code>200</code>，然后在客户端和目标之间开一条 <strong>TCP 隧道</strong>。接下来 TLS 握手是客户端和目标服务器<strong>直接</strong>谈的，代理只负责盲转两边的加密字节。</li>
+</ul>
+<p>这条隧道意味着：<strong>对 HTTPS 流量，代理默认只能看到“你连了哪个 host、哪个端口、什么时间、传了多少字节”，看不到 URL 路径、cookie、请求体。</strong> 认证凭据走 <code>Proxy-Authorization</code> 头给代理，和你发给目标服务器的内容是两回事。</p>
+<p>那企业要审计 HTTPS 内容怎么办？只能做 <strong>TLS 拦截</strong>（也叫 SSL 中间人、SslBump）：代理把自己伪装成目标服务器，用自己签的证书和客户端握手，解密、看内容、再用另一条 TLS 连到真正的目标。Squid 的 SslBump、mitmproxy 走的都是这条路。</p>
+<p><strong>但 TLS 拦截的代价很大，用之前想清楚</strong>：</p>
+<ul>
+<li>得在<strong>所有终端</strong>的信任库里装代理的自签 CA 证书，否则浏览器满屏证书告警。</li>
+<li>证书绑定（certificate pinning）的应用会直接拒绝——移动端 App、很多桌面客户端都做了 pinning，拦截一上来它们就连不上。</li>
+<li>你等于在企业内部造了一个“合法的中间人”，这个 CA 私钥一旦泄漏，全公司的 HTTPS 都裸奔。</li>
+</ul>
+<p>一句话记住：</p>
+<blockquote>
+<p><strong><code>CONNECT</code> 隧道让代理默认是“瞎子”——只知道你连了谁，不知道你说了什么。</strong>
+想让它“睁眼”，就得全网装自签 CA 做 TLS 拦截，这是一笔安全账，不是技术开关。</p>
+</blockquote>
+<hr>
+<h2 id="_5">代理部署在哪，有哪些开源方案</h2>
+<p>明白了发现机制和可见性，部署位置的选择就有了依据。常见有三种位置：</p>
+<table>
+<thead>
+<tr>
+<th>部署位置</th>
+<th>长什么样</th>
+<th>适合场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>出口网关</strong></td>
+<td>一台（集群）代理守在网络出口，所有出网流量过它</td>
+<td>企业办公网、合规出口，经典用法</td>
+</tr>
+<tr>
+<td><strong>Sidecar / 本地代理</strong></td>
+<td>每台机器或每个 Pod 旁边跑一个本地代理进程</td>
+<td>容器环境、给单个应用注入凭据或策略</td>
+</tr>
+<tr>
+<td><strong>显式转发代理</strong></td>
+<td>应用明确把请求发给某个代理地址</td>
+<td>CI/CD、爬虫、需要换出口 IP 的场景</td>
+</tr>
+</tbody>
+</table>
+<p>开源方案按定位挑，别一上来就问“哪个最好”，先问“我要它站在哪、做什么”：</p>
+<ul>
+<li><strong>Squid</strong>——老牌转发代理，GPL。缓存、访问控制列表（ACL）、SslBump 一应俱全，企业出口网关的默认选项。想做 TLS 拦截审计，它是成熟答案。</li>
+<li><strong>Envoy</strong>——云原生时代的主力，L4/L7 全能。既能当反向代理，也支持正向代理和 <code>CONNECT</code> 隧道，还有 <code>credential_injector</code> 这类过滤器帮你注入认证头。跑在 K8s 里做 Sidecar、做出口网关都合适。</li>
+<li><strong>mitmproxy</strong>——为“看见和改写 HTTPS”而生的 TLS 拦截代理。它不是用来扛生产流量的，而是调试神器：排查“到底哪一步请求出错了”，拿它当中间人一抓就清楚。</li>
+<li><strong>tinyproxy</strong>——极轻量的 HTTP/HTTPS 转发代理。不需要缓存和复杂 ACL、只想要一个能用的转发代理时，它够了。</li>
+</ul>
+<p>选型别纠结。<strong>出口网关要审计选 Squid，云原生环境选 Envoy，调试抓包选 mitmproxy，要个最小转发选 tinyproxy。</strong> 需求对上了，答案基本就定了。</p>
+<hr>
+<h2 id="http">信令走代理天经地义，媒体走 HTTP 代理是反模式</h2>
+<p>最后说一个做实时音视频才会撞上的坑，也是我想专门留给同行的一段。协作平台里的流量粗分两类：<strong>信令</strong>和<strong>媒体</strong>。它们对代理的态度截然相反。</p>
+<p><strong>信令</strong>（登录、加入会议、收发控制消息）本质就是 HTTP 或 WebSocket，走代理没问题，也应该走：</p>
+<ul>
+<li>WebSocket 的升级握手就是一个普通 HTTP 请求，代理能识别。</li>
+<li>信令对延迟没那么敏感，偶尔多几十毫秒不影响体验。</li>
+<li>它天然适配前面那套 <code>CONNECT</code> 隧道机制，该审计审计，该留痕留痕。</li>
+</ul>
+<p><strong>媒体</strong>（RTP/SRTP 承载的音视频流）则完全是另一回事。实时媒体跑在 UDP 上，追求的是低延迟、抗抖动、丢包了宁可丢也不重传。而 HTTP 代理是为 TCP、为可靠传输设计的。<strong>把实时媒体硬塞进 HTTP 代理，是反模式</strong>，原因很具体：</p>
+<ul>
+<li><strong>协议不匹配</strong>：RTP 是 UDP，HTTP 代理是 TCP 世界的居民。要走代理就得把 UDP 媒体塞进 TCP 隧道，TCP 的重传和队头阻塞会让实时音视频的延迟和卡顿雪上加霜。</li>
+<li><strong>该用的工具是 TURN，不是 Web Proxy</strong>：WebRTC 体系里，穿越 NAT 和防火墙的标准件是 STUN/TURN。TURN 服务器专门为中继媒体设计，支持 UDP 中继，这才是媒体“绕过限制”的正道。</li>
+<li><strong>走 443 是最后的兜底</strong>：确实有网络把 UDP 全堵死、只放行 TCP 443。这种时候媒体只能想办法从 443 挤出去——怎么挤，就是下一节要专门讲的。但这是“保命”，不是“正常方案”。</li>
+</ul>
+<p>一句话：</p>
+<blockquote>
+<p><strong>信令是“消息”，适合走代理；媒体是“流”，应该走 TURN。</strong>
+让媒体走 HTTP 代理，是拿错了工具；真要从 443 出去，也不是走 Web Proxy，而是让 TURN 自己贴着 443。</p>
+</blockquote>
+<hr>
+<h2 id="443turn-over-tls">媒体被逼上 443：TURN over TLS 到底怎么回事</h2>
+<p>出于安全策略，很多企业网只放行一个出口：TCP 443。UDP 全堵、3478（STUN/TURN 的标准端口）也堵。这时候 WebRTC 的 ICE 候选列表会很惨——host、srflx 全是 UDP，默认的 <code>turn:host:3478</code> 也是 UDP，一个能用的都没有，连通性检查还没开始就全死了。</p>
+<p>媒体要活下去，就得从 443 挤出去。但这里有个关键误解要先澄清：<strong>媒体走 443，走的不是那台 Web Proxy，而是让 TURN 服务器自己在 443 上监听、并且把流量裹进真正的 TLS 里。</strong> 这就是 TURN over TLS（<code>turns:</code> 这个 scheme，来自 RFC 7065）。</p>
+<h3 id="tls-tcp">为什么偏偏是 TLS，而不是裸 TCP</h3>
+<p>你可能会问：既然 443 放行，那 TURN 直接走 TCP 443 不就行了，为什么非得套一层 TLS？</p>
+<p>因为把守 443 的往往不是个只看端口号的傻防火墙，而是<strong>做深度包检测（DPI）的应用感知防火墙</strong>。它放行 443 的前提是：这上面跑的得像 HTTPS。你在 443 上发裸的 TURN-over-TCP，它一看“这开头不是 TLS 握手”，照样给你丢了。而 TURN over TLS 发出去的就是一个货真价实的 TLS 握手，DPI 盒子分辨不出它和普通 HTTPS 的区别，于是放行。</p>
+<p>一句话：<strong>443 这道门认的不是端口，是“长得像不像 HTTPS”。TLS 让 TURN 流量混进 HTTPS 车流里。</strong></p>
+<h3 id="turn-over-tls">一次 TURN over TLS 的完整路径</h3>
+<p>拆开看，一次走 443 的媒体是这样流动的：</p>
+<div class="highlight"><pre><span></span><code>@startuml
+skinparam monochrome false
+skinparam shadowing false
+skinparam defaultFontName &quot;SansSerif&quot;
+
+actor &quot;浏览器/客户端&quot; as C
+participant &quot;企业 DPI 防火墙\n(只放行 443)&quot; as FW
+participant &quot;TURN 服务器\n(turns:host:443)&quot; as T
+participant &quot;对端 / SFU 媒体服务器&quot; as P
+
+C -&gt; FW : TLS 握手 (看起来就是 HTTPS)
+FW -&gt; T : 放行——分辨不出和 HTTPS 的区别
+C -&gt; T : 在 TLS 隧道里跑 TURN\n(Allocate, 认证)
+T --&gt; C : 分配一个 relay 地址
+note over C, T : 这一跳：TLS over TCP 443
+note over T, P : 这一跳：UDP 中继 (RFC 8656)
+C -&gt; T : SRTP 媒体 (已是 DTLS-SRTP)
+T -&gt; P : 转发为 UDP
+P -&gt; T : 回程 UDP
+T -&gt; C : 裹回 TLS 送回
+@enduml
+</code></pre></div>
+
+<p><img alt="TURN over TLS 在 443 上传输媒体" src="../images/tech_20261013_web-proxy_turns.png"></p>
+<p>有两个容易被忽略的点：</p>
+<ul>
+<li><strong>TLS 只覆盖“客户端到 TURN 服务器”这一跳。</strong> 从 TURN 服务器到对端（或你的 SFU）那一跳，RFC 8656 的 allocation 仍然是 UDP 中继。所以路径是“客户端 --TLS/TCP 443--&gt; TURN --UDP--&gt; 对端”。把 TURN 服务器摆在媒体服务器旁边，第二跳就很便宜。</li>
+<li><strong>这层 TLS 不为保密，只为翻墙。</strong> 媒体本身已经是 DTLS-SRTP 加密过的，外面再套一层 TLS 纯粹是为了骗过防火墙。代价是：多一次 TLS 握手、多一层加解密 CPU、以及 TCP 自带的队头阻塞——丢一个段，后面排队的包全得等重传。所以 libwebrtc 给候选打优先级时，UDP &gt; TCP &gt; TLS，TLS 永远排最后，只有别的都不通才轮到它。这个顺序别去改它。</li>
+</ul>
+<p>客户端配置通常把几种 transport 都列上，让 ICE 自己从快到慢挑：</p>
+<div class="highlight"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">pc</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">RTCPeerConnection</span><span class="p">({</span>
+<span class="w">  </span><span class="nx">iceServers</span><span class="o">:</span><span class="w"> </span><span class="p">[{</span>
+<span class="w">    </span><span class="nx">urls</span><span class="o">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="s1">&#39;turn:turn.example.com:3478?transport=udp&#39;</span><span class="p">,</span><span class="w">   </span><span class="c1">// 首选：最快</span>
+<span class="w">      </span><span class="s1">&#39;turn:turn.example.com:3478?transport=tcp&#39;</span><span class="p">,</span><span class="w">    </span><span class="c1">// UDP 堵了退到 TCP</span>
+<span class="w">      </span><span class="s1">&#39;turns:turn.example.com:443?transport=tcp&#39;</span><span class="p">,</span><span class="w">    </span><span class="c1">// 443 只剩 TLS 时兜底</span>
+<span class="w">    </span><span class="p">],</span>
+<span class="w">    </span><span class="nx">username</span><span class="p">,</span><span class="w"> </span><span class="nx">credential</span><span class="p">,</span>
+<span class="w">  </span><span class="p">}],</span>
+<span class="p">});</span>
+</code></pre></div>
+
+<p>一个实现上的坑：<code>turns:</code> URL 的证书必须对得上 hostname，浏览器会校验，所以<strong>不能用裸 IP、不能用自签证书</strong>，否则这条兜底路径直接废掉。</p>
+<h3 id="443">媒体从 443 出去，还有哪些别的方案</h3>
+<p>TURN over TLS 不是唯一解，按“贴近 443 的程度”排一下，各有取舍：</p>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>怎么走 443</th>
+<th>优点</th>
+<th>代价 / 边界</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>TURN/UDP on 443</strong></td>
+<td>TURN 服务器在 <strong>UDP 443</strong> 上监听</td>
+<td>还是 UDP，没有 TCP 队头阻塞，延迟最低</td>
+<td>要网络放行 UDP 443（为 QUIC 放行的网络常有）；纯 UDP 堵死的网络没用</td>
+</tr>
+<tr>
+<td><strong>TURN over TLS (TCP 443)</strong></td>
+<td><code>turns:</code> 裹进真 TLS</td>
+<td>过 DPI，最通的兜底</td>
+<td>TCP 队头阻塞、双层加密、握手开销</td>
+</tr>
+<tr>
+<td><strong>ICE-TCP</strong></td>
+<td>直接用 TCP 传媒体（RFC 6544，RTP 按 RFC 4571 加帧），不经 TURN</td>
+<td>省一台中继</td>
+<td>只在对端有公网可达时有用；仍是 TCP 的毛病</td>
+</tr>
+<tr>
+<td><strong>媒体走 WebSocket/SFU</strong></td>
+<td>客户端先 WSS 443 连 SFU，SFU 再在 ICE 里塞 TURN 候选</td>
+<td>信令通道已经在 443，架构统一</td>
+<td>本质还是回到 TURN；LiveKit 这类就是这么干的</td>
+</tr>
+<tr>
+<td><strong>QUIC / WebTransport（新）</strong></td>
+<td>基于 HTTP/3，天生跑在 UDP 443 上</td>
+<td>NAT 友好、连接迁移、少队头阻塞</td>
+<td>还在演进；P2P 场景仍离不开 ICE/STUN/TURN 做穿越</td>
+</tr>
+</tbody>
+</table>
+<p>两个判断：</p>
+<ul>
+<li><strong>优先选 UDP 443，而不是 TLS/TCP 443。</strong> 只要网络肯放 UDP 443（给 QUIC/HTTP3 放行的越来越多），TURN/UDP on 443 既能过“只认 443”的防火墙，又保住了 UDP 的低延迟。LiveKit 的默认推荐就是先上 TURN/UDP 443，TLS 443 只在“连 UDP 443 都堵”时才开。注意 UDP 443 和 TCP 443 是两个独立 socket，同一台机器可以同时监听，互不打架。</li>
+<li><strong>别指望 Web Proxy 替你中继媒体。</strong> 不管哪种方案，媒体从 443 出去靠的都是 TURN（或 SFU 背后的 TURN）贴着 443，而不是那台做 HTTP 审计的正向代理。如果企业网只给一个显式 HTTP 代理、连 TURN over TLS 都要穿过它，那要看浏览器引擎和代理配置支不支持，能通就谢天谢地了，别当设计目标。</li>
+</ul>
+<p>一句话：</p>
+<blockquote>
+<p><strong>媒体被逼上 443，正道是让 TURN 自己贴着 443（优先 UDP，不行再 TLS），而不是把媒体塞进 Web Proxy。</strong>
+TLS 那层是为了骗过 DPI，不是为了加密——媒体早就被 DTLS-SRTP 加过密了。</p>
+</blockquote>
+<hr>
+<h2 id="_6">总结：代理是一道“收口”的关，坑在发现而不在转发</h2>
+<p>回到开头那条主线。Web Proxy 在企业里的角色，是把安全策略和网络出口收口到一个可控的点——它要“管住”所有出网流量，所以追求的是让应用<strong>无感知</strong>地被代理。而“无感知”这三个字，恰恰是所有故障的温床：应用不是统一地被代理，而是各自去不同的地方查“我该走代理吗”，查漏了、查错了，就连不上。</p>
+<p>下次再碰到“公司网连不上、回家就好”，别急着怀疑网络，先按这张单子过一遍：</p>
+<ul>
+<li><strong>这个应用从哪读代理配置?</strong> 环境变量、系统设置、还是它自己的参数？curl 通不代表 Chrome 通。</li>
+<li><strong><code>NO_PROXY</code> / 例外列表配了吗?</strong> 内网和 localhost 有没有被误导进代理。</li>
+<li><strong>走的是 PAC 还是 WPAD?</strong> PAC 服务器活着吗？WPAD 是不是该关掉了。</li>
+<li><strong>是 HTTPS 吗?</strong> 那代理默认看不见内容，审计失败不代表请求失败；反过来，证书告警往往是 TLS 拦截在作祟。</li>
+<li><strong>这是信令还是媒体?</strong> 媒体连不上，别去改代理，去查 TURN。</li>
+</ul>
+<p>代理这东西，真正难的从来不是“怎么转发一个请求”，而是“让一屋子互不相干的应用，都准确地知道自己该走哪条路”。把发现机制这一层吃透，大半的代理问题都能在五分钟内定位。</p>
+<h2 id="_7">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* Web Proxy
+** 为什么需要
+*** 安全：审计、DLP、恶意域名拦截
+*** 网络限制：出口收口、内外网隔离、合规
+*** 目标是无感知地管住出网流量
+** 应用怎么发现（题眼）
+*** 显式配置：环境变量/系统设置/应用参数
+*** PAC：FindProxyForURL 集中决策
+*** WPAD：DHCP 252/DNS wpad.dat，有风险，建议关
+** 代理能看见什么
+*** HTTP：absolute-form，全明文
+*** HTTPS：CONNECT 隧道，默认只见 host
+*** TLS 拦截 SslBump，代价是全网装 CA
+** 部署与开源
+*** 位置：出口网关/Sidecar/显式转发
+*** Squid / Envoy / mitmproxy / tinyproxy
+** 信令与媒体
+*** 信令 HTTP/WebSocket 走代理
+*** 媒体 RTP/SRTP 该走 TURN，不是 Web Proxy
+** 媒体被逼上 443
+*** TURN over TLS：turns: 裹进真 TLS 过 DPI
+*** TLS 只覆盖客户端到 TURN，relay 仍是 UDP
+*** TLS 为翻墙不为保密（媒体已 DTLS-SRTP）
+*** 优先级 UDP &gt; TCP &gt; TLS，TLS 排最后
+*** 其它方案：TURN/UDP 443、ICE-TCP、WebSocket/SFU、QUIC/WebTransport
+@endmindmap
+</code></pre></div>
+
+<p><img alt="Web Proxy - 思维导图" src="../images/tech_20261013_web-proxy_mindmap.png"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/web-proxy-how-apps-discover-it.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/tech.html">tech</a>
+      <a href="https://www.fanyamin.com/blog/tag/proxy.html">proxy</a>
+      <a href="https://www.fanyamin.com/blog/tag/network.html">network</a>
+      <a href="https://www.fanyamin.com/blog/tag/security.html">security</a>
+      <a href="https://www.fanyamin.com/blog/tag/tls.html">tls</a>
+      <a href="https://www.fanyamin.com/blog/tag/webrtc.html">webrtc</a>
+      <a href="https://www.fanyamin.com/blog/tag/turn.html">turn</a>
+      <a href="https://www.fanyamin.com/blog/tag/http.html">http</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-10-13-asan-cpp-server-report.html" title="给 FreeSWITCH 这种大服务生成 ASan 报告：内存踩坑的照妖镜">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/2026-10-13-mcp-knowledge-base-server.html" title="让 Codex 和 Cursor 读写你的知识库：用 FastMCP 搓一个本地 MCP Server">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/2026-10-10-cap-ap-eventual-consistency.html">再论 CAP：会议和实时通信为什么要选 AP，以及最终一致性怎么落地</a></li>
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-mysql-geo-active-active.html">用 FreeSWITCH + MySQL 构建异地双活的音视频服务</a></li>
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-opensips-rtpengine-cluster.html">给 FreeSWITCH 集群配两个搭档：OpenSIPS 管信令，rtpengine 管媒体</a></li>
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-architecture-fast-and-fragile.html">FreeSWITCH 架构设计之快与脆</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-09-14-webrtc-to-freeswitch.html">webrtc-to-freeswitch:一个浏览器软电话的架构、流程与协议全解</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

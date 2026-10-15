@@ -1,0 +1,879 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="网络会出的岔子一长串——分区、脑裂、闪断、非对称路由、DNS 故障、丢包、抖动、拥塞、时钟漂移——它们全归结为 CAP 里那个躲不掉的 P，所以真正的选择题只在 C 和 A 之间。网络交易选 C，音视频会议和实时通信选 A。本文先按类把网络问题列全，再结合我最近踩的几次坑，重点讲 AP + 最终一致性在实时通信里怎么落地：媒体面为什么天生 AP、信令面的冲突怎么和解、以及什么东西绝对不能最终一致。" />
+<meta name="keywords" content="tech, distributed-system, cap, consistency, availability, webrtc, rtc, freeswitch, architecture">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "再论 CAP：会议和实时通信为什么要选 AP，以及最终一致性怎么落地",
+  "description": "网络会出的岔子一长串——分区、脑裂、闪断、非对称路由、DNS 故障、丢包、抖动、拥塞、时钟漂移——它们全归结为 CAP 里那个躲不掉的 P，所以真正的选择题只在 C 和 A 之间。网络交易选 C，音视频会议和实时通信选 A。本文先按类把网络问题列全，再结合我最近踩的几次坑，重点讲 AP + 最终一致性在实时通信里怎么落地：媒体面为什么天生 AP、信令面的冲突怎么和解、以及什么东西绝对不能最终一致。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-10-10T21:00:00+08:00",
+  "dateModified": "2026-10-10T21:00:00+08:00",
+  "url": "https://www.fanyamin.com/blog/2026-10-10-cap-ap-eventual-consistency.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/2026-10-10-cap-ap-eventual-consistency.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "tech, distributed-system, cap, consistency, availability, webrtc, rtc, freeswitch, architecture"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="再论 CAP：会议和实时通信为什么要选 AP，以及最终一致性怎么落地"/>
+  <meta property="og:description" content="网络会出的岔子一长串——分区、脑裂、闪断、非对称路由、DNS 故障、丢包、抖动、拥塞、时钟漂移——它们全归结为 CAP 里那个躲不掉的 P，所以真正的选择题只在 C 和 A 之间。网络交易选 C，音视频会议和实时通信选 A。本文先按类把网络问题列全，再结合我最近踩的几次坑，重点讲 AP + 最终一致性在实时通信里怎么落地：媒体面为什么天生 AP、信令面的冲突怎么和解、以及什么东西绝对不能最终一致。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/2026-10-10-cap-ap-eventual-consistency.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-10-10 21:00:00+08:00"/>
+  <meta property="article:modified_time" content="2026-10-10 21:00:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="tech"/>
+  <meta property="article:tag" content="distributed-system"/>
+  <meta property="article:tag" content="cap"/>
+  <meta property="article:tag" content="consistency"/>
+  <meta property="article:tag" content="availability"/>
+  <meta property="article:tag" content="webrtc"/>
+  <meta property="article:tag" content="rtc"/>
+  <meta property="article:tag" content="freeswitch"/>
+  <meta property="article:tag" content="architecture"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 再论 CAP：会议和实时通信为什么要选 AP，以及最终一致性怎么落地</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记"
+               data-en="Notebook">
+              笔记
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="2026-10-10-cap-ap-eventual-consistency">再论 CAP：会议和实时通信为什么要选 AP，以及最终一致性怎么落地</h1>
+    <p>
+      Posted on 六 10 10月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>再论 CAP：会议和实时通信为什么要选 AP，以及最终一致性怎么落地</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Version</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-10-10</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">大纲</h2>
+<details>
+<summary>展开看看</summary>
+<ul>
+<li><strong>网络问题远不止分区</strong>：连通性/DNS/丢包/时延/带宽/时钟，一张分层清单</li>
+<li><strong>P 没得选</strong>：这些毛病全归结为 P，CAP 真正的选择题只在 C 和 A 之间</li>
+<li><strong>选边的判据</strong>：交易选 C，会议选 A，关键是问"这条数据晚一点对齐，用户会损失什么"</li>
+<li><strong>媒体面天生就是 AP</strong>：音视频包宁可丢也不等，一等就卡，延迟才是实时通信的命</li>
+<li><strong>信令面的收敛</strong>：谁在房间里、谁举手、谁共享屏幕——允许短暂不一致，最后要对齐</li>
+<li><strong>最终一致性怎么落地</strong>：幂等、版本号/逻辑时钟、CRDT 式合并、权威源兜底</li>
+<li><strong>三条红线</strong>：计费、权限、录制合规，这些场景不许最终一致</li>
+<li><strong>一张取舍清单</strong>：设计实时系统时，每类状态先过一遍这几个问题</li>
+</ul>
+</details>
+<hr>
+<p>最近接连碰到几次网络问题：机房之间的专线抖了一下，两边的信令服务各自以为自己是主，同一个会议里出现了两份"谁是主持人"的记录；还有一次跨区域部署，网络分区恢复之后，一部分用户看到的参会者名单和另一部分对不上，持续了十几秒才慢慢对齐。</p>
+<p>这些毛病有个共同点：它们都不是"写错了代码"，而是<strong>网络本身靠不住</strong>——分区（partition）会发生，脑裂（split-brain）会发生，DNS 会解析到一个早就换掉的旧 IP，专线会时断时续，抖动（jitter）更是天天发生。网络能出的岔子有一长串（下一节我按类列全），但它们都指向同一件事：你没法假设网络永远畅通，于是 CAP 定理里那个 P 根本不是选项，是前提。</p>
+<p><strong>真正的选择题只有一道：网络出问题的时候，你要一致性（C）还是可用性（A）。</strong> 这篇想把这道题讲透，然后重点说清楚我们这行——音视频会议、实时通信——为什么几乎总是选 A，以及选了 A 之后，"最终一致性"到底怎么落地才不翻车。</p>
+<ul>
+<li>面向有一点分布式背景的工程师；CAP、幂等这些词我会在第一次出现时用一句话解释</li>
+<li>不讲定理证明，讲工程取舍和我踩过的坑</li>
+</ul>
+<hr>
+<h2 id="p">一、P 不是选项，是前提</h2>
+<p>先把 CAP 这三个字母摆正。CAP 说的是：在一个分布式系统里，<strong>一致性（Consistency）</strong>、<strong>可用性（Availability）</strong>、<strong>分区容忍（Partition tolerance）</strong> 这三样，网络一旦出问题，你最多同时保住两样。</p>
+<p>很多人把它理解成"三选二，随便挑"。不对。在真实世界里，P 是老天爷发的牌，不是你能退的。而且"网络出问题"远不止分区一种——我最近接连踩的几次坑，摊开看是好几类毛病，下面这张表按性质分了分层：</p>
+<table>
+<thead>
+<tr>
+<th>类别</th>
+<th>常见故障</th>
+<th>它破坏了什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>连通性</strong></td>
+<td>网络分区、脑裂、闪断（flapping）、非对称路由（A 发得到 B、B 发不回 A）、NAT/防火墙穿透失败</td>
+<td>通路本身断了或变成单向，节点互相"看不见"</td>
+</tr>
+<tr>
+<td><strong>名字解析</strong></td>
+<td>DNS 解析失败、解析到旧 IP、TTL 过期、权威服务器挂了</td>
+<td>连地址都拿不到，或拿到过期的，故障从入口就开始</td>
+</tr>
+<tr>
+<td><strong>丢包</strong></td>
+<td>丢包、乱序、重复</td>
+<td>包到不了、顺序乱、收到多份——实时媒体的头号敌人</td>
+</tr>
+<tr>
+<td><strong>时延</strong></td>
+<td>抖动（jitter）、高延迟、缓冲膨胀（bufferbloat）</td>
+<td>包到了但不准时，"谁先谁后"变得模糊</td>
+</tr>
+<tr>
+<td><strong>带宽</strong></td>
+<td>带宽不足、拥塞、运营商限速</td>
+<td>管子太细或太挤，大流量先遭殃</td>
+</tr>
+<tr>
+<td><strong>时钟</strong></td>
+<td>时钟漂移（clock skew）、慢节点/灰色故障（gray failure）</td>
+<td>物理时钟对不齐、节点没死但变慢，比彻底宕机更阴险</td>
+</tr>
+</tbody>
+</table>
+<p>这里头有几个关系要理清：<strong>脑裂是分区的后果</strong>（分区之后两边各自认主）；<strong>丢包和抖动往往是拥塞的表现</strong>；而 <strong>DNS 故障最容易被忽略</strong>——它不在"你的服务"里，却是几乎所有外部调用的第一跳，一旦解析挂了或解析到旧 IP，后面再健壮的重试都白搭（这事我在<a href="https://www.fanyamin.com/blog/2026-10-03-dns-how-many-outages.html">另一篇讲 DNS 的文章</a>里专门扒过）。</p>
+<p>这些毛病有一个共同点：<strong>你写再漂亮的代码也消不掉它们</strong>，因为它们在网线上、在路由器里、在运营商的骨干网上、在别人的 DNS 服务器里，不在你的进程里。用 CAP 的话说，它们全都归结为一个字——<strong>P</strong>：网络不可靠是常态。既然 P 躲不掉，CAP 就退化成一道二选一：</p>
+<blockquote>
+<p><strong>分区发生时，你要么拒绝服务来保一致（CP），要么继续服务但允许暂时不一致（AP）。</strong>
+没有第三条路。所谓"CA 系统"，只存在于网络永不故障的幻想里。</p>
+</blockquote>
+<p>多年前我在一篇服务器开发检查清单里写过一句话，今天看依然成立：<strong>金融银行需要强一致，宁可牺牲可用性；会议服务器需要高可用，最终一致就够了。</strong> 那会儿是一句结论，这篇想把"为什么"和"怎么做"补上。</p>
+<hr>
+<h2 id="_2">二、怎么选边：问一个问题就够了</h2>
+<p>交易选 C、会议选 A，这个结论好记，但真到了设计台面上，一个系统里有几十种状态，不可能一刀切。判断每一类数据该靠哪边，我习惯只问一个问题：</p>
+<blockquote>
+<p><strong>这条数据晚一点才对齐，用户会损失什么？</strong></p>
+</blockquote>
+<p>答案要是"钱、权限、法律责任"，那就得选 C，晚对齐不如不服务。答案要是"短暂看到旧画面、名单慢半拍刷新"，那选 A，服务不能停。</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>偏 C（强一致）</th>
+<th>偏 A（高可用 + 最终一致）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>典型场景</td>
+<td>支付、扣款、下单、库存</td>
+<td>音视频流、参会者名单、在线状态</td>
+</tr>
+<tr>
+<td>分区时的行为</td>
+<td>宁可报错、拒绝写，也不能算错账</td>
+<td>继续服务，先本地处理，恢复后再对齐</td>
+</tr>
+<tr>
+<td>用户容忍度</td>
+<td>一分钱都不能错</td>
+<td>看到几秒旧数据无所谓，卡住才受不了</td>
+</tr>
+<tr>
+<td>对齐窗口</td>
+<td>必须立即，否则不算数</td>
+<td>秒级甚至更短对齐，用户基本无感</td>
+</tr>
+<tr>
+<td>代价</td>
+<td>牺牲可用性（可能转圈、报错）</td>
+<td>牺牲瞬时一致（可能短暂看到不一致）</td>
+</tr>
+</tbody>
+</table>
+<p>举个两边对照的例子。你在会议里转一笔红包（真有这种功能），这是交易，网络分区时宁可弹"网络异常，请重试"，也绝不能两个机房各记一笔，把一块钱变成两块。但同一个会议里，"谁刚进来了"这种状态，分区时就该各显示各的，等网络恢复了名单自动对齐——你总不能因为机房之间网抖了一下，就把整个会议室冻住吧。</p>
+<p><strong>同一个产品，不同的数据，走不同的路。</strong> 这是 AP 系统最容易被误解的地方：选 A 不等于全局放弃一致，而是<strong>把需要强一致的那一小撮数据圈出来单独保护，剩下的大头走最终一致</strong>。</p>
+<hr>
+<h2 id="ap">三、媒体面：实时通信天生就是 AP</h2>
+<p>说到音视频，有个事实很多人第一次听会觉得反直觉：<strong>实时媒体流从底层协议开始，就是为"宁可丢、不要等"设计的。</strong></p>
+<p>音视频包走的是 UDP/RTP，不是 TCP。TCP 的哲学是"一个包丢了，我停下来重传，保证你收到的字节一个不差、顺序不乱"——这是一种强一致的执念。可这套执念放到实时通话里是灾难：你正在说话，第 100 个语音包丢了，TCP 会卡住等重传，等它补回来，对话早就过去两秒了，用户听到的是一段突然的静默加上延迟累积。</p>
+<p>实时媒体的选择正相反：<strong>那个包丢了就丢了，别等，用后面的包继续放，顶多这一帧画面糊一下、这 20 毫秒的声音缺一点。</strong> 丢包并发（concealment）、前向纠错（FEC）、抖动缓冲（jitter buffer）——这些技术全都在做同一件事：在"不完整但及时"和"完整但迟到"之间，坚定地选前者。</p>
+<p>这就是 AP 在媒体面的物理体现。用 CAP 的话说：</p>
+<ul>
+<li><strong>分区/丢包（P）</strong>：网络会丢包，这是前提，不是异常。</li>
+<li><strong>可用性（A）</strong>：声音和画面必须持续流动，哪怕带着瑕疵。</li>
+<li><strong>一致性（C）</strong>：放弃"每个包都完整到达且有序"这个强一致目标。</li>
+</ul>
+<p>所以当有人问"实时通信要不要选 AP"，媒体面根本不需要讨论——<strong>它从 RTP 协议被设计出来那天起就选好了。</strong> 延迟才是实时通信的命，一致性在这里要给延迟让路。我在另一篇讲 AI 语音客服的文章里说过，电话里超过一秒的静默用户就觉得"卡了"；这背后的工程哲学，就是媒体面的 AP。</p>
+<hr>
+<h2 id="_3">四、信令面：允许短暂不一致，但最后要对齐</h2>
+<p>媒体面的 AP 是天生的，真正要动脑筋的是<strong>信令面</strong>——也就是"谁在房间里、谁是主持人、谁举了手、谁在共享屏幕"这些会话状态（session state）。</p>
+<p>这些状态不像媒体包那样丢了就算，它们需要在所有参会者之间<strong>最终看起来一致</strong>。但"最终"是关键词：分区的那几秒、抖动的那几百毫秒，允许大家看到的不完全一样，只要网络恢复后能自动收敛到同一个结果。</p>
+<p>这就是<strong>最终一致性（eventual consistency）</strong>：不保证任何时刻处处相同，但保证"没有新变化之后，所有副本最终达成一致"。</p>
+<p>开头那两个坑，坑的就是这里。"两份主持人记录"是脑裂——分区时两边各自认主，恢复后没有和解规则，就僵在那儿了。"名单对不上十几秒"是收敛太慢——方向对，但缺了主动对齐的机制，只能干等。</p>
+<p>AP 不是"随它去"，而是"先让它跑，再想办法让它对齐"。想对齐，得有机制，这就是下一节。</p>
+<hr>
+<h2 id="_4">五、最终一致性怎么落地：四件工具</h2>
+<p>把"最终一致"从一句口号变成能上生产的东西，我常用的就这四样。它们不是什么高深理论，但缺一个就容易翻车。</p>
+<h3 id="1">1. 幂等：同一个操作重复执行，结果不变</h3>
+<p><strong>幂等（idempotent）</strong> 的意思是：同一条指令执行一次和执行十次，效果一样。这是最终一致的地基，因为网络不可靠，重试是常态，没有幂等，重试就会把数据搞乱。</p>
+<p>比如"用户 A 举手"这个操作，网络抖动导致客户端重发了三次，服务端如果每次都 <code>+1</code>，就成了"举了三次手"。正确做法是把它设计成"设置 A 的举手状态为 true"——重发多少次，状态都是 true。<strong>把"增量操作"改成"设置目标状态"，是让操作幂等最省事的一招。</strong></p>
+<h3 id="2">2. 版本号 / 逻辑时钟：判断谁的数据更新</h3>
+<p>分区恢复后，两边的数据不一样，到底该信谁？光看"谁后到"不行，因为网络抖动下"后到 ≠ 后发生"。得给每次变更打一个能比较先后的标记。</p>
+<ul>
+<li>简单场景用<strong>版本号</strong>或<strong>时间戳</strong>：每改一次 +1，合并时取版本高的。</li>
+<li>讲究一点用<strong>逻辑时钟</strong>（如 Lamport clock / vector clock）：不依赖各机器的物理时钟（它们本来就对不齐），用逻辑顺序判断因果关系。</li>
+</ul>
+<p>主持人脑裂那个坑，根因就是缺了这一层——两边各自改了"主持人"，恢复时没有版本可比，系统不知道该信哪个，只能卡住。</p>
+<h3 id="3">3. 冲突合并：两边都改了，怎么和解</h3>
+<p>版本号能解决"谁新谁旧"，但有些场景是两边<strong>同时</strong>改了不同的东西，不是覆盖关系，而是要合并。</p>
+<ul>
+<li><strong>能自动合并的</strong>，用类似 <strong>CRDT</strong>（Conflict-free Replicated Data Type，无冲突复制数据类型）的思路。典型的是"参会者集合"：A 机房加了用户 X，B 机房加了用户 Y，合并就是求并集，谁也不覆盖谁，天然收敛。举手列表、在线用户集合，大多能这么处理。</li>
+<li><strong>不能自动合并的</strong>，定一条<strong>明确的和解规则</strong>兜底：比如"主持人以账号权限最高者为准""同一字段以版本号大的为准"。规则可以简单，但必须<strong>事先定死、代码里写明</strong>，不能留给运气。</li>
+</ul>
+<p>脑裂不可怕，可怕的是脑裂之后没有和解规则。<strong>预设好"打架了听谁的"，脑裂就从事故降级成了一次自动收敛。</strong></p>
+<h3 id="4">4. 权威源兜底：总得有个最终说了算的</h3>
+<p>最终一致不等于没有权威。对那些实在不好自动合并、又比较重要的状态，留一个<strong>单一权威源</strong>（single source of truth）：平时各节点本地快速响应（保 A），但以某个中心服务（或某个被选举出的 leader）的记录为最终准绳，恢复后以它为准做一次对齐。</p>
+<p>这是 A 和 C 之间的实用折中：<strong>绝大多数时候走本地、图快；真出了分歧，回权威源、图对。</strong></p>
+<p>把这四样串起来看，最终一致性的工程套路就清楚了：</p>
+<blockquote>
+<p><strong>用幂等扛住重试，用版本号/逻辑时钟判断先后，用 CRDT 式合并或预设规则化解冲突，用权威源兜最后的底。</strong>
+四样齐了，"先跑起来、再对齐"才是可控的，而不是碰运气。</p>
+</blockquote>
+<hr>
+<h2 id="_5">六、三条红线：这些场景不许最终一致</h2>
+<p>讲了半天 AP 的好，得泼盆冷水：<strong>AP 和最终一致不是万能钥匙，有些东西一旦最终一致，就是事故。</strong> 做实时系统，我给自己画了三条红线。</p>
+<ul>
+<li><strong>计费 / 扣款</strong>：会议时长计费、增值服务扣款、红包转账——凡是涉及钱的，必须强一致。分区时宁可这个功能暂时不可用，也不能算错账。一块钱变两块，用户投诉、财务对账、监管问询，一样跑不掉。</li>
+<li><strong>权限 / 鉴权</strong>：谁能进这个会、谁能看这段录制、谁有管理员权限——鉴权判断不能靠最终一致。你总不能让一个没权限的人"先进来，等会儿系统发现不对再踢出去"，这几秒钟他可能已经听到了不该听的内容。鉴权要么当场确认，要么拒绝。</li>
+<li><strong>录制 / 合规</strong>：法律要求的录制、审计日志、合规留痕——这些数据的完整性和准确性是硬要求，不能"最终"，只能"确定"。少录一段、时间戳对不齐，出了法律纠纷就是大麻烦。</li>
+</ul>
+<p>这三条的共同点：<strong>它们的错误不可逆、代价不对称。</strong> 看到几秒旧的参会者名单，刷新一下就好了，代价几乎为零；但算错一笔钱、放错一个人进会、漏录一段合规内容，事后补救的成本远远大于当时"拒绝服务"的那点损失。</p>
+<p><strong>选 A 的前提，是先把这几块选 C 的红线圈出来。</strong> 这不矛盾——一个成熟的实时系统，骨架是 AP，关键关节是 CP。</p>
+<hr>
+<h2 id="_6">七、一张取舍清单</h2>
+<p>设计或者排查实时系统时，我会拿每一类状态过一遍下面这几个问题。它不长，但能逼你把"到底选 C 还是 A"想清楚，而不是默认全选一边。</p>
+<ol>
+<li>
+<p><strong>这条数据晚几秒对齐，用户损失什么？</strong>
+   损失是钱/权限/合规 → 选 C；损失只是"看到旧数据" → 选 A。</p>
+</li>
+<li>
+<p><strong>分区发生时，这个功能该停还是该继续？</strong>
+   能接受停 → CP；必须继续 → AP，并准备好恢复后的对齐机制。</p>
+</li>
+<li>
+<p><strong>这个操作幂等吗？重发一次会不会出错？</strong>
+   不幂等就改造：把"增量"改成"设置目标状态"。</p>
+</li>
+<li>
+<p><strong>两个副本打架时，听谁的？规则定死了吗？</strong>
+   没定就是埋雷。要么版本号/逻辑时钟判先后，要么预设和解规则，要么回权威源。</p>
+</li>
+<li>
+<p><strong>收敛要多久？有没有主动对齐，还是干等？</strong>
+   只靠"下次心跳碰巧带过来"是不够的，恢复后要有主动 reconcile 的动作。</p>
+</li>
+<li>
+<p><strong>这块是不是踩了三条红线（计费/权限/合规）？</strong>
+   踩了就别犹豫，选 C。</p>
+</li>
+</ol>
+<hr>
+<h2 id="ap-cp">总结：骨架选 AP，关节守 CP</h2>
+<p>P 躲不掉，所以 CAP 从来不是三选二，而是分区发生时在 C 和 A 之间二选一。网络交易选 C，音视频会议和实时通信选 A——媒体面天生就是 AP，延迟优先于一致；信令面走最终一致，允许短暂不一致，但要靠幂等、版本号、冲突合并、权威源让它可靠地收敛。</p>
+<p>但选 A 的前提，是先把计费、权限、合规这三条红线圈成 CP。<strong>一个靠谱的实时系统，是一副 AP 的骨架，配上几个 CP 的关节。</strong> 哪里图快、哪里图对，不是拍脑袋，是一条数据一条数据问出来的。</p>
+<p>下次再遇到脑裂、名单对不上、状态收敛慢，先别急着骂网络——网络靠不住是前提。该问的是：这块到底该选 C 还是 A？打架了我有没有定好听谁的？</p>
+<h2 id="_7">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* 再论 CAP
+** P 是前提
+*** 分区 / 脑裂 / 抖动躲不掉
+*** CAP 退化成 C 与 A 二选一
+** 怎么选边
+*** 问: 晚对齐用户损失什么
+*** 钱/权限/合规选 C
+*** 旧画面/名单慢半拍选 A
+** 媒体面 = 天生 AP
+*** RTP/UDP 宁可丢不要等
+*** 延迟优先于一致
+*** FEC / jitter buffer / 丢包并发
+** 信令面 = 最终一致
+*** 会话状态允许短暂不一致
+*** 最终要收敛对齐
+** 落地四件工具
+*** 幂等: 设置目标状态
+*** 版本号 / 逻辑时钟
+*** CRDT 式合并 / 和解规则
+*** 权威源兜底
+** 三条红线选 C
+*** 计费 / 扣款
+*** 权限 / 鉴权
+*** 录制 / 合规
+@endmindmap
+</code></pre></div>
+
+<p><img alt="再论 CAP - 思维导图" src="./images/tech_20261010_cap-ap-eventual-consistency_mindmap.png"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/2026-10-10-cap-ap-eventual-consistency.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/tech.html">tech</a>
+      <a href="https://www.fanyamin.com/blog/tag/distributed-system.html">distributed-system</a>
+      <a href="https://www.fanyamin.com/blog/tag/cap.html">cap</a>
+      <a href="https://www.fanyamin.com/blog/tag/consistency.html">consistency</a>
+      <a href="https://www.fanyamin.com/blog/tag/availability.html">availability</a>
+      <a href="https://www.fanyamin.com/blog/tag/webrtc.html">webrtc</a>
+      <a href="https://www.fanyamin.com/blog/tag/rtc.html">rtc</a>
+      <a href="https://www.fanyamin.com/blog/tag/freeswitch.html">freeswitch</a>
+      <a href="https://www.fanyamin.com/blog/tag/architecture.html">architecture</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/freeswitch-mysql-geo-active-active.html" title="用 FreeSWITCH + MySQL 构建异地双活的音视频服务">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/geo-active-active-storage-selection.html" title="从容灾到异地双活：数据层怎么选，以 Redis 为例细讲">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-mysql-geo-active-active.html">用 FreeSWITCH + MySQL 构建异地双活的音视频服务</a></li>
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-opensips-rtpengine-cluster.html">给 FreeSWITCH 集群配两个搭档：OpenSIPS 管信令，rtpengine 管媒体</a></li>
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-architecture-fast-and-fragile.html">FreeSWITCH 架构设计之快与脆</a></li>
+      <li><a href="https://www.fanyamin.com/blog/geo-active-active-storage-selection.html">从容灾到异地双活：数据层怎么选，以 Redis 为例细讲</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-09-28-freeswitch-unimrcp-llm-agent.html">给电话装个"会聊天的大脑":FreeSWITCH + UniMRCP + LLM 的语音智能体</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 560" role="img" aria-labelledby="title desc" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <title id="title">单向复制下主集群故障切换时序与数据丢失窗口</title>
+  <desc id="desc">时序图。正常期 A 主 B 从，应用写 A，A 异步复制到 B，存在复制延迟。T0 时 A 机房失效，此时 A 已提交但尚未复制到 B 的那段写入，就是丢失窗口（RPO 大于 0）。切换流程：1 确认 A 真的不可达并停写防脑裂，2 确认 B 已追平能追的复制流，3 提升 B 为可写主，4 把流量和写路由切到 B，5 对账补偿丢失窗口的数据。右侧标注：纯异步无法零丢，想缩小窗口加 WAIT 半同步，想真零丢需要同步日志或改强一致架构。</desc>
+  <style>
+    .hdr { fill:#1E3A5F; font-size:16px; font-weight:bold; }
+    .actor { fill:#1E3A5F; font-size:13px; font-weight:bold; }
+    .lbl { fill:#111827; font-size:12px; }
+    .lbl-sm { fill:#4b5563; font-size:11px; }
+    .ok  { fill:#065F46; font-size:12px; font-weight:bold; }
+    .bad { fill:#991B1B; font-size:12px; font-weight:bold; }
+    .warn{ fill:#92400E; font-size:11px; }
+    .step{ fill:#1E3A5F; font-size:12px; font-weight:bold; }
+  </style>
+  <rect x="0" y="0" width="900" height="560" fill="#ffffff"/>
+  <text x="300" y="28" text-anchor="middle" class="hdr">单向复制:主集群故障切换 + 丢失窗口</text>
+
+  <!-- lifelines -->
+  <text x="120" y="56" text-anchor="middle" class="actor">应用 / 写路由</text>
+  <line x1="120" y1="64" x2="120" y2="500" stroke="#94A3B8" stroke-width="1.2"/>
+  <text x="320" y="56" text-anchor="middle" class="actor">集群 A (主)</text>
+  <line x1="320" y1="64" x2="320" y2="500" stroke="#94A3B8" stroke-width="1.2"/>
+  <text x="520" y="56" text-anchor="middle" class="actor">集群 B (从→主)</text>
+  <line x1="520" y1="64" x2="520" y2="500" stroke="#94A3B8" stroke-width="1.2"/>
+
+  <defs>
+    <marker id="s" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#334155"/></marker>
+    <marker id="sg" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#10B981"/></marker>
+  </defs>
+
+  <!-- normal phase -->
+  <text x="40" y="86" class="ok">正常期</text>
+  <line x1="120" y1="92" x2="318" y2="92" stroke="#334155" stroke-width="1.6" marker-end="url(#s)"/>
+  <text x="220" y="86" text-anchor="middle" class="lbl-sm">写 a:*</text>
+  <line x1="320" y1="110" x2="518" y2="110" stroke="#10B981" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#sg)"/>
+  <text x="420" y="104" text-anchor="middle" class="lbl-sm">异步复制(有延迟)</text>
+
+  <!-- failure -->
+  <rect x="250" y="128" width="140" height="26" rx="6" fill="#FEE2E2" stroke="#EF4444"/>
+  <text x="320" y="146" text-anchor="middle" class="bad">T0: A 机房失效 ✕</text>
+  <!-- lost window -->
+  <rect x="300" y="160" width="300" height="34" rx="6" fill="#FEF2F2" stroke="#EF4444" stroke-width="1.3"/>
+  <text x="450" y="181" text-anchor="middle" class="bad">⚠ 已提交未复制的写 = 丢失窗口 (RPO&gt;0)</text>
+
+  <!-- switch steps -->
+  <text x="40" y="224" class="step">切换</text>
+  <rect x="150" y="210" width="400" height="30" rx="6" fill="#EFF6FF" stroke="#3B82F6"/>
+  <text x="160" y="230" class="step">1 确认 A 真不可达 + 停写(防脑裂)</text>
+  <rect x="150" y="248" width="400" height="30" rx="6" fill="#EFF6FF" stroke="#3B82F6"/>
+  <text x="160" y="268" class="step">2 确认 B 已追平能追的复制流</text>
+  <rect x="150" y="286" width="400" height="30" rx="6" fill="#ECFDF5" stroke="#10B981"/>
+  <text x="160" y="306" class="step">3 提升 B 为可写主 (REPLICAOF NO ONE)</text>
+  <rect x="150" y="324" width="400" height="30" rx="6" fill="#ECFDF5" stroke="#10B981"/>
+  <text x="160" y="344" class="step">4 写路由/流量切到 B</text>
+  <rect x="150" y="362" width="400" height="30" rx="6" fill="#FFF7ED" stroke="#F59E0B"/>
+  <text x="160" y="382" class="step">5 对账补偿丢失窗口的数据</text>
+
+  <!-- resume -->
+  <line x1="120" y1="412" x2="518" y2="412" stroke="#10B981" stroke-width="1.8" marker-end="url(#sg)"/>
+  <text x="300" y="406" text-anchor="middle" class="ok">恢复:应用改写 B</text>
+
+  <!--防回流 note -->
+  <rect x="40" y="430" width="520" height="30" rx="6" fill="#FEF2F2" stroke="#EF4444"/>
+  <text x="50" y="450" class="warn">A 修好后不能直接当主回来:要先作为 B 的从追数据,确认后再考虑回切,否则覆盖新数据</text>
+
+  <!-- RPO/RTO -->
+  <rect x="40" y="474" width="520" height="30" rx="6" fill="#F8FAFC" stroke="#94A3B8"/>
+  <text x="50" y="494" class="lbl-sm">RTO = 第1~4步耗时(秒~分钟级,可自动化压缩);RPO = 丢失窗口 = 复制延迟(&gt;0)</text>
+
+  <!-- right column: 数据不丢的真相 -->
+  <rect x="600" y="70" width="280" height="434" rx="10" fill="#F8FAFC" stroke="#94A3B8" stroke-width="1.3"/>
+  <text x="616" y="94" class="hdr" font-size="14">数据"不丢"的真相</text>
+
+  <rect x="616" y="108" width="248" height="118" rx="8" fill="#FEF2F2" stroke="#EF4444"/>
+  <text x="628" y="130" class="bad">纯异步(本方案默认)</text>
+  <text x="628" y="152" class="warn">RPO &gt; 0,理论做不到零丢</text>
+  <text x="628" y="172" class="warn">丢的 = 复制延迟那一段</text>
+  <text x="628" y="192" class="warn">能做:缩小窗口 + 对账补偿</text>
+  <text x="628" y="212" class="warn">(监控复制延迟、减小 backlog)</text>
+
+  <rect x="616" y="238" width="248" height="118" rx="8" fill="#FFF7ED" stroke="#F59E0B"/>
+  <text x="628" y="260" class="step" fill="#92400E">加 WAIT 半同步</text>
+  <text x="628" y="282" class="warn">写后 WAIT 等对端 ACK</text>
+  <text x="628" y="302" class="warn">RPO 大幅缩小(近零)</text>
+  <text x="628" y="322" class="warn">代价:每次写 +1 跨机房 RTT</text>
+  <text x="628" y="342" class="warn">对端抖动则写变慢/退化</text>
+
+  <rect x="616" y="368" width="248" height="118" rx="8" fill="#ECFDF5" stroke="#10B981"/>
+  <text x="628" y="390" class="ok">要真零丢 → 换架构</text>
+  <text x="628" y="412" class="lbl-sm">· 同步事务日志(如托管</text>
+  <text x="628" y="428" class="lbl-sm">  MemoryDB 的多AZ日志)</text>
+  <text x="628" y="446" class="lbl-sm">· 或把强一致数据下沉到</text>
+  <text x="628" y="462" class="lbl-sm">  NewSQL(Raft 多数派)</text>
+  <text x="628" y="480" class="ok">Redis 单向复制不是零丢的工具</text>
+</svg>

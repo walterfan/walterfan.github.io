@@ -1,0 +1,902 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="很多人以为异地双活的音视频服务，难在 FreeSWITCH 怎么集群。其实 FreeSWITCH 这层信令早有成熟的无状态做法，真正的坑在两处：一是跨机房的 MySQL 怎么同时写不打架，二是活跃通话的会话和媒体流钉死在单机房、切不过去。这篇讲清这三层各自的一致性模型，为什么信令可以 AP、计费必须 CP、媒体只能就近锚定，以及一套能落地的分层方案。" />
+<meta name="keywords" content="tech, freeswitch, mysql, voip, sip, webrtc, architecture, high-availability">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "用 FreeSWITCH + MySQL 构建异地双活的音视频服务",
+  "description": "很多人以为异地双活的音视频服务，难在 FreeSWITCH 怎么集群。其实 FreeSWITCH 这层信令早有成熟的无状态做法，真正的坑在两处：一是跨机房的 MySQL 怎么同时写不打架，二是活跃通话的会话和媒体流钉死在单机房、切不过去。这篇讲清这三层各自的一致性模型，为什么信令可以 AP、计费必须 CP、媒体只能就近锚定，以及一套能落地的分层方案。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-10-10T15:00:00+08:00",
+  "dateModified": "2026-10-10T15:00:00+08:00",
+  "url": "https://www.fanyamin.com/blog/freeswitch-mysql-geo-active-active.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/freeswitch-mysql-geo-active-active.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "tech, freeswitch, mysql, voip, sip, webrtc, architecture, high-availability"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="用 FreeSWITCH + MySQL 构建异地双活的音视频服务"/>
+  <meta property="og:description" content="很多人以为异地双活的音视频服务，难在 FreeSWITCH 怎么集群。其实 FreeSWITCH 这层信令早有成熟的无状态做法，真正的坑在两处：一是跨机房的 MySQL 怎么同时写不打架，二是活跃通话的会话和媒体流钉死在单机房、切不过去。这篇讲清这三层各自的一致性模型，为什么信令可以 AP、计费必须 CP、媒体只能就近锚定，以及一套能落地的分层方案。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/freeswitch-mysql-geo-active-active.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-10-10 15:00:00+08:00"/>
+  <meta property="article:modified_time" content="2026-10-10 15:00:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="tech"/>
+  <meta property="article:tag" content="freeswitch"/>
+  <meta property="article:tag" content="mysql"/>
+  <meta property="article:tag" content="voip"/>
+  <meta property="article:tag" content="sip"/>
+  <meta property="article:tag" content="webrtc"/>
+  <meta property="article:tag" content="architecture"/>
+  <meta property="article:tag" content="high-availability"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 用 FreeSWITCH + MySQL 构建异地双活的音视频服务</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记"
+               data-en="Notebook">
+              笔记
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="freeswitch-mysql-geo-active-active">用 FreeSWITCH + MySQL 构建异地双活的音视频服务</h1>
+    <p>
+      Posted on 六 10 10月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>用 FreeSWITCH + MySQL 构建异地双活的音视频服务</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Version</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-10-10</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">大纲</h2>
+<details>
+<summary>展开看看</summary>
+<ul>
+<li><strong>一句话</strong>：异地双活的难点不在 FreeSWITCH，而在 MySQL 的跨机房写入和媒体流的状态同步。信令、数据、媒体三层各有各的一致性模型，用一套方案硬套全部就是灾难。</li>
+<li><strong>先定义双活</strong>：两个机房同时在线接客，不是主备。关键指标是单机房整体失效时，新呼叫能否就近接管、在途呼叫丢多少。</li>
+<li><strong>三层拆开看</strong>：信令（SIP/注册/路由）、数据（账户/计费/CDR）、媒体（RTP 流）。每层的 CAP 取向不一样，强行统一就是灾难。</li>
+<li><strong>信令层可以 AP</strong>：把 FreeSWITCH 退成无状态媒体工人，注册和路由状态外置，边缘用 OpenSIPS 做 anycast + 集群，任一机房挂了重新注册即可。</li>
+<li><strong>数据层必须分 CP 和 AP</strong>：账户余额、并发额度这类"扣减"操作要强一致（CP），CDR、话单这类"只追加"的可以最终一致（AP）。一个 MySQL 集群里塞两种需求是第一个大坑。</li>
+<li><strong>跨机房 MySQL 的三种真实选择</strong>：半同步主从（一写一读）、Group Replication 多写、按业务分片各自为主。各有各的代价，没有银弹。</li>
+<li><strong>媒体层只能就近锚定</strong>：RTP 流的"双活"本质是伪命题，一路通话的媒体在哪个机房建立就钉死在哪，切机房等于重建通话。能做的是故障时快速重建，不是无缝漂移。</li>
+<li><strong>落地顺序</strong>：先无状态化信令、再拆分数据一致性等级、最后用 GSLB + 健康检查把流量在机房间调度。别一上来就追求"零丢失"。</li>
+</ul>
+</details>
+<hr>
+<p>接着上一篇<a href="../journal/freeswitch-opensips-rtpengine-cluster.html">给 FreeSWITCH 集群配两个搭档</a>往下走。那篇解决的是单机房内怎么把 FreeSWITCH 扩到上万路。这篇要回答的问题更狠一档：</p>
+<p><strong>两个机房，相隔上千公里，要同时在线接客。一个机房整体失效（断电、断网、光缆被挖断），业务还能跑。这事怎么做？</strong></p>
+<p>很多人一听"FreeSWITCH 异地双活"，第一反应是去研究 FreeSWITCH 怎么做集群、怎么同步会话。方向错了。<strong>FreeSWITCH 这层信令早有成熟的无状态做法，真正把人拖进泥潭的是另外两处：跨机房的 MySQL 怎么同时写还不打架，以及活跃通话的媒体流钉死在建立它的那个机房、根本切不过去。</strong></p>
+<p><strong>异地双活不是一个一致性问题，是三个。</strong> 信令、数据、媒体，三层的 CAP 取向完全不同——信令可以 AP，计费必须 CP，媒体只能就近锚定。想用一套方案把三层一起"双活"掉的人，最后都会在某一层上栽跟头。</p>
+<ul>
+<li>这篇默认你做过音视频/通信，SIP、RTP、主从复制这些术语直接用。</li>
+<li>下面的配置和参数都是示意，用来说明思路，不是可以直接抄进生产的模板。</li>
+</ul>
+<hr>
+<h2 id="_2">先把"双活"定义清楚，别偷换概念</h2>
+<p>异地双活（geo active-active）这个词被用得很滥，先对齐定义，不然后面全是鸡同鸭讲。</p>
+<p><strong>双活不是主备。</strong> 主备（active-standby）是一个机房干活、另一个机房空转待命，故障时切过去。双活（active-active）是两个机房<strong>同时</strong>接客，平时就各自承担一部分真实流量。主备好做，双活难在"同时写"。</p>
+<p>判断一套方案到底是不是双活，就看一个反直觉的指标：<strong>平时两个机房的写流量占比是不是都显著大于零。</strong> 如果 B 机房平时写入量约等于零，只是热备着，那它是伪双活——真出事的时候，那条从没被真实流量压过的写路径，大概率会在切换瞬间暴露一堆问题。</p>
+<p>对音视频服务，衡量双活成色的还有两个硬指标：</p>
+<ul>
+<li><strong>新呼叫接管时间</strong>：一个机房整体失效后，打进来的新呼叫多久能被另一个机房正常接起。这个指标好做，几秒内可达。</li>
+<li><strong>在途呼叫存活率</strong>：失效瞬间，正在通话中的那些呼叫，有多少能活下来。这个指标，<strong>对音视频来说基本是零</strong>——后面会讲为什么这是媒体层的物理限制，不是你方案烂。</li>
+</ul>
+<p>把预期摆正：<strong>异地双活保的是"业务不中断地接新客"，不是"一通电话打一半机房没了还能不断"。</strong> 后者在单一通话层面做不到，谁跟你承诺媒体流无缝漂移，要么是没做过，要么是把"重连"包装成了"不中断"。</p>
+<hr>
+<h2 id="_3">三层拆开看：一张图说清楚难点在哪</h2>
+<p>把一个音视频呼叫从接入到落账，拆成三层，每层问一句"它的状态能不能跨机房同时写"，难点就浮出来了。</p>
+<p><img alt="FreeSWITCH + MySQL 异地双活三层架构" src="../images/tech_20261010_freeswitch_mysql_geo_aa_arch.svg"></p>
+<table>
+<thead>
+<tr>
+<th>层</th>
+<th>典型组件</th>
+<th>状态是什么</th>
+<th>跨机房诉求</th>
+<th>CAP 取向</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>信令层</strong></td>
+<td>OpenSIPS / FreeSWITCH / 注册</td>
+<td>谁在线、呼叫往哪路由</td>
+<td>任一机房能接管新呼叫</td>
+<td><strong>AP</strong>：可短暂不一致，重注册即恢复</td>
+</tr>
+<tr>
+<td><strong>数据层（扣减）</strong></td>
+<td>MySQL 账户/余额/并发额度</td>
+<td>钱、额度这类"减下去不能超发"的量</td>
+<td>两地同时扣不能超卖</td>
+<td><strong>CP</strong>：宁可拒绝，不可错扣</td>
+</tr>
+<tr>
+<td><strong>数据层（追加）</strong></td>
+<td>MySQL CDR/话单/日志</td>
+<td>通话记录这类"只往后加"的量</td>
+<td>两地都能写，最终对齐</td>
+<td><strong>AP</strong>：最终一致即可</td>
+</tr>
+<tr>
+<td><strong>媒体层</strong></td>
+<td>RTP / rtpengine</td>
+<td>一路通话的实时音视频流</td>
+<td>（做不到跨机房漂移）</td>
+<td><strong>就近锚定</strong>：建在哪个机房就钉在哪</td>
+</tr>
+</tbody>
+</table>
+<p>这张表是全篇的骨架。<strong>同一个"异地双活"需求，落到这四行上是四种完全不同的工程——信令要的是能重建，扣减数据要的是强一致，追加数据要的是能合并，媒体要的是能快速重连。</strong> 谁要是用"搭一套 MySQL 主主复制"一招通吃这四行，哪一行都做不好。</p>
+<p>下面逐层拆。</p>
+<hr>
+<h2 id="freeswitch">信令层：让 FreeSWITCH 变成"可抛弃的媒体工人"</h2>
+<p>信令层是最好办的，因为 SIP 本身就为"重注册"而设计。</p>
+<p>核心做法上一篇讲过，这里只说和"异地"相关的部分：<strong>把 FreeSWITCH 退成无状态的媒体工人，把"谁在线""呼叫往哪路由"这些状态全部外置。</strong> FreeSWITCH 节点本身不存任何跨机房要共享的东西，它挂了就挂了，流量重新路由到别的节点——哪怕是另一个机房的节点。</p>
+<p>三件事让信令层"异地可接管"：</p>
+<ul>
+<li><strong>注册状态外置且可跨机房读。</strong> 终端注册信息（AoR → Contact 的映射）不存在某台 FreeSWITCH 的内存里，而是存到一个两地都能访问的地方。OpenSIPS 的 <code>usrloc</code> 配合 <code>clusterer</code> 做分布式位置服务，或者直接落到一层共享存储。终端在 A 机房注册，B 机房也看得见它在线。</li>
+<li><strong>边缘用 anycast / GSLB 分流。</strong> 终端通过一个统一的 SIP 接入域名进来，DNS SRV + GSLB（全局负载均衡）按健康状况和地理就近，把它导向某个机房的 OpenSIPS。A 机房的 OpenSIPS 整体不可达时，DNS 层面把新请求切到 B。SIP 终端会在注册超时后重注册，自然落到 B。</li>
+<li><strong>路由决策无状态。</strong> OpenSIPS 做路由时，从外置的位置服务和数据库里读信息，不依赖"上一跳是哪台 FreeSWITCH"这种进程内记忆。</li>
+</ul>
+<blockquote>
+<p><strong>信令层做 AP 的底气，来自 SIP 的重注册语义。</strong>
+终端和服务端的注册关系是有租期的（<code>Expires</code>），到期必须续。这意味着任何一次机房切换，最坏情况也就是"等一个注册周期"就自愈。你不需要跨机房实时同步每一条注册的毫秒级状态，只要保证新的注册能落到活着的机房即可。</p>
+</blockquote>
+<p>这就是为什么信令层能接受 AP：<strong>短暂的不一致（B 机房还不知道某终端刚在 A 掉线）不会错，只会慢一拍，而 SIP 的重试机制会把这一拍补回来。</strong></p>
+<hr>
+<h2 id="_4">数据层：第一个大坑，把"扣减"和"追加"混在一个一致性等级里</h2>
+<p>信令搞定后，真正的硬骨头来了。MySQL 跨机房双活，最常见的翻车姿势是：<strong>把所有表塞进同一个复制拓扑，用同一个一致性等级伺候。</strong></p>
+<p>要害在于，音视频业务的数据天然分两类，它们对一致性的要求是相反的：</p>
+<ul>
+<li><strong>扣减型（CP）</strong>：账户余额、预付费额度、并发呼叫数上限、License 席位。这类数据的共同点是<strong>"减下去不能超"</strong>。两个机房同时给同一个账户扣费、同时占用最后一个并发名额，如果不是强一致，就会超卖——余额扣成负数、并发突破上限。这类必须 CP：<strong>宁可在网络分区时拒绝服务，也不能错扣。</strong></li>
+<li><strong>追加型（AP）</strong>：CDR（话单）、通话日志、事件流、录音索引。这类数据只往后加，不存在"两地同时改同一行"的冲突。A 机房写 A 的话单，B 机房写 B 的话单，事后合并即可。这类做 AP 最舒服：<strong>两地都能本地写，最终一致。</strong></li>
+</ul>
+<p>把这两类强行统一，结果是两头不讨好：</p>
+<ul>
+<li>如果为了 CDR 的写入性能，整库都用 AP（异步复制），那扣减型数据就有超卖风险——网络一抖，两地各扣各的。</li>
+<li>如果为了余额安全，整库都用 CP（同步复制跨机房），那每一条 CDR 的写入都要等对端机房 ACK，几十毫秒的跨机房 RTT 直接拖垮话单写入吞吐，高并发时话单堆积。</li>
+</ul>
+<p><strong>正确的切法是按数据性质分治</strong>，这是整篇最想让你记住的落地原则：</p>
+<table>
+<thead>
+<tr>
+<th>数据类型</th>
+<th>例子</th>
+<th>跨机房策略</th>
+<th>冲突处理</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>扣减型</td>
+<td>余额、并发额度</td>
+<td>单点强一致：全局只有一个"权威写入点"，或用分布式锁/租约</td>
+<td>不允许冲突，分区时拒绝</td>
+</tr>
+<tr>
+<td>追加型</td>
+<td>CDR、日志、事件</td>
+<td>两地各自本地写，异步双向同步</td>
+<td>天然无冲突，按时间合并</td>
+</tr>
+<tr>
+<td>配置型</td>
+<td>费率、路由规则</td>
+<td>变更低频，单写多读，异步下发</td>
+<td>以写入点为准</td>
+</tr>
+<tr>
+<td>会话型</td>
+<td>注册、在线状态</td>
+<td>不进 MySQL，放缓存/位置服务</td>
+<td>靠 SIP 重注册自愈</td>
+</tr>
+</tbody>
+</table>
+<p>把这张表刻进脑子：<strong>你不是在为"音视频业务"选一致性，你是在为每一类数据分别选。</strong></p>
+<hr>
+<h2 id="mysql">跨机房 MySQL 的三种真实选择，没有银弹</h2>
+<p>扣减型数据需要跨机房的强一致写，这是整套方案里最硬的约束。MySQL 层面有三条真实可走的路，各有各的代价。（不想用 MySQL、想换 Redis / NewSQL / Cassandra / etcd 的，见姊妹篇<a href="../journal/geo-active-active-storage-selection.html">异地双活不用 MySQL 行不行</a>。）</p>
+<h3 id="_5">方案一：半同步主从，一写一读（最稳，但不是真双活）</h3>
+<p>A 机房主库，B 机房从库，<code>rpl_semi_sync</code> 半同步复制。所有<strong>写</strong>走 A，B 只读。</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># 示意配置，非生产模板</span>
+<span class="c1"># 主库 (A 机房)</span>
+<span class="na">rpl_semi_sync_source_enabled</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="s">ON</span>
+<span class="na">rpl_semi_sync_source_timeout</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="s">1000</span><span class="w">   </span><span class="c1"># 1s 内对端没 ACK 就退回异步</span>
+<span class="na">rpl_semi_sync_source_wait_for_replica_count</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">1</span>
+</code></pre></div>
+
+<ul>
+<li><strong>优点</strong>：强一致性最好保证，扣减绝不超卖；运维模型简单，故障切换成熟。</li>
+<li><strong>代价</strong>：<strong>它本质是主备，不是双活。</strong> B 机房的写能力是零——所有扣减型写入要跨机房打到 A，B 机房的用户体验里，每一次扣费都带着一个跨机房 RTT。而且 A 整体挂掉时，提升 B 为主（failover）这一步要人工或自动决策，有切换窗口。</li>
+<li><strong>什么时候用它</strong>：如果你的扣减型写入频率不高（大部分音视频业务，真正的"扣钱"动作远少于信令和媒体包），这个方案的跨机房 RTT 代价可以接受，稳定性换来的省心很值。<strong>别为了"看起来像双活"而放弃它的简单。</strong></li>
+</ul>
+<h3 id="group-replication">方案二：Group Replication 多写（真双活，但冲突是你的）</h3>
+<p>MySQL Group Replication（MGR）多主模式，两地都能写，组内用 Paxos 类协议做冲突检测。</p>
+<ul>
+<li><strong>优点</strong>：两地真的都能写，是名副其实的多活。</li>
+<li><strong>代价</strong>：<strong>跨机房的 MGR 对网络延迟极其敏感。</strong> 每一个事务提交都要在组内达成多数派共识，机房间 RTT 几十毫秒的话，写事务延迟会显著放大，吞吐掉得厉害。更麻烦的是<strong>写冲突</strong>：两地同时改同一行，MGR 会让后提交的那个事务回滚报错，这个错误要你的应用层接住并重试——对账户扣减这种，重试逻辑写不好就是对账噩梦。</li>
+<li><strong>什么时候用它</strong>：两个机房网络质量很高（专线、RTT 低且稳定），且你有能力在应用层处理事务回滚和重试。<strong>冲突不会消失，MGR 只是把冲突从"数据错乱"变成"事务报错"，接不住它的还是你。</strong></li>
+</ul>
+<h3 id="_6">方案三：按业务/用户分片，各机房为自己的分片做主（最务实的双活）</h3>
+<p>把用户或账户按某个维度（地域、uid 取模）分片，每个分片在<strong>一个</strong>机房是主、另一个机房是从。A 机房是华东用户的主库、华南用户的从库；B 机房反过来。</p>
+<ul>
+<li><strong>优点</strong>：规避了"两地同时写同一行"——因为同一个用户的写永远只落在一个固定机房。既获得了双活的写入分担（两地都在写，只是写不同分片），又不用处理跨机房写冲突。</li>
+<li><strong>代价</strong>：<strong>分片键的选择是一次性的重大决策，选错了后面迁移极痛。</strong> 而且当一个机房挂掉，它负责的那些分片要临时"升格"对端的从库为主，切换期间这部分用户的写入有短暂窗口。跨分片的事务（比如 A 用户给 B 用户转额度）会变复杂。</li>
+<li><strong>什么时候用它</strong>：大多数要"真双活"又扛不住 MGR 跨机房延迟的场景，这是性价比最高的一条。<strong>它的哲学是"不解决跨机房写冲突，而是从设计上让它不发生"。</strong></li>
+</ul>
+<p>一句话收口这三条：</p>
+<blockquote>
+<p><strong>跨机房强一致写的代价是物理定律收的税，不是 MySQL 的 bug。</strong>
+光速限死了跨机房 RTT，强一致就必然等这个 RTT。你只能选"在哪一层、为哪些数据"交这个税——交给半同步的所有写、交给 MGR 的每个事务、还是交给分片方案里偶尔的跨分片操作。想一分钱税都不交又要强一致又要双活，没有这种方案。</p>
+</blockquote>
+<hr>
+<h2 id="_7">媒体层：双活是个伪命题，能做的是快速重建</h2>
+<p>讲到媒体层，先泼一盆冷水：<strong>一路活跃通话的媒体流，做不到跨机房无缝漂移。</strong> 这不是方案的问题，是 RTP 的物理现实。</p>
+<p>原因很直接。一路通话的 RTP 流，在建立的那一刻就锚定了一组东西：协商好的媒体 IP 和端口、SRTP 的加密上下文、ICE 的候选对、rtpengine 分配的转发端口。这些状态是<strong>连接级</strong>的，分布在建立这路通话的那个机房的 rtpengine 和 FreeSWITCH 里。想把它"同步"到另一个机房，等于要实时复制一个加密 UDP 流的全部运行时上下文——每秒几十个包的状态，跨机房几十毫秒延迟地同步——技术上即使硬做，同步延迟也早就超过了音视频可接受的抖动窗口。</p>
+<p>所以媒体层的"异地双活"要重新定义：<strong>不是让一路通话在机房间无缝漂移，而是在一个机房失效时，让受影响的通话尽快在另一个机房重建。</strong></p>
+<p>实务上就是三条：</p>
+<ul>
+<li><strong>媒体就近锚定。</strong> 终端接入哪个机房，这路通话的 RTP 就在那个机房的 rtpengine 上建立、就在那个机房的 FreeSWITCH 上处理。不要让一路通话的两条腿横跨机房——那不仅没有双活价值，还白白增加一个跨机房 RTT 的音频延迟。</li>
+<li><strong>故障即重建，别幻想续命。</strong> A 机房挂了，上面的在途通话就是丢了。接受它。真正要做好的是：终端检测到媒体中断后（RTP 超时、ICE 失败），能快速重新发起呼叫，这次被 GSLB 导向 B 机房，在 B 重建一路新通话。用户体感是"电话断了一下，重拨/自动重连后恢复"，不是"没断"。</li>
+<li><strong>把"重建快"这件事做扎实。</strong> 这才是媒体层异地可用性的真战场：重注册要快（信令层已经保证）、GSLB 探活要灵敏（别让终端还在往死机房打）、客户端要有自动重连逻辑（检测到媒体断流主动重建，而不是等用户手动重拨）。</li>
+</ul>
+<blockquote>
+<p><strong>媒体层比的不是"不断"，是"断了多久能回来"。</strong>
+把目标从虚无缥缈的"零丢失"换成实在的"秒级重建"，整个方案立刻从玄学落回工程。</p>
+</blockquote>
+<hr>
+<h2 id="_8">落地顺序：别一上来就追零丢失</h2>
+<p>把三层拼起来，一套能真正跑的异地双活，落地有个推荐顺序。逆着这个顺序做，会在错误的地方耗光预算。</p>
+<ol>
+<li>
+<p><strong>先把信令层无状态化。</strong>
+   把 FreeSWITCH 退成媒体工人，注册和路由状态外置到两地可读的位置服务。这一步做完，你已经能扛单节点故障，并且为跨机房打好地基。顺序上它必须最先，因为它是另外两层的前提。</p>
+</li>
+<li>
+<p><strong>再按数据性质拆分一致性等级。</strong>
+   把扣减型和追加型数据分开。扣减型选三条 MySQL 方案之一（多数业务从半同步主从起步就够），追加型做两地本地写 + 异步合并。<strong>这一步是整篇的核心价值，也是最容易被跳过的一步</strong>——跳过它，你的双活迟早在一次网络分区里暴露超卖或对账问题。</p>
+</li>
+<li>
+<p><strong>用 GSLB + 健康检查做机房级调度。</strong>
+   统一接入域名，DNS SRV + 全局负载均衡，按机房健康状况和地理就近分流。健康检查要覆盖到"能不能接新呼叫"这个业务级信号，而不只是"端口通不通"。</p>
+</li>
+<li>
+<p><strong>最后打磨故障时的重建速度。</strong>
+   客户端自动重连、GSLB 探活灵敏度、重注册周期调优。把"在途呼叫丢了之后多久恢复"压到秒级，这就是媒体层异地可用性的全部。</p>
+</li>
+</ol>
+<p>一句话：</p>
+<blockquote>
+<p><strong>先保证"新客能就近接起"，再优化"老客断了快点回来"，永远不要承诺"老客不断"。</strong>
+把工程预算花在能兑现的目标上，而不是物理上做不到的"媒体无缝漂移"。</p>
+</blockquote>
+<hr>
+<h2 id="_9">总结：异地双活是三个一致性问题，不是一个</h2>
+<p>回到开头那条判断：<strong>FreeSWITCH 从来不是异地双活的难点。</strong> 它这层信令早有无状态的成熟做法——退成媒体工人，状态外置，重注册自愈，照抄即可。</p>
+<p>真正要你动脑子的是另外两层，而且它们的答案是相反的：</p>
+<ul>
+<li><strong>数据层</strong>要你把"扣减"和"追加"分开——前者 CP、宁拒绝不错扣，后者 AP、两地本地写最终合并。跨机房 MySQL 没有银弹，半同步主从、MGR 多写、业务分片，你是在选"在哪一层交光速这笔税"。</li>
+<li><strong>媒体层</strong>要你认清 RTP 流无法跨机房漂移，把目标从"不断"换成"秒级重建"。</li>
+</ul>
+<p>一套方案通吃三层的人，会在某一层栽跟头；把三层拆开、各给各的一致性模型的人，才能做出真正扛得住机房级故障的双活。</p>
+<p>下次有人跟你说"我们 FreeSWITCH 做了异地双活"，你可以问他三个问题：<strong>你的 MySQL 扣减型数据怎么防超卖？CDR 怎么两地合并？机房挂了在途通话丢多少？</strong> 答得上这三问的，是真做过；答不上的，大概率是把主备叫成了双活。</p>
+<h2 id="_10">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* FreeSWITCH + MySQL\n异地双活
+** 核心判断
+*** 难点不在 FreeSWITCH
+*** 在 MySQL 跨机房写
+*** 在媒体流状态同步
+** 信令层 (AP)
+*** FreeSWITCH 退成媒体工人
+*** 注册/路由状态外置
+*** GSLB + 重注册自愈
+** 数据层
+*** 扣减型 (CP): 防超卖
+*** 追加型 (AP): 两地合并
+*** MySQL 三选一
+**** 半同步主从
+**** MGR 多写
+**** 业务分片
+** 媒体层 (就近锚定)
+*** RTP 无法跨机房漂移
+*** 就近建立
+*** 故障快速重建
+** 落地顺序
+*** 1 信令无状态化
+*** 2 拆数据一致性
+*** 3 GSLB 调度
+*** 4 打磨重建速度
+@endmindmap
+</code></pre></div>
+
+<p><img alt="用 FreeSWITCH + MySQL 构建异地双活的音视频服务 - 思维导图" src="../images/tech_20261010_freeswitch_mysql_geo_aa_mindmap.png"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/freeswitch-mysql-geo-active-active.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/tech.html">tech</a>
+      <a href="https://www.fanyamin.com/blog/tag/freeswitch.html">freeswitch</a>
+      <a href="https://www.fanyamin.com/blog/tag/mysql.html">mysql</a>
+      <a href="https://www.fanyamin.com/blog/tag/voip.html">voip</a>
+      <a href="https://www.fanyamin.com/blog/tag/sip.html">sip</a>
+      <a href="https://www.fanyamin.com/blog/tag/webrtc.html">webrtc</a>
+      <a href="https://www.fanyamin.com/blog/tag/architecture.html">architecture</a>
+      <a href="https://www.fanyamin.com/blog/tag/high-availability.html">high-availability</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-10-06-dora-report-2025-ai-amplifier.html" title="2025 DORA 报告解读：AI 不是团队的替代品，而是组织系统的放大器">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/2026-10-10-cap-ap-eventual-consistency.html" title="再论 CAP：会议和实时通信为什么要选 AP，以及最终一致性怎么落地">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-opensips-rtpengine-cluster.html">给 FreeSWITCH 集群配两个搭档：OpenSIPS 管信令，rtpengine 管媒体</a></li>
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-architecture-fast-and-fragile.html">FreeSWITCH 架构设计之快与脆</a></li>
+      <li><a href="https://www.fanyamin.com/blog/geo-active-active-storage-selection.html">从容灾到异地双活：数据层怎么选，以 Redis 为例细讲</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-10-10-cap-ap-eventual-consistency.html">再论 CAP：会议和实时通信为什么要选 AP，以及最终一致性怎么落地</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-09-14-webrtc-to-freeswitch.html">webrtc-to-freeswitch:一个浏览器软电话的架构、流程与协议全解</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

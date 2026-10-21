@@ -1,0 +1,1010 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="这两年所有人都在卷&#34;生成&#34;——生成文字、生成代码、生成图。TypeSafe 刚放出来的 JEV 偏要反着走：它不生成任何文字，只对你的输入做判断，输出带概率和置信度的类型化结果，专门给软件直接消费，不给人读。它号称比前沿 LLM 快几十到几百倍、便宜几十到几百倍，核心卖点是&#34;校准&#34;——让模型知道自己什么时候不知道。这篇讲清它的创新在哪、适合干什么、怎么接入（含 SDK / HTTP / 置信度门控的真实代码），以及一个诚实的提醒：它太新了，目前还没有公开的成功案例，最佳实践只能从它的技术特性里推。" />
+<meta name="keywords" content="ai, jev, typesafe, discriminative-model, calibration, zero-shot, llm">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "JEV：一个不会说话的 AI 模型，专门给软件当&#34;可靠零件&#34;",
+  "description": "这两年所有人都在卷&#34;生成&#34;——生成文字、生成代码、生成图。TypeSafe 刚放出来的 JEV 偏要反着走：它不生成任何文字，只对你的输入做判断，输出带概率和置信度的类型化结果，专门给软件直接消费，不给人读。它号称比前沿 LLM 快几十到几百倍、便宜几十到几百倍，核心卖点是&#34;校准&#34;——让模型知道自己什么时候不知道。这篇讲清它的创新在哪、适合干什么、怎么接入（含 SDK / HTTP / 置信度门控的真实代码），以及一个诚实的提醒：它太新了，目前还没有公开的成功案例，最佳实践只能从它的技术特性里推。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-10-17T21:00:00+08:00",
+  "dateModified": "2026-10-17T23:20:00+08:00",
+  "url": "https://www.fanyamin.com/blog/2026-10-17-jev-system-one-model.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/2026-10-17-jev-system-one-model.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "ai, jev, typesafe, discriminative-model, calibration, zero-shot, llm"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="JEV：一个不会说话的 AI 模型，专门给软件当&#34;可靠零件&#34;"/>
+  <meta property="og:description" content="这两年所有人都在卷&#34;生成&#34;——生成文字、生成代码、生成图。TypeSafe 刚放出来的 JEV 偏要反着走：它不生成任何文字，只对你的输入做判断，输出带概率和置信度的类型化结果，专门给软件直接消费，不给人读。它号称比前沿 LLM 快几十到几百倍、便宜几十到几百倍，核心卖点是&#34;校准&#34;——让模型知道自己什么时候不知道。这篇讲清它的创新在哪、适合干什么、怎么接入（含 SDK / HTTP / 置信度门控的真实代码），以及一个诚实的提醒：它太新了，目前还没有公开的成功案例，最佳实践只能从它的技术特性里推。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/2026-10-17-jev-system-one-model.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-10-17 21:00:00+08:00"/>
+  <meta property="article:modified_time" content="2026-10-17 23:20:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="AI"/>
+  <meta property="article:tag" content="ai"/>
+  <meta property="article:tag" content="jev"/>
+  <meta property="article:tag" content="typesafe"/>
+  <meta property="article:tag" content="discriminative-model"/>
+  <meta property="article:tag" content="calibration"/>
+  <meta property="article:tag" content="zero-shot"/>
+  <meta property="article:tag" content="llm"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; JEV：一个不会说话的 AI 模型，专门给软件当&#34;可靠零件&#34;</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记"
+               data-en="Notebook">
+              笔记
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="2026-10-17-jev-system-one-model">JEV：一个不会说话的 AI 模型，专门给软件当"可靠零件"</h1>
+    <p>
+      Posted on 六 17 10月 2026 in <a href="https://www.fanyamin.com/blog/category/ai.html">AI</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>JEV：一个不会说话的 AI 模型，专门给软件当"可靠零件"</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>AI</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-10-17</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">大纲</h2>
+<details>
+<summary>展开看看</summary>
+<ul>
+<li><strong>反直觉的定位</strong>：全行业卷生成式大模型，JEV 是个判别式（discriminative）模型，不生成文字，只输出判断。给软件消费，不给人读。</li>
+<li><strong>它到底是什么</strong>：输入一个 <code>state</code> 加若干个类型化的 <code>question</code>，输出每个问题的概率分布。三种问题类型：<code>noul</code>（真假）、<code>choice</code>（无序选项）、<code>score</code>（有序打分）。</li>
+<li><strong>三个真正的创新点</strong>：判别式却支持 zero-shot（推理时给类别，不用专门训练）；输出自带 calibration（校准）和 confidence（置信度）；极致的快和便宜。</li>
+<li><strong>"校准"为什么是关键</strong>：LLM 的通病是"一本正经地胡说"——它不知道自己不知道。JEV 的训练目标里专门惩罚过度自信。</li>
+<li><strong>它适合干什么</strong>：工作流里那些"判断类"节点——分类、路由、打分、过滤、守门。不适合要它写东西、要它推理链、问题之间有依赖。附一段从泰坦尼克号 + scikit-learn 到 JEV 的亲身对比：zero-shot 省掉的是特征工程、训练、改类别重训这三道工序。</li>
+<li><strong>成功案例与最佳实践</strong>：诚实说——目前没有公开成功案例，官方自测也承认有偏。下面这套实践是从它的类型系统和 confidence 机制里推出来的，不是抄来的。</li>
+<li><strong>怎么接入</strong>：四条路径（Playground / SDK / HTTP / Agent Skill），<code>POST /v1/systemone</code> + Bearer Key，给出 Python SDK 和 curl 的真实调用、置信度门控代码，以及接入落地清单。</li>
+</ul>
+</details>
+<hr>
+<p>写后端的人，多半都在代码里塞过这么一段逻辑：拿到一条用户消息，先判断它是不是投诉、属于哪个类别、紧不紧急，然后 <code>if-else</code> 分流到不同的处理分支。这几年的做法越来越一致——把这段 <code>if-else</code> 换成一次 LLM 调用，让大模型"读懂"消息再返回一个标签。</p>
+<p>能用，但有三个膈应人的地方：它慢（动辄几百毫秒到几秒）、它贵（按 token 计费，判断一条消息的成本可能顶得上业务本身）、而且它<strong>会一本正经地给你一个错误答案，还显得特别自信</strong>。你没法从它的回复里看出"这次它其实拿不准"。</p>
+<p>TypeSafe 在 2026 年 9 月放出来的 JEV，就是冲着这三件事来的。它的定位反直觉到让人想多看两眼：<strong>在所有人都卷"生成"的时候，它是个判别式模型——不生成任何文字，只对你的输入做判断，输出带概率和置信度的结构化结果，而且这个结果是给软件直接消费的，不是给人读的。</strong> 一句话概括我对它的看法：AI 不止会"生成"，它也能被打磨成软件里的一个<strong>可靠零件</strong>。这篇就讲清楚这个零件长什么样、能拧在哪儿、怎么拧。</p>
+<ul>
+<li><strong>它是什么</strong>：输入状态 + 类型化问题 → 输出概率分布。判别，不生成。</li>
+<li><strong>它不是什么</strong>：不是聊天机器人，不是 copilot，不写代码不写文案，你没法跟它"对话"。</li>
+</ul>
+<hr>
+<h2 id="_2">一、先搞清楚它到底是什么</h2>
+<p>判别式模型（discriminative model）这个词，可能有人有点陌生。打个岔讲清楚：机器学习模型大致分两派。<strong>生成式</strong>（generative）管"造"——给个提示，它造出一段文字、一张图，GPT 那一类都是。<strong>判别式</strong>管"分"——给个输入，它判断这属于哪一类、打几分，传统的垃圾邮件分类器、图像识别都是这派。JEV 是判别派，但它带了个生成式才有的本事，这个后面说。</p>
+<p>JEV 的接口干净得有点像一个函数签名。你给它两样东西：</p>
+<ul>
+<li>一个 <code>state</code>（状态），就是待判断的那条数据。可以是字符串、JSON 对象，或者字符串数组。比如 <code>"我的卡被扣了两次款"</code>，或者 <code>{"message": "我的卡被扣了两次款", "order_id": "A-104"}</code>。</li>
+<li>一个或多个 <code>question</code>（问题，官方也叫 <code>primitives</code>）。每个问题都是多选题，只有三种类型：</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>类型</th>
+<th>它问什么</th>
+<th>选项</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>noul</code></td>
+<td>一个真假判断</td>
+<td>true / false</td>
+</tr>
+<tr>
+<td><code>choice</code></td>
+<td>这条数据属于哪一类</td>
+<td>一组<strong>无序</strong>选项</td>
+</tr>
+<tr>
+<td><code>score</code></td>
+<td>这条数据在某个刻度上落在哪</td>
+<td>一组<strong>有序</strong>选项</td>
+</tr>
+</tbody>
+</table>
+<p>它返回什么？<strong>每个问题一个离散概率分布</strong>，仅此而已。注意这一点——JEV 本体只输出概率分布。官方 API 返回里那些 <code>choice</code>、<code>score</code>、<code>confidence</code> 字段，都是拿概率分布套固定公式算出来的，不是模型"想"出来的。比如 <code>choice</code> 问题的答案就是取概率最大的那个选项（众数），<code>score</code> 问题的答案是按概率加权求平均。这是个很克制的设计：模型只干它最擅长的一件事——估概率，剩下的交给确定性的代码。</p>
+<p>还有一个会在生产里咬你一口的约束：<strong>所有问题是并行回答的，问题之间不能有依赖。</strong> 它的类型系统压根不允许"B 问题的答案取决于 A 问题"。真要有依赖，官方的说法很直白——拆成两次请求，前后串起来调。别指望一次调用里搞定一条决策链。</p>
+<hr>
+<h2 id="_3">二、三个真正的创新点</h2>
+<p>把一个新模型吹成"革命性"太容易了。咱们只看它比"用 LLM 做分类"这个现状，实打实多了哪几样东西。</p>
+<p><strong>第一，判别式却支持 zero-shot。</strong> 传统判别式模型最大的苦就是要针对数据专门训练——你想分十个类别，就得准备十个类别的标注数据训一遍，改需求再训一遍。JEV 不用。它在<strong>推理时</strong>才拿到类别（就是你那几个 <code>question</code> 的选项），靠你在调用时给的上下文现场判断。这是 GPT 那类模型才有的 zero-shot 能力，被搬到了一个判别式模型上。对工程的意义很直接：加一个新分类、改一组选项，不用重新训练、不用等数据，改调用参数就行。</p>
+<p><strong>第二，输出自带校准（calibration）和置信度（confidence）。</strong> 这是我觉得它最值钱的地方，单独开一节讲。先记住结论：它不只告诉你"是哪一类"，还告诉你"这个判断有多可信"，而且这个可信度是经过校准的——不是随口给的数字。</p>
+<p><strong>第三，快且便宜，而且不是一点半点。</strong> TypeSafe 自己的测试里，端到端响应 70–500 毫秒，号称比前沿 LLM 快 40–200 倍、便宜 40–400 倍。</p>
+<blockquote>
+<p><strong>数字好看，但得打个折看。</strong>
+这组数据是 TypeSafe 用<strong>自己构造的工作流</strong>测的，官方技术说明里自己承认：这些工作流是他们模型能力团队搭的，相比真实任务<strong>可能有偏</strong>。</p>
+</blockquote>
+<p>厂商愿意在技术说明里主动写"我们这测试有偏"，这点我给个好评——但作为读者，这组倍数当参考方向可以，别当承诺。真要上，自己拿真实流量测一遍才算数。</p>
+<hr>
+<h2 id="_4">三、为什么"校准"是这事的题眼</h2>
+<p>LLM 用久了的人都踩过同一个坑：<strong>它不知道自己不知道。</strong> 你问它一个它其实没把握的问题，它照样给你一个流畅、自信、听起来天衣无缝的答案，只不过是错的。英文叫 overconfidence，TypeSafe 给自己融的那轮种子钱，融资新闻的标题直接就是"修 AI 的过度自信问题"。</p>
+<p>校准（calibration）是统计里一个朴素的概念：如果一个模型对一批判断都说"我有 80% 把握"，那这批判断里就应该真的有大约 80% 是对的。说 80% 却只对了一半，这模型就是<strong>过度自信</strong>，它的置信度是假的。</p>
+<p>JEV 的训练据说就专门盯着这件事。它只用合成数据训练，用的算法 TypeSafe 叫 RLCD（Reinforcement Learning for Calibrated Decisions，为校准决策做的强化学习）。细节没公开，外界推测它的损失函数里加了专门惩罚校准偏差的项，可能用到 Brier score 这类衡量概率预测准不准的指标。</p>
+<p>这对工程意味着什么？<strong>置信度从一个花瓶变成了一个可以写进 <code>if</code> 条件的开关。</strong></p>
+<div class="highlight"><pre><span></span><code><span class="c1"># 伪代码：拿 confidence 当守门员</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">jev</span><span class="o">.</span><span class="n">ask</span><span class="p">(</span><span class="n">state</span><span class="o">=</span><span class="n">message</span><span class="p">,</span> <span class="n">question</span><span class="o">=</span><span class="n">is_complaint</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="n">result</span><span class="o">.</span><span class="n">confidence</span> <span class="o">&gt;=</span> <span class="mf">0.9</span><span class="p">:</span>
+    <span class="n">auto_route</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">choice</span><span class="p">)</span>        <span class="c1"># 高把握，自动分流</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="n">send_to_human_review</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>    <span class="c1"># 没把握，转人工</span>
+</code></pre></div>
+
+<p>这段逻辑之所以成立，前提就是那个 0.9 得是<strong>可信的</strong> 0.9。如果模型像没校准的 LLM 那样逢判断必说"我很确定"，那这个 <code>if</code> 等于没写。校准是让这种"按置信度分流"的设计从纸上谈兵变成能落地的那块基石。</p>
+<hr>
+<h2 id="_5">四、它适合干什么，不适合干什么</h2>
+<p>一个工具的价值，一半在于你知道它能干嘛，另一半在于你知道它不能干嘛。JEV 的边界其实很清楚，因为它的类型系统已经把边界刻死了。</p>
+<p>官方的用法是把它放进 <strong>workflow（工作流）</strong>里——说白了就是一张决策流程图，图里某些判断节点的答案由 JEV 给。它演示里甚至拿它去玩 Doom，因为玩游戏本质就是"看当前画面 → 判断该按哪个键"的连续判断。</p>
+<p><strong>适合：工作流里的"判断类"节点。</strong></p>
+<ul>
+<li><strong>分类 / 路由</strong>：这条工单属于哪个部门、这封邮件该进哪个文件夹——典型的 <code>choice</code>。</li>
+<li><strong>打分 / 排序</strong>：这条内容的风险等级、这个请求的优先级——典型的 <code>score</code>。</li>
+<li><strong>过滤 / 守门</strong>：这段文本是不是垃圾、要不要放行——典型的 <code>noul</code>，而且配上 confidence 可以做前面那套"高把握自动、低把握转人工"。</li>
+<li><strong>替换规则引擎</strong>：那些写死的 <code>if-else</code> 判断逻辑，尤其是判断条件模糊、规则老在变的，很适合换成一次 JEV 调用。</li>
+</ul>
+<p><strong>不适合：</strong></p>
+<ul>
+<li><strong>要它生成任何东西</strong>。写文案、写代码、写总结——这不是它的活儿，它一个字都不吐。</li>
+<li><strong>需要推理链</strong>。问题之间不能有依赖，一次调用做不了"先判断 A，再根据 A 判断 B"。要么拆成多次串行调用，要么这活儿本来就不该给它。</li>
+<li><strong>要人读的输出</strong>。它的输出是给软件消费的概率分布，不是给人看的自然语言。</li>
+</ul>
+<h3 id="jev">插一句我自己的老经验：从泰坦尼克号到 JEV，省掉的是什么</h3>
+<p>说"判别式 + zero-shot"有多省，光讲概念没感觉。我拿自己踩过的路对比一下就清楚了。</p>
+<p>早些年学机器学习，入门必做的两个练手项目，一个是用泰坦尼克号乘客数据预测谁能活下来（二分类：生 / 死），另一个是鸢尾花数据集分三类花。我用的是 scikit-learn 那套经典流程——逻辑回归、决策树、随机森林轮着试。流程大同小异，而且<strong>每一步都省不掉</strong>：</p>
+<ol>
+<li><strong>先做特征工程</strong>。泰坦尼克号那份数据，<code>Age</code> 一堆空值得填，<code>Sex</code> 这种文字得编码成 0/1，<code>Cabin</code> 缺太多基本得扔，还得琢磨要不要从名字里抠出头衔（Mr/Mrs/Master）当新特征。模型吃的是数字矩阵，不是人话，这道工序躲不开。</li>
+<li><strong>切数据、训练</strong>。train/test 一分，<code>model.fit(X_train, y_train)</code> 跑一遍，才得到一个能用的分类器。</li>
+<li><strong>改需求就得重来</strong>。哪天我想把"生/死"二分类改成"头等舱生还率 / 三等舱生还率"这种新分法，或者鸢尾花想多认一种花——对不起，特征重做、模型重训。类别是<strong>训练时就焊死</strong>的。</li>
+</ol>
+<p>这三道工序，正是 JEV 的 zero-shot 一刀切掉的东西。同样判断"这位乘客大概率生还还是遇难"，在 JEV 这边，<code>state</code> 直接塞一段自然语言——"35 岁男性，三等舱，独自登船"——<code>question</code> 的 <code>criteria</code> 里把"生还 / 遇难"写清楚，一次调用就出概率。<strong>不用填空值、不用编码、不用训练；改分类规则就改 <code>criteria</code> 文字，不碰任何模型。</strong> 当年我填 <code>Age</code> 空值、给 <code>Sex</code> 编码折腾的那半天，在它这儿等于不存在。</p>
+<p>当然这不是白捡的便宜，边界得说清楚：</p>
+<ul>
+<li><strong>可解释性换掉了</strong>。sklearn 的随机森林能告诉我"票价和性别最影响生还"，特征重要性看得见摸得着；JEV 给你概率和置信度，但它<strong>为什么</strong>这么判，是个黑盒。</li>
+<li><strong>稳定性不一样</strong>。同一份泰坦尼克号数据，我那个训好的模型跑一百遍结果完全一致；JEV 的输出可能随版本变（官方自己也说"values can change between Jev releases"）。要可复现、要审计留痕的场景，这点得掂量。</li>
+<li><strong>数据在自己手里时，传统方案未必输</strong>。结构化、量大、分布稳定、还追求极致成本的批量分类，一个训好的 sklearn 模型推理起来又快又便宜又可控。JEV 真正的甜区是<strong>冷启动</strong>——没有标注数据、类别老变、或者输入本来就是自然语言的场合。</li>
+</ul>
+<p>一句话收这段经验：<strong>JEV 不是让 sklearn 下岗，而是把"必须先有标注数据和训练"这道门槛拆了。</strong> 门槛还在的地方（数据充足、要可解释、要可复现），老办法照样香。</p>
+<hr>
+<h2 id="_6">五、成功案例和最佳实践：先说实话</h2>
+<p>到这节，按常理该端上几个亮眼的落地案例和一套业界总结的最佳实践了。这里得跟你交底：</p>
+<p><strong>目前没有。</strong></p>
+<p>JEV 2026 年 9 月才限量早期访问放出来，到我写这篇的时候也就一个来月。公开资料里能查到的，只有它的技术规格、厂商自己的博客、以及几篇科技媒体的报道。<strong>没有第三方的生产案例，没有业界沉淀的最佳实践。</strong> 厂商自测的那组性能数字，前面说了，他们自己都承认可能有偏。</p>
+<p>按我写东西的规矩，没有的东西我不编。所以下面这套"实践"，我标清楚是<strong>从它的技术特性推出来的</strong>，不是哪个大厂验证过的——你拿去用之前，心里得有这个数。</p>
+<ol>
+<li>
+<p><strong>先给 confidence 定一道阈值，而不是无脑信 choice。</strong>
+   JEV 最大的差异化就是校准过的置信度。不用它，等于买了跑车只走市区。设计之初就把"低置信度怎么办"想清楚：转人工、走保守默认分支、还是二次确认。</p>
+</li>
+<li>
+<p><strong>上线前自己拿真实流量校准一遍阈值。</strong>
+   厂商的 0.9 不等于你业务里的 0.9。拿一批真实数据跑一遍，看它说"90% 把握"时实际对了多少，再反过来定你的阈值。这一步省不得——校准是它的卖点，但你的数据分布跟它的合成训练数据未必一致。</p>
+</li>
+<li>
+<p><strong>有依赖的决策，老老实实拆成串行多次调用。</strong>
+   别跟它的类型系统较劲。问题之间要有先后依赖，就 A 调用拿结果、代码里判断、再发 B 调用。想在一次请求里塞一条决策链，它不支持，硬塞只会得到互不相关的并行答案。</p>
+</li>
+<li>
+<p><strong>把它当零件，不当大脑。</strong>
+   它负责"判断这一下"，流程编排、兜底、重试、降级这些还是你代码的事。它快它便宜，正好适合放在热路径上高频调用——但出了判断之外的活儿，别指望它。</p>
+</li>
+<li>
+<p><strong>成本和延迟，自己测了再信。</strong>
+   40–400 倍这种数字，当方向看。真要替换现有 LLM 节点，拿你自己的 workload 测端到端，包括网络往返，再算这笔账划不划算。</p>
+</li>
+</ol>
+<p>一句话：</p>
+<blockquote>
+<p><strong>JEV 给你的是一个会估概率、还知道自己几斤几两的判断零件。</strong>
+但它只是零件，可靠的系统是你用这个零件搭出来的，不是它自带的。</p>
+</blockquote>
+<hr>
+<h2 id="_7">六、怎么接入</h2>
+<!-- 本节的 endpoint、认证、SDK 包名、请求/响应结构、confidence 门控代码均来自官方文档 docs.typesafe.ai（2026-10 更新），非推测。 -->
+
+<p>前面都在讲"为什么用"，这节讲"怎么拧上去"。下面的 endpoint、认证、SDK、请求响应结构都来自官方文档 <code>docs.typesafe.ai</code>，不是我拍脑袋。</p>
+<p><strong>先认清一次调用的形状</strong>：一个 <code>state</code>（待判断数据）+ 一组命名的 <code>question</code>（类型化问题）→ 每个问题返回一个结构化 <code>answer</code>（带概率，Choice/Score 还带 confidence）。所有问题<strong>并行、互相隔离</strong>地对同一个 <code>state</code> 求值，一次请求全返回。</p>
+<h3 id="_8">四条接入路径</h3>
+<p>官方给了四条路，按"从试到上线"排：</p>
+<table>
+<thead>
+<tr>
+<th>方式</th>
+<th>适合</th>
+<th>入口</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Playground</strong></td>
+<td>零代码先试，粘状态加问题看结果</td>
+<td><code>console.typesafe.ai/playground</code></td>
+</tr>
+<tr>
+<td><strong>SDK</strong></td>
+<td>生产接入（Python / JavaScript / TypeScript），自带类型和重试</td>
+<td><code>pip install typesafe-sdk</code></td>
+</tr>
+<tr>
+<td><strong>HTTP API</strong></td>
+<td>任意语言直接调</td>
+<td><code>POST https://api.typesafe.ai/v1/systemone</code></td>
+</tr>
+<tr>
+<td><strong>Agent Skill</strong></td>
+<td>让 Claude Code / Codex 帮你写集成代码</td>
+<td><code>npx skills add typesafe-ai/skills --skill typesafe-ai</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="key">第一步：拿 Key</h3>
+<p>去 <code>console.typesafe.ai/keys</code> 生成，存进环境变量（官方约定名 <code>TYPESAFE_API_KEY</code>）：</p>
+<div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">TYPESAFE_API_KEY</span><span class="o">=</span><span class="s2">&quot;your-api-key&quot;</span>
+</code></pre></div>
+
+<p>这是调用凭证——别写进代码、别进日志、别提交到 git。</p>
+<h3 id="python-sdk">第二步：Python SDK（最快路径）</h3>
+<div class="highlight"><pre><span></span><code>python3<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>.venv
+.venv/bin/pip<span class="w"> </span>install<span class="w"> </span>typesafe-sdk<span class="w">    </span><span class="c1"># 需要 Python 3.10+</span>
+</code></pre></div>
+
+<p>一个工单路由的完整例子（官方 quickstart，一次问三个问题）：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">typesafe_sdk</span> <span class="kn">import</span> <span class="n">Choice</span><span class="p">,</span> <span class="n">Noul</span><span class="p">,</span> <span class="n">Score</span><span class="p">,</span> <span class="n">TypeSafeClient</span>
+
+<span class="n">ticket</span> <span class="o">=</span> <span class="s2">&quot;我们的 API 集成大约 20 分钟前开始每个请求都返回 500，现在完全没法处理客户订单。&quot;</span>
+
+<span class="k">with</span> <span class="n">TypeSafeClient</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s2">&quot;jev-latest&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">client</span><span class="p">:</span>   <span class="c1"># 自动读 TYPESAFE_API_KEY</span>
+    <span class="n">response</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">system_one</span><span class="p">(</span>
+        <span class="n">state</span><span class="o">=</span><span class="n">ticket</span><span class="p">,</span>
+        <span class="n">questions</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;department&quot;</span><span class="p">:</span> <span class="n">Choice</span><span class="p">(</span>
+                <span class="n">instructions</span><span class="o">=</span><span class="s2">&quot;这条工单该由哪个团队处理&quot;</span><span class="p">,</span>
+                <span class="n">criteria</span><span class="o">=</span><span class="p">{</span>
+                    <span class="s2">&quot;billing&quot;</span><span class="p">:</span>   <span class="s2">&quot;支付或订阅问题&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;technical&quot;</span><span class="p">:</span> <span class="s2">&quot;Bug 或集成问题&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;sales&quot;</span><span class="p">:</span>     <span class="s2">&quot;定价或账户咨询&quot;</span><span class="p">,</span>
+                <span class="p">},</span>
+            <span class="p">),</span>
+            <span class="s2">&quot;frustration&quot;</span><span class="p">:</span> <span class="n">Score</span><span class="p">(</span>
+                <span class="n">instructions</span><span class="o">=</span><span class="s2">&quot;客户的不满程度&quot;</span><span class="p">,</span>
+                <span class="n">criteria</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;平静，只是陈述事实&quot;</span><span class="p">,</span> <span class="s2">&quot;不满但还克制&quot;</span><span class="p">,</span> <span class="s2">&quot;非常愤怒，言辞激烈&quot;</span><span class="p">],</span>
+            <span class="p">),</span>
+            <span class="s2">&quot;is_urgent&quot;</span><span class="p">:</span> <span class="n">Noul</span><span class="p">(</span><span class="n">instructions</span><span class="o">=</span><span class="s2">&quot;这条消息传达了紧急或时间敏感性&quot;</span><span class="p">),</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">choices</span><span class="p">[</span><span class="s2">&quot;department&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">choice</span><span class="p">)</span>   <span class="c1"># -&gt; &quot;technical&quot;</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">scores</span><span class="p">[</span><span class="s2">&quot;frustration&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">score</span><span class="p">)</span>    <span class="c1"># -&gt; 0.67（0–2 刻度上的加权位置）</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">nouls</span><span class="p">[</span><span class="s2">&quot;is_urgent&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">noul</span><span class="p">)</span>        <span class="c1"># -&gt; 紧急的概率（0–1）</span>
+</code></pre></div>
+
+<p>三种问题类型，构造和返回字段都不一样——这张表记住就够用了：</p>
+<table>
+<thead>
+<tr>
+<th>类型</th>
+<th>怎么构造</th>
+<th>返回什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Choice</code></td>
+<td>无序选项 <code>criteria</code> 字典</td>
+<td><code>choice</code> + <code>probabilities</code> + <code>confidence</code></td>
+</tr>
+<tr>
+<td><code>Score</code></td>
+<td>有序选项 <code>criteria</code> 列表</td>
+<td><code>score</code>（加权平均）+ <code>probabilities</code> + <code>confidence</code></td>
+</tr>
+<tr>
+<td><code>Noul</code></td>
+<td>一句真假陈述</td>
+<td><code>noul</code>（0–1 概率，<strong>本身不带 confidence</strong>）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="sdk-http">第三步：不想装 SDK，直接 HTTP</h3>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>--fail-with-body<span class="w"> </span>--silent<span class="w"> </span>--show-error<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>https://api.typesafe.ai/v1/systemone<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Authorization: Bearer </span><span class="nv">$TYPESAFE_API_KEY</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--data-binary<span class="w"> </span>@-<span class="w"> </span><span class="s">&lt;&lt;&#39;JSON&#39;</span>
+<span class="s">{</span>
+<span class="s">  &quot;model&quot;: &quot;jev-latest&quot;,</span>
+<span class="s">  &quot;state&quot;: &quot;我的卡被扣了两次款&quot;,</span>
+<span class="s">  &quot;questions&quot;: {</span>
+<span class="s">    &quot;is_billing&quot;: {</span>
+<span class="s">      &quot;type&quot;: &quot;noul&quot;,</span>
+<span class="s">      &quot;instructions&quot;: &quot;这条消息是不是关于计费问题&quot;</span>
+<span class="s">    }</span>
+<span class="s">  }</span>
+<span class="s">}</span>
+<span class="s">JSON</span>
+</code></pre></div>
+
+<p>响应形态（官方示例，<code>choice</code> 问题）：</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;model&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;jev-1.13.0&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;answers&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;department&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;choice&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;choice&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;technical&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;confidence&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1.0</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;probabilities&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;technical&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1.0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;billing&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;sales&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="w"> </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>几个会在生产里咬你一口的约束（都来自 API reference）：</p>
+<ul>
+<li>Body 最大 <strong>32 MiB</strong>（压缩前后都算），嵌套最多 <strong>64 层</strong>，UTF-8 JSON 不带 BOM。</li>
+<li>有 per-request / per-question 两个 context 上限。要更长上下文，加头 <code>TypeSafe-Danger-Zone-Long-Context: true</code>，两个上限升到 262k token——头名字里带 <code>Danger-Zone</code>，就是在提醒你这不是默认该开的。</li>
+<li><strong>计费按输入 token，输出 token 免费。</strong></li>
+</ul>
+<h3 id="_9">接入时最该做对的一件事：置信度门控</h3>
+<p>这是官方 <code>patterns/confidence-routing</code> 的重点，也是 JEV 区别于"拿 LLM 做分类"的核心——<strong>answer 告诉你"是什么"，confidence 告诉你"该不该据此行动"。</strong> 第三节那段伪代码，到这里可以换成真实能跑的形态。官方的语音银行例子，不同动作按风险设不同阈值：</p>
+<div class="highlight"><pre><span></span><code><span class="n">action</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">answers</span><span class="p">[</span><span class="s2">&quot;intent&quot;</span><span class="p">]</span>
+
+<span class="k">if</span> <span class="n">action</span><span class="o">.</span><span class="n">confidence</span> <span class="o">&lt;</span> <span class="mf">0.6</span><span class="p">:</span>
+    <span class="n">route_to_support_agent</span><span class="p">(</span><span class="n">account_id</span><span class="p">)</span>        <span class="c1"># 真的拿不准，别猜</span>
+<span class="k">elif</span> <span class="n">action</span><span class="o">.</span><span class="n">choice</span> <span class="o">==</span> <span class="s2">&quot;check_balance&quot;</span><span class="p">:</span>
+    <span class="n">show_balance</span><span class="p">(</span><span class="n">account_id</span><span class="p">)</span>                  <span class="c1"># 低风险，0.6 就够</span>
+<span class="k">elif</span> <span class="n">action</span><span class="o">.</span><span class="n">choice</span> <span class="o">==</span> <span class="s2">&quot;approve_transfer&quot;</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">action</span><span class="o">.</span><span class="n">confidence</span> <span class="o">&gt;</span> <span class="mf">0.85</span><span class="p">:</span>
+        <span class="n">approve_transfer</span><span class="p">(</span><span class="n">account_id</span><span class="p">)</span>          <span class="c1"># 高风险但高把握，自动执行</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">ask_user_to_confirm</span><span class="p">(</span><span class="s2">&quot;确认一下：您是要批准这笔转账吗？&quot;</span><span class="p">)</span>  <span class="c1"># 高风险、中把握，先确认</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="n">route_to_support_agent</span><span class="p">(</span><span class="n">account_id</span><span class="p">)</span>
+</code></pre></div>
+
+<p>官方给的起步分法是三段：<strong>高置信度自动执行 / 中置信度谨慎（确认或复核）/ 低置信度不行动（转人工）</strong>。关键一句记死：<strong>阈值不是一个数——同一个系统里，不同动作按"做错的后果"设不同的门。</strong> 查余额错了无所谓，转账错了要命。</p>
+<blockquote>
+<p>confidence 怎么来的：它是从概率分布的"形状"算出来的统计量，全压在一个选项上 = 1.0，摊得越平越接近 0。Choice/Score 每个答案自带，不用你算。<code>noul</code> 不带，真要给它一个，用离 0.5 的距离 <code>|2p − 1|</code>。</p>
+</blockquote>
+<h3 id="_10">接入落地清单</h3>
+<ol>
+<li><strong>先在 Playground 调问题设计，再写代码</strong>。问题的 <code>instructions</code> 和 <code>criteria</code> 写得好不好，直接决定判断质量——它没有 per-account 微调，领域知识全靠塞进 <code>state</code> 和 <code>criteria</code>，这是你唯一能"调教"它的地方。</li>
+<li><strong>上线前拿真实流量校准阈值</strong>。官方说 confidence 校准过，但你的数据分布未必和它的合成训练数据一致，自己测一遍"它说 0.9 时实际对了多少"。</li>
+<li><strong>有依赖的决策拆成串行多次调用</strong>。并行、互不依赖是硬约束，硬塞只会得到互不相关的并行答案。</li>
+<li><strong>处理好 SDK 错误类型</strong>。SDK 有 <code>AuthenticationError</code>、<code>PermissionDeniedError</code> 等，重试默认内置。</li>
+<li><strong>把它当零件</strong>：编排、兜底、降级、重试是你代码的事，它只负责"判断这一下"。</li>
+</ol>
+<blockquote>
+<p><strong>接入 JEV 的 80% 工作量不在调 API，在于把问题拆成好的 <code>question</code>、给每个动作定对 confidence 阈值。</strong>
+API 本身一次 <code>POST</code> 就通，难的是后面这两件。</p>
+</blockquote>
+<hr>
+<h2 id="ai">总结：AI 的下一步不只是更会说，而是更会"拿捏分寸"</h2>
+<p>过去两年，AI 的进步几乎全写在"生成"上——更会写、更会画、更会聊。JEV 提醒我们还有另一条路：<strong>让 AI 学会判断，并且诚实地知道自己的判断有几分把握。</strong> 一个不说话、只输出校准概率的小模型，听起来没有聊天机器人性感，但它可能正是软件工程真正缺的那种零件——快、便宜、可审计、知道什么时候该闭嘴转人工。</p>
+<p>它的名字取自 19 世纪经济学家 Jevons，和他那个"杰文斯悖论"——资源用得越高效，总消耗反而越大。创始人说这名字就是在赌：<strong>当机器判断力变得足够便宜，它会被塞进你今天根本想不到的无数角落。</strong> 这个赌注成不成，还要时间来验。但方向我信——不是所有 AI 任务都需要一个会写诗的大脑，很多时候，软件只需要一个靠谱的、知道自己不知道的小判断器。</p>
+<p>下次你准备在代码里写一个 LLM 调用只为了拿一个标签时，不妨先问自己一句：<strong>我要的是"生成"，还是其实只要一个"判断"？</strong> 如果是后者，也许该找的不是更大的模型，而是更合身的那个零件。</p>
+<h2 id="_11">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* JEV / System One
+** 定位
+*** 判别式，不生成
+*** 给软件消费，不给人读
+*** 替代&quot;用 LLM 做分类&quot;
+** 接口
+*** state：待判断数据
+*** question：noul / choice / score
+*** 输出：概率分布
+*** 问题间不能有依赖
+** 三大创新
+*** 判别式 + zero-shot
+*** 校准 + 置信度
+*** 快且便宜（自测有偏）
+** 校准是题眼
+*** 修 LLM 过度自信
+*** confidence 可写进 if
+*** RLCD 合成数据训练
+** 适合 / 不适合
+*** 适合：分类/打分/过滤/守门
+*** 不适合：生成/推理链/人读输出
+*** 对比 sklearn：省掉特征工程/训练/重训
+*** 老办法甜区：数据足/要可解释/要可复现
+** 实践（推演，非验证）
+*** 先定 confidence 阈值
+*** 真实流量自校准
+*** 有依赖就串行调用
+*** 当零件不当大脑
+*** 成本自测再信
+** 怎么接入
+*** 四路径：Playground/SDK/HTTP/Agent Skill
+*** POST /v1/systemone + Bearer Key
+*** Python SDK / curl 真实调用
+*** 置信度门控（confidence routing）
+*** 落地清单
+@endmindmap
+</code></pre></div>
+
+<p><img alt="JEV：一个不会说话的 AI 模型 - 思维导图" src="./images/journal_20261017_jev-system-one-model_mindmap.png"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/2026-10-17-jev-system-one-model.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/ai.html">ai</a>
+      <a href="https://www.fanyamin.com/blog/tag/jev.html">jev</a>
+      <a href="https://www.fanyamin.com/blog/tag/typesafe.html">typesafe</a>
+      <a href="https://www.fanyamin.com/blog/tag/discriminative-model.html">discriminative-model</a>
+      <a href="https://www.fanyamin.com/blog/tag/calibration.html">calibration</a>
+      <a href="https://www.fanyamin.com/blog/tag/zero-shot.html">zero-shot</a>
+      <a href="https://www.fanyamin.com/blog/tag/llm.html">llm</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-10-16-tool-design-review.html" title="职场工具箱之设计评审：它是一场决策会，不是一场汇报会">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/2026-10-17-ai-old-programmer.html" title="年过不惑之年的老程序员，在 AI 时代怎么重新校准">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/2026-09-03-cc-switch-self-host-llm.html">一个网关一把钥匙，三个客户端三种格式：用 cc-switch 收拢 AI 编码配置</a></li>
+      <li><a href="https://www.fanyamin.com/blog/llm-kv-cache-prefix-caching.html">LLM 的 KV Cache：一个时间戳，能让你的账单比不开缓存还贵</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-07-ai-agent-memory.html">如何管理 AI Agent 的记忆之一：既记得牢、想得起，又不烧钱</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-02-building-effective-agents.html">重读《Building Effective Agents》：怎么才算构建了一个"高效"的 AI Agent</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-07-31-harness-engineering.html">AI 的“操作系统”：Harness 工程如何让模型自我改进</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

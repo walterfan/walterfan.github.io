@@ -1,0 +1,776 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="经验是把双刃剑。它让你快，也让你懒得求证。我在一个 Redis Cluster 的场景里栽过：想当然以为&#34;一个 master 带它的副本都挂了，落在其他存活 master 上的 key 照样能读&#34;，据此写了一堆代码去算哪些 key 落在哪个 master、再逐一验证——结果因为 cluster-require-full-coverage 默认是 yes，只要有一段 slot 没人管，整个集群就停摆，所有 key 全读不了，那堆代码白写了。这篇讲清楚经验主义的坑在哪、为什么老手更容易踩，以及怎么给自己的经验库做一次&#34;去芜存菁&#34;，并给一张随手能用的核对清单。" />
+<meta name="keywords" content="journal, methodology, learning, reflection">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "别让经验把你坑了：老程序员的&#34;去芜存菁&#34;",
+  "description": "经验是把双刃剑。它让你快，也让你懒得求证。我在一个 Redis Cluster 的场景里栽过：想当然以为&#34;一个 master 带它的副本都挂了，落在其他存活 master 上的 key 照样能读&#34;，据此写了一堆代码去算哪些 key 落在哪个 master、再逐一验证——结果因为 cluster-require-full-coverage 默认是 yes，只要有一段 slot 没人管，整个集群就停摆，所有 key 全读不了，那堆代码白写了。这篇讲清楚经验主义的坑在哪、为什么老手更容易踩，以及怎么给自己的经验库做一次&#34;去芜存菁&#34;，并给一张随手能用的核对清单。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-10-21T20:00:00+08:00",
+  "dateModified": "2026-10-22T21:30:00+08:00",
+  "url": "https://www.fanyamin.com/blog/2026-10-21-empiricism-trap.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/2026-10-21-empiricism-trap.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "journal, methodology, learning, reflection"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="别让经验把你坑了：老程序员的&#34;去芜存菁&#34;"/>
+  <meta property="og:description" content="经验是把双刃剑。它让你快，也让你懒得求证。我在一个 Redis Cluster 的场景里栽过：想当然以为&#34;一个 master 带它的副本都挂了，落在其他存活 master 上的 key 照样能读&#34;，据此写了一堆代码去算哪些 key 落在哪个 master、再逐一验证——结果因为 cluster-require-full-coverage 默认是 yes，只要有一段 slot 没人管，整个集群就停摆，所有 key 全读不了，那堆代码白写了。这篇讲清楚经验主义的坑在哪、为什么老手更容易踩，以及怎么给自己的经验库做一次&#34;去芜存菁&#34;，并给一张随手能用的核对清单。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/2026-10-21-empiricism-trap.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-10-21 20:00:00+08:00"/>
+  <meta property="article:modified_time" content="2026-10-22 21:30:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Journal"/>
+  <meta property="article:tag" content="journal"/>
+  <meta property="article:tag" content="methodology"/>
+  <meta property="article:tag" content="learning"/>
+  <meta property="article:tag" content="reflection"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 别让经验把你坑了：老程序员的&#34;去芜存菁&#34;</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记"
+               data-en="Notebook">
+              笔记
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="2026-10-21-empiricism-trap">别让经验把你坑了：老程序员的"去芜存菁"</h1>
+    <p>
+      Posted on 三 21 10月 2026 in <a href="https://www.fanyamin.com/blog/category/journal.html">Journal</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>别让经验把你坑了：老程序员的"去芜存菁"</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Journal</td>
+</tr>
+<tr>
+<td><strong>Version</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-10-21</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">大纲</h2>
+<details>
+<summary>展开看看</summary>
+<ul>
+<li><strong>一个教训</strong>：想当然以为"一个 master 及副本都挂了，落在其他 master 上的 key 照样能读"，据此写了一堆代码——结果 <code>cluster-require-full-coverage=yes</code> 下整个集群停摆，代码全白写。</li>
+<li><strong>经验主义的坑</strong>：经验不是知识，是"在某个条件下验证过的结论"。坑在于条件变了，你还在用旧结论。</li>
+<li><strong>为什么老手更容易栽</strong>：越熟练越省力，大脑默认走捷径；经验攒得越多，重新求证的"心理成本"越高。</li>
+<li><strong>去芜存菁</strong>：把脑子里的经验分成三类——仍然成立的、要加前提的、已经过期的，定期清一遍。</li>
+<li><strong>从根上改</strong>：一条指导原则（经验只能提出假设，不能代替验证），四个具体动作。</li>
+<li><strong>一张清单</strong>：下断言前先过一遍，防止凭记忆开口。</li>
+</ul>
+</details>
+<hr>
+<p>前段时间我在一个 Redis Cluster 的场景里栽了个不大不小的跟头。当时脑子里有个“常识”：集群是分片的，每个 master 管一段 key，那么一个 master 连它的副本一起挂了，顶多是它那段 key 读不了，<strong>落在其他活着的 master 上的 key，总该照样能读吧？</strong> 基于这个想当然，我写了一堆代码——把一批 key 挨个算出它落在哪个 slot、归哪个 master，再逐一去验证谁还能读、谁读不了，准备做一套“部分降级可用”的逻辑。</p>
+<p>写完去真机上一跑，傻眼了：挂掉那段的 key 读不了是意料之中，可<strong>所有其他 master 上的 key 也全读不了</strong>，整个集群直接 <code>CLUSTERDOWN</code>。翻配置才想起来，<code>cluster-require-full-coverage</code> 默认就是 <code>yes</code>——只要有一段 slot 没有活着的节点覆盖，Redis 宁可让整个集群停摆，也不提供“只有半拉 key 空间可用”的服务。我那套精心计算 key 归属、逐一验证的代码，从第一行起就是白写的：集群根本不会给我“部分可用”这个选项。</p>
+<p><strong>这件事把一个老问题又摆到我面前：经验是把双刃剑。</strong> 它让你反应快、下判断省力，同时也在悄悄让你放弃求证——越熟的东西越懒得查，越懒得查就越容易把一个“听着很合理”的推断当成“板上钉钉的事实”。分片、各管一段、互不影响，这套直觉太顺了，顺到我没停下来问一句：Redis 真是这么设计的吗？这篇就想说清楚这个坑长什么样、为什么干得越久越容易踩，以及怎么给自己脑子里那堆经验做一次认真的“去芜存菁”。</p>
+<hr>
+<h2 id="_2">经验不是知识，是"某个条件下验证过的结论"</h2>
+<p>先把概念掰开。我们平时混着说的“经验”，严格讲是这么个东西：</p>
+<blockquote>
+<p><strong>经验 = 在某一组特定条件下，被反复验证过的因果结论。</strong></p>
+</blockquote>
+<p>重点在“特定条件”这四个字。你当年得出“这么干准没错”的时候，背后有一整套默认前提：那个版本、那套配置、那种规模、那个场景。推断本身听着合理，错的是你把前提当成了不存在，直接把直觉当成了事实。</p>
+<p>回到我那次踩的坑。“分片系统，各管一段，互不影响”这套直觉，在很多系统里确实成立——一个分库挂了，其他分库照常读写，是再正常不过的事。我就是把这套在别处成立的经验，原封不动地套到了 Redis Cluster 上。偏偏 Redis 在这里做了一个和直觉相反的设计：它认为一个“只有部分 key 空间可用”的集群，比一个干脆停摆的集群更危险（因为你可能在不知情的情况下读到残缺的数据），所以默认选择整体 FAIL。我的经验没错，错在它成立的前提——“分片之间互不影响”——在 Redis Cluster 的默认配置下根本不成立。</p>
+<p>这就是经验主义最阴险的地方：<strong>它给你的推断往往在别处是对的，只是对的那个世界，不是你眼下这个。</strong> 它不像语法错误那样会当场报错，而是让你顺顺当当写完一堆代码，直到真机一跑才告诉你：前提错了，整片地基是歪的。</p>
+<hr>
+<h2 id="_3">为什么干得越久，越容易在这上面栽</h2>
+<p>你可能以为经验越多越不容易出错。恰恰相反，在“轻信经验”这件事上，老手的风险比新手还高。原因有三个，一个比一个隐蔽。</p>
+<p><strong>第一，大脑天生爱走捷径。</strong> 这不是毛病，是节能设计。一件事做过几百遍，它就从“需要动脑的思考”降级成“不过脑子的反射”。开车的老司机不会每次都想“先踩离合再挂挡”，正是因为这套动作沉到了肌肉里。省力的代价是：当路况变了、规则改了，你还在用那套反射，而且根本意识不到自己在用。</p>
+<p><strong>第二，经验攒得越多，重新求证的“心理成本”越高。</strong> 新人查一个问题，心态是“我本来就不懂”，查起来没有包袱。老手去查一个自己“早就会”的东西，心里那道坎很高——万一查出来跟自己讲了十年的不一样，等于承认自己错了十年。于是潜意识里就倾向于不查，用一句“这我熟”把求证挡在门外。我那次 Redis 的坑，就是被“分片系统这我熟”这种底气放行的——熟到压根没想起去确认一个默认配置。</p>
+<p><strong>第三，你的经验常常被别人的经验污染。</strong> 技术圈里很多“常识”是口口相传的二手结论，源头是谁、在什么条件下成立，早就没人追究了。你以为那是自己的经验，其实是你在某篇博客、某次分享、某个同事嘴里听来的，连它当初成立的前提都没见过。二手经验比一手经验更危险——一手的至少你亲历过条件，二手的连条件都是模糊的。</p>
+<p>三条叠加，结果就是：<strong>经验越丰富的人，越需要主动给自己的经验“上验证”，因为自动验证的机制在你身上已经关掉了。</strong></p>
+<hr>
+<h2 id="_4">去芜存菁：把脑子里的经验分成三类</h2>
+<p>“去芜存菁”不是一句口号，它得落成一个动作：把你脑子里那些张口就来的结论拎出来，一条条过一遍，分进三个筐。</p>
+<table>
+<thead>
+<tr>
+<th>类别</th>
+<th>判断标准</th>
+<th>怎么处理</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>仍然成立</strong></td>
+<td>前提没变，近期还验证过</td>
+<td>留着，但记住它的前提</td>
+</tr>
+<tr>
+<td><strong>要加前提</strong></td>
+<td>结论对，但只在特定条件下成立</td>
+<td>补上前提再用，别裸着用</td>
+</tr>
+<tr>
+<td><strong>已经过期</strong></td>
+<td>条件早变了，结论不再成立</td>
+<td>删掉，并警惕自己惯性复用</td>
+</tr>
+</tbody>
+</table>
+<p>我那条“分片系统各管一段、互不影响”的经验，就该从“仍然成立”降级到“要加前提”：它在很多分片系统里对，但在 Redis Cluster 的默认配置（<code>cluster-require-full-coverage=yes</code>）下不成立。补上“这取决于集群怎么配”这个前提，它就从一个会坑人的断言，变回一条有用的知识。</p>
+<p>怎么找出哪些该重新分类？几个信号很好使：</p>
+<ul>
+<li><strong>你讲这句话的时候用的是“肯定、绝对、一定”这类词。</strong> 越斩钉截铁，越值得回去查一眼它的前提还在不在。</li>
+<li><strong>这条结论你已经很多年没真正验证过了。</strong> “一直都是这么干的”本身就是个危险信号。</li>
+<li><strong>你发现自己拒绝查证，理由是“这我熟”。</strong> 这句话一出现，基本就该去查了。</li>
+</ul>
+<p>这件事不用等到出事才做。我的习惯是，每当要在文章里、在设计评审里、在给同事的建议里下一个“肯定句”，就顺手问自己一句：<strong>这条结论，我是真验证过，还是只是记得它？</strong> 记得，和验证过，是两回事。</p>
+<hr>
+<h2 id="_5">从根上改：一条原则，四个动作</h2>
+<p>光知道有坑没用，得从习惯上改。先立一条指导原则，它能管住上面所有情况：</p>
+<blockquote>
+<p><strong>经验只能帮你提出假设，不能替你完成验证。</strong>
+经验让你快速猜到“大概是这样”，但“确实是这样”必须靠当下的调查来确认——尤其是你要据此下结论、做决策、给别人建议的时候。</p>
+</blockquote>
+<p>把这条原则拆成四个能落地的动作：</p>
+<ol>
+<li>
+<p><strong>下断言前，先把它当成假设。</strong>
+   凡是要写进文档、讲给别人、作为决策依据的“肯定句”，先在心里给它降一级：这不是结论，是个待验证的假设。源码翻一眼、文档查一句、环境里跑一下——验证的成本通常比你想象的低得多，低到没有理由跳过。</p>
+</li>
+<li>
+<p><strong>区分“我验证过”和“我听说过”。</strong>
+   给脑子里的每条经验标个来源：是自己亲手撞出来的，还是从别处听来的二手货？二手的默认不可信，用之前补一次一手验证。来源模糊的经验，等同于没有经验。</p>
+</li>
+<li>
+<p><strong>主动去找反例，而不是只找佐证。</strong>
+   人下意识只会去找支持自己的证据（确认偏误）。反过来用：故意问一句“什么情况下这条会不成立”。我那次只要问自己一句“Redis 真的允许集群部分可用吗”，去翻一眼默认配置，那套白写的代码根本不会动手。一个主动找来的反例，胜过十条顺手捡来的佐证。</p>
+</li>
+<li>
+<p><strong>把踩过的坑沉淀成清单，而不是沉淀成情绪。</strong>
+   栽了跟头，别光懊恼“我怎么又犯了”。把它写下来：当时凭的是哪条经验、错在哪个前提、下次在哪个环节能拦住。情绪会淡，清单不会。下面这张就是我从这次 Redis 的事里沉下来的。</p>
+</li>
+</ol>
+<p>一句话：</p>
+<blockquote>
+<p><strong>经验负责让你跑得快，调查负责让你不跑偏。</strong>
+两个都要，但顺序不能错——先用经验提假设，再用调查定结论，永远别让经验越俎代庖。</p>
+</blockquote>
+<hr>
+<h2 id="_6">下断言前的核对清单</h2>
+<p>把前面那套拆成一张随手能过的清单。下次准备开口下结论、写进文档、或者在评审里拍板之前，花十秒走一遍：</p>
+<ul>
+<li>[ ] 这是<strong>验证过的结论</strong>，还是<strong>记得的印象</strong>？</li>
+<li>[ ] 它当初成立的<strong>前提</strong>是什么？现在那个前提<strong>还在吗</strong>？</li>
+<li>[ ] 这条经验是<strong>一手</strong>（我亲历）还是<strong>二手</strong>（听来的）？二手的查了吗？</li>
+<li>[ ] 我有没有主动找过<strong>反例</strong>——“什么情况下它不成立”？</li>
+<li>[ ] 我要下的断言里有没有“一定、绝对、肯定”？有的话，是不是太满了？</li>
+<li>[ ] 如果这条被别人当真照做，<strong>代价有多大</strong>？代价越大，越该多查一步。</li>
+</ul>
+<p>最后一条是权重。查证是有成本的，不可能每句话都刨到源码。判断标准是代价：一句随口的闲聊说错了无伤大雅，但一个要写进文章、进设计、进线上决策的断言说错了，影响会一路放大。<strong>代价越大的断言，越值得你压住那句“这我熟”，多走一步调查。</strong></p>
+<hr>
+<h2 id="_7">总结：经验提假设，调查定结论</h2>
+<p>把这件事压成一句话：<strong>经验不是用来省掉调查的，是用来让调查更快命中的。</strong></p>
+<p>我那套为“集群部分可用”写的代码，错不在“分片各管一段”这条经验本身——它在很多系统里确实成立。错在我凭着“这我熟”，跳过了确认一个默认配置这一步，结果整片地基是歪的。老手最该警惕的，恰恰是这种被熟练感放行的断言：它们来得太顺，顺到你忘了它们也需要验证。</p>
+<p>去芜存菁不是一次性的大扫除，是一个随身带的习惯：每次要下肯定句，先问自己是验证过还是只是记得。记得就去查。查的成本，几乎总是比栽跟头的成本低。</p>
+<p>在这个变化快到前提天天在改的时代，能救你的不是“我经验丰富”，而是“我经验丰富，但我每条都肯回头再查一眼”。</p>
+<h2 id="_8">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* 经验主义的危害
+** 一个教训
+*** 以为分片各管一段互不影响
+*** 为&quot;部分可用&quot;白写一堆代码
+*** 其实默认整体停摆
+** 经验的本质
+*** 是特定条件下验证过的结论
+*** 坑在前提变了还在套用
+** 老手为何更容易栽
+*** 大脑爱走捷径
+*** 重新求证心理成本高
+*** 二手经验污染
+** 去芜存菁
+*** 仍然成立
+*** 要加前提
+*** 已经过期
+** 从根上改
+*** 原则 经验只提假设
+*** 下断言先当假设
+*** 分一手二手
+*** 主动找反例
+*** 坑沉淀成清单
+** 核对清单
+*** 验证过还是记得
+*** 前提还在吗
+*** 代价越大越要查
+@endmindmap
+</code></pre></div>
+
+<p><img alt="别让经验把你坑了 - 思维导图" src="../images/journal_20261021_empiricism-trap_mindmap.png"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/2026-10-21-empiricism-trap.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/journal.html">journal</a>
+      <a href="https://www.fanyamin.com/blog/tag/methodology.html">methodology</a>
+      <a href="https://www.fanyamin.com/blog/tag/learning.html">learning</a>
+      <a href="https://www.fanyamin.com/blog/tag/reflection.html">reflection</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/redis-cluster-require-full-coverage.html" title="一个 Slot 挂了，为什么整个 Redis Cluster 都不可用？讲透 cluster-require-full-coverage">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/2026-07-04-classification-exhaustive-thinking.html">用穷举法吃透问题：把碎片经验炼成体系能力</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-10-15-hdd-harness-driven-development.html">从 SDD、TDD、MDD 到 HDD：AI 编程的质量不靠 prompt，靠护具</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-09-17-deep-learning-in-ai-era.html">逆流而上：AI 时代程序员的深度学习法</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-24-step-out-comfort-zone.html">为什么要走出舒适区：换的是术，守的是道</a></li>
+      <li><a href="https://www.fanyamin.com/blog/2026-08-19-ai-smarter-or-dumber.html">AI 让人更聪明还是更笨：分水岭在“生成的那一步”</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

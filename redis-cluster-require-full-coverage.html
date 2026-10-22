@@ -1,0 +1,857 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="很多人以为 cluster-require-full-coverage yes 的意思是“一个 Redis 节点挂了整个集群就挂”。这是个误会。它真正管的不是节点死活，而是 16384 个 slot 是否被完整覆盖。节点挂了集群还活着，靠的是副本 failover，不是这个配置。本文从一次线上排查讲起，配两张图、一段真实源码（clusterUpdateState），把 slot 覆盖、集群状态、failover、以及它和 cluster-allow-reads-when-down 的分工一次讲清楚，最后给一张排查清单。" />
+<meta name="keywords" content="tech, redis, redis-cluster, high-availability, failover, source-code">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "一个 Slot 挂了，为什么整个 Redis Cluster 都不可用？讲透 cluster-require-full-coverage",
+  "description": "很多人以为 cluster-require-full-coverage yes 的意思是“一个 Redis 节点挂了整个集群就挂”。这是个误会。它真正管的不是节点死活，而是 16384 个 slot 是否被完整覆盖。节点挂了集群还活着，靠的是副本 failover，不是这个配置。本文从一次线上排查讲起，配两张图、一段真实源码（clusterUpdateState），把 slot 覆盖、集群状态、failover、以及它和 cluster-allow-reads-when-down 的分工一次讲清楚，最后给一张排查清单。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-10-21T14:00:00+08:00",
+  "dateModified": "2026-10-21T14:00:00+08:00",
+  "url": "https://www.fanyamin.com/blog/redis-cluster-require-full-coverage.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/redis-cluster-require-full-coverage.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "tech, redis, redis-cluster, high-availability, failover, source-code"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="一个 Slot 挂了，为什么整个 Redis Cluster 都不可用？讲透 cluster-require-full-coverage"/>
+  <meta property="og:description" content="很多人以为 cluster-require-full-coverage yes 的意思是“一个 Redis 节点挂了整个集群就挂”。这是个误会。它真正管的不是节点死活，而是 16384 个 slot 是否被完整覆盖。节点挂了集群还活着，靠的是副本 failover，不是这个配置。本文从一次线上排查讲起，配两张图、一段真实源码（clusterUpdateState），把 slot 覆盖、集群状态、failover、以及它和 cluster-allow-reads-when-down 的分工一次讲清楚，最后给一张排查清单。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/redis-cluster-require-full-coverage.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-10-21 14:00:00+08:00"/>
+  <meta property="article:modified_time" content="2026-10-21 14:00:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="tech"/>
+  <meta property="article:tag" content="redis"/>
+  <meta property="article:tag" content="redis-cluster"/>
+  <meta property="article:tag" content="high-availability"/>
+  <meta property="article:tag" content="failover"/>
+  <meta property="article:tag" content="source-code"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; 一个 Slot 挂了，为什么整个 Redis Cluster 都不可用？讲透 cluster-require-full-coverage</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记"
+               data-en="Notebook">
+              笔记
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="redis-cluster-require-full-coverage">一个 Slot 挂了，为什么整个 Redis Cluster 都不可用？讲透 cluster-require-full-coverage</h1>
+    <p>
+      Posted on 三 21 10月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>讲透 Redis Cluster 的 cluster-require-full-coverage</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Version</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-10-21</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">大纲</h2>
+<details>
+<summary>展开看看</summary>
+<ul>
+<li><strong>一句话</strong>：<code>cluster-require-full-coverage</code> 管的不是“节点死活”，是“16384 个 slot 有没有被完整覆盖”；节点挂了集群还活着，靠的是副本 failover。</li>
+<li><strong>一个误会</strong>：以为一个节点挂了集群就挂——其实中间还隔着 failover 和 slot 覆盖两道关。</li>
+<li><strong>slot 覆盖</strong>：每个 key 先算到一个 0~16383 的 slot，集群每一拍都在数“16384 个 slot 是不是都有活着的节点管”。</li>
+<li><strong>真源码</strong>：<code>clusterUpdateState()</code> 就是一个 for 循环，逐个 slot 看是不是 <code>NULL</code> 或 <code>FAIL</code>，缺一个就把状态置成 <code>CLUSTER_FAIL</code>。</li>
+<li><strong>三个阶段</strong>：master 挂 → slot 短暂没人管（集群 FAIL）→ 副本 failover 成功 → 覆盖恢复（集群 OK）。</li>
+<li><strong>两个配置分工</strong>：<code>require-full-coverage</code> 决定“覆盖不全要不要 FAIL”，<code>allow-reads-when-down</code> 决定“已经 FAIL 了还让不让读”。</li>
+<li><strong>一张排查清单</strong>：从 CLUSTER INFO 的 slots_fail 一路查到客户端 CLUSTERDOWN。</li>
+</ul>
+</details>
+<hr>
+<p>设想这样一个半夜被叫起来的场景：现象是“整个 Redis 都连不上了”。三主六从的集群，机器都在，<code>ping</code> 得通，但应用侧大面积 <code>CLUSTERDOWN</code>。值班工程师第一反应往往跟很多人一样——是不是哪台挂了整个集群就跟着挂了？</p>
+<p>查下来才发现，挂的只有一个主节点，它负责的那一段 slot 的副本没能及时顶上。问题不在“有节点挂了”，而在“有一段 key 空间暂时没人管”。这两件事，长得像，本质完全不同。</p>
+<p><strong>这篇想说清楚一个被普遍误读的配置：<code>cluster-require-full-coverage</code>。</strong> 它控制的从来不是“节点挂了 Redis 还能不能用”，而是“当 16384 个 slot 没法被活着的节点全部覆盖时，集群要不要干脆整体停摆”。看懂这一条，半夜排查时就不会把力气花错地方。</p>
+<p>先把最容易记错的一句话摆出来：</p>
+<blockquote>
+<p><strong>节点挂了集群还活着，靠的是副本 failover，不是 <code>cluster-require-full-coverage</code>。</strong>
+这个配置只负责在 failover 失败、slot 真的没人管之后，决定集群是停摆还是降级服务。</p>
+</blockquote>
+<hr>
+<h2 id="_2">先搞清楚：集群到底在盯着什么</h2>
+<p>Redis Cluster 把整个 key 空间切成 <strong>16384 个 slot（槽）</strong>。每个 key 先过一遍 CRC16，取低 14 位，落到一个 0 到 16383 的编号上：</p>
+<div class="highlight"><pre><span></span><code>slot = CRC16(key) &amp; 16383
+</code></pre></div>
+
+<blockquote>
+<p>这里的 16384 不是随便定的，源码里写死成 <code>CLUSTER_SLOTS (1&lt;&lt;14)</code>——14 位二进制，刚好 16384 个。所以你看 <code>keyHashSlot</code> 里是 <code>&amp; 0x3FFF</code>（低 14 位），不是常见误传的 <code>% 16384</code>，结果一样但按位与更快。</p>
+</blockquote>
+<p>每个主节点认领一段连续的 slot。三主的典型分法是这样：</p>
+<p><img alt="三主各管一段 slot，16384 个槽全部有人覆盖" src="../images/tech_20261021_redis-cluster-full-coverage_coverage.svg"></p>
+<p>关键来了。集群判断自己健不健康，<strong>不是</strong>挨个去数“A 活着吗、B 活着吗、C 活着吗”，而是反过来问一句：</p>
+<blockquote>
+<p><strong>16384 个 slot，是不是每一个都有活着的节点在管？</strong></p>
+</blockquote>
+<p>全部有人管，集群状态就是 <code>ok</code>；只要有一个 slot 没人管（术语叫 uncovered），在默认配置下，集群就会把自己标成 <code>fail</code>。</p>
+<p>节点视角和 slot 视角的差别，正是前面那种排查最容易绕进去的地方——人盯着“哪台机器挂了”，而集群盯着的是“哪段 slot 没人管了”。</p>
+<hr>
+<h2 id="clusterupdatestate">真正干活的那段源码：clusterUpdateState()</h2>
+<p>这套逻辑在 <code>src/cluster.c</code> 里，核心函数叫 <code>clusterUpdateState()</code>，集群每隔一段时间就跑一遍，更新自己的状态。它判断覆盖的那段，剥掉注释后其实短得出奇：</p>
+<div class="highlight"><pre><span></span><code><span class="kt">void</span><span class="w"> </span><span class="nf">clusterUpdateState</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">j</span><span class="p">,</span><span class="w"> </span><span class="n">new_state</span><span class="p">;</span>
+<span class="w">    </span><span class="n">new_state</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">CLUSTER_OK</span><span class="p">;</span><span class="w">          </span><span class="cm">/* 默认乐观：先假设一切 OK */</span>
+
+<span class="w">    </span><span class="cm">/* 只有在 require-full-coverage=yes 时才逐个 slot 检查 */</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">server</span><span class="p">.</span><span class="n">cluster_require_full_coverage</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">j</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">j</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">CLUSTER_SLOTS</span><span class="p">;</span><span class="w"> </span><span class="n">j</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">server</span><span class="p">.</span><span class="n">cluster</span><span class="o">-&gt;</span><span class="n">slots</span><span class="p">[</span><span class="n">j</span><span class="p">]</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="nb">NULL</span><span class="w"> </span><span class="o">||</span>
+<span class="w">                </span><span class="n">server</span><span class="p">.</span><span class="n">cluster</span><span class="o">-&gt;</span><span class="n">slots</span><span class="p">[</span><span class="n">j</span><span class="p">]</span><span class="o">-&gt;</span><span class="n">flags</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="p">(</span><span class="n">CLUSTER_NODE_FAIL</span><span class="p">))</span>
+<span class="w">            </span><span class="p">{</span>
+<span class="w">                </span><span class="n">new_state</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">CLUSTER_FAIL</span><span class="p">;</span>
+<span class="w">                </span><span class="k">break</span><span class="p">;</span><span class="w">               </span><span class="cm">/* 只要有一个 slot 没人管，立刻判 FAIL */</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="cm">/* ... 后面还有少数派分区、重启延迟等逻辑 ... */</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>就这么点东西。有两处值得盯一眼：</p>
+<ul>
+<li><strong><code>slots[j] == NULL</code></strong> 是“这个 slot 压根没有节点认领”；<strong><code>flags &amp; CLUSTER_NODE_FAIL</code></strong> 是“认领它的节点被集群判定为 FAIL 了”。两者任意一个成立，这个 slot 就算没人管。</li>
+<li><strong><code>break</code></strong>：16384 个里只要撞上第一个没人管的，循环立刻退出，整个集群状态置为 <code>CLUSTER_FAIL</code>。头文件里写得很直白：<code>CLUSTER_OK 0</code>（一切正常）、<code>CLUSTER_FAIL 1</code>（集群没法工作）。</li>
+</ul>
+<p>所以这个配置的本质，就是这个 <code>if</code> 和这个 <code>for</code>。<code>require-full-coverage=no</code> 时，这段检查直接被跳过——集群不会因为某段 slot 没人管就把自己判死。</p>
+<p>真实源码当然比这复杂得多，还要处理 failover、quorum、PFAIL/FAIL、epoch、网络分区。但要理解 <code>cluster-require-full-coverage</code>，抓住这个 for 循环就够了。</p>
+<hr>
+<h2 id="master">一个 master 挂掉，到底发生了什么</h2>
+<p>这才是上面那种场景的主线。还是三主三从（这里先各带一个副本）：</p>
+<div class="highlight"><pre><span></span><code>A → A1    slots 0 - 5460
+B → B1    slots 5461 - 10922
+C → C1    slots 10923 - 16383
+</code></pre></div>
+
+<p>现在 B 挂了。整件事会分成界限分明的三个阶段，<strong>它们对应的集群状态完全不同</strong>，排查时千万别混为一谈：</p>
+<p><img alt="master 挂掉后的三个阶段：正常 → 短暂 FAIL → failover 后恢复" src="../images/tech_20261021_redis-cluster-full-coverage_phases.svg"></p>
+<p><strong>阶段一：B 刚挂，副本还没顶上。</strong> <code>5461-10922</code> 这段暂时没人管，覆盖不完整。默认配置下 <code>clusterUpdateState()</code> 撞上这段 slot，集群状态变成 <code>fail</code>。这个窗口通常只有几秒，但它确实存在。</p>
+<p><strong>阶段二：B1 完成 failover，升为新 master，接管 <code>5461-10922</code>。</strong> 16384 个 slot 又全部有人管，集群状态回到 <code>ok</code>。</p>
+<p><strong>阶段三：一切照常。</strong> 这时候再看，会以为“B 挂了集群根本没事”——其实它只是飞快地走完了前两个阶段。</p>
+<p>把顺序理清楚，结论就很清楚了：</p>
+<blockquote>
+<p><strong>真正把 slot 覆盖补回来的，是副本 failover，不是 <code>cluster-require-full-coverage</code>。</strong></p>
+</blockquote>
+<p>这个配置没有任何“修复”能力，它只是个判断开关。能不能从 master 故障里恢复，取决于有没有健康的副本、以及它能不能顺利选举上位。这也是为什么你的集群值得配三主六从——每个主多备几个副本，就是为了让阶段一尽量短、让阶段二尽量稳。</p>
+<hr>
+<h2 id="failover">failover 没成功，这个配置才真正登场</h2>
+<p>如果 B 的副本因为某些原因没能完成 failover——比如副本也一起挂了、数据太旧被拒绝参选、或者网络分区导致选不出票——那 <code>5461-10922</code> 就会<strong>长时间</strong>没人管。这才是 <code>cluster-require-full-coverage</code> 真正起作用的时刻。</p>
+<p>这时候 <code>yes</code> 和 <code>no</code> 走向两条完全不同的路：</p>
+<table>
+<thead>
+<tr>
+<th>配置</th>
+<th>覆盖不全时集群状态</th>
+<th>行为</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>yes</code>（默认）</td>
+<td><code>fail</code></td>
+<td>停止服务，宁可整体停摆，也不提供只有半拉 key 空间可用的集群</td>
+</tr>
+<tr>
+<td><code>no</code></td>
+<td>仍可 <code>ok</code> 地服务已覆盖的部分</td>
+<td>落在 A、C 那段的请求照常，落在 B 那段的请求失败</td>
+</tr>
+</tbody>
+</table>
+<p><code>no</code> 的本质不是“集群完全没事”，而是<strong>允许集群在部分 key 空间可用的情况下继续工作</strong>。举个具体的：</p>
+<div class="highlight"><pre><span></span><code>GET user:1  → slot 1000  → A（活着）→ 成功
+GET user:2  → slot 7000  → B（没人管）→ 失败
+GET user:3  → slot 15000 → C（活着）→ 成功
+</code></pre></div>
+
+<p>对缓存类业务，这种“坏一部分、其余照用”往往可以接受——缓存 miss 回源就是了。但对那些需要明确知道“整个数据集是否完整可用”的系统，悄悄提供一个半残的集群可能比直接停摆更危险。所以 Redis 官方的默认值是 <code>yes</code>：</p>
+<blockquote>
+<p><strong>宁可整个集群暂停，也不要不声不响地提供一个只有部分 key 空间可用的集群。</strong></p>
+</blockquote>
+<p>顺带澄清一个措辞上的坑：官方 <code>redis.conf</code> 的注释说覆盖不全时节点“停止接受 queries（查询）”，而 Scale 文档里说的是“停止接受 writes（写）”。两处说法略有出入，实际行为还受 <code>cluster-allow-reads-when-down</code> 影响——这就引出下一个配置。</p>
+<hr>
+<h2 id="cluster-allow-reads-when-down">别和它搞混：cluster-allow-reads-when-down</h2>
+<p>这两个配置经常被当成一回事，其实分工很清楚，是前后两道关：</p>
+<div class="highlight"><pre><span></span><code>slot 覆盖是否完整？
+   └─不完整─→ require-full-coverage = yes？
+                 └─是─→ 集群标记为 FAIL
+                           └─→ allow-reads-when-down = yes？
+                                  ├─否（默认）→ 读写全停
+                                  └─是        → 还能提供读
+</code></pre></div>
+
+<p>说白了：</p>
+<ul>
+<li><strong><code>cluster-require-full-coverage</code></strong> 回答的是：<strong>覆盖不全，要不要把集群判成 FAIL？</strong></li>
+<li><strong><code>cluster-allow-reads-when-down</code></strong> 回答的是：<strong>集群已经 FAIL 了，要不要还让它服务读请求？</strong></li>
+</ul>
+<p>官方文档对后者的定义是：默认 <code>no</code>，当集群被标记为 failed（无论是因为凑不齐 master quorum，还是因为覆盖不满足）时，节点会停止服务所有流量；设成 <code>yes</code> 才会在 FAIL 状态下继续放行读请求。</p>
+<p>一个管“要不要死”，一个管“死了还能不能喘气”，别指望其中一个去替另一个干活。</p>
+<hr>
+<h2 id="redis">还有一层：Redis 认为的“挂”，和客户端看到的“挂”</h2>
+<p>这类排查最绕的一点在这里：<strong>Redis Server 认为集群 FAIL，和客户端表现为“整个 Redis 都用不了”，是两个层次的问题。</strong></p>
+<p>集群内部用的是 Cluster Bus 来互相探活，判定一个节点是否 FAIL，要经过 <code>cluster-node-timeout</code> 这道门槛——一个节点长时间联系不上，先标 <code>PFAIL</code>（疑似挂），够多的节点都这么认为了才升级成 <code>FAIL</code>。所以：</p>
+<ul>
+<li><strong><code>cluster-node-timeout</code></strong> 决定“多久才认为一个节点有问题”；</li>
+<li><strong><code>cluster-require-full-coverage</code></strong> 决定“确认 slot 覆盖不全之后，集群要不要整体停摆”。</li>
+</ul>
+<p>这俩不是一回事。更要命的是，“客户端连不上某个节点”不等于“集群判定这个节点 FAIL”：</p>
+<div class="highlight"><pre><span></span><code>应用 → B   （网络不通，客户端这边连不上）
+A ←→ B ←→ C（集群内部的 Cluster Bus 仍然通）
+</code></pre></div>
+
+<p>这种情况下，集群内部可能一切正常，是你的客户端被网络挡在了门外。反过来，客户端库自己也有脾气——比如 <code>redis-py</code> 的集群客户端有个独立的 <code>require_full_coverage</code> 参数，专门区分“客户端这边要求 slot 全覆盖”和“服务端的 <code>cluster-require-full-coverage</code>”。客户端初始化时如果发现覆盖不全，可能直接抛异常，让你误以为整个集群都塌了。</p>
+<p>所以“整个 Redis 不可用”这个表象，可能来自服务端 FAIL，也可能来自客户端的 topology 刷新策略或某条连接的网络问题。排查时得分层看。</p>
+<hr>
+<h2 id="_3">一张排查清单</h2>
+<p>把这类排查的路径沉淀成一张清单，下次照着走就行，不用再在“哪台机器挂了”上绕圈：</p>
+<ol>
+<li>
+<p><strong>先看集群状态</strong>，别先看机器。
+   <code>bash
+   redis-cli -c -h &lt;host&gt; -p &lt;port&gt; CLUSTER INFO</code>
+   盯住这几行：<code>cluster_state</code>（ok / fail）、<code>cluster_slots_assigned</code>（该是 16384）、<code>cluster_slots_ok</code>、<code>cluster_slots_fail</code>。<code>slots_fail &gt; 0</code> 基本就锁定了方向。</p>
+</li>
+<li>
+<p><strong>看 slot 到底谁在管。</strong>
+   <code>bash
+   redis-cli -c -h &lt;host&gt; -p &lt;port&gt; CLUSTER NODES</code>
+   看三段 slot（如 <code>0-5460</code> / <code>5461-10922</code> / <code>10923-16383</code>）是不是都挂在 <code>master</code> 上，以及对应的 <code>slave</code> 副本在不在、健不健康。</p>
+</li>
+<li>
+<p><strong>确认 failover 有没有发生。</strong> 挂掉的那个主，它的副本是不是升成了新 master 并接管了那段 slot。没升上去，就要查副本为什么选不上（数据太旧？网络分区？副本也挂了？）。</p>
+</li>
+<li>
+<p><strong>确认两个开关的取值。</strong>
+   <code>bash
+   redis-cli -h &lt;host&gt; -p &lt;port&gt; CONFIG GET cluster-require-full-coverage
+   redis-cli -h &lt;host&gt; -p &lt;port&gt; CONFIG GET cluster-allow-reads-when-down</code>
+   这决定了“覆盖不全”会变成“整体停摆”还是“降级服务只读”。</p>
+</li>
+<li>
+<p><strong>最后再看客户端。</strong> 服务端 <code>cluster_state:ok</code> 但应用还在报错，大概率是客户端的 topology 还没刷新、某条连接网络不通，或者客户端库自己的 <code>require_full_coverage</code> 在作祟。这一层和服务端是分开的，别混着查。</p>
+</li>
+</ol>
+<p>整条链路串起来就是：节点是否真 FAIL → 它的 slot 是否 uncovered → 副本是否 failover 成功 → <code>slots_fail</code> 是否大于 0 → <code>require-full-coverage</code> 是 yes 还是 no → <code>cluster_state</code> 是 ok 还是 fail → <code>allow-reads-when-down</code> 是什么 → 客户端是不是因为 CLUSTERDOWN 或 topology 刷新而表现为“整个 Redis 不可用”。</p>
+<hr>
+<h2 id="slot">总结：它管的是 slot 覆盖，不是节点死活</h2>
+<p>把整件事压成一句话：</p>
+<blockquote>
+<p><strong><code>cluster-require-full-coverage</code> 控制的不是“节点挂了 Redis 还能不能用”，而是“16384 个 slot 无法被活着的节点全部覆盖时，集群要不要继续提供部分 key 空间的服务”。</strong></p>
+</blockquote>
+<p>所以下次再看到有人说“一个节点挂了整个 Redis Cluster 就挂了”，你可以补一句：中间还隔着两道关——先看副本有没有 failover 成功把 slot 覆盖补回来，补不回来才轮到这个配置决定是停摆还是降级。真正扛高可用的是副本 failover，这个配置只是在 failover 失败之后，替你在“一致性”和“可用性”之间做一次选择。</p>
+<p>默认选了一致性那边。清楚这一点，半夜被叫起来的时候，就知道该先敲 <code>CLUSTER INFO</code> 看 <code>slots_fail</code>，而不是先去数哪台机器还亮着灯。</p>
+<h2 id="_4">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* cluster-require-full-coverage
+** 它管什么
+*** 不是节点死活
+*** 是 16384 个 slot 是否全覆盖
+** 源码 clusterUpdateState
+*** for 循环逐个 slot
+*** NULL 或 FAIL 即 uncovered
+*** 撞一个就 CLUSTER_FAIL
+** master 挂的三阶段
+*** 阶段一 短暂 FAIL
+*** 阶段二 failover 恢复
+*** 阶段三 照常
+** 两个配置分工
+*** require-full-coverage 要不要 FAIL
+*** allow-reads-when-down 死了还读不读
+** 分层看故障
+*** node-timeout 决定判挂
+*** 服务端 FAIL ≠ 客户端不可用
+** 排查清单
+*** CLUSTER INFO slots_fail
+*** CLUSTER NODES 看 slot 归属
+*** 确认 failover
+*** 查两个开关
+*** 最后看客户端
+@endmindmap
+</code></pre></div>
+
+<p><img alt="讲透 Redis Cluster 的 cluster-require-full-coverage - 思维导图" src="../images/tech_20261021_redis-cluster-full-coverage_mindmap.png"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/redis-cluster-require-full-coverage.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/tech.html">tech</a>
+      <a href="https://www.fanyamin.com/blog/tag/redis.html">redis</a>
+      <a href="https://www.fanyamin.com/blog/tag/redis-cluster.html">redis-cluster</a>
+      <a href="https://www.fanyamin.com/blog/tag/high-availability.html">high-availability</a>
+      <a href="https://www.fanyamin.com/blog/tag/failover.html">failover</a>
+      <a href="https://www.fanyamin.com/blog/tag/source-code.html">source-code</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-10-20-restraint.html" title="人到中年，最可贵的领悟是克制">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/2026-10-21-empiricism-trap.html" title="别让经验把你坑了：老程序员的"去芜存菁"">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/redis-slot-crc16-o1-construction.html">不用碰撞：读懂一段 Lua，O(1) 造出落在指定 Slot 的 Redis Key</a></li>
+      <li><a href="https://www.fanyamin.com/blog/geo-active-active-storage-selection.html">从容灾到异地双活：数据层怎么选，以 Redis 为例细讲</a></li>
+      <li><a href="https://www.fanyamin.com/blog/etcd-cluster-state-split-brain.html">集群状态为什么该交给 etcd：用 Raft 从根上消除脑裂</a></li>
+      <li><a href="https://www.fanyamin.com/blog/freeswitch-mysql-geo-active-active.html">用 FreeSWITCH + MySQL 构建异地双活的音视频服务</a></li>
+      <li><a href="https://www.fanyamin.com/blog/web-proxy-how-apps-discover-it.html">Web Proxy 这道关：应用怎么知道自己该走代理</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>

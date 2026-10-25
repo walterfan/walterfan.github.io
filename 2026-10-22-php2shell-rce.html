@@ -1,0 +1,822 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/stylesheet/style.min.css">
+
+    <link id="dark-theme-style" rel="stylesheet" type="text/css"
+          media="(prefers-color-scheme: dark)"
+    href="https://www.fanyamin.com/blog/theme/stylesheet/dark-theme.min.css">
+
+    <link id="pygments-dark-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: dark)"
+          href="https://www.fanyamin.com/blog/theme/pygments/monokai.min.css">
+    <link id="pygments-light-theme" rel="stylesheet" type="text/css"
+              media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
+          href="https://www.fanyamin.com/blog/theme/pygments/github.min.css">
+
+
+
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/fontawesome.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/brands.css">
+  <link rel="stylesheet" type="text/css" href="https://www.fanyamin.com/blog/theme/font-awesome/css/solid.css">
+
+
+  <link rel="shortcut icon" href="./images/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="./images/favicon.ico" type="image/x-icon">
+
+  <!-- Chrome, Firefox OS and Opera -->
+  <meta name="theme-color" content="#333333">
+  <!-- Windows Phone -->
+  <meta name="msapplication-navbutton-color" content="#333333">
+  <!-- iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Microsoft EDGE -->
+  <meta name="msapplication-TileColor" content="#333333">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Walter Fan's Blog Atom">
+
+  <link href="https://www.fanyamin.com/blog/feeds/all.rss.xml" type="application/rss+xml" rel="alternate" title="Walter Fan's Blog RSS">
+
+<script type="text/javascript">
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?515bdf5535f081f19e81c5e2f8c25d58";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+</script>
+
+
+
+
+
+
+ 
+
+<meta name="author" content="Walter Fan" />
+<meta name="description" content="PHP 在 2026 年 10 月 21 日紧急发布补丁，修复两个可导致未认证远程代码执行（RCE）的高危漏洞，统称 PHP2Shell，对应 CVE-2026-109618 和 CVE-2026-109619，CVSS v4.0 评分高达 9.2。漏洞位于 PHP 核心的内存管理与错误处理路径，影响几乎所有 PHP 版本，攻击可以不经过任何应用代码直接打到服务器。本文讲清楚漏洞是什么、风险有多高、哪些版本受影响，并给出今天就能做的处置清单——以及用 Docker 跑 WordPress 时，为什么&#34;光换镜像不重建容器&#34;能漏掉这次修复，该怎么正确升级。" />
+<meta name="keywords" content="tech, security, php, rce, cve, opsec, web">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "PHP2Shell 漏洞：PHP 紧急发布两个高危 RCE 补丁，今天就要动手",
+  "description": "PHP 在 2026 年 10 月 21 日紧急发布补丁，修复两个可导致未认证远程代码执行（RCE）的高危漏洞，统称 PHP2Shell，对应 CVE-2026-109618 和 CVE-2026-109619，CVSS v4.0 评分高达 9.2。漏洞位于 PHP 核心的内存管理与错误处理路径，影响几乎所有 PHP 版本，攻击可以不经过任何应用代码直接打到服务器。本文讲清楚漏洞是什么、风险有多高、哪些版本受影响，并给出今天就能做的处置清单——以及用 Docker 跑 WordPress 时，为什么&#34;光换镜像不重建容器&#34;能漏掉这次修复，该怎么正确升级。",
+  "author": {
+    "@type": "Person",
+    "name": "Walter Fan"
+  },
+  "datePublished": "2026-10-22T09:00:00+08:00",
+  "dateModified": "2026-10-22T09:00:00+08:00",
+  "url": "https://www.fanyamin.com/blog/2026-10-22-php2shell-rce.html",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://www.fanyamin.com/blog/2026-10-22-php2shell-rce.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Walter Fan's Blog",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.fanyamin.com/blog/./images/walterfan.jpg"
+    }
+  }
+,
+  "keywords": "tech, security, php, rce, cve, opsec, web"
+}
+</script>
+
+
+  <meta property="og:site_name" content="Walter Fan's Blog"/>
+  <meta property="og:title" content="PHP2Shell 漏洞：PHP 紧急发布两个高危 RCE 补丁，今天就要动手"/>
+  <meta property="og:description" content="PHP 在 2026 年 10 月 21 日紧急发布补丁，修复两个可导致未认证远程代码执行（RCE）的高危漏洞，统称 PHP2Shell，对应 CVE-2026-109618 和 CVE-2026-109619，CVSS v4.0 评分高达 9.2。漏洞位于 PHP 核心的内存管理与错误处理路径，影响几乎所有 PHP 版本，攻击可以不经过任何应用代码直接打到服务器。本文讲清楚漏洞是什么、风险有多高、哪些版本受影响，并给出今天就能做的处置清单——以及用 Docker 跑 WordPress 时，为什么&#34;光换镜像不重建容器&#34;能漏掉这次修复，该怎么正确升级。"/>
+  <meta property="og:locale" content="zh_CN"/>
+  <meta property="og:url" content="https://www.fanyamin.com/blog/2026-10-22-php2shell-rce.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="article:published_time" content="2026-10-22 09:00:00+08:00"/>
+  <meta property="article:modified_time" content="2026-10-22 09:00:00+08:00"/>
+  <meta property="article:author" content="https://www.fanyamin.com/blog/author/walter-fan.html">
+  <meta property="article:section" content="Tech"/>
+  <meta property="article:tag" content="tech"/>
+  <meta property="article:tag" content="security"/>
+  <meta property="article:tag" content="php"/>
+  <meta property="article:tag" content="rce"/>
+  <meta property="article:tag" content="cve"/>
+  <meta property="article:tag" content="opsec"/>
+  <meta property="article:tag" content="web"/>
+  <meta property="og:image" content="./images/walterfan.jpg">
+
+  <title>Walter Fan's Blog &ndash; PHP2Shell 漏洞：PHP 紧急发布两个高危 RCE 补丁，今天就要动手</title>
+
+
+</head>
+<body >
+
+<aside>
+  <div>
+    <a href="https://www.fanyamin.com/blog/">
+      <img src="./images/walterfan.jpg" alt="Walter Fan" title="Walter Fan">
+    </a>
+
+    <h1>
+      <a href="https://www.fanyamin.com/blog/">Walter Fan</a>
+    </h1>
+
+    <p data-i18n
+       data-zh="手握灵珠常奋笔, 心开天籁不吹箫"
+       data-en="Notes on software, engineering, and life">
+      手握灵珠常奋笔, 心开天籁不吹箫
+    </p>
+
+    <form class="navbar-search" action="https://www.fanyamin.com/blog/search.html" role="search">
+      <input type="text"
+             name="q"
+             id="tipue_search_input"
+             data-i18n-placeholder
+             data-zh="搜索..."
+             data-en="Search..."
+             placeholder="搜索...">
+    </form>
+
+    <nav>
+      <ul class="list">
+
+
+
+          <li>
+            <a target="_blank"
+               href="tao.html"
+               data-i18n
+               data-zh="道"
+               data-en="Tao">
+              道
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="article.html"
+               data-i18n
+               data-zh="文章"
+               data-en="Articles">
+              文章
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="projects.html"
+               data-i18n
+               data-zh="项目"
+               data-en="Project">
+              项目
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="manual.html"
+               data-i18n
+               data-zh="手册"
+               data-en="Manuals">
+              手册
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="interest.html"
+               data-i18n
+               data-zh="兴趣"
+               data-en="Interests">
+              兴趣
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/wordpress"
+               data-i18n
+               data-zh="笔记"
+               data-en="Notebook">
+              笔记
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="bookmark.html"
+               data-i18n
+               data-zh="书签"
+               data-en="Bookmarks">
+              书签
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/webrtc/examples/index.html"
+               data-i18n
+               data-zh="WebRTC"
+               data-en="WebRTC">
+              WebRTC
+            </a>
+          </li>
+          <li>
+            <a target="_blank"
+               href="https://github.com/walterfan"
+               data-i18n
+               data-zh="GitHub"
+               data-en="GitHub">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/about.html"
+               data-i18n
+               data-zh="关于"
+               data-en="About">
+              关于
+            </a>
+          </li>
+          <li>
+            <a target="_self"
+               href="/support.html"
+               data-i18n
+               data-zh="支持"
+               data-en="Support">
+              支持
+            </a>
+          </li>
+      </ul>
+    </nav>
+
+    <div class="language-switch" aria-label="Language switch">
+      <button type="button" data-lang-switch="zh">中</button>
+      <button type="button" data-lang-switch="en">EN</button>
+    </div>
+
+    <ul class="social">
+      <li>
+        <a class="sc-github"
+           href="https://github.com/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </li>
+      <li>
+        <a class="sc-zhihu"
+           href="https://www.zhihu.com/people/walterfan"
+           target="_blank">
+          <i class="fa-brands fa-zhihu"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+  (function() {
+    var defaultLang = 'zh';
+    var storageKey = 'wfblog-sidebar-lang';
+    var lang = localStorage.getItem(storageKey) || defaultLang;
+    var textNodes = document.querySelectorAll('[data-i18n]');
+    var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    var buttons = document.querySelectorAll('[data-lang-switch]');
+
+    function applyLang(nextLang) {
+      lang = nextLang;
+      localStorage.setItem(storageKey, lang);
+      document.documentElement.setAttribute('data-sidebar-lang', lang);
+
+      textNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.textContent = text;
+        }
+      });
+
+      placeholderNodes.forEach(function(node) {
+        var text = node.getAttribute('data-' + lang);
+        if (text) {
+          node.setAttribute('placeholder', text);
+        }
+      });
+
+      buttons.forEach(function(button) {
+        var active = button.getAttribute('data-lang-switch') === lang;
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyLang(button.getAttribute('data-lang-switch'));
+      });
+    });
+
+    applyLang(lang);
+  })();
+  </script>
+
+</aside>
+  <main>
+
+<nav>
+  <a href="https://www.fanyamin.com/blog/">Home</a>
+
+  <a href="/categories.html">Categories</a>
+  <a href="/tags.html">Tags</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.atom.xml">Atom</a>
+
+  <a href="https://www.fanyamin.com/blog/feeds/all.rss.xml">RSS</a>
+</nav>
+
+<article class="single">
+  <header>
+      
+    <h1 id="2026-10-22-php2shell-rce">PHP2Shell 漏洞：PHP 紧急发布两个高危 RCE 补丁，今天就要动手</h1>
+    <p>
+      Posted on 四 22 10月 2026 in <a href="https://www.fanyamin.com/blog/category/tech.html">Tech</a>
+
+    </p>
+  </header>
+
+
+  <div>
+    <table>
+<thead>
+<tr>
+<th><strong>Abstract</strong></th>
+<th>PHP2Shell：PHP 紧急发布两个高危 RCE 补丁</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Authors</strong></td>
+<td><a href="https://www.fanyamin.com">Walter Fan</a></td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Tech</td>
+</tr>
+<tr>
+<td><strong>Version</strong></td>
+<td>v1.0</td>
+</tr>
+<tr>
+<td><strong>Updated</strong></td>
+<td>2026-10-22</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td><a href="http://creativecommons.org/licenses/by-nc-nd/4.0">CC-BY-NC-ND 4.0</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">大纲</h2>
+<details>
+<summary>展开看看</summary>
+<ul>
+<li><strong>发生了什么</strong>：两个高危 RCE 漏洞，统称 PHP2Shell，10 月 21 日紧急补丁</li>
+<li><strong>严重在哪</strong>：CVSS v4.0 9.2，未认证、不走应用代码、影响几乎全部 PHP 版本</li>
+<li><strong>两个漏洞拆开看</strong>：CVE-2026-109618（OOM 破坏）与 CVE-2026-109619（陈旧全局状态）</li>
+<li><strong>影响面</strong>：哪些运行方式中招，哪个风险最高</li>
+<li><strong>处置清单</strong>：升级版本号 + 临时缓解配置 + 类部署里的坑</li>
+<li><strong>WordPress 的 Docker 升级</strong>：为什么光换镜像不重建容器会漏，四步正确升级</li>
+<li><strong>一句话结论</strong>：没有完整的临时缓解，补丁是唯一彻底的办法</li>
+</ul>
+</details>
+<hr>
+<p>2026 年 10 月 21 日，PHP 官方给 8.5.12、8.4.27、8.3.36 和 8.2.35 打了紧急安全补丁，修复两个高危的远程代码执行（RCE）漏洞——统称 PHP2Shell，编号 CVE-2026-109618 和 CVE-2026-109619，CVSS v4.0 评分高达 <strong>9.2（Critical）</strong>。</p>
+<p>看完漏洞说明，我先把最扎心的一句放在这儿：<strong>这俩漏洞能让攻击者不登录、不发任何内容给"你的应用"，直接靠一个 HTTP 请求在服务器上执行命令。</strong> 更麻烦的是，它不在某个插件或框架里，而在 PHP 内核本身——也就是说，跑 WordPress、Magento、Drupal、Laravel、Django 后面挂 PHP 的，全都跑不掉。</p>
+<p>这篇文章先讲清楚漏洞的来龙去脉，再给一份今天就能动手的处置清单。<strong>用 Docker 跑 WordPress 的朋友注意了</strong>——因为 PHP 在镜像里更新不了，这里有个特别容易漏的点，我单独用了一节讲。读者如果是运维或者后端，建议先拉到清单和 WordPress 那两节干活，回头再补原理。</p>
+<hr>
+<h2 id="_2">漏洞是什么</h2>
+<p>两个漏洞有个共同根源：<strong>PHP 在处理"异常结束的请求"时，会把内存留在一个损坏的、被释放过的状态里</strong>。正常情况下请求要么顺利跑完、要么干净退出；可一旦请求是因内存耗尽、致命错误、超时或客户端断连而中断，PHP 的清理逻辑就会读到坏数据，从而做出错误的分支——攻击者就是利用这一点。</p>
+<p>看一下 CrowdStrike 和 PHP 官方的拆解：</p>
+<table>
+<thead>
+<tr>
+<th>编号</th>
+<th>别名</th>
+<th>机制</th>
+<th>攻击方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>CVE-2026-109618</strong></td>
+<td>RCE via OOM corruption（内存耗尽破坏）</td>
+<td>请求被内存耗尽打断时，内部数据结构只初始化了一半，自己被标记成"已就绪"，清理时会读这段脏数据</td>
+<td>单个请求自破坏→在同一个请求的清理阶段触发，快、原子、事后难还原</td>
+</tr>
+<tr>
+<td><strong>CVE-2026-109619</strong></td>
+<td>RCE via stale global state（陈旧全局状态）</td>
+<td>请求结束释放了内存，但某个全局状态还指向这段已 free 的区域，同一 worker 处理的下一个请求又读到它</td>
+<td>跨请求两步走（先投毒、后触发），能被超时和断连触发，波及面更广</td>
+</tr>
+</tbody>
+</table>
+<p>两个都属于 CWE-824（未初始化指针访问）。CVE-2026-109619 还能被用来读取进程内存，里面可能装着凭据、API 密钥之类的敏感数据。</p>
+<p>发现它们的，是 Calif、OpenAI 和 Wiz 的安全研究人员。演示里，未认证攻击能在<strong>应用代码运行之前</strong>就把请求打穿到命令执行——所以 PHP 官方明确把 mod_php 列为风险最高的运行方式。</p>
+<h2 id="_3">影响面有多大</h2>
+<p>按 PHP 官方和安全厂商的说法，影响范围几乎等于<strong>"所有为 Web 请求服务的 PHP 安装"</strong>，包括：</p>
+<ul>
+<li>PHP-FPM</li>
+<li>Apache 的 mod_php</li>
+<li>php-cgi</li>
+<li>FrankenPHP、LiteSpeed</li>
+</ul>
+<p>而且不只 8.x 中招——可以追溯到 PHP 5.4 之后的所有版本。CVE-2026-109618 的触发链路，甚至能一路回溯到 5.4 时代的 session 上传进度机制。</p>
+<p>10 月 21 日补丁放出后，安全监控已经观察到<strong>第一批利用尝试在撞传感器</strong>。这意味着这不是"等别人先打补丁、我们随后跟上"的节奏，而是"今天就得排上"。</p>
+<h3 id="_4">各版本该升到哪</h3>
+<table>
+<thead>
+<tr>
+<th>PHP 分支</th>
+<th>状态</th>
+<th>该升到的版本</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PHP 8.5</td>
+<td>活跃支持</td>
+<td><strong>8.5.12</strong></td>
+</tr>
+<tr>
+<td>PHP 8.4</td>
+<td>活跃支持</td>
+<td><strong>8.4.27</strong></td>
+</tr>
+<tr>
+<td>PHP 8.3</td>
+<td>活跃支持</td>
+<td><strong>8.3.36</strong></td>
+</tr>
+<tr>
+<td>PHP 8.2</td>
+<td>仅安全支持</td>
+<td><strong>8.2.35</strong></td>
+</tr>
+<tr>
+<td>PHP 8.1 及更早</td>
+<td>已到生命周期终点（EOL）</td>
+<td>官方不再给补丁；看发行版/LTS 厂商的移植，或升级到受支持分支</td>
+</tr>
+<tr>
+<td>PHP 7.4 / 8.0 / 8.1</td>
+<td>EOL</td>
+<td>官方给了最小源码级移植补丁，供自己编译或没有 LTS 厂商的环境</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_5">处置清单</h2>
+<p>PHP 官方反复强调一句：<strong>没有完整的临时缓解方案，升级补丁是唯一彻底的办法。</strong> 下面是官方给出的、能"降低部分攻击面"的临时措施——它们不能让系统变安全，只是在你明天还补不上的时候，先压一压暴露面。</p>
+<ol>
+<li><strong>优先给所有生产 PHP 打补丁</strong>，尤其是暴露公网的机器。升级版本见上表。</li>
+<li>
+<p>注意：只改应用代码、上 WAF、装网站安全插件都不够——漏洞在内核/运行时层面，应用外的那层防护拦不住。</p>
+</li>
+<li>
+<p><strong>重建并重新部署容器镜像。</strong> 如果 PHP 是打进镜像里的，光更新宿主机不会更新镜像内部的 PHP，必须重建基础镜像再部署。</p>
+</li>
+<li>
+<p><strong>处理 EOL 分支。</strong> 还在跑 PHP 8.1 或更老、又没有 LTS 厂商兜底的，要么马上迁移到受支持版本，要么自己按官方最小源码补丁重新编译。</p>
+</li>
+<li>
+<p><strong>临时缓解项</strong>（补丁之前用，按需开）：</p>
+</li>
+<li>CVE-2026-109618：设置 <code>memory_limit=-1</code>（最好用 FPM pool 或 Apache 里应用没法覆盖的方式，比如 <code>php_admin_value</code>），并检查有没有某个 pool、目录或应用设置又把它改回有限值；对不需要文件上传的应用把 <code>post_max_size</code> 设低（比如 8M，需要上传的设 32M）；再用容器/cgroup 限制做可用性边界，最好配成"只杀受影响的那个 worker"。</li>
+<li>
+<p>CVE-2026-109619：设 <code>session.upload_progress.enabled=0</code> 并重启每个 worker；PHP 8.5 上再设 <code>fatal_error_backtraces=0</code> 并重启 worker（只拦得住已确认的 fatal backtrace 路径）；修掉攻击者可触发的致命错误和超时（包括回调、上传/导入处理及其清理阶段）；用 <code>error_reporting</code>、<code>display_errors</code> 或 <code>@</code> 藏报错<strong>没有用</strong>。</p>
+</li>
+<li>
+<p><strong>留意发行版/K8s 生态的坑。</strong> 官方提醒，如果依赖社区维护的 <code>rpms.remirepo.net</code>，建议切换到发行版自带包或自己编译，以便立刻应用更新。</p>
+</li>
+</ol>
+<p>一句话：先把能升的都升了，升不了的有上面这些应急项压着，但心里要清楚——<strong>只有补丁是完整的修复</strong>。</p>
+<h2 id="wordpress-docker">WordPress 的 Docker 容器怎么升级</h2>
+<p>如果站是这么跑的——<strong>PHP 打进镜像里，wordpress 官方镜像 + 一个 MySQL 容器，代码和数据都在卷里</strong>——那这次的升级有个特别要紧的点，很多初次接触的人会栽：<strong>光 <code>docker pull</code> 新镜像没用，得重建容器</strong>。</p>
+<p>原因很简单：PHP 是跟着镜像走的，不是跟着你的 WordPress 代码走的。更新宿主机上的 PHP 不会更新镜像里的 PHP；同样的，你在容器里跑 <code>wp update</code> 或者让 WordPress 自动更新，更新的是 WordPress 源码和插件——<strong>碰不到内核里那个 PHP</strong>。所以 PHP2Shell 的修复，必须靠"换一个新镜像 + 重建容器"来完成。</p>
+<p>好在数据不丢：<code>/var/www/html</code> 和数据库都挂在卷上，重建容器不会碰你的文章、主题和数据库。具体操作是这样：</p>
+<ol>
+<li><strong>确认当前镜像里的 PHP 版本。</strong> 别用"好像是最新的"这种判断，先进容器里实打实看：</li>
+</ol>
+<p><code>bash
+   docker exec &lt;容器名&gt; php -v</code></p>
+<p>这一步很关键。官方镜像的 tag 里带 PHP 版本，比如 <code>wordpress:php8.3-apache</code>、<code>wordpress:php8.4-fpm</code>。你要确认的是<strong>实际跑的 PHP 是否已经到了修复版</strong>——对 8.3 系就是 8.3.36，8.4 系是 8.4.27，8.5 系是 8.5.12。如果 tag 没跟着升，容器里很可能还是个带洞的旧版本。</p>
+<ol>
+<li><strong>把镜像 tag 指向带修复的版本，重新拉取。</strong> 官方镜像通常用 <code>php8.3</code>、<code>php8.4</code>、<code>php8.5</code> 这类按 PHP 大版本分的 tag，官方会在后台把这些 tag 推到含修复的小版本。所以：</li>
+</ol>
+<p><code>bash
+   docker pull wordpress:php8.4-apache</code></p>
+<p>注意别用没有版本约束的 <code>latest</code> 当生产依据——<code>latest</code> 指向哪个 PHP 大版本是官方定的，你没法保证。<strong>明确锁定到你需要的 PHP 版本 tag</strong>，至少能自己掌握升的是哪一个。</p>
+<ol>
+<li><strong>重建容器（不是重启）。</strong> <code>docker restart</code> 不会换镜像，必须用新镜像重建：</li>
+</ol>
+<p><code>bash
+   docker compose up -d --pull always wordpress</code></p>
+<p>或者不写 compose、手动跑时，用 <code>docker rm -f</code> 删掉旧容器，再用新 tag <code>docker run</code> 起一个，卷保持不变。</p>
+<ol>
+<li><strong>重建后再验一遍。</strong> 回到第 1 步，再跑 <code>php -v</code>，确认容器里确实已经是修复版，再切流量/恢复。</li>
+</ol>
+<p>如果你不是直接用官方镜像，而是 <code>FROM wordpress:...</code> 自己叠的层（加了插件、php 扩展之类），那就得<strong>改 Dockerfile 里的基础镜像 tag，重新 <code>docker build</code> 再部署</strong>——只拉不带自己改动的官方镜像，盖不掉你叠的那些东西。</p>
+<p>最后补一句操作纪律：<strong>操作前先备份数据库和卷</strong>，这是所有版本升级的地基。PHP2Shell 再急，也就快那么几分钟，但一次没备份的升级翻车，后悔的时间可长得多。</p>
+<ul>
+<li>漏洞编号与补丁版本以 PHP 官方 2026-10-21 公告、CrowdStrike 与微软 Azure 的披露为准；<code>session.upload_progress.enabled</code> 这类路径来自已公开的技术分析，实际利用细节已由官方处置，这里不展开攻击载荷。</li>
+<li>文中"第一批利用尝试"来自安全厂商 10 月 21 日的观测，属于公开报道口径。</li>
+</ul>
+<hr>
+<h2 id="_6">全文思维导图</h2>
+<div class="highlight"><pre><span></span><code>@startmindmap
+&lt;style&gt;
+mindmapDiagram {
+  node {
+    BackgroundColor #F8F9FA
+    RoundCorner 10
+    Padding 10
+    FontSize 13
+  }
+  :depth(0) {
+    BackgroundColor #1E3A5F
+    FontColor white
+    FontSize 18
+    FontStyle bold
+  }
+  :depth(1) {
+    FontSize 15
+    FontStyle bold
+  }
+  :depth(2) {
+    FontSize 13
+  }
+}
+&lt;/style&gt;
+
+* PHP2Shell 高危 RCE
+** 发生了什么
+*** 10-21 紧急补丁
+*** CVE-2026-109618 / 109619
+*** CVSS v4.0 9.2
+** 漏洞机制
+*** 请求异常结束留坏内存
+*** 109618 OOM 破坏
+*** 109619 陈旧全局状态
+** 影响面
+*** 全部 Web PHP 安装
+*** PHP-FPM / mod_php / cgi / FrankenPHP
+*** 回溯到 5.4
+*** 第一批利用已出现
+** 处置
+*** 升级到 8.5.12/8.4.27/8.3.36/8.2.35
+*** 重建容器镜像
+*** EOL 分支迁移或源码补丁
+*** 临时缓解项
+** WordPress Docker 升级
+*** PHP 打进镜像，需重建容器
+*** php -v 确认实际版本
+*** 换带修复的版本 tag
+*** compose up -d --pull always
+*** 先备份数据库和卷
+@endmindmap
+</code></pre></div>
+
+<p><img alt="PHP2Shell 高危 RCE - 思维导图" src="./images/tech_20261022_php2shell_rce_mindmap.png"></p>
+<hr/>
+<p>本作品采用<a href="http://creativecommons.org/licenses/by-nc-nd/4.0/">知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议</a>进行许可。 欢迎在我的个人网站 https://www.fanyamin.com 访问原文并评论。</p>
+  </div>
+
+
+<div class="article-actions" role="navigation" aria-label="Article actions">
+
+  <a href="/feeds/all.rss.xml"
+>
+    📬 订阅更新
+  </a>
+  <a href="https://www.zhihu.com/people/walterfan"
+target="_blank" rel="noopener">
+    📬 订阅知乎
+  </a>
+  <a href="https://github.com/walterfan"
+target="_blank" rel="noopener">
+    ⭐ GitHub
+  </a>
+  <a href="/support.html"
+>
+    ❤️ 9.9元请我喝杯咖啡
+  </a>
+  <a href="/tags.html"
+>
+    📖 阅读系列文章
+  </a>
+  <a href="/consultation.html"
+>
+    🧑‍💼 向我咨询
+  </a>
+  <a href="javascript:void(0);"
+     onclick="copyArticleLink(this.dataset.url)"
+     data-url="https://www.fanyamin.com/blog/2026-10-22-php2shell-rce.html">
+    🔗 复制链接
+  </a>
+</div>
+<script>
+function copyArticleLink(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('链接已复制！');
+  });
+}
+</script>
+
+  <div class="tag-cloud">
+    <p>
+      <a href="https://www.fanyamin.com/blog/tag/tech.html">tech</a>
+      <a href="https://www.fanyamin.com/blog/tag/security.html">security</a>
+      <a href="https://www.fanyamin.com/blog/tag/php.html">php</a>
+      <a href="https://www.fanyamin.com/blog/tag/rce.html">rce</a>
+      <a href="https://www.fanyamin.com/blog/tag/cve.html">cve</a>
+      <a href="https://www.fanyamin.com/blog/tag/opsec.html">opsec</a>
+      <a href="https://www.fanyamin.com/blog/tag/web.html">web</a>
+    </p>
+  </div>
+
+
+
+  <div class="neighbors">
+    <a class="btn float-left" href="https://www.fanyamin.com/blog/2026-10-21-empiricism-trap.html" title="别让经验把你坑了：老程序员的"去芜存菁"">
+      <i class="fa fa-angle-left"></i> Previous Post
+    </a>
+    <a class="btn float-right" href="https://www.fanyamin.com/blog/2026-10-22-lua-top-10-mistakes.html" title="Lua 编程三十个常见错误：初级、中级、高级，逐个拆解">
+      Next Post <i class="fa fa-angle-right"></i>
+    </a>
+  </div>
+
+  <div class="related-posts">
+    <h4>You might enjoy</h4>
+    <ul class="related-posts">
+      <li><a href="https://www.fanyamin.com/blog/web-proxy-how-apps-discover-it.html">Web Proxy 这道关：应用怎么知道自己该走代理</a></li>
+      <li><a href="https://www.fanyamin.com/blog/wang-luo-an-quan-zhi-bei-zhi-broken-auth-and-session-managementdeng-lu-yu-hui-hua-guan-li-fan-che-zhi-nan.html">网络安全指北之 Broken Auth and Session Management：登录与会话管理翻车指南</a></li>
+      <li><a href="https://www.fanyamin.com/blog/wang-luo-an-quan-zhi-bei-zhi-csrfcross-site-request-forgery-kua-zhan-qing-qiu-wei-zao.html">网络安全指北之 CSRF：Cross-Site Request Forgery (跨站请求伪造)</a></li>
+      <li><a href="https://www.fanyamin.com/blog/wang-luo-an-quan-zhi-bei-zhi-idor-insecure-direct-object-reference-dui-xiang-yin-yong-yue-quan.html">网络安全指北之 IDOR: Insecure Direct Object Reference (对象引用越权)</a></li>
+      <li><a href="https://www.fanyamin.com/blog/wang-luo-an-quan-zhi-bei-zhi-sensitive-data-exposuremin-gan-shu-ju-bao-lu.html">网络安全指北之Sensitive Data Exposure：敏感数据暴露</a></li>
+    </ul>
+  </div>
+
+
+
+<!-- Giscus Comments -->
+<div id="giscus-comments" style="margin-top: 2em;">
+<script src="https://giscus.app/client.js"
+        data-repo="walterfan/walterfan.github.io"
+        data-repo-id="MDEwOlJlcG9zaXRvcnkzNTgxNzQxNw=="
+        data-category="Announcements"
+        data-category-id="DIC_kwDOAiKHyc4C3viR"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="preferred_color_scheme"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async>
+</script>
+</div>
+<!-- End Giscus -->
+</article>
+
+<footer>
+<p>&copy; 2010 ~ 2030  Walter Fan <a href="https://beian.miit.gov.cn" target="_blank">皖ICP备20001876号-1</a></p>
+<p>
+Built with <a href="http://getpelican.com" target="_blank">Pelican</a> using <a href="http://bit.ly/flex-pelican" target="_blank">Flex</a> theme
+  <span class="footer-separator">|</span>
+  Switch to the <a href="javascript:void(0)" onclick="theme.switch(`dark`)">dark</a> | <a href="javascript:void(0)" onclick="theme.switch(`light`)">light</a> | <a href="javascript:void(0)" onclick="theme.switch(`browser`)">browser</a> theme
+  <script id="dark-theme-script"
+          src="https://www.fanyamin.com/blog/theme/dark-theme/dark-theme.min.js"
+          data-enable-auto-detect-theme="True"
+          data-default-theme="light"
+          type="text/javascript">
+  </script>
+</p><!-- StatusCake -->
+
+<!-- End StatusCake --></footer>  </main>
+
+<script type="application/ld+json">
+{
+  "@context" : "http://schema.org",
+  "@type" : "Blog",
+  "name": " Walter Fan's Blog ",
+  "url" : "https://www.fanyamin.com/blog",
+  "image": "./images/walterfan.jpg",
+  "description": "一个老程序员的技术笔记：WebRTC、AI、微服务、软件工程与职场感悟"
+}
+</script>
+<script>
+  (function () {
+    // Diagram-type keywords a mermaid block can start with.
+    var MERMAID_HEADS = [
+      "graph", "flowchart", "sequenceDiagram", "classDiagram",
+      "stateDiagram-v2", "stateDiagram", "erDiagram", "journey",
+      "gantt", "pie", "quadrantChart", "requirementDiagram",
+      "gitGraph", "mindmap", "timeline", "sankey-beta", "sankey",
+      "xychart-beta", "block-beta", "packet-beta", "kanban",
+      "architecture-beta", "C4Context", "C4Container", "C4Component",
+      "C4Dynamic", "C4Deployment", "zenuml"
+    ];
+
+    function looksLikeMermaid(text) {
+      var firstLine = text.replace(/^\s+/, "").split("\n", 1)[0].trim();
+      for (var i = 0; i < MERMAID_HEADS.length; i++) {
+        var kw = MERMAID_HEADS[i];
+        if (firstLine === kw
+          || firstLine.indexOf(kw + " ") === 0
+          || firstLine.indexOf(kw + "\t") === 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function transform() {
+      var count = 0;
+      // codehilite output: div.highlight > pre > code  (also plain pre > code)
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      codes.forEach(function (code) {
+        var text = code.textContent; // already un-escapes &quot; &lt; &gt; &amp;
+        if (!text || !looksLikeMermaid(text)) return;
+        var pre = code.parentElement;
+        var container = (pre && pre.parentElement
+          && pre.parentElement.classList.contains("highlight"))
+          ? pre.parentElement
+          : pre;
+        var holder = document.createElement("pre");
+        holder.className = "mermaid";
+        holder.textContent = text;
+        container.replaceWith(holder);
+        count++;
+      });
+      return count;
+    }
+
+    function render() {
+      var count = transform();
+      if (count === 0 || !window.mermaid) return;
+      var dark = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: dark ? "dark" : "default"
+      });
+      window.mermaid.run({ querySelector: "pre.mermaid" });
+    }
+
+    function loadMermaidThen(cb) {
+      // Only pull the 3.4MB bundle if the page actually has a mermaid block.
+      var script = document.createElement("script");
+      script.src = "https://www.fanyamin.com/blog/extra/mermaid.min.js";
+      script.onload = cb;
+      document.head.appendChild(script);
+    }
+
+    function hasMermaidBlock() {
+      var codes = document.querySelectorAll(
+        "article div.highlight > pre > code, article pre > code");
+      for (var i = 0; i < codes.length; i++) {
+        if (looksLikeMermaid(codes[i].textContent || "")) return true;
+      }
+      return false;
+    }
+
+    function init() {
+      if (!hasMermaidBlock()) return; // no diagrams -> don't fetch the bundle
+      loadMermaidThen(render);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('article img').forEach(function(img) {
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
+    });
+  </script>
+</body>
+</html>
